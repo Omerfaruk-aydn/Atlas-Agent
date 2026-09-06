@@ -15,7 +15,7 @@ Change how it is configured just by telling it to.
 [![Go Report Card](https://goreportcard.com/badge/github.com/Omerfaruk-aydn/Atlas-Agent)](https://goreportcard.com/report/github.com/Omerfaruk-aydn/Atlas-Agent)
 [![Stars](https://img.shields.io/github/stars/Omerfaruk-aydn/Atlas-Agent?style=social)](https://github.com/Omerfaruk-aydn/Atlas-Agent/stargazers)
 
-**80+ built-in tools · 10 built-in subagent modes · 16 provider and coding-plan integrations · MCP + Skills + hooks for everything else**
+**80+ built-in tools · 10 built-in subagent modes · 61 providers in the embedded catalog · 7 coding-plan logins · MCP + Skills + hooks for everything else**
 
 </div>
 
@@ -296,15 +296,17 @@ Everything below is a subcommand of `atlas-agent`.
 | Command | What it does |
 | --- | --- |
 | `atlas-agent models` | List every model available from configured providers. |
-| `atlas-agent models show <id>` | Show one model's context window, pricing, and capabilities. |
+| `atlas-agent models roles` | Show which model each named role resolves to. |
 | `atlas-agent provider list` | List configured providers. |
-| `atlas-agent provider add <name>` | Add a provider (API key, base URL, custom models). |
-| `atlas-agent provider remove <name>` | Remove a provider. |
+| `atlas-agent provider test` | Check that a provider actually answers. |
 | `atlas-agent provider usage [name]` | Token and cost usage per provider. |
 | `atlas-agent update-providers [path-or-url]` | Refresh the embedded provider/model catalog. |
-| `atlas-agent roles` | Show which model each named role resolves to. |
 | `atlas-agent login [platform]` | Sign in to a coding plan (Copilot, ChatGPT, Antigravity, …). |
 | `atlas-agent logout [platform]` | Sign out and forget stored credentials. |
+
+Providers are *added* by editing the config file, by asking the agent (`atlas_config`), or in an
+`atlasrc` shell config (`provider add <id> --api-key ... --base-url ...`) — there is no
+`provider add` CLI subcommand.
 
 ### Sessions
 
@@ -321,10 +323,11 @@ Everything below is a subcommand of `atlas-agent`.
 | `atlas-agent session rewind <id> <message-id>` | Rewind history to a message and continue from there. |
 | `atlas-agent session diff <id1> <id2>` | Compare two sessions. |
 | `atlas-agent session export <id>` | Export a session (for sharing or archiving). |
+| `atlas-agent session models <id>` | Which models a session used. |
+| `atlas-agent session tools <id>` | Which tools a session used. |
 | `atlas-agent session delete <id>` | Delete a session. |
 | `atlas-agent session prune` | Delete old sessions in bulk. |
 | `atlas-agent stats` | Token, cost, and activity statistics. |
-| `atlas-agent usage` | This workspace's usage summary. |
 
 ### Subagents, skills, and extensions
 
@@ -335,15 +338,18 @@ Everything below is a subcommand of `atlas-agent`.
 | `atlas-agent agent new <name>` | Create a subagent definition file. |
 | `atlas-agent agent remove <name>` | Delete a subagent definition. |
 | `atlas-agent skill list` | List available skills. |
+| `atlas-agent skill show <name>` | Print a skill. |
 | `atlas-agent skill new <name>` | Scaffold a new `SKILL.md`. |
 | `atlas-agent skill validate` | Validate skill frontmatter and structure. |
 | `atlas-agent skill remove <name>` | Delete a skill. |
 | `atlas-agent mcp list` | List configured MCP servers. |
-| `atlas-agent mcp add` / `remove` | Manage MCP servers. |
+| `atlas-agent mcp test` | Check that an MCP server connects and responds. |
 | `atlas-agent lsp list` | Show LSP servers and their state. |
 | `atlas-agent hooks list` | Show configured hooks. |
 | `atlas-agent hooks run <event>` | Fire a hook manually, for testing. |
-| `atlas-agent tools` | List the tools currently exposed to the agent. |
+
+MCP servers, like providers, are declared in the config file, through the agent (`atlas_config`), or
+in an `atlasrc` shell config (`mcp add ...`) rather than through a CLI subcommand.
 
 ### Project and workspace
 
@@ -352,11 +358,14 @@ Everything below is a subcommand of `atlas-agent`.
 | `atlas-agent projects` | List known projects. |
 | `atlas-agent worktree` | Manage git worktree-backed sessions. |
 | `atlas-agent memory show [project\|user]` | Show remembered project/user context. |
+| `atlas-agent memory search <query>` | Search what has been remembered. |
 | `atlas-agent memory clear <project\|user>` | Forget it. |
-| `atlas-agent config` | Show effective configuration. |
+| `atlas-agent config show` | Show effective configuration. |
+| `atlas-agent config paths` | Show which config files were loaded, in order. |
 | `atlas-agent schema` | Print the JSON schema for the config file. |
-| `atlas-agent dirs` / `paths` | Show config, data, and cache directories. |
+| `atlas-agent dirs` | Show config, data, and cache directories. |
 | `atlas-agent logs` | Tail the agent's own log file. |
+| `atlas-agent corners` | Preview which box-corner styles your terminal font supports. |
 
 ---
 
@@ -610,7 +619,7 @@ role currently points at. Leave it empty and the subagent runs on the session's 
 
 ## Tools
 
-80+ built-in tools. `atlas-agent tools` prints the ones currently enabled; anything can be turned off
+80+ built-in tools. The `atlas_info` tool reports which are enabled in a live session; anything can be turned off
 with `atlas_config` or `options.disabled_tools`.
 
 ### Editing and navigation
@@ -762,7 +771,7 @@ configure anything. Providers come in three shapes.
 
 ### 1. API-key providers
 
-Set the environment variable (or `atlas-agent provider add <name>`) and the models appear:
+Set the environment variable and the models appear:
 
 | Provider | Env var | Notes |
 | --- | --- | --- |
@@ -774,11 +783,11 @@ Set the environment variable (or `atlas-agent provider add <name>`) and the mode
 | Kimi Coding (Moonshot) | `KIMI_CODING_API_KEY` | Kimi K3 / Kimi for Coding |
 | Moonshot | `MOONSHOT_API_KEY` | Moonshot family |
 | Z.ai | `ZAI_API_KEY` | GLM-4 family |
-| Zhipu Coding | `ZHIPU_CODING_API_KEY` | Zhipu coding plan |
+| Zhipu Coding | `ZHIPU_API_KEY` | Zhipu coding plan |
 | MiniMax Coding | `MINIMAX_CODING_API_KEY` | MiniMax-M2.7 / M3 |
-| NVIDIA NIM | `NVIDIA_NIM_API_KEY` | Large hosted open-model catalog |
-| OpenCode Zen | `OPENCODE_ZEN_API_KEY` | OpenCode Zen coding plan |
-| OpenCode Go | `OPENCODE_GO_API_KEY` | OpenCode Go coding plan |
+| NVIDIA NIM | `NVIDIA_API_KEY` | Large hosted open-model catalog |
+| OpenCode Zen | `OPENCODE_API_KEY` | OpenCode Zen coding plan |
+| OpenCode Go | `OPENCODE_API_KEY` | OpenCode Go coding plan (same key) |
 | OpenRouter | `OPENROUTER_API_KEY` | Everything else, through one key |
 | AWS Bedrock | standard AWS credentials | Bedrock-hosted models |
 | Azure OpenAI | `AZURE_OPENAI_*` | Azure deployments |
@@ -950,8 +959,8 @@ Any Model Context Protocol server can be attached; its tools and resources appea
 built-ins.
 
 ```bash
-atlas-agent mcp add
-atlas-agent mcp list
+atlas-agent mcp list      # what is configured
+atlas-agent mcp test      # does it actually connect
 ```
 
 Both stdio and HTTP transports are supported, including OAuth-protected servers.
@@ -968,9 +977,19 @@ Run your own commands at five points in the agent's lifecycle. A hook can allow,
 | `SessionStart` | At session start | Inject environment context |
 | `SessionEnd` | At session end | Archive, notify, clean up |
 
-Hook commands receive the event's data both as a JSON payload and as environment variables —
-`ATLAS_AGENT_TOOL_NAME`, `ATLAS_AGENT_PROMPT`, `ATLAS_AGENT_SESSION_ID`, `ATLAS_AGENT_CWD`,
-`ATLAS_AGENT_PROJECT_DIR`, and tool-specific ones such as the bash command being run.
+Hook commands receive the event's data both as a JSON payload on stdin and as environment
+variables:
+
+| Variable | Contains |
+| --- | --- |
+| `ATLAS_AGENT_EVENT` | The event name (`PreToolUse`, `PostToolUse`, …) |
+| `ATLAS_AGENT_TOOL_NAME` | The tool being called, for tool events |
+| `ATLAS_AGENT_PROMPT` | The prompt text, for `UserPromptSubmit` |
+| `ATLAS_AGENT_SESSION_ID` | The session the event belongs to |
+| `ATLAS_AGENT_CWD` | The working directory |
+| `ATLAS_AGENT_PROJECT_DIR` | The project root |
+| `ATLAS_AGENT_TOOL_INPUT_COMMAND` | The command, when the tool is `bash` |
+| `ATLAS_AGENT_TOOL_INPUT_FILE_PATH` | The file path, when the tool takes one |
 
 ```jsonc
 {
@@ -982,7 +1001,7 @@ Hook commands receive the event's data both as a JSON payload and as environment
       }
     ],
     "PostToolUse": [
-      { "name": "gofmt", "command": "gofmt -w \"$ATLAS_AGENT_FILE_PATH\"" }
+      { "name": "gofmt", "command": "gofmt -w \"$ATLAS_AGENT_TOOL_INPUT_FILE_PATH\"" }
     ]
   }
 }
@@ -1024,7 +1043,7 @@ without going through the main session — a lightweight coordination channel fo
 
 Configuration is JSON, layered global → workspace, and both layers can be edited by hand or changed
 from the chat with `atlas_config`. `atlas-agent schema` prints the full JSON schema;
-`atlas-agent config` prints what is currently in effect.
+`atlas-agent config show` prints what is currently in effect.
 
 Config directories:
 
@@ -1339,7 +1358,7 @@ models do noticeably better.
 
 Same shape as the Ollama example: a `base_url`, an `api_key`, and a `models` list. vLLM, LM Studio,
 llama.cpp's server, a corporate gateway, or a provider Atlas Agent has never heard of all work this
-way. `atlas-agent provider add <name>` does it interactively.
+way — declare it in the config file, or ask the agent to (`atlas_config`).
 
 ### Mixing providers deliberately
 
@@ -1427,7 +1446,7 @@ Notes for contributors:
 `PATH` in your shell profile; open a new shell, or `source` your profile.
 
 **"No providers configured".** Set an API key environment variable, run
-`atlas-agent login <platform>`, or add one with `atlas-agent provider add`. `atlas-agent doctor`
+`atlas-agent login <platform>`, or declare a provider in the config file. `atlas-agent doctor`
 reports what it can and cannot see.
 
 **A model rejects a parameter (`Unsupported parameter: max_output_tokens`).** Some coding-plan

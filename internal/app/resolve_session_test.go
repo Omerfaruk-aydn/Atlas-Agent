@@ -80,6 +80,10 @@ func (m *mockSessionService) SetTags(context.Context, string, []string) error {
 	return nil
 }
 
+func (m *mockSessionService) SetGoal(context.Context, string, string) error {
+	return nil
+}
+
 func (m *mockSessionService) Delete(context.Context, string) error {
 	return nil
 }

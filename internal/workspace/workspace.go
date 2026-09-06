@@ -201,6 +201,10 @@ type Workspace interface {
 	AgentQueuedPromptsList(sessionID string) []string
 	AgentClearQueue(sessionID string)
 	AgentSummarize(ctx context.Context, sessionID string) error
+	// AgentSetGoal puts a session into an autonomous run towards goal,
+	// where it keeps taking turns of its own until the goal is reached
+	// or its budget runs out. An empty goal ends the run.
+	AgentSetGoal(ctx context.Context, sessionID, goal string) error
 	UpdateAgentModel(ctx context.Context) error
 	InitCoderAgent(ctx context.Context) error
 	InitCoderAgentNonInteractive(ctx context.Context) error

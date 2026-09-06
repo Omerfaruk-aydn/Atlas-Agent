@@ -132,6 +132,9 @@ func Prepare(ctx context.Context, db DBTX) (*Queries, error) {
 	if q.renameSessionStmt, err = db.PrepareContext(ctx, renameSession); err != nil {
 		return nil, fmt.Errorf("error preparing query RenameSession: %w", err)
 	}
+	if q.setSessionGoalStmt, err = db.PrepareContext(ctx, setSessionGoal); err != nil {
+		return nil, fmt.Errorf("error preparing query SetSessionGoal: %w", err)
+	}
 	if q.setSessionTagsStmt, err = db.PrepareContext(ctx, setSessionTags); err != nil {
 		return nil, fmt.Errorf("error preparing query SetSessionTags: %w", err)
 	}
@@ -329,6 +332,11 @@ func (q *Queries) Close() error {
 			err = fmt.Errorf("error closing renameSessionStmt: %w", cerr)
 		}
 	}
+	if q.setSessionGoalStmt != nil {
+		if cerr := q.setSessionGoalStmt.Close(); cerr != nil {
+			err = fmt.Errorf("error closing setSessionGoalStmt: %w", cerr)
+		}
+	}
 	if q.setSessionTagsStmt != nil {
 		if cerr := q.setSessionTagsStmt.Close(); cerr != nil {
 			err = fmt.Errorf("error closing setSessionTagsStmt: %w", cerr)
@@ -424,6 +432,7 @@ type Queries struct {
 	listUserMessagesBySessionStmt        *sql.Stmt
 	recordFileReadStmt                   *sql.Stmt
 	renameSessionStmt                    *sql.Stmt
+	setSessionGoalStmt                   *sql.Stmt
 	setSessionTagsStmt                   *sql.Stmt
 	updateMessageStmt                    *sql.Stmt
 	updateSessionStmt                    *sql.Stmt
@@ -470,6 +479,7 @@ func (q *Queries) WithTx(tx *sql.Tx) *Queries {
 		listUserMessagesBySessionStmt:        q.listUserMessagesBySessionStmt,
 		recordFileReadStmt:                   q.recordFileReadStmt,
 		renameSessionStmt:                    q.renameSessionStmt,
+		setSessionGoalStmt:                   q.setSessionGoalStmt,
 		setSessionTagsStmt:                   q.setSessionTagsStmt,
 		updateMessageStmt:                    q.updateMessageStmt,
 		updateSessionStmt:                    q.updateSessionStmt,

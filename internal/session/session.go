@@ -59,6 +59,10 @@ type Session struct {
 	Cost             float64
 	Todos            []Todo
 	Tags             []string
+	// Goal is what this session is for, in the user's own words. It is
+	// folded into the system prompt rather than the conversation, so
+	// summarizing the history away cannot take it with it.
+	Goal string
 	// CreatedAt and UpdatedAt are Unix seconds, from the database's
 	// strftime('%s', 'now') -- not milliseconds, despite what the initial
 	// migration's column comment says.
@@ -85,6 +89,9 @@ type Service interface {
 	Save(ctx context.Context, session Session) (Session, error)
 	UpdateTitleAndUsage(ctx context.Context, sessionID, title string, promptTokens, completionTokens int64, cost float64) error
 	Rename(ctx context.Context, id string, title string) error
+	// SetGoal records what the session is for, replacing any goal already
+	// set. An empty string clears it.
+	SetGoal(ctx context.Context, id string, goal string) error
 	// SetTags replaces a session's tags wholesale. An empty slice clears
 	// them, the same way Rename replaces the title wholesale rather than
 	// appending to it.
@@ -292,6 +299,21 @@ func (s *service) Rename(ctx context.Context, id string, title string) error {
 	return nil
 }
 
+// SetGoal records what the session is for. Like Rename, it replaces
+// rather than appends: a session has one goal at a time, and restating
+// it is how you change it.
+func (s *service) SetGoal(ctx context.Context, id string, goal string) error {
+	goal = strings.TrimSpace(goal)
+	if err := s.q.SetSessionGoal(ctx, db.SetSessionGoalParams{
+		ID:   id,
+		Goal: sql.NullString{String: goal, Valid: goal != ""},
+	}); err != nil {
+		return err
+	}
+	s.publishSessionUpdate(ctx, id)
+	return nil
+}
+
 // SetTags replaces a session's tags wholesale, the same way Rename replaces
 // the title wholesale rather than appending to it.
 func (s *service) SetTags(ctx context.Context, id string, tags []string) error {
@@ -375,6 +397,7 @@ func (s *service) fromDBItem(item db.Session) Session {
 		Cost:             item.Cost,
 		Todos:            todos,
 		Tags:             tags,
+		Goal:             item.Goal.String,
 		CreatedAt:        item.CreatedAt,
 		UpdatedAt:        item.UpdatedAt,
 	}

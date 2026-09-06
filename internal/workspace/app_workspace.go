@@ -249,6 +249,16 @@ func (w *AppWorkspace) AgentClearQueue(sessionID string) {
 	}
 }
 
+func (w *AppWorkspace) AgentSetGoal(ctx context.Context, sessionID, goal string) error {
+	if w.app.AgentCoordinator == nil {
+		return errors.New("agent coordinator not initialized")
+	}
+	if goal == "" {
+		return w.app.AgentCoordinator.ClearGoal(ctx, sessionID)
+	}
+	return w.app.AgentCoordinator.StartGoal(ctx, sessionID, goal)
+}
+
 func (w *AppWorkspace) AgentSummarize(ctx context.Context, sessionID string) error {
 	if w.app.AgentCoordinator == nil {
 		return errors.New("agent coordinator not initialized")

@@ -347,6 +347,13 @@ func (w *ClientWorkspace) AgentClearQueue(sessionID string) {
 	_ = w.client.ClearAgentSessionQueuedPrompts(context.Background(), w.workspaceID(), sessionID)
 }
 
+// AgentSetGoal is not carried over the client protocol yet: a goal run
+// drives turns from inside the coordinator, and a remote client would
+// need the protocol to relay them before it could start one.
+func (w *ClientWorkspace) AgentSetGoal(ctx context.Context, sessionID, goal string) error {
+	return errors.New("setting a goal is not supported against a remote workspace yet")
+}
+
 func (w *ClientWorkspace) AgentSummarize(ctx context.Context, sessionID string) error {
 	return w.client.AgentSummarizeSession(ctx, w.workspaceID(), sessionID)
 }

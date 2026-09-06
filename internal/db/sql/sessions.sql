@@ -81,6 +81,12 @@ SET
     tags = ?
 WHERE id = ?;
 
+-- name: SetSessionGoal :exec
+UPDATE sessions
+SET
+    goal = ?
+WHERE id = ?;
+
 -- name: DeleteSession :exec
 DELETE FROM sessions
 WHERE id = ?;

@@ -57,4 +57,5 @@ type Session struct {
 	SummaryMessageID sql.NullString `json:"summary_message_id"`
 	Todos            sql.NullString `json:"todos"`
 	Tags             sql.NullString `json:"tags"`
+	Goal             sql.NullString `json:"goal"`
 }

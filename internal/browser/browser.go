@@ -20,15 +20,36 @@ import (
 	"github.com/chromedp/chromedp/kb"
 )
 
-// Options configures how new sessions are launched and reaped. It is set
-// once, on the manager's first use (see GetManager); later callers asking
-// for a differently-configured manager still get the one already running.
+// Options configures how new sessions are launched and reaped. The
+// process-wide manager re-reads them on every GetManager call, so a
+// setting the user changes mid-session takes effect on the next launch
+// rather than at the next restart.
 type Options struct {
 	// ExecutablePath is the Chrome/Chromium binary to launch. Empty lets
 	// chromedp search the usual install locations.
 	ExecutablePath string
 	// Headless runs the browser without a visible window.
 	Headless bool
+	// UserDataDir is the Chrome profile directory to launch with. A
+	// profile that persists is what lets the agent act as a signed-in
+	// user: cookies written on one run are still there on the next.
+	// Empty gets chromedp's throwaway profile, which starts signed out
+	// of everything, every time.
+	UserDataDir string
+	// UseRealProfile copies the user's own Chrome profile into
+	// UserDataDir before launching, so the agent starts signed into
+	// whatever the user is signed into. See profile.go for why it is a
+	// copy and what that costs.
+	UseRealProfile bool
+	// RealProfilePin names which profile to copy on a machine with
+	// several ("Default", "Profile 2"). Empty copies the one the user
+	// browsed with last.
+	RealProfilePin string
+	// RemoteURL is the DevTools endpoint of a browser someone else
+	// started (say http://127.0.0.1:9222). Set, it is driven instead of
+	// launching one, and ExecutablePath, Headless and UserDataDir no
+	// longer apply -- they describe a launch that no longer happens.
+	RemoteURL string
 	// ActionTimeout bounds a single action (navigate, click, eval...).
 	ActionTimeout time.Duration
 	// IdleTimeout is how long an unused session is kept open before a
@@ -244,14 +265,31 @@ type chromedpSession struct {
 }
 
 func newChromedpSession(opts Options) (Session, error) {
-	allocOpts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
-		chromedp.Flag("headless", opts.Headless),
+	var (
+		allocCtx    context.Context
+		allocCancel context.CancelFunc
 	)
-	if opts.ExecutablePath != "" {
-		allocOpts = append(allocOpts, chromedp.ExecPath(opts.ExecutablePath))
+	if opts.RemoteURL != "" {
+		if err := ensureRemoteBrowser(opts); err != nil {
+			return nil, err
+		}
+		allocCtx, allocCancel = chromedp.NewRemoteAllocator(context.Background(), opts.RemoteURL)
+	} else {
+		allocOpts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
+			chromedp.Flag("headless", opts.Headless),
+		)
+		if opts.ExecutablePath != "" {
+			allocOpts = append(allocOpts, chromedp.ExecPath(opts.ExecutablePath))
+		}
+		if opts.UserDataDir != "" {
+			// chromedp deletes the profile it made itself; naming one
+			// here also tells it to leave the directory alone, which is
+			// the whole point -- the logins have to still be there next
+			// time.
+			allocOpts = append(allocOpts, chromedp.UserDataDir(opts.UserDataDir))
+		}
+		allocCtx, allocCancel = chromedp.NewExecAllocator(context.Background(), allocOpts...)
 	}
-
-	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
 	ctx, cancel := chromedp.NewContext(allocCtx)
 
 	// Launch now so a missing browser binary or launch failure surfaces
@@ -536,16 +574,60 @@ var (
 	defaultManagerOnce sync.Once
 )
 
-// GetManager returns the process-wide browser manager, built from opts the
-// first time it's called. Later callers reuse the same manager (and its
-// already-open sessions) regardless of what opts they pass -- this mirrors
-// shell.GetBackgroundShellManager, which the bash/job_output tools rely on
-// to survive the agent's tool list being reassembled mid-session.
+// GetManager returns the process-wide browser manager, built on first
+// use and kept for the life of the process so a multi-step flow survives
+// the agent's tool list being reassembled mid-session -- as
+// shell.GetBackgroundShellManager does for the bash tools.
+//
+// Every call re-applies opts, because reassembling that tool list is
+// exactly how a changed setting arrives. Without this the first opts
+// seen won the process, and turning the visible window on or off did
+// nothing until the next restart.
 func GetManager(opts Options) *Manager {
 	defaultManagerOnce.Do(func() {
 		defaultManager = newManager(opts, newChromedpSession)
 	})
+	defaultManager.setOptions(opts)
 	return defaultManager
+}
+
+// CloseAllSessions closes every open session if a manager was ever
+// started, and does nothing if none was. Shutdown uses it rather than
+// GetManager so tearing down cannot overwrite the running options with
+// a zero value on the way out.
+func CloseAllSessions() {
+	if defaultManager == nil {
+		return
+	}
+	defaultManager.CloseAll()
+}
+
+// setOptions adopts opts for sessions launched from here on. A change to
+// how the browser is launched cannot reach a process already running, so
+// open sessions are closed instead of left contradicting the setting:
+// the next action relaunches under what the user actually chose.
+func (m *Manager) setOptions(opts Options) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.opts == opts {
+		return
+	}
+	relaunch := m.opts.Headless != opts.Headless ||
+		m.opts.ExecutablePath != opts.ExecutablePath ||
+		m.opts.UserDataDir != opts.UserDataDir ||
+		m.opts.RemoteURL != opts.RemoteURL ||
+		m.opts.UseRealProfile != opts.UseRealProfile ||
+		m.opts.RealProfilePin != opts.RealProfilePin
+	m.opts = opts
+	if !relaunch {
+		return
+	}
+	for id, s := range m.sessions {
+		s.Close()
+		delete(m.sessions, id)
+		delete(m.lastUsed, id)
+	}
 }
 
 // Session returns the open session for id, launching one if none exists.

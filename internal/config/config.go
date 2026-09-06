@@ -1187,6 +1187,10 @@ type ToolBrowser struct {
 	Enabled        *bool          `json:"enabled,omitempty" jsonschema:"description=Turn on the browser tool so the agent can navigate / click / type / screenshot / run JavaScript in a real Chrome or Chromium instance. Requires a Chrome or Chromium install on PATH (or executable_path below).,default=false"`
 	ExecutablePath string         `json:"executable_path,omitempty" jsonschema:"description=Path to a Chrome or Chromium binary. Empty auto-detects an installed browser."`
 	Headless       *bool          `json:"headless,omitempty" jsonschema:"description=Run the browser without a visible window,default=true"`
+	UseRealProfile *bool          `json:"use_real_profile,omitempty" jsonschema:"description=Browse as you: copies your own Chrome profile - cookies, saved logins, extensions - into the directory Atlas launches from, so the agent starts already signed in wherever you are. Chrome cannot open the profile it is running on and refuses remote debugging on it, so this is a copy rather than a live view: signing in on one side does not reach the other. Delete the snapshot directory to take the copy again.,default=false"`
+	RealProfilePin string         `json:"real_profile_pin,omitempty" jsonschema:"description=Which Chrome profile use_real_profile copies when you have several. Empty copies the one you browsed with last - pin it if you do not want the profile you last touched deciding who the agent acts as.,example=Default"`
+	UserDataDir    string         `json:"user_data_dir,omitempty" jsonschema:"description=Chrome profile directory to launch with. Cookies and logins written here survive between sessions, so the agent browses as a signed-in user instead of a blank profile. Empty uses a throwaway profile. Chrome cannot open a directory another running Chrome already holds, so point this at a directory of its own rather than at your everyday profile."`
+	RemoteURL      string         `json:"remote_url,omitempty" jsonschema:"description=DevTools endpoint to drive a long-lived browser through (for example http://127.0.0.1:9222). If nothing is listening there Atlas starts one itself using user_data_dir and executable_path; that browser keeps running after Atlas exits so its logins and tabs survive. Attach to a Chrome you started yourself by giving it the same port. Chrome refuses remote debugging on your everyday profile so this is always a separate one - sign into it once and it stays signed in.,example=http://127.0.0.1:9222"`
 	ActionTimeout  *time.Duration `json:"action_timeout,omitempty" jsonschema:"description=How long a single browser action (navigate / click / eval / etc.) may run before it is aborted,default=30s,example=1m"`
 	IdleTimeout    *time.Duration `json:"idle_timeout,omitempty" jsonschema:"description=How long an unused browser session is kept open before it is closed automatically,default=10m,example=5m"`
 }
@@ -1194,6 +1198,30 @@ type ToolBrowser struct {
 // IsEnabled reports whether the browser tool should be registered.
 func (t ToolBrowser) IsEnabled() bool {
 	return ptrValOr(t.Enabled, false)
+}
+
+// UsesRealProfile reports whether new sessions launch from a copy of the
+// user's own Chrome profile.
+func (t ToolBrowser) UsesRealProfile() bool {
+	return ptrValOr(t.UseRealProfile, false)
+}
+
+// GetRealProfilePin returns the profile name to copy, or empty for
+// whichever the user browsed with last.
+func (t ToolBrowser) GetRealProfilePin() string {
+	return t.RealProfilePin
+}
+
+// GetUserDataDir returns the Chrome profile directory new sessions launch
+// with. Empty means chromedp's own throwaway profile.
+func (t ToolBrowser) GetUserDataDir() string {
+	return t.UserDataDir
+}
+
+// GetRemoteURL returns the DevTools endpoint of a browser to attach to
+// instead of launching one. Empty means launch.
+func (t ToolBrowser) GetRemoteURL() string {
+	return t.RemoteURL
 }
 
 // IsHeadless reports whether new sessions should run without a visible

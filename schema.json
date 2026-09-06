@@ -1179,6 +1179,29 @@
           "description": "Run the browser without a visible window",
           "default": true
         },
+        "use_real_profile": {
+          "type": "boolean",
+          "description": "Browse as you: copies your own Chrome profile - cookies",
+          "default": false
+        },
+        "real_profile_pin": {
+          "type": "string",
+          "description": "Which Chrome profile use_real_profile copies when you have several. Empty copies the one you browsed with last - pin it if you do not want the profile you last touched deciding who the agent acts as.",
+          "examples": [
+            "Default"
+          ]
+        },
+        "user_data_dir": {
+          "type": "string",
+          "description": "Chrome profile directory to launch with. Cookies and logins written here survive between sessions"
+        },
+        "remote_url": {
+          "type": "string",
+          "description": "DevTools endpoint to drive a long-lived browser through (for example http://127.0.0.1:9222). If nothing is listening there Atlas starts one itself using user_data_dir and executable_path; that browser keeps running after Atlas exits so its logins and tabs survive. Attach to a Chrome you started yourself by giving it the same port. Chrome refuses remote debugging on your everyday profile so this is always a separate one - sign into it once and it stays signed in.",
+          "examples": [
+            "http://127.0.0.1:9222"
+          ]
+        },
         "action_timeout": {
           "type": "integer",
           "description": "How long a single browser action (navigate / click / eval / etc.) may run before it is aborted"

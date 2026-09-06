@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"text/template"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/browser"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
@@ -16,8 +17,31 @@ import (
 
 const BrowserToolName = "browser"
 
-//go:embed browser.md
-var browserDescription string
+//go:embed browser.md.tpl
+var browserDescriptionTmpl string
+
+var browserDescriptionTpl = template.Must(
+	template.New("browserDescription").
+		Parse(browserDescriptionTmpl),
+)
+
+// browserDescriptionData tells the description which browser the model is
+// about to drive. Whether the tab arrives carrying the user's own logins
+// changes what the model should do when a page looks signed out, and it
+// has no way to know unless it is told.
+type browserDescriptionData struct {
+	RealProfile bool
+}
+
+func browserDescription(realProfile bool) string {
+	var out strings.Builder
+	if err := browserDescriptionTpl.Execute(&out, browserDescriptionData{RealProfile: realProfile}); err != nil {
+		// The template is a compiled-in constant; a failure here is a
+		// build-time mistake, not a runtime condition to handle.
+		panic(err)
+	}
+	return out.String()
+}
 
 // browserActions lists every value BrowserParams.Action accepts.
 var browserActions = []string{
@@ -108,16 +132,20 @@ func NewBrowserTool(permissions permission.Service, workingDir string, cfg confi
 	manager := browser.GetManager(browser.Options{
 		ExecutablePath: cfg.ExecutablePath,
 		Headless:       cfg.IsHeadless(),
+		UserDataDir:    cfg.GetUserDataDir(),
+		UseRealProfile: cfg.UsesRealProfile(),
+		RealProfilePin: cfg.GetRealProfilePin(),
+		RemoteURL:      cfg.GetRemoteURL(),
 		ActionTimeout:  cfg.GetActionTimeout(),
 		IdleTimeout:    cfg.GetIdleTimeout(),
 	})
-	return newBrowserTool(permissions, workingDir, manager)
+	return newBrowserTool(permissions, workingDir, manager, browserDescription(cfg.UsesRealProfile()))
 }
 
-func newBrowserTool(permissions permission.Service, workingDir string, sessions browserSessions) fantasy.AgentTool {
+func newBrowserTool(permissions permission.Service, workingDir string, sessions browserSessions, description string) fantasy.AgentTool {
 	return fantasy.NewAgentTool(
 		BrowserToolName,
-		browserDescription,
+		description,
 		func(ctx context.Context, params BrowserParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			action := strings.ToLower(strings.TrimSpace(params.Action))
 			if !slices.Contains(browserActions, action) {

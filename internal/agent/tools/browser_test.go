@@ -162,7 +162,7 @@ func runBrowserTool(t *testing.T, sessions *fakeBrowserSessions, perms permissio
 	require.NoError(t, err)
 
 	ctx := context.WithValue(t.Context(), SessionIDContextKey, "test-session")
-	resp, err := newBrowserTool(perms, t.TempDir(), sessions).Run(ctx, fantasy.ToolCall{
+	resp, err := newBrowserTool(perms, t.TempDir(), sessions, browserDescription(false)).Run(ctx, fantasy.ToolCall{
 		ID:    "test-call",
 		Name:  BrowserToolName,
 		Input: string(input),

@@ -841,7 +841,7 @@ func (app *App) Shutdown() {
 	// Close any open browser sessions so a headless Chrome instance never
 	// outlives the agent that launched it.
 	wg.Go(func() {
-		browser.GetManager(browser.Options{}).CloseAll()
+		browser.CloseAllSessions()
 	})
 
 	// Same, for any open debug sessions: a `dlv dap` process must not

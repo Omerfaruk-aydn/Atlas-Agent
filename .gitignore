@@ -14,9 +14,14 @@
 # Dependency directories
 vendor/
 
-# Temp migration scripts
+# Temp migration scripts. The leading-underscore patterns only ever
+# matched a naming convention nobody followed, so the release and
+# publishing scripts under scripts/ -- which carry live GitHub and npm
+# tokens -- were never actually ignored.
 _*.js
 _*.py
+scripts/*.js
+scripts/*.py
 
 # Build output (binaries live in npm/cli/binary/)
 dist/

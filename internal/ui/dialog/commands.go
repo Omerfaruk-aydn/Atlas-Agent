@@ -489,6 +489,11 @@ func (c *Commands) defaultCommands() []*CommandItem {
 		NewCommandItem(c.com.Styles, "new_session", "New Session", "ctrl+n", ActionNewSession{}).WithAliases("clear").WithSlash("/new").WithSummary("Start a new chat, clearing this one"),
 		NewCommandItem(c.com.Styles, "switch_session", "Sessions", "ctrl+s", ActionOpenDialog{SessionsID}).WithSlash("/sessions").WithSummary("Browse and switch between sessions"),
 		NewCommandItem(c.com.Styles, "switch_model", "Switch Model", "ctrl+l", ActionOpenDialog{ModelsID}).WithSlash("/model").WithSummary("Choose the model this session runs on"),
+		// Not gated on there already being a session: setting a goal
+		// opens one, the same way sending a prompt does, so hiding the
+		// command until after the first message made it look missing on
+		// the one screen where someone is most likely to reach for it.
+		NewCommandItem(c.com.Styles, "goal", "Set Session Goal", "", ActionShowGoal{SessionID: c.sessionID}).WithAliases("objective", "autonomous").WithSlash("/goal").WithSummary("Work towards a goal, taking turns unprompted until it is reached"),
 	}
 
 	// Leaving a sub-agent's session you stepped into. The key for this

@@ -86,6 +86,12 @@ type (
 	ActionSummarize                   struct {
 		SessionID string
 	}
+	// ActionShowGoal reports what the session is working towards.
+	// Setting a goal is done inline -- "/goal <what to reach>" -- so
+	// there is nothing here to carry an answer back from.
+	ActionShowGoal struct {
+		SessionID string
+	}
 	// ActionFreshSession is a message indicating the user wants to
 	// recover a session that looks stuck or stale: cancel whatever is
 	// running, then reload the session's messages from the backend so

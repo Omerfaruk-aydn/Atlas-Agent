@@ -2,6 +2,8 @@ package dialog
 
 import (
 	"cmp"
+	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-style/v2"
@@ -247,6 +249,17 @@ func (a *Arguments) HandleMsg(msg tea.Msg) Action {
 				case ActionSaveSubagentMeta:
 					action.Args = args
 					return action
+				default:
+					// Every action this dialog can submit has to be
+					// listed above, because the answers are handed back
+					// by assigning to a field this switch knows about.
+					// Falling through here means a form was wired up
+					// whose submit does nothing at all: enter moves the
+					// cursor and the user is left pressing it. Say so
+					// rather than letting the next person debug a dead
+					// key.
+					slog.Error("Arguments dialog cannot return this action; add it to the switch in arguments.go",
+						"action", fmt.Sprintf("%T", a.resultAction))
 				}
 			}
 			a.focusInput(a.focused + 1)

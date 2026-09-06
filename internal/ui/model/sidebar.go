@@ -126,6 +126,7 @@ func (m *UI) updateSidebarScrollState() {
 	skillsSection := m.skillsInfo(contentWidth, len(m.skillStatusItems()), true)
 	filesSection := m.filesInfo(m.com.Workspace.WorkingDir(), contentWidth, fileChangeCount(m.sessionFiles), true)
 	jobsSection := m.jobsInfo(contentWidth, m.runningJobsCount(), true)
+	goalSection := m.goalInfo(contentWidth, true)
 
 	pathBlock := cwd
 	if gitLine != "" {
@@ -140,6 +141,8 @@ func (m *UI) updateSidebarScrollState() {
 		pathBlock,
 		"",
 		m.modelInfo(contentWidth),
+		"",
+		goalSection,
 		"",
 		filesSection,
 		"",

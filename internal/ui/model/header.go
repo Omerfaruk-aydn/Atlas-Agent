@@ -149,6 +149,17 @@ func renderHeaderDetails(
 		parts = append(parts, t.LSP.ErrorDiagnostic.Render(fmt.Sprintf("%s%d", styles.LSPErrorIcon, lspErrorCount)))
 	}
 
+	// The only other trace of a goal is a status-bar message that clears
+	// itself after a few seconds, which is indistinguishable from the
+	// goal never having been set once it is gone. This is placed early
+	// among the header's parts, ahead of the context percentage, so a
+	// tight terminal width trims it last rather than first.
+	if goal := strings.TrimSpace(session.Goal); goal != "" {
+		const goalPreviewWidth = 24
+		preview := ansi.Truncate(goal, goalPreviewWidth, "…")
+		parts = append(parts, t.Header.Percentage.Render("🎯 "+preview))
+	}
+
 	agentCfg := com.Config().Agents[config.AgentCoder]
 	model := com.Config().GetModelByType(agentCfg.Model)
 	if model != nil && model.ContextWindow > 0 {

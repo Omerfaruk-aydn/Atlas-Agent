@@ -49,6 +49,19 @@ func NewWarnMsg(warn string) InfoMsg {
 	}
 }
 
+// NewSuccessMsg is for a change that actually took effect, as distinct
+// from InfoTypeInfo's plain FYI: "goal set", "reconnected", "snippet
+// saved" earned the affirmative color, and reporting them as InfoTypeInfo
+// makes the result of an action look identical to a passing tip -- easy
+// to miss and, once missed, indistinguishable from the action having
+// silently failed.
+func NewSuccessMsg(msg string) InfoMsg {
+	return InfoMsg{
+		Type: InfoTypeSuccess,
+		Msg:  msg,
+	}
+}
+
 func NewErrorMsg(err error) InfoMsg {
 	return InfoMsg{
 		Type: InfoTypeError,
@@ -62,6 +75,10 @@ func ReportInfo(info string) tea.Cmd {
 
 func ReportWarn(warn string) tea.Cmd {
 	return CmdHandler(NewWarnMsg(warn))
+}
+
+func ReportSuccess(msg string) tea.Cmd {
+	return CmdHandler(NewSuccessMsg(msg))
 }
 
 type (

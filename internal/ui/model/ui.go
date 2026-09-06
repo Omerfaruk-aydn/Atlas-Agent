@@ -825,6 +825,21 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.dialog.HasDialogs() && m.dialog.OpenProgress() < 1 {
 			cmds = append(cmds, dialogFadeTickCmd())
 		}
+	case goalSetMsg:
+		switch {
+		case msg.err != nil:
+			cmds = append(cmds, util.ReportError(msg.err))
+		case msg.prompt == "":
+			cmds = append(cmds, util.ReportSuccess("Goal cleared."))
+		default:
+			// The goal is the prompt: typing "/goal <x>" means "work
+			// towards x", the same way typing "<x>" and hitting enter
+			// does, so it starts the same way -- sent immediately,
+			// visible in the chat like any other message, rather than
+			// being recorded silently and left for a second prompt to
+			// actually kick off.
+			cmds = append(cmds, util.ReportSuccess("Goal set."), m.sendMessage(msg.prompt))
+		}
 	case agentModelChangedMsg:
 		// The coordinator model changed (selection, thinking, reasoning):
 		// re-fetch the memoized ready/model state off-thread.
@@ -2354,6 +2369,10 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 		}
 	case dialog.ActionSelectSessionMode:
 		if cmd := m.handleSelectSessionMode(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	case dialog.ActionShowGoal:
+		if cmd := m.handleShowGoal(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	case dialog.ActionOpenAutoCompactThresholdForm:
@@ -4844,28 +4863,59 @@ func (m *UI) attachSkill(skillID, name string) tea.Cmd {
 }
 
 // sendMessage sends a message with the given content and attachments.
+
+// ensureSession makes sure there is a session to attach work to,
+// creating one and switching to the chat view if there is not. It
+// returns the command that loads a newly created session, or nil when
+// one already existed.
+//
+// Sending a prompt is not the only thing that needs a session -- setting
+// a goal does too, and refusing that on the welcome screen made the same
+// command work in one place and not the other for no reason the user
+// could see.
+func (m *UI) ensureSession() (tea.Cmd, error) {
+	if m.hasSession() {
+		return nil, nil
+	}
+	newSession, err := m.com.Workspace.CreateSession(context.Background(), "New Session")
+	if err != nil {
+		return nil, err
+	}
+	if m.forceCompactMode {
+		m.isCompact = true
+	}
+	var cmd tea.Cmd
+	if newSession.ID != "" {
+		m.session = &newSession
+		cmd = m.loadSession(newSession.ID)
+	}
+	m.setState(uiChat, m.focus)
+	return cmd, nil
+}
+
 func (m *UI) sendMessage(content string, attachments ...message.Attachment) tea.Cmd {
 	if err := m.com.Workspace.AgentReadyErr(); err != nil {
 		return util.ReportError(err)
+	}
+
+	// "/goal <what to reach>" sets the goal instead of being sent as a
+	// prompt. Handled here rather than in the completions popup because
+	// the popup filters on one word: by the time a goal has a space in
+	// it, the popup is no longer the thing receiving the keystrokes.
+	if cmd, handled := m.interceptGoalCommand(content); handled {
+		return cmd
 	}
 
 	// Start the turn timer.
 	common.StartTurn()
 
 	var cmds []tea.Cmd
-	if !m.hasSession() {
-		newSession, err := m.com.Workspace.CreateSession(context.Background(), "New Session")
-		if err != nil {
-			return util.ReportError(err)
-		}
-		if m.forceCompactMode {
-			m.isCompact = true
-		}
-		if newSession.ID != "" {
-			m.session = &newSession
-			cmds = append(cmds, m.loadSession(newSession.ID))
-		}
-		m.setState(uiChat, m.focus)
+	loadCmd, err := m.ensureSession()
+	if err != nil {
+		return util.ReportError(err)
+	}
+	if loadCmd != nil {
+		cmds = append(cmds, loadCmd)
 	}
 
 	ctx := context.Background()

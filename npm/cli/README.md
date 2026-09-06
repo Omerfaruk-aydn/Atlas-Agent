@@ -33,4 +33,4 @@ atlas-agent dirs             # show config paths
 
 ## License
 
-UNLICENSED — proprietary, all rights reserved.
+MIT — see [LICENSE.md](https://github.com/Omerfaruk-aydn/Atlas-Agent/blob/main/LICENSE.md).

@@ -1,6 +1,53 @@
 ﻿# Atlas Agent
 
-Terminal-first AI coding assistant.
+**A terminal-first AI coding agent that isn't locked to one model.**
+Plug in Claude, GPT, Gemini, a local model, or a flat-rate coding plan
+you already pay for — same agent, same workflow, your choice of brain.
+
+[![Release](https://img.shields.io/github/v/release/Omerfaruk-aydn/Atlas-Agent?label=release)](https://github.com/Omerfaruk-aydn/Atlas-Agent/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE.md)
+[![npm](https://img.shields.io/npm/v/%40atlas-coder%2Fatlas-agent?label=npm)](https://www.npmjs.com/package/@atlas-coder/atlas-agent)
+[![Stars](https://img.shields.io/github/stars/Omerfaruk-aydn/Atlas-Agent?style=social)](https://github.com/Omerfaruk-aydn/Atlas-Agent/stargazers)
+
+```bash
+curl -fsSL https://github.com/Omerfaruk-aydn/Atlas-Agent/releases/latest/download/install.sh | bash
+atlas-agent
+```
+
+<!--
+  Demo goes here: a short terminal recording (asciinema or a GIF made
+  with vhs/terminalizer) showing a real task end to end -- e.g. "fix
+  the failing test", the agent reading the code, running the test
+  suite, and the diff landing. Record one, upload it (drag-and-drop
+  into a GitHub PR/issue comment to get a CDN URL, or commit it under
+  docs/), then replace this comment with:
+    ![demo](docs/demo.gif)
+  A first-run screen recording under ~15s that shows one real edit
+  lands better than a long feature tour -- keep it tight.
+-->
+
+## Why Atlas Agent
+
+- **Bring your own model.** Anthropic, OpenAI, Google, local models via
+  Ollama/LM Studio, or a coding-plan subscription you already have
+  (Copilot, ChatGPT, Antigravity) — switch anytime, per project or per
+  role, without switching tools.
+- **Delegate instead of doing it all in one context.** Hand
+  self-contained work to a subagent (`agent`), run the same question
+  past several at once (`orchestrate`), split a task into parallel
+  pieces (`delegate`), or put several models in a multi-round argument
+  over a hard call (`debate`) — so your main session's context stays
+  small and cheap.
+- **Autonomous goals.** `/goal <what to reach>` keeps the agent taking
+  its own turns toward an objective — checked by a separate judge model
+  before it calls itself done, not just its own say-so — until it's
+  reached or its turn budget runs out.
+- **Configure it by talking to it.** "Use the cheap model for
+  summaries", "put Sonnet on research", "turn the browser tool on" —
+  say it in the chat; `atlas_config` makes the change instead of
+  sending you to a settings dialog.
+- **Cross-platform, single binary.** Windows, macOS (Intel + Apple
+  Silicon), and Linux. No runtime to install beyond the binary itself.
 
 ## Install
 
@@ -99,4 +146,4 @@ On first run Atlas Agent creates a config directory at the platform's standard l
 
 ## License
 
-UNLICENSED — proprietary, all rights reserved.
+MIT — see [LICENSE.md](LICENSE.md).

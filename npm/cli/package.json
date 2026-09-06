@@ -2,7 +2,7 @@
   "name": "@atlas-coder/atlas-agent",
   "version": "0.2.2",
   "description": "Atlas Agent — terminal-first AI coding assistant. Downloads the native binary on install.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": false,
   "preferGlobal": true,
   "bin": {

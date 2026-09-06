@@ -7,12 +7,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// authoredSubagents returns the subagents that came from files in the
+// workspace, dropping the ones that ship inside the binary.
+//
+// ListSubagents reports both, and the modes built into the binary are
+// always there, so a count of everything it returns says nothing about
+// what the workspace holds. What this test is about is one authored
+// subagent's life: created, updated in place rather than duplicated,
+// then deleted.
+func authoredSubagents(t *testing.T, list []subagents.Subagent) []subagents.Subagent {
+	t.Helper()
+	var authored []subagents.Subagent
+	for _, s := range list {
+		if !s.Builtin {
+			authored = append(authored, s)
+		}
+	}
+	return authored
+}
+
 func TestBackendSubagentLifecycle(t *testing.T) {
 	b, ws, _ := newPublishingWorkspace(t)
 
 	list, err := b.ListSubagents(ws.ID)
 	require.NoError(t, err)
-	require.Empty(t, list)
+	require.Empty(t, authoredSubagents(t, list))
 
 	path, err := b.SaveSubagent(ws.ID, subagents.Subagent{
 		Name: "research", Description: "Deep research.", Instructions: "Dig deep.",
@@ -22,9 +41,10 @@ func TestBackendSubagentLifecycle(t *testing.T) {
 
 	list, err = b.ListSubagents(ws.ID)
 	require.NoError(t, err)
-	require.Len(t, list, 1)
-	require.Equal(t, "research", list[0].Name)
-	require.Equal(t, "Deep research.", list[0].Description)
+	authored := authoredSubagents(t, list)
+	require.Len(t, authored, 1)
+	require.Equal(t, "research", authored[0].Name)
+	require.Equal(t, "Deep research.", authored[0].Description)
 
 	// Saving again by the same name updates it in place rather than
 	// creating a second entry.
@@ -35,14 +55,15 @@ func TestBackendSubagentLifecycle(t *testing.T) {
 
 	list, err = b.ListSubagents(ws.ID)
 	require.NoError(t, err)
-	require.Len(t, list, 1, "saving by an existing name must update, not duplicate")
-	require.Equal(t, "Even deeper research.", list[0].Description)
+	authored = authoredSubagents(t, list)
+	require.Len(t, authored, 1, "saving by an existing name must update, not duplicate")
+	require.Equal(t, "Even deeper research.", authored[0].Description)
 
 	require.NoError(t, b.DeleteSubagent(ws.ID, "research"))
 
 	list, err = b.ListSubagents(ws.ID)
 	require.NoError(t, err)
-	require.Empty(t, list)
+	require.Empty(t, authoredSubagents(t, list))
 }
 
 func TestBackendDeleteSubagentUnknownNameErrors(t *testing.T) {

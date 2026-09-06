@@ -2,7 +2,6 @@ package dialog
 
 import (
 	"cmp"
-	"image/color"
 	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-style/v2"
@@ -227,12 +226,6 @@ type RenderContext struct {
 	TitleStyle lipgloss.Style
 	// ViewStyle is the style of the dialog title by default it uses Styles.Dialog.View
 	ViewStyle lipgloss.Style
-	// TitleGradientFromColor is the color the title gradient starts by default
-	// its Styles.Dialog.TitleGradFromColor
-	TitleGradientFromColor color.Color
-	// TitleGradientToColor is the color the title gradient ends by default its
-	// Styles.Dialog.TitleGradToColor
-	TitleGradientToColor color.Color
 	// Width is the total width of the dialog including any margins, borders,
 	// and paddings.
 	Width int
@@ -260,13 +253,11 @@ type RenderContext struct {
 // NewRenderContext creates a new RenderContext with the provided styles and width.
 func NewRenderContext(t *styles.Styles, width int) *RenderContext {
 	return &RenderContext{
-		Styles:                 t,
-		TitleStyle:             t.Dialog.Title,
-		ViewStyle:              t.Dialog.View,
-		TitleGradientFromColor: t.Dialog.TitleGradFromColor,
-		TitleGradientToColor:   t.Dialog.TitleGradToColor,
-		Width:                  width,
-		Parts:                  []string{},
+		Styles:     t,
+		TitleStyle: t.Dialog.Title,
+		ViewStyle:  t.Dialog.View,
+		Width:      width,
+		Parts:      []string{},
 	}
 }
 
@@ -297,8 +288,7 @@ func (rc *RenderContext) Render() string {
 			titleInfo = ""
 			titleInfoWidth = 0
 		}
-		title := common.DialogTitle(rc.Styles, rc.Title,
-			max(0, contentWidth-titleInfoWidth), rc.TitleGradientFromColor, rc.TitleGradientToColor)
+		title := common.DialogTitle(rc.Styles, rc.Title, max(0, contentWidth-titleInfoWidth))
 		if len(titleInfo) > 0 {
 			title += titleInfo
 		}

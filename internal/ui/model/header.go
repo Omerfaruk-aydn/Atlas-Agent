@@ -15,11 +15,10 @@ import (
 )
 
 const (
-	headerDiag           = "╱"
-	minHeaderDiags       = 3
-	leftPadding          = 1
-	rightPadding         = 1
-	diagToDetailsSpacing = 1 // space between diagonal pattern and details section
+	minHeaderGap    = 3
+	leftPadding     = 1
+	rightPadding    = 1
+	gapToDetailsPad = 1 // space between the gap and the details section
 )
 
 type header struct {
@@ -100,7 +99,7 @@ func (h *header) drawHeader(
 	var b strings.Builder
 	b.WriteString(h.compactLogo)
 
-	availDetailWidth := width - leftPadding - rightPadding - lipgloss.Width(b.String()) - minHeaderDiags - diagToDetailsSpacing
+	availDetailWidth := width - leftPadding - rightPadding - lipgloss.Width(b.String()) - minHeaderGap - gapToDetailsPad
 	details := renderHeaderDetails(
 		h.com,
 		session,
@@ -115,12 +114,13 @@ func (h *header) drawHeader(
 		lipgloss.Width(details) -
 		leftPadding -
 		rightPadding -
-		diagToDetailsSpacing
+		gapToDetailsPad
 
+	// The space between the logo and the session details is left empty
+	// rather than filled: the bar is a line of type, and a rule drawn
+	// across it competes with the type for no gain.
 	if remainingWidth > 0 {
-		b.WriteString(t.Header.Diagonals.Render(
-			strings.Repeat(headerDiag, max(minHeaderDiags, remainingWidth)),
-		))
+		b.WriteString(strings.Repeat(" ", remainingWidth))
 		b.WriteString(" ")
 	}
 

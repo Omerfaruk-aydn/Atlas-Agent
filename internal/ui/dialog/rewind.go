@@ -271,8 +271,6 @@ func (r *Rewind) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		rc.AddPart(bodyView)
 	case rewindModeConfirming:
 		rc.TitleStyle = t.Dialog.Sessions.DeletingTitle
-		rc.TitleGradientFromColor = t.Dialog.Sessions.DeletingTitleGradientFromColor
-		rc.TitleGradientToColor = t.Dialog.Sessions.DeletingTitleGradientToColor
 		rc.ViewStyle = t.Dialog.Sessions.DeletingView
 		rc.AddPart(t.Dialog.Sessions.DeletingMessage.Render(r.confirmMessage()))
 	case rewindModeApplying:

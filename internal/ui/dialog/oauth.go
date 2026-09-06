@@ -279,7 +279,7 @@ func (m *OAuth) headerContent() string {
 	if m.isOnboarding {
 		return textStyle.Render(dialogTitle)
 	}
-	return common.DialogTitle(t, titleStyle.Render(dialogTitle), m.width-headerOffset, t.Dialog.TitleGradFromColor, t.Dialog.TitleGradToColor)
+	return common.DialogTitle(t, titleStyle.Render(dialogTitle), m.width-headerOffset)
 }
 
 func (m *OAuth) innerDialogContent() string {

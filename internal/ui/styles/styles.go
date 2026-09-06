@@ -217,7 +217,6 @@ type Styles struct {
 	// Header
 	Header struct {
 		Atlas             lipgloss.Style // Style for "Atlas™" label
-		Diagonals         lipgloss.Style // Style for diagonal separators (╱)
 		Percentage        lipgloss.Style // Style for context percentage
 		HypercreditIcon   lipgloss.Style // Style for Hypercredit count (◆ N)
 		Keystroke         lipgloss.Style // Style for keystroke hints (e.g., "ctrl+d")
@@ -585,13 +584,10 @@ type Styles struct {
 
 	// Dialog styles
 	Dialog struct {
-		Title              lipgloss.Style
-		TitleText          lipgloss.Style
-		TitleError         lipgloss.Style
-		TitleAccent        lipgloss.Style
-		TitleLineBase      lipgloss.Style // Base for the gradient ╱╱╱ next to dialog titles
-		TitleGradFromColor color.Color    // Default dialog title ╱╱╱ gradient start
-		TitleGradToColor   color.Color    // Default dialog title ╱╱╱ gradient end
+		Title       lipgloss.Style
+		TitleText   lipgloss.Style
+		TitleError  lipgloss.Style
+		TitleAccent lipgloss.Style
 		// View is the main content area style.
 		View          lipgloss.Style
 		PrimaryText   lipgloss.Style
@@ -677,23 +673,19 @@ type Styles struct {
 
 		Sessions struct {
 			// styles for when we are in delete mode
-			DeletingView                   lipgloss.Style
-			DeletingItemFocused            lipgloss.Style
-			DeletingItemBlurred            lipgloss.Style
-			DeletingTitle                  lipgloss.Style
-			DeletingMessage                lipgloss.Style
-			DeletingTitleGradientFromColor color.Color
-			DeletingTitleGradientToColor   color.Color
+			DeletingView        lipgloss.Style
+			DeletingItemFocused lipgloss.Style
+			DeletingItemBlurred lipgloss.Style
+			DeletingTitle       lipgloss.Style
+			DeletingMessage     lipgloss.Style
 
 			// styles for when we are in update mode
-			RenamingView                   lipgloss.Style
-			RenamingingItemFocused         lipgloss.Style
-			RenamingItemBlurred            lipgloss.Style
-			RenamingingTitle               lipgloss.Style
-			RenamingingMessage             lipgloss.Style
-			RenamingTitleGradientFromColor color.Color
-			RenamingTitleGradientToColor   color.Color
-			RenamingPlaceholder            lipgloss.Style
+			RenamingView           lipgloss.Style
+			RenamingingItemFocused lipgloss.Style
+			RenamingItemBlurred    lipgloss.Style
+			RenamingingTitle       lipgloss.Style
+			RenamingingMessage     lipgloss.Style
+			RenamingPlaceholder    lipgloss.Style
 
 			InfoBlurred lipgloss.Style // Timestamp text on unfocused session items
 			InfoFocused lipgloss.Style // Timestamp text on the focused session item
@@ -722,6 +714,11 @@ type Styles struct {
 		Normal  lipgloss.Style
 		Focused lipgloss.Style
 		Match   lipgloss.Style
+		// Info styles the trailing hint column -- the keyboard
+		// shortcut on a slash command. It has to sit on the same
+		// background as the row it trails, so callers re-background
+		// it per row rather than relying on the value here.
+		Info lipgloss.Style
 	}
 
 	// Attachments styles

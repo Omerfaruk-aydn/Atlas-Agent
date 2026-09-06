@@ -249,7 +249,7 @@ func (m *MCPAuth) headerContent() string {
 	headerOffset := titleStyle.GetHorizontalFrameSize() + dialogStyle.GetHorizontalFrameSize()
 
 	title := fmt.Sprintf("Authenticate with %s", m.currentServer().Name)
-	return common.DialogTitle(t, titleStyle.Render(title), m.width-headerOffset, t.Dialog.TitleGradFromColor, t.Dialog.TitleGradToColor)
+	return common.DialogTitle(t, titleStyle.Render(title), m.width-headerOffset)
 }
 
 func (m *MCPAuth) innerContent() string {

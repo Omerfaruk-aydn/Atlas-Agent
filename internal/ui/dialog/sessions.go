@@ -305,14 +305,10 @@ func (s *Session) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	switch s.sessionsMode {
 	case sessionsModeDeleting:
 		rc.TitleStyle = t.Dialog.Sessions.DeletingTitle
-		rc.TitleGradientFromColor = t.Dialog.Sessions.DeletingTitleGradientFromColor
-		rc.TitleGradientToColor = t.Dialog.Sessions.DeletingTitleGradientToColor
 		rc.ViewStyle = t.Dialog.Sessions.DeletingView
 		rc.AddPart(t.Dialog.Sessions.DeletingMessage.Render("Delete this session?"))
 	case sessionsModeUpdating:
 		rc.TitleStyle = t.Dialog.Sessions.RenamingingTitle
-		rc.TitleGradientFromColor = t.Dialog.Sessions.RenamingTitleGradientFromColor
-		rc.TitleGradientToColor = t.Dialog.Sessions.RenamingTitleGradientToColor
 		rc.ViewStyle = t.Dialog.Sessions.RenamingView
 		message := t.Dialog.Sessions.RenamingingMessage.Render("Rename this session?")
 		rc.AddPart(message)

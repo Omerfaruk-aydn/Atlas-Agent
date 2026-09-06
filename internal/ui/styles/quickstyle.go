@@ -602,7 +602,6 @@ func quickStyle(o quickStyleOpts) Styles {
 	s.ToolCallSuccess = lipgloss.NewStyle().Foreground(o.success).SetString(ToolSuccess)
 
 	s.Header.Atlas = base.Foreground(o.secondary)
-	s.Header.Diagonals = base.Foreground(o.primary)
 	s.Header.Percentage = muted
 	s.Header.HypercreditIcon = base.Foreground(o.secondary)
 	s.Header.Keystroke = muted
@@ -932,9 +931,6 @@ func quickStyle(o quickStyleOpts) Styles {
 	s.Dialog.TitleText = base.Foreground(o.primary)
 	s.Dialog.TitleError = base.Foreground(o.destructive)
 	s.Dialog.TitleAccent = base.Foreground(o.success).Bold(true)
-	s.Dialog.TitleLineBase = lipgloss.NewStyle()
-	s.Dialog.TitleGradFromColor = o.primary
-	s.Dialog.TitleGradToColor = o.secondary
 
 	// Dialog.ListItem (commands, reasoning, models). The info column holds
 	// secondary hints like keybind shortcuts, so mute it when blurred and
@@ -1002,16 +998,12 @@ func quickStyle(o quickStyleOpts) Styles {
 	s.Dialog.Sessions.DeletingTitle = s.Dialog.Title.Foreground(o.destructive)
 	s.Dialog.Sessions.DeletingView = s.Dialog.View.BorderForeground(o.destructive)
 	s.Dialog.Sessions.DeletingMessage = base.Padding(1)
-	s.Dialog.Sessions.DeletingTitleGradientFromColor = o.destructive
-	s.Dialog.Sessions.DeletingTitleGradientToColor = o.primary
 	s.Dialog.Sessions.DeletingItemBlurred = s.Dialog.NormalItem.Foreground(o.fgMostSubtle)
 	s.Dialog.Sessions.DeletingItemFocused = s.Dialog.SelectedItem.Background(o.destructive).Foreground(o.onPrimary)
 
 	s.Dialog.Sessions.RenamingingTitle = s.Dialog.Title.Foreground(o.warningSubtle)
 	s.Dialog.Sessions.RenamingView = s.Dialog.View.BorderForeground(o.warningSubtle)
 	s.Dialog.Sessions.RenamingingMessage = base.Padding(1)
-	s.Dialog.Sessions.RenamingTitleGradientFromColor = o.warningSubtle
-	s.Dialog.Sessions.RenamingTitleGradientToColor = o.accent
 	s.Dialog.Sessions.RenamingItemBlurred = s.Dialog.NormalItem.Foreground(o.fgMostSubtle)
 	s.Dialog.Sessions.RenamingingItemFocused = s.Dialog.SelectedItem.UnsetBackground().UnsetForeground()
 	s.Dialog.Sessions.RenamingPlaceholder = base.Foreground(o.fgMoreSubtle)
@@ -1034,6 +1026,7 @@ func quickStyle(o quickStyleOpts) Styles {
 	s.Completions.Normal = base.Background(o.bgLessVisible).Foreground(o.fgBase)
 	s.Completions.Focused = base.Background(o.primary).Foreground(o.onPrimary)
 	s.Completions.Match = base.Underline(true)
+	s.Completions.Info = base.Background(o.bgLessVisible).Foreground(o.fgSubtle)
 
 	// Attachments styles
 	attachmentIconStyle := base.Foreground(o.bgLessVisible).Background(o.success).Padding(0, 1)

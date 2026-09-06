@@ -23,6 +23,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools/mcp"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/credentials"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/catwalk"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/discover"
@@ -111,6 +112,15 @@ type Coordinator interface {
 	// queued | active) transition is chosen.
 	RunAccepted(ctx context.Context, accept *AcceptedRun, sessionID, prompt string, attachments ...message.Attachment) (*fantasy.AgentResult, error)
 	BeginAccepted(sessionID string) *AcceptedRun
+	// StartGoal puts the session into an autonomous run towards goal:
+	// it keeps taking turns of its own until the goal is reached, the
+	// turn budget runs out, or something stops it. See goal.go.
+	StartGoal(ctx context.Context, sessionID, goal string) error
+	// ClearGoal ends an autonomous run and forgets the goal.
+	ClearGoal(ctx context.Context, sessionID string) error
+	// GoalStatus reports the goal a session is working towards and how
+	// far into its budget it is. ok is false when no run is active.
+	GoalStatus(sessionID string) (goal string, used, budget int, ok bool)
 	Cancel(sessionID string)
 	CancelAll()
 	IsSessionBusy(sessionID string) bool
@@ -125,8 +135,16 @@ type Coordinator interface {
 }
 
 type coordinator struct {
-	cfg         *config.ConfigStore
-	sessions    session.Service
+	cfg      *config.ConfigStore
+	sessions session.Service
+	// goalRuns holds the autonomous run for each session working
+	// towards a goal (see goal.go). Absent means the session is
+	// taking turns the ordinary way, one per prompt.
+	goalRuns *csync.Map[string, *goalRun]
+	// goalJudge checks the agent's claim that a goal is reached. Nil
+	// when no model is available for it, in which case the claim is
+	// taken at face value.
+	goalJudge   *Model
 	messages    message.Service
 	permissions permission.Service
 	questions   question.Service
@@ -217,6 +235,7 @@ func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, 
 		interactive:  opts.Interactive,
 		credentials:  credentials.Load(filepath.Join(opts.Config.Config().Options.DataDirectory, credentials.StateFileName)),
 		teams:        teams.NewRegistry(),
+		goalRuns:     csync.NewMap[string, *goalRun](),
 	}
 
 	agentCfg, ok := opts.Config.Config().Agents[config.AgentCoder]
@@ -361,6 +380,10 @@ func (c *coordinator) run(ctx context.Context, accept *AcceptedRun, sessionID st
 			ProviderID: model.ModelCfg.Provider,
 		})
 	}
+
+	// A session working towards a goal takes its next turn here, once
+	// this one has finished and published. See advanceGoal.
+	c.advanceGoal(ctx, sessionID, originalErr)
 
 	if hasLatest && c.runComplete != nil {
 		c.runComplete.PublishMustDeliver(ctx, pubsub.UpdatedEvent, latest)
@@ -680,6 +703,9 @@ func (c *coordinator) buildAgent(ctx context.Context, prompt *prompt.Prompt, age
 	var escalateThreshold string
 	if !isSubAgent {
 		advisorModel, advisorTools = c.buildAdvisor(ctx)
+		// The goal check reuses the advisor's model unless a "goal"
+		// role names its own, so it is built once the advisor is.
+		c.goalJudge = c.buildGoalJudgeModel(ctx, advisorModel)
 		if adv := c.cfg.Config().Options.Advisor; adv != nil {
 			advisorEveryNTurns = adv.TurnInterval()
 			advisorNotifyThreshold = adv.NotifyThreshold()
@@ -804,6 +830,13 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		allTools = append(allTools, agentTool)
 	}
 
+	// The goal tool is how an autonomous run sizes and ends itself, so
+	// it belongs only to the session the user is driving -- a sub-agent
+	// has no goal of its own to finish.
+	if !isSubAgent {
+		allTools = append(allTools, c.goalTool())
+	}
+
 	if slices.Contains(agent.AllowedTools, tools.AgenticFetchToolName) {
 		agenticFetchTool, err := c.agenticFetchTool(ctx, nil)
 		if err != nil {
@@ -818,6 +851,14 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 			return nil, err
 		}
 		allTools = append(allTools, orchestrateTool)
+	}
+
+	if slices.Contains(agent.AllowedTools, DebateToolName) {
+		debateTool, err := c.debateTool(ctx)
+		if err != nil {
+			return nil, err
+		}
+		allTools = append(allTools, debateTool)
 	}
 
 	if slices.Contains(agent.AllowedTools, DelegateToolName) {
@@ -859,6 +900,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		allTools,
 		tools.NewBashTool(c.permissions, c.cfg.WorkingDir(), c.cfg.Config().Options.Attribution, modelID, tools.NewCommandPolicy(c.cfg.Config()), tools.NewBashLimits(c.cfg.Config())),
 		tools.NewAtlasInfoTool(c.cfg, c.lspManager, c.allSkills, c.activeSkills, c.skillTracker),
+		tools.NewAtlasConfigTool(c.permissions, c.cfg, c.cfg.WorkingDir()),
 		tools.NewAtlasLogsTool(logFile),
 		tools.NewJobOutputTool(),
 		tools.NewJobKillTool(),
@@ -1299,6 +1341,24 @@ func (c *coordinator) buildAdvisor(ctx context.Context) (*Model, []fantasy.Agent
 	return &model, tools
 }
 
+// buildGoalJudgeModel resolves the model that checks whether a goal has
+// been reached: the "goal" role when one is configured, otherwise the
+// advisor's model, which is already the session's designated second
+// opinion. Returns nil when neither exists, and the agent's own claim
+// then ends the run unchecked.
+func (c *coordinator) buildGoalJudgeModel(ctx context.Context, advisorModel *Model) *Model {
+	roleModel, ok := c.cfg.Config().ResolveRole("goal")
+	if !ok {
+		return advisorModel
+	}
+	model, err := c.resolveModel(ctx, roleModel, true)
+	if err != nil {
+		slog.Warn("Goal model role is configured but failed to build; checking goals with the advisor's model instead", "error", err)
+		return advisorModel
+	}
+	return &model
+}
+
 // buildCompactModel resolves the "compact" model role, if configured, so
 // summarization (auto or the /summarize command) can run on a different
 // -- typically cheaper or faster -- provider/model than the session's own
@@ -1384,10 +1444,14 @@ func (c *coordinator) buildAnthropicProvider(baseURL, apiKey string, headers map
 	return anthropic.New(opts...)
 }
 
-func (c *coordinator) buildOpenaiProvider(baseURL, apiKey string, headers map[string]string) (fantasy.Provider, error) {
+func (c *coordinator) buildOpenaiProvider(providerID, baseURL, apiKey string, headers map[string]string) (fantasy.Provider, error) {
 	opts := []openai.Option{
 		openai.WithAPIKey(apiKey),
 		openai.WithUseResponsesAPI(),
+		// Without this the provider carries no name at all, so every
+		// OpenAI-shaped provider reported itself as "" and nothing
+		// downstream could tell one from another.
+		openai.WithName(providerID),
 	}
 	if c.cfg.Config().Options.Debug {
 		httpClient := log.NewHTTPClient()
@@ -1728,7 +1792,7 @@ func (c *coordinator) buildProvider(providerCfg config.ProviderConfig, model con
 
 	switch providerCfg.Type {
 	case openai.Name:
-		return c.buildOpenaiProvider(baseURL, apiKey, headers)
+		return c.buildOpenaiProvider(providerCfg.ID, baseURL, apiKey, headers)
 	case anthropic.Name:
 		return c.buildAnthropicProvider(baseURL, apiKey, headers, providerCfg.ID)
 	case openrouter.Name:

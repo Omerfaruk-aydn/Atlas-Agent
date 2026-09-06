@@ -1519,7 +1519,9 @@ func allToolNames() []string {
 	return []string{
 		"agent",
 		"bash",
+		"goal",
 		"atlas_info",
+		"atlas_config",
 		"atlas_logs",
 		"job_output",
 		"job_kill",
@@ -1539,6 +1541,7 @@ func allToolNames() []string {
 		"fetch",
 		"agentic_fetch",
 		"orchestrate",
+		"debate",
 		"delegate",
 		"vibe",
 		"facts",

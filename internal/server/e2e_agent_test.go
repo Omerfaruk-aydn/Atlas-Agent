@@ -212,12 +212,16 @@ func (c *scriptedCoordinator) CancelAll() {
 	}
 }
 
-func (c *scriptedCoordinator) IsBusy() bool                                  { return false }
-func (c *scriptedCoordinator) IsSessionBusy(string) bool                     { return false }
-func (c *scriptedCoordinator) QueuedPrompts(string) int                      { return 0 }
-func (c *scriptedCoordinator) QueuedPromptsList(string) []string             { return nil }
-func (c *scriptedCoordinator) ClearQueue(string)                             {}
-func (c *scriptedCoordinator) Summarize(context.Context, string) error       { return nil }
+func (c *scriptedCoordinator) IsBusy() bool                                    { return false }
+func (c *scriptedCoordinator) IsSessionBusy(string) bool                       { return false }
+func (c *scriptedCoordinator) QueuedPrompts(string) int                        { return 0 }
+func (c *scriptedCoordinator) QueuedPromptsList(string) []string               { return nil }
+func (c *scriptedCoordinator) ClearQueue(string)                               {}
+func (c *scriptedCoordinator) Summarize(context.Context, string) error         { return nil }
+func (c *scriptedCoordinator) StartGoal(context.Context, string, string) error { return nil }
+func (c *scriptedCoordinator) ClearGoal(context.Context, string) error         { return nil }
+func (c *scriptedCoordinator) GoalStatus(string) (string, int, int, bool)      { return "", 0, 0, false }
+
 func (c *scriptedCoordinator) Model() agent.Model                            { return agent.Model{} }
 func (c *scriptedCoordinator) UpdateModels(context.Context) error            { return nil }
 func (c *scriptedCoordinator) GenerateTitle(context.Context, string, string) {}

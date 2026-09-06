@@ -22,17 +22,22 @@ import (
 const topLogprobsMax = 20
 
 type responsesLanguageModel struct {
-	provider   string
-	modelID    string
+	provider string
+	modelID  string
+	// baseURL is where requests go. Which parameters are accepted is a
+	// property of the endpoint rather than of the provider's label, so
+	// the endpoint is what gets asked (see isChatGPTBackend).
+	baseURL    string
 	client     openai.Client
 	objectMode fantasy.ObjectMode
 }
 
 // newResponsesLanguageModel implements a responses api model.
-func newResponsesLanguageModel(modelID string, provider string, client openai.Client, objectMode fantasy.ObjectMode) responsesLanguageModel {
+func newResponsesLanguageModel(modelID string, provider string, baseURL string, client openai.Client, objectMode fantasy.ObjectMode) responsesLanguageModel {
 	return responsesLanguageModel{
 		modelID:    modelID,
 		provider:   provider,
+		baseURL:    baseURL,
 		client:     client,
 		objectMode: objectMode,
 	}
@@ -207,13 +212,22 @@ func (o responsesLanguageModel) prepareParams(call fantasy.Call) (*responses.Res
 		OfInputItemList: input,
 	}
 
-	if call.Temperature != nil {
+	// Sampling controls go the same way as max_output_tokens below: the
+	// Codex backend takes neither, and the official client sends
+	// neither.
+	if call.Temperature != nil && !isChatGPTBackend(o.baseURL, o.provider) {
 		params.Temperature = param.NewOpt(*call.Temperature)
 	}
-	if call.TopP != nil {
+	if call.TopP != nil && !isChatGPTBackend(o.baseURL, o.provider) {
 		params.TopP = param.NewOpt(*call.TopP)
 	}
-	if call.MaxOutputTokens != nil {
+	// The ChatGPT subscription backend is not the public Responses API:
+	// it is the endpoint the Codex CLI talks to, and it rejects
+	// max_output_tokens outright rather than ignoring it, failing the
+	// whole request with "Unsupported parameter". The official client
+	// never sends it there, so neither do we -- the model's own limit
+	// applies instead.
+	if call.MaxOutputTokens != nil && !isChatGPTBackend(o.baseURL, o.provider) {
 		params.MaxOutputTokens = param.NewOpt(*call.MaxOutputTokens)
 	}
 
@@ -1700,4 +1714,15 @@ func (o responsesLanguageModel) streamObjectWithJSONMode(ctx context.Context, ca
 			})
 		}
 	}, nil
+}
+
+// isChatGPTBackend reports whether requests go to chatgpt.com's Codex
+// backend, which accepts a narrower set of parameters than the public
+// Responses API does.
+//
+// This asks the endpoint rather than the provider name because the name
+// is whatever the caller chose to label the provider -- often nothing at
+// all -- while the URL is the thing that actually rejects the request.
+func isChatGPTBackend(baseURL, provider string) bool {
+	return strings.Contains(baseURL, "chatgpt.com/backend-api") || provider == "chatgpt"
 }

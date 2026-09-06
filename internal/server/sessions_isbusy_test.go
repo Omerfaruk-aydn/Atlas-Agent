@@ -35,6 +35,10 @@ func (s *stubCoordinator) RunAccepted(ctx context.Context, accept *agent.Accepte
 	return nil, nil
 }
 
+func (s *stubCoordinator) StartGoal(context.Context, string, string) error { return nil }
+func (s *stubCoordinator) ClearGoal(context.Context, string) error         { return nil }
+func (s *stubCoordinator) GoalStatus(string) (string, int, int, bool)      { return "", 0, 0, false }
+
 func (s *stubCoordinator) BeginAccepted(sessionID string) *agent.AcceptedRun {
 	return nil
 }

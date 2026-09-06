@@ -872,6 +872,25 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		agentTools[len(agentTools)-1].SetProviderOptions(a.getCacheControlOptions())
 	}
 
+	currentSession, err := a.sessions.Get(ctx, call.SessionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get session: %w", err)
+	}
+
+	// The goal goes in the system prompt rather than into the
+	// conversation, and that placement is the whole feature. Summarizing
+	// replaces the messages; it does not touch the system prompt. A goal
+	// stated as a message is one auto-compaction away from being
+	// paraphrased into a summary and then drifted away from, which is
+	// exactly when a long session most needs to remember what it is for.
+	//
+	// It is read here, per request, rather than folded in when the prompt
+	// is built, so that setting or changing a goal takes effect on the
+	// next turn instead of the next time the agent happens to be rebuilt.
+	if goal := strings.TrimSpace(currentSession.Goal); goal != "" {
+		systemPrompt += "\n\n<goal>\n" + goal + "\n</goal>"
+	}
+
 	agent := fantasy.NewAgent(
 		largeModel.Model,
 		fantasy.WithSystemPrompt(systemPrompt),
@@ -880,10 +899,6 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	)
 
 	sessionLock := sync.Mutex{}
-	currentSession, err := a.sessions.Get(ctx, call.SessionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get session: %w", err)
-	}
 
 	msgs, err := a.getSessionMessages(ctx, currentSession)
 	if err != nil {

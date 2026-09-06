@@ -24,10 +24,14 @@ func TestSlashCommandItemsOffersSystemCommands(t *testing.T) {
 	items := m.slashCommandItems()
 	require.NotEmpty(t, items)
 
-	var labels []string
+	var names, details []string
 	for _, item := range items {
-		labels = append(labels, item.Label)
+		names = append(names, item.Name)
+		details = append(details, item.Detail)
 		require.NotNil(t, item.Action, "every item must carry an action to dispatch on selection")
 	}
-	require.Contains(t, labels, "New Session")
+	// The popup lists commands as they are typed, not by their palette
+	// title, and glosses each one.
+	require.Contains(t, names, "/new")
+	require.Contains(t, details, "Start a new chat, clearing this one")
 }

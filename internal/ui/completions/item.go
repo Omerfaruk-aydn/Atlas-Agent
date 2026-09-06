@@ -2,6 +2,7 @@ package completions
 
 import (
 	"slices"
+	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ansi"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-style/v2"
@@ -29,9 +30,19 @@ type ResourceCompletionValue struct {
 // as picking the same entry from the full command palette would,
 // rather than inserting text the way a file or resource completion
 // does.
+//
+// Name is what the popup lists -- the command as it would be typed,
+// slash and all -- because the reader has just typed "/" and a list of
+// prose titles does not answer what they can type next. Detail is the
+// gloss beside it, Hint the shortcut trailing both, and Aliases are
+// matched against without being shown, so "/clear" finds New Session
+// the way the full palette already does.
 type CommandCompletionValue struct {
-	Label  string
-	Action dialog.Action
+	Name    string
+	Detail  string
+	Hint    string
+	Aliases []string
+	Action  dialog.Action
 }
 
 // CompletionItem represents an item in the completions list.
@@ -44,11 +55,62 @@ type CompletionItem struct {
 	focused bool
 	cache   map[int]string
 
+	// cols, when set, lays the item out as a slash command: its name in
+	// a column shared with every other row, then a gloss, then the
+	// keyboard shortcut. filter, when set, replaces text for matching
+	// so aliases can be searched without being listed.
+	cols   *commandColumns
+	filter string
+
 	// Styles
 	normalStyle  lipgloss.Style
 	focusedStyle lipgloss.Style
 	matchStyle   lipgloss.Style
 }
+
+// commandColumns is the aligned three-column layout a slash command
+// row is rendered in. label is the width every row pads its name to,
+// computed over the whole list rather than the visible window, so the
+// gloss column does not shift as the reader scrolls.
+type commandColumns struct {
+	label  int
+	detail string
+	hint   string
+	style  lipgloss.Style
+}
+
+// WithCommandColumns returns the item laid out as a slash command:
+// name, gloss and shortcut in aligned columns, matched additionally
+// against filter.
+func (c *CompletionItem) WithCommandColumns(detail, hint, filter string, label int, style lipgloss.Style) *CompletionItem {
+	c.cols = &commandColumns{label: label, detail: detail, hint: hint, style: style}
+	c.filter = filter
+	return c
+}
+
+// FullWidth reports the width the item wants: for a slash command, its
+// whole three-column line, so the popup sizes itself to the layout
+// rather than to the longest name.
+func (c *CompletionItem) FullWidth() int {
+	if c.cols == nil {
+		return ansi.StringWidth(c.text)
+	}
+	w := max(c.cols.label, ansi.StringWidth(c.text))
+	if c.cols.detail != "" {
+		w += colGap + ansi.StringWidth(c.cols.detail)
+	}
+	if c.cols.hint != "" {
+		w += colGap + ansi.StringWidth(c.cols.hint)
+	}
+	return w
+}
+
+// colGap is the run of spaces separating two columns.
+const colGap = 2
+
+// minDetailWidth is the narrowest the gloss column may be squeezed to
+// before it is dropped rather than shown as an ellipsis alone.
+const minDetailWidth = 12
 
 // NewCompletionItem creates a new completion item.
 func NewCompletionItem(text string, value any, normalStyle, focusedStyle, matchStyle lipgloss.Style) *CompletionItem {
@@ -81,8 +143,13 @@ func (c *CompletionItem) Value() any {
 	return c.value
 }
 
-// Filter implements [list.FilterableItem].
+// Filter implements [list.FilterableItem]. Items carrying extra
+// searchable text (a command's aliases and description) match on it;
+// everything else matches on what it displays.
 func (c *CompletionItem) Filter() string {
+	if c.filter != "" {
+		return c.filter
+	}
 	return c.text
 }
 
@@ -125,6 +192,7 @@ func (c *CompletionItem) Render(width int) string {
 		c.focusedStyle,
 		c.matchStyle,
 		c.text,
+		c.cols,
 		c.focused,
 		width,
 		c.cache,
@@ -135,6 +203,7 @@ func (c *CompletionItem) Render(width int) string {
 func renderItem(
 	normalStyle, focusedStyle, matchStyle lipgloss.Style,
 	text string,
+	cols *commandColumns,
 	focused bool,
 	width int,
 	cache map[int]string,
@@ -150,26 +219,38 @@ func renderItem(
 	}
 
 	innerWidth := width - 2 // Account for padding
-	// Truncate if needed.
-	if ansi.StringWidth(text) > innerWidth {
-		text = ansi.Truncate(text, innerWidth, "…")
-	}
 
 	// Select base style.
 	style := normalStyle
-	matchStyle = matchStyle.Background(style.GetBackground())
 	if focused {
 		style = focusedStyle
-		matchStyle = matchStyle.Background(style.GetBackground())
+	}
+	matchStyle = matchStyle.Background(style.GetBackground())
+
+	body := text
+	if cols == nil {
+		if ansi.StringWidth(text) > innerWidth {
+			text = ansi.Truncate(text, innerWidth, "…")
+		}
+		body = text
+	} else {
+		text, body = layoutCommand(text, cols, style, focused, innerWidth)
 	}
 
-	// Render full-width text with background.
-	content := style.Padding(0, 1).Width(width).Render(text)
+	content := style.Padding(0, 1).Width(width).Render(body)
 
-	// Apply match highlighting using StyleRanges.
+	// Apply match highlighting using StyleRanges. Indexes are byte
+	// offsets into Filter(), which for a command is its name followed
+	// by its aliases; only the part that lands inside the visible name
+	// can be underlined, so the rest is dropped rather than smeared
+	// onto the name's last character.
 	if len(match.MatchedIndexes) > 0 {
 		var ranges []lipgloss.Range
 		for _, rng := range matchedRanges(match.MatchedIndexes) {
+			if rng[0] >= len(text) {
+				continue
+			}
+			rng[1] = min(rng[1], len(text))
 			start, stop := bytePosToVisibleCharPos(text, rng)
 			// Offset by 1 for the padding space.
 			ranges = append(ranges, lipgloss.NewRange(start+1, stop+2, matchStyle))
@@ -179,6 +260,55 @@ func renderItem(
 
 	cache[width] = content
 	return content
+}
+
+// layoutCommand lays a slash command out across its three columns and
+// returns the (possibly truncated) name alongside the composed line.
+//
+// The name is laid out first and never gives up room to the columns
+// after it: the reader typed "/" to find out what they can type, so the
+// thing they would type is the last thing that should be cut. The gloss
+// takes whatever is left and the shortcut is dropped before the gloss
+// is squeezed below legibility.
+//
+// A focused row is not banded; instead every column takes the focused
+// style, so the whole line moves to the accent at once.
+func layoutCommand(text string, cols *commandColumns, style lipgloss.Style, focused bool, innerWidth int) (string, string) {
+	nameCol := min(cols.label, innerWidth)
+	if ansi.StringWidth(text) > nameCol {
+		text = ansi.Truncate(text, nameCol, "…")
+	}
+	line := text + strings.Repeat(" ", max(0, nameCol-ansi.StringWidth(text)))
+
+	rest := innerWidth - nameCol - colGap
+	if rest < minDetailWidth {
+		return text, line
+	}
+
+	detail, hint := cols.detail, cols.hint
+	if hint != "" && rest-ansi.StringWidth(hint)-colGap < minDetailWidth {
+		hint = ""
+	}
+	detailRoom := rest
+	if hint != "" {
+		detailRoom = rest - ansi.StringWidth(hint) - colGap
+	}
+	if ansi.StringWidth(detail) > detailRoom {
+		detail = ansi.Truncate(detail, detailRoom, "…")
+	}
+
+	sub := cols.style
+	if focused {
+		sub = style
+	}
+	sub = sub.Background(style.GetBackground())
+
+	line += strings.Repeat(" ", colGap) + sub.Render(detail)
+	if hint != "" {
+		fill := max(colGap, rest-ansi.StringWidth(detail)-ansi.StringWidth(hint))
+		line += strings.Repeat(" ", fill) + sub.Render(hint)
+	}
+	return text, line
 }
 
 // matchedRanges converts a list of match indexes into contiguous ranges.

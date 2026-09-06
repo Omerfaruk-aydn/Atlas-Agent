@@ -17,6 +17,8 @@ type CommandItem struct {
 	title       string
 	shortcut    string
 	description string
+	summary     string
+	slash       string
 	action      Action
 	aliases     []string
 	t           *styles.Styles
@@ -52,6 +54,30 @@ func (c *CommandItem) WithAliases(aliases ...string) *CommandItem {
 	return c
 }
 
+// WithSlash returns the CommandItem with an explicit name for the "/"
+// popup, overriding the one derived from its id. Use it where the id
+// grew out of the palette's prose title and the command has a shorter
+// name people already type elsewhere: "/model", not "/switch-model".
+func (c *CommandItem) WithSlash(name string) *CommandItem {
+	c.slash = name
+	return c
+}
+
+// SlashName returns the explicit "/" popup name, or the empty string
+// when the command is content with the one derived from its id.
+func (c *CommandItem) SlashName() string {
+	return c.slash
+}
+
+// WithSummary returns the CommandItem with a one-line gloss for the
+// "/" popup, which lists commands as they are typed and needs a few
+// words saying what each one does. The palette keeps showing the title
+// alone, so this does not add a second line there.
+func (c *CommandItem) WithSummary(summary string) *CommandItem {
+	c.summary = summary
+	return c
+}
+
 // WithDescription returns the CommandItem with a description displayed below
 // the title.
 func (c *CommandItem) WithDescription(desc string) *CommandItem {
@@ -80,6 +106,19 @@ func (c *CommandItem) ID() string {
 // (and, unlike Filter, without its aliases or description mixed in).
 func (c *CommandItem) Title() string {
 	return c.title
+}
+
+// Aliases returns the command's alternate names. They are matched
+// against but not listed, so "/clear" finds New Session.
+func (c *CommandItem) Aliases() []string {
+	return c.aliases
+}
+
+// Summary returns the one-line gloss shown beside the command in the
+// "/" popup. It is deliberately separate from description, which the
+// palette renders as a second line under the title.
+func (c *CommandItem) Summary() string {
+	return c.summary
 }
 
 // SetFocused implements ListItem.

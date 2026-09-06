@@ -488,6 +488,7 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 		com.Styles.Completions.Focused,
 		com.Styles.Completions.Match,
 	)
+	comp.SetInfoStyle(com.Styles.Completions.Info)
 
 	todoSpinner := spinner.New(
 		spinner.WithSpinner(spinner.MiniDot),
@@ -1135,6 +1136,7 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+
 		// Suppress the chat's full-height scan during the resize so a drag
 		// only reflows visible items; it settles (and recomputes) shortly
 		// after the last resize event.
@@ -3564,6 +3566,15 @@ func (m *UI) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		x := m.completionsPositionStart.X
 		y := m.completionsPositionStart.Y - h
 
+		// A file popup hangs off the "@" the reader typed, because it
+		// completes a word in place. The command popup does not: it is
+		// a menu of everything available, so it sits square over the
+		// editor it belongs to, the way the composer's own frame does.
+		if m.completions.SpansWidth() {
+			x = layout.editor.Min.X
+			w = min(w, layout.editor.Dx())
+		}
+
 		screenW := area.Dx()
 		if x+w > screenW {
 			x = screenW - w
@@ -3998,6 +4009,12 @@ func (m *UI) updateLayoutAndSize() {
 	m.layout = m.generateLayout(m.width, m.height)
 	prevHeight := m.textarea.Height()
 	m.updateSize()
+
+	// The command popup spans the editor rather than its own contents,
+	// so it needs the editor's width, not the window's.
+	if m.completions != nil {
+		m.completions.SetAvailableWidth(m.layout.editor.Dx())
+	}
 
 	// SetWidth can change textarea height due to soft-wrap recalculation.
 	// If that happens, run one reconciliation pass with the new height.
@@ -4788,6 +4805,7 @@ func (m *UI) refreshStyles() {
 	}
 	m.textarea.SetStyles(t.Editor.Textarea)
 	m.completions.SetStyles(t.Completions.Normal, t.Completions.Focused, t.Completions.Match)
+	m.completions.SetInfoStyle(t.Completions.Info)
 	m.attachments.Renderer().SetStyles(
 		t.Attachments.Normal,
 		t.Attachments.Deleting,
@@ -5293,11 +5311,27 @@ func (m *UI) slashCommandItems() []completions.CommandCompletionValue {
 	items := make([]completions.CommandCompletionValue, 0, len(all))
 	for _, cmd := range all {
 		items = append(items, completions.CommandCompletionValue{
-			Label:  cmd.Title(),
-			Action: cmd.Action(),
+			Name:    cmp.Or(cmd.SlashName(), slashName(cmd.ID())),
+			Detail:  cmp.Or(cmd.Summary(), cmd.Title()),
+			Hint:    cmd.Shortcut(),
+			Aliases: append([]string{cmd.Title()}, cmd.Aliases()...),
+			Action:  cmd.Action(),
 		})
 	}
 	return items
+}
+
+// slashName turns a command's id into the name the "/" popup lists it
+// under -- the thing the reader would actually type. Ids are already
+// stable, unique and lowercase; they only need their word separator
+// swapped and the namespace prefixes the palette adds to custom and MCP
+// commands taken back off, since "/custom_review" is not what anyone
+// types.
+func slashName(id string) string {
+	for _, prefix := range []string{"custom_", "mcp_"} {
+		id = strings.TrimPrefix(id, prefix)
+	}
+	return "/" + strings.ReplaceAll(id, "_", "-")
 }
 
 // openReasoningDialog opens the reasoning effort dialog.

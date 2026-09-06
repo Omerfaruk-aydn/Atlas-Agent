@@ -23,6 +23,11 @@ const (
 	minWidth  = 10
 	maxWidth  = 100
 
+	// maxNameColumn caps the shared width of the "/" popup's name
+	// column, so one unusually long command cannot crowd out every
+	// gloss beside it.
+	maxNameColumn = 28
+
 	tierExactName = iota
 	tierPrefixName
 	tierPathSegment
@@ -60,10 +65,24 @@ type Completions struct {
 	// List component
 	list *list.FilterableList
 
+	// commands is set while the popup lists slash commands rather than
+	// files. A command row is a name plus a gloss plus a shortcut, so
+	// the popup takes the whole width of the editor it hangs off,
+	// instead of shrinking to its longest line the way a column of file
+	// paths sensibly does.
+	commands bool
+
+	// available is the widest the popup may grow, set from the window
+	// size. Command rows carry a gloss now, so the popup wants far more
+	// room than the bare file paths it used to list and would otherwise
+	// run off the right edge of a narrow terminal.
+	available int
+
 	// Styling
 	normalStyle  lipgloss.Style
 	focusedStyle lipgloss.Style
 	matchStyle   lipgloss.Style
+	infoStyle    lipgloss.Style
 
 	allItems []list.FilterableItem
 	filtered []list.FilterableItem
@@ -108,6 +127,30 @@ func New(normalStyle, focusedStyle, matchStyle lipgloss.Style) *Completions {
 		focusedStyle: focusedStyle,
 		matchStyle:   matchStyle,
 	}
+}
+
+// SetAvailableWidth caps how wide the popup may grow. Zero means
+// uncapped, which is the behaviour before a window size is known.
+func (c *Completions) SetAvailableWidth(width int) {
+	if c.available == width {
+		return
+	}
+	c.available = width
+	if c.open {
+		c.updateSize()
+	}
+}
+
+// SpansWidth reports whether the popup wants the full width of the
+// editor rather than only as much as its contents need.
+func (c *Completions) SpansWidth() bool {
+	return c.commands
+}
+
+// SetInfoStyle sets the style of the trailing hint column, where a
+// slash command shows its keyboard shortcut.
+func (c *Completions) SetInfoStyle(style lipgloss.Style) {
+	c.infoStyle = style
 }
 
 // SetStyles updates the styles used when rendering completion items.
@@ -158,6 +201,7 @@ func (c *Completions) Open(depth, limit int) tea.Cmd {
 
 // SetItems sets the files and MCP resources and rebuilds the merged list.
 func (c *Completions) SetItems(files []FileCompletionValue, resources []ResourceCompletionValue) {
+	c.commands = false
 	items := make([]list.FilterableItem, 0, len(files)+len(resources))
 
 	// Add files first.
@@ -192,15 +236,44 @@ func (c *Completions) SetItems(files []FileCompletionValue, resources []Resource
 // command palette's own item list rather than loaded asynchronously
 // the way file/resource completions are.
 func (c *Completions) SetCommandItems(cmds []CommandCompletionValue) {
+	// The name column is measured across every command, not just the
+	// eight or so on screen, so the gloss column stays put while the
+	// reader scrolls. It is capped so one long command cannot push
+	// every gloss off the right edge.
+	label := 0
+	for _, cmd := range cmds {
+		label = max(label, ansi.StringWidth(cmd.Name))
+	}
+	label = min(label, maxNameColumn)
+
+	c.commands = true
+
+	// Commands sit on the terminal's own ground rather than on a raised
+	// panel: the popup already spans the editor, and a filled slab that
+	// wide reads as a second window rather than as the next thing the
+	// editor is about to say. The rows still paint their full width, so
+	// they cover the chat underneath.
+	normal := c.normalStyle.UnsetBackground()
+
+	// A row is not banded either. Taking the accent as foreground marks
+	// the selection just as clearly and lets the whole line -- name,
+	// gloss and shortcut -- move to it at once.
+	focused := normal.Foreground(c.focusedStyle.GetBackground())
+	info := c.infoStyle.UnsetBackground()
+
 	items := make([]list.FilterableItem, 0, len(cmds))
 	for _, cmd := range cmds {
-		items = append(items, NewCompletionItem(
-			cmd.Label,
+		item := NewCompletionItem(
+			cmd.Name,
 			cmd,
-			c.normalStyle,
-			c.focusedStyle,
+			normal,
+			focused,
 			c.matchStyle,
-		))
+		)
+		// The name leads the filter text so a match on it scores ahead
+		// of one buried in an alias.
+		filter := strings.Join(append([]string{cmd.Name}, cmd.Aliases...), " ")
+		items = append(items, item.WithCommandColumns(cmd.Detail, cmd.Hint, filter, label, info))
 	}
 	c.finishOpen(items)
 }
@@ -304,10 +377,25 @@ func (c *Completions) updateSize() {
 		if item == nil {
 			continue
 		}
+		if sized, ok := item.(interface{ FullWidth() int }); ok {
+			width = max(width, sized.FullWidth())
+			continue
+		}
 		s := item.(interface{ Text() string }).Text()
 		width = max(width, ansi.StringWidth(s))
 	}
-	c.width = ordered.Clamp(width+2, int(minWidth), int(maxWidth))
+	upper := maxWidth
+	if c.commands {
+		// Commands fill the editor: an aligned gloss column only reads
+		// as a column if it is in the same place on every row, and the
+		// shortcut needs somewhere on the right to sit.
+		upper = c.available
+		width = c.available
+	}
+	if c.available > 0 {
+		upper = min(upper, c.available)
+	}
+	c.width = ordered.Clamp(width+2, int(minWidth), int(max(minWidth, upper)))
 	c.height = ordered.Clamp(len(items), int(minHeight), int(maxHeight))
 	c.list.SetSize(c.width, c.height)
 	c.list.SelectFirst()

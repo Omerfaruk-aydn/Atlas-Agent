@@ -61,7 +61,7 @@ type Commands struct {
 	hasSession         bool
 	hasTodos           bool
 	hasQueue           bool
-	selected   CommandType
+	selected           CommandType
 
 	spinner spinner.Model
 	loading bool
@@ -486,23 +486,23 @@ func (c *Commands) AllItems() []*CommandItem {
 // defaultCommands returns the list of default system commands.
 func (c *Commands) defaultCommands() []*CommandItem {
 	commands := []*CommandItem{
-		NewCommandItem(c.com.Styles, "new_session", "New Session", "ctrl+n", ActionNewSession{}).WithAliases("clear"),
-		NewCommandItem(c.com.Styles, "switch_session", "Sessions", "ctrl+s", ActionOpenDialog{SessionsID}),
-		NewCommandItem(c.com.Styles, "switch_model", "Switch Model", "ctrl+l", ActionOpenDialog{ModelsID}),
+		NewCommandItem(c.com.Styles, "new_session", "New Session", "ctrl+n", ActionNewSession{}).WithAliases("clear").WithSlash("/new").WithSummary("Start a new chat, clearing this one"),
+		NewCommandItem(c.com.Styles, "switch_session", "Sessions", "ctrl+s", ActionOpenDialog{SessionsID}).WithSlash("/sessions").WithSummary("Browse and switch between sessions"),
+		NewCommandItem(c.com.Styles, "switch_model", "Switch Model", "ctrl+l", ActionOpenDialog{ModelsID}).WithSlash("/model").WithSummary("Choose the model this session runs on"),
 	}
 
 	// Leaving a sub-agent's session you stepped into. The key for this
 	// (f3) only shows in the expanded help, so without a palette entry
 	// the way back is easy to miss once you are already in there.
 	if c.hasPreviousSession {
-		commands = append(commands, NewCommandItem(c.com.Styles, "back_to_session", "Back to Previous Session", "f3", ActionBackToPreviousSession{}).WithAliases("leave", "exit agent"))
+		commands = append(commands, NewCommandItem(c.com.Styles, "back_to_session", "Back to Previous Session", "f3", ActionBackToPreviousSession{}).WithAliases("leave", "exit agent").WithSlash("/back").WithSummary("Return to the session you stepped in from"))
 	}
 
 	// Only show compact command if there's an active session
 	if c.hasSession {
-		commands = append(commands, NewCommandItem(c.com.Styles, "summarize", "Summarize Session", "", ActionSummarize{SessionID: c.sessionID}).WithAliases("compact"))
-		commands = append(commands, NewCommandItem(c.com.Styles, "fresh", "Refresh Session (recover from a stuck run)", "", ActionFreshSession{SessionID: c.sessionID}))
-		commands = append(commands, NewCommandItem(c.com.Styles, "interrupt_correct", "Interrupt + Correct", "f10", ActionInterruptWithCorrection{}))
+		commands = append(commands, NewCommandItem(c.com.Styles, "summarize", "Summarize Session", "", ActionSummarize{SessionID: c.sessionID}).WithAliases("compact").WithSlash("/compact").WithSummary("Summarize the session to free up context"))
+		commands = append(commands, NewCommandItem(c.com.Styles, "fresh", "Refresh Session (recover from a stuck run)", "", ActionFreshSession{SessionID: c.sessionID}).WithSlash("/fresh").WithSummary("Recover a session stuck mid-run"))
+		commands = append(commands, NewCommandItem(c.com.Styles, "interrupt_correct", "Interrupt + Correct", "f10", ActionInterruptWithCorrection{}).WithSlash("/correct").WithSummary("Interrupt the run and correct the prompt"))
 	}
 
 	{
@@ -510,8 +510,8 @@ func (c *Commands) defaultCommands() []*CommandItem {
 		if cfg := c.com.Config(); cfg != nil && cfg.Options != nil && cfg.Options.DisableAutoSummarize {
 			autoCompactLabel = "Enable Auto-Compact"
 		}
-		commands = append(commands, NewCommandItem(c.com.Styles, "toggle_auto_compact", autoCompactLabel, "", ActionToggleAutoCompact{}))
-		commands = append(commands, NewCommandItem(c.com.Styles, "auto_compact_threshold", "Set Auto-Compact Threshold", "", ActionOpenAutoCompactThresholdForm{}))
+		commands = append(commands, NewCommandItem(c.com.Styles, "toggle_auto_compact", autoCompactLabel, "", ActionToggleAutoCompact{}).WithSlash("/auto-compact").WithSummary("Turn automatic summarizing on or off"))
+		commands = append(commands, NewCommandItem(c.com.Styles, "auto_compact_threshold", "Set Auto-Compact Threshold", "", ActionOpenAutoCompactThresholdForm{}).WithSlash("/auto-compact-at").WithSummary("Set how full context gets before summarizing"))
 	}
 
 	// Add reasoning toggle for models that support it
@@ -528,20 +528,20 @@ func (c *Commands) defaultCommands() []*CommandItem {
 				if selectedModel.Think {
 					status = "Disable"
 				}
-				commands = append(commands, NewCommandItem(c.com.Styles, "toggle_thinking", status+" Thinking Mode", "", ActionToggleThinking{}))
+				commands = append(commands, NewCommandItem(c.com.Styles, "toggle_thinking", status+" Thinking Mode", "", ActionToggleThinking{}).WithSlash("/thinking").WithSummary("Turn extended thinking on or off"))
 			}
 
 			// OpenAI models: reasoning effort dialog
 			if len(model.ReasoningLevels) > 0 {
 				commands = append(commands, NewCommandItem(c.com.Styles, "select_reasoning_effort", "Select Reasoning Effort", "", ActionOpenDialog{
 					DialogID: ReasoningID,
-				}))
+				}).WithSlash("/effort").WithSummary("Set how hard the model reasons"))
 			}
 		}
 	}
 	// Only show toggle compact mode command if window width is larger than compact breakpoint (120)
 	if c.windowWidth >= sidebarCompactModeBreakpoint && c.hasSession {
-		commands = append(commands, NewCommandItem(c.com.Styles, "toggle_sidebar", "Toggle Sidebar", "", ActionToggleCompactMode{}))
+		commands = append(commands, NewCommandItem(c.com.Styles, "toggle_sidebar", "Toggle Sidebar", "", ActionToggleCompactMode{}).WithSlash("/sidebar").WithSummary("Show or hide the sidebar"))
 	}
 	if c.hasSession {
 		cfgPrime := c.com.Config()
@@ -550,7 +550,7 @@ func (c *Commands) defaultCommands() []*CommandItem {
 		if model != nil && model.SupportsImages {
 			commands = append(commands, NewCommandItem(c.com.Styles, "file_picker", "Open File Picker", "ctrl+f", ActionOpenDialog{
 				DialogID: FilePickerID,
-			}))
+			}).WithSlash("/attach").WithSummary("Attach an image or file to the prompt"))
 		}
 	}
 
@@ -560,17 +560,17 @@ func (c *Commands) defaultCommands() []*CommandItem {
 	// because os.Getenv does IO is breaks the TEA paradigm and is generally an
 	// antipattern.
 	if os.Getenv("EDITOR") != "" {
-		commands = append(commands, NewCommandItem(c.com.Styles, "open_external_editor", "Open External Editor", "ctrl+o", ActionExternalEditor{}))
+		commands = append(commands, NewCommandItem(c.com.Styles, "open_external_editor", "Open External Editor", "ctrl+o", ActionExternalEditor{}).WithSlash("/editor").WithSummary("Write the prompt in $EDITOR"))
 	}
 
 	// Add Docker MCP command if available and not already enabled.
 	if !cfg.IsDockerMCPEnabled() && c.dockerMCPAvailable != nil && *c.dockerMCPAvailable {
-		commands = append(commands, NewCommandItem(c.com.Styles, "enable_docker_mcp", "Enable Docker MCP Catalog", "", ActionEnableDockerMCP{}))
+		commands = append(commands, NewCommandItem(c.com.Styles, "enable_docker_mcp", "Enable Docker MCP Catalog", "", ActionEnableDockerMCP{}).WithSlash("/docker-mcp").WithSummary("Enable the Docker MCP catalog"))
 	}
 
 	// Add disable Docker MCP command if it's currently enabled
 	if cfg.IsDockerMCPEnabled() {
-		commands = append(commands, NewCommandItem(c.com.Styles, "disable_docker_mcp", "Disable Docker MCP Catalog", "", ActionDisableDockerMCP{}))
+		commands = append(commands, NewCommandItem(c.com.Styles, "disable_docker_mcp", "Disable Docker MCP Catalog", "", ActionDisableDockerMCP{}).WithSlash("/docker-mcp").WithSummary("Disable the Docker MCP catalog"))
 	}
 
 	if c.hasTodos || c.hasQueue {
@@ -583,35 +583,35 @@ func (c *Commands) defaultCommands() []*CommandItem {
 		default:
 			label = "Toggle To-Dos"
 		}
-		commands = append(commands, NewCommandItem(c.com.Styles, "toggle_pills", label, "ctrl+t", ActionTogglePills{}))
+		commands = append(commands, NewCommandItem(c.com.Styles, "toggle_pills", label, "ctrl+t", ActionTogglePills{}).WithSlash("/pills").WithSummary("Show or hide the to-do and queue strip"))
 	}
 
 	// Add a command for selecting notification style via picker dialog.
 	notificationLabel := "Notification Style"
-	commands = append(commands, NewCommandItem(c.com.Styles, "select_notifications", notificationLabel, "", ActionOpenDialog{DialogID: NotificationsID}))
+	commands = append(commands, NewCommandItem(c.com.Styles, "select_notifications", notificationLabel, "", ActionOpenDialog{DialogID: NotificationsID}).WithSlash("/notifications").WithSummary("Choose how you are notified when a run ends"))
 
 	commands = append(
 		commands,
-		NewCommandItem(c.com.Styles, "toggle_yolo", "Toggle Yolo Mode", "ctrl+y", ActionToggleYoloMode{}),
-		NewCommandItem(c.com.Styles, "cycle_permission_mode", "Cycle Permission Mode", "ctrl+shift+y", ActionCyclePermissionMode{}),
-		NewCommandItem(c.com.Styles, "rewind", "Rewind to Checkpoint", "ctrl+shift+r", ActionOpenDialog{DialogID: RewindID}),
-		NewCommandItem(c.com.Styles, "jobs", "Background Jobs", "p", ActionOpenDialog{DialogID: JobsID}),
-		NewCommandItem(c.com.Styles, "agent-hub", "Agent Hub", "alt+a", ActionOpenDialog{DialogID: AgentHubID}),
-		NewCommandItem(c.com.Styles, "session-mode", sessionModeCommandLabel(c.com.Config()), "", ActionOpenDialog{DialogID: ModesID}).WithAliases("mode"),
-		NewCommandItem(c.com.Styles, "model-roles", "Model Roles", "", ActionOpenDialog{DialogID: ModelRolesID}),
-		NewCommandItem(c.com.Styles, "model-fallbacks", "Model Fallbacks", "", ActionOpenDialog{DialogID: FallbacksID}),
-		NewCommandItem(c.com.Styles, "subagents", "Subagents", "", ActionOpenDialog{DialogID: SubagentsID}),
-		NewCommandItem(c.com.Styles, "tool-settings", "Tool Settings", "", ActionOpenDialog{DialogID: ToolSettingsID}),
-		NewCommandItem(c.com.Styles, "fast-mode", "Fast Mode (small model, lowest reasoning)", "", ActionSetMode{Mode: "fast"}),
-		NewCommandItem(c.com.Styles, "quality-mode", "Quality Mode (large model, highest reasoning)", "", ActionSetMode{Mode: "quality"}),
-		NewCommandItem(c.com.Styles, "search", "Search Chat", "f5", ActionOpenDialog{DialogID: ChatSearchID}),
-		NewCommandItem(c.com.Styles, "files", "Modified Files", "f", ActionOpenDialog{DialogID: FilesID}),
-		NewCommandItem(c.com.Styles, "usage", "Usage & Cost", "f6", ActionOpenDialog{DialogID: UsageID}),
-		NewCommandItem(c.com.Styles, "snippets", "Snippets", "f7", ActionOpenDialog{DialogID: SnippetsID}),
-		NewCommandItem(c.com.Styles, "history", "Search Prompt History", "f8", ActionOpenDialog{DialogID: PromptHistoryID}),
-		NewCommandItem(c.com.Styles, "search-sessions", "Search All Sessions", "f9", ActionOpenDialog{DialogID: SessionSearchID}),
-		NewCommandItem(c.com.Styles, "toggle_help", "Toggle Help", "ctrl+g", ActionToggleHelp{}),
-		NewCommandItem(c.com.Styles, "init", "Initialize Project", "", ActionInitializeProject{}),
+		NewCommandItem(c.com.Styles, "toggle_yolo", "Toggle Yolo Mode", "ctrl+y", ActionToggleYoloMode{}).WithSlash("/yolo").WithSummary("Run every tool without asking first"),
+		NewCommandItem(c.com.Styles, "cycle_permission_mode", "Cycle Permission Mode", "ctrl+shift+y", ActionCyclePermissionMode{}).WithSlash("/permissions").WithSummary("Cycle what Atlas is allowed to do unasked"),
+		NewCommandItem(c.com.Styles, "rewind", "Rewind to Checkpoint", "ctrl+shift+r", ActionOpenDialog{DialogID: RewindID}).WithSlash("/rewind").WithSummary("Roll the session back to a checkpoint"),
+		NewCommandItem(c.com.Styles, "jobs", "Background Jobs", "p", ActionOpenDialog{DialogID: JobsID}).WithSlash("/jobs").WithSummary("View and manage background jobs"),
+		NewCommandItem(c.com.Styles, "agent-hub", "Agent Hub", "alt+a", ActionOpenDialog{DialogID: AgentHubID}).WithSlash("/agents").WithSummary("View and switch between running agents"),
+		NewCommandItem(c.com.Styles, "session-mode", sessionModeCommandLabel(c.com.Config()), "", ActionOpenDialog{DialogID: ModesID}).WithAliases("mode").WithSlash("/mode").WithSummary("Switch the session's working mode"),
+		NewCommandItem(c.com.Styles, "model-roles", "Model Roles", "", ActionOpenDialog{DialogID: ModelRolesID}).WithSlash("/roles").WithSummary("Assign models to roles like title and summary"),
+		NewCommandItem(c.com.Styles, "model-fallbacks", "Model Fallbacks", "", ActionOpenDialog{DialogID: FallbacksID}).WithSlash("/fallbacks").WithSummary("Set which models to fall back to on failure"),
+		NewCommandItem(c.com.Styles, "subagents", "Subagents", "", ActionOpenDialog{DialogID: SubagentsID}).WithSlash("/subagents").WithSummary("Configure the subagents available to Atlas"),
+		NewCommandItem(c.com.Styles, "tool-settings", "Tool Settings", "", ActionOpenDialog{DialogID: ToolSettingsID}).WithSlash("/tools").WithSummary("Choose which tools Atlas may use"),
+		NewCommandItem(c.com.Styles, "fast-mode", "Fast Mode (small model, lowest reasoning)", "", ActionSetMode{Mode: "fast"}).WithSlash("/fast").WithSummary("Small model, lowest reasoning"),
+		NewCommandItem(c.com.Styles, "quality-mode", "Quality Mode (large model, highest reasoning)", "", ActionSetMode{Mode: "quality"}).WithSlash("/quality").WithSummary("Large model, highest reasoning"),
+		NewCommandItem(c.com.Styles, "search", "Search Chat", "f5", ActionOpenDialog{DialogID: ChatSearchID}).WithSlash("/search").WithSummary("Search this conversation"),
+		NewCommandItem(c.com.Styles, "files", "Modified Files", "f", ActionOpenDialog{DialogID: FilesID}).WithSlash("/files").WithSummary("Show files changed in this session"),
+		NewCommandItem(c.com.Styles, "usage", "Usage & Cost", "f6", ActionOpenDialog{DialogID: UsageID}).WithSlash("/usage").WithSummary("Show token usage and cost"),
+		NewCommandItem(c.com.Styles, "snippets", "Snippets", "f7", ActionOpenDialog{DialogID: SnippetsID}).WithSlash("/snippets").WithSummary("Insert a saved prompt snippet"),
+		NewCommandItem(c.com.Styles, "history", "Search Prompt History", "f8", ActionOpenDialog{DialogID: PromptHistoryID}).WithSlash("/history").WithSummary("Search prompts you have sent before"),
+		NewCommandItem(c.com.Styles, "search-sessions", "Search All Sessions", "f9", ActionOpenDialog{DialogID: SessionSearchID}).WithSlash("/find").WithSummary("Search across all your sessions"),
+		NewCommandItem(c.com.Styles, "toggle_help", "Toggle Help", "ctrl+g", ActionToggleHelp{}).WithSlash("/help").WithSummary("Show or hide the keyboard help"),
+		NewCommandItem(c.com.Styles, "init", "Initialize Project", "", ActionInitializeProject{}).WithSlash("/init").WithSummary("Create an AGENTS.md for this project"),
 	)
 
 	// Add transparent background toggle.
@@ -619,11 +619,11 @@ func (c *Commands) defaultCommands() []*CommandItem {
 	if cfg != nil && cfg.Options != nil && cfg.Options.TUI.IsTransparent() {
 		transparentLabel = "Enable Background Color"
 	}
-	commands = append(commands, NewCommandItem(c.com.Styles, "toggle_transparent", transparentLabel, "", ActionToggleTransparentBackground{}))
+	commands = append(commands, NewCommandItem(c.com.Styles, "toggle_transparent", transparentLabel, "", ActionToggleTransparentBackground{}).WithSlash("/transparent").WithSummary("Use the terminal's own background"))
 
 	commands = append(
 		commands,
-		NewCommandItem(c.com.Styles, "quit", "Quit", "ctrl+c", tea.QuitMsg{}).WithAliases("exit"),
+		NewCommandItem(c.com.Styles, "quit", "Quit", "ctrl+c", tea.QuitMsg{}).WithAliases("exit").WithSlash("/quit").WithSummary("Exit Atlas"),
 	)
 
 	return commands

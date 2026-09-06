@@ -13,8 +13,8 @@ func TestSetCommandItemsOpensThePopup(t *testing.T) {
 
 	c := New(lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle())
 	c.SetCommandItems([]CommandCompletionValue{
-		{Label: "Session Mode", Action: dialog.ActionOpenDialog{DialogID: "modes"}},
-		{Label: "Summarize Session", Action: dialog.ActionSummarize{SessionID: "s1"}},
+		{Name: "Session Mode", Action: dialog.ActionOpenDialog{DialogID: "modes"}},
+		{Name: "Summarize Session", Action: dialog.ActionSummarize{SessionID: "s1"}},
 	})
 
 	require.True(t, c.IsOpen())
@@ -26,8 +26,8 @@ func TestSetCommandItemsFilterMatchesByLabel(t *testing.T) {
 
 	c := New(lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle())
 	c.SetCommandItems([]CommandCompletionValue{
-		{Label: "Session Mode", Action: dialog.ActionOpenDialog{DialogID: "modes"}},
-		{Label: "Summarize Session", Action: dialog.ActionSummarize{SessionID: "s1"}},
+		{Name: "Session Mode", Action: dialog.ActionOpenDialog{DialogID: "modes"}},
+		{Name: "Summarize Session", Action: dialog.ActionSummarize{SessionID: "s1"}},
 	})
 
 	c.Filter("summ")
@@ -47,7 +47,7 @@ func TestSelectCurrentReturnsTheCommandsAction(t *testing.T) {
 	c := New(lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle())
 	action := dialog.ActionOpenDialog{DialogID: "modes"}
 	c.SetCommandItems([]CommandCompletionValue{
-		{Label: "Session Mode", Action: action},
+		{Name: "Session Mode", Action: action},
 	})
 
 	msg := c.selectCurrent(false)

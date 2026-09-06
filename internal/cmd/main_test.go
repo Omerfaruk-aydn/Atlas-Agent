@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/appenv"
@@ -19,6 +20,15 @@ import (
 // no configuration, and fail only on the machine that wrote them -- the
 // least useful way round.
 //
+// GlobalSubagentsDirs defaults to the real ~/.config/atlas/agents
+// regardless of GLOBAL_CONFIG/GLOBAL_DATA -- it is a separate default,
+// keyed off home.Config() rather than the app's own data directory --
+// so a subagent saved there for real (through the "new subagent" dialog,
+// or atlas_config's save_subagent) is just as real a leak into "with
+// nothing authored" counts as a stray model role would be. Isolating it
+// here, the same way, means a subagent that exists on the machine
+// running the tests cannot change what these tests see.
+//
 // internal/config's own tests already isolate this way, one t.Setenv at
 // a time. Doing it once for the package covers the tests that exist and
 // the ones added later, which is the point: the leak is a property of
@@ -30,6 +40,7 @@ func TestMain(m *testing.M) {
 	}
 	os.Setenv(appenv.Prefix+"GLOBAL_CONFIG", dir)
 	os.Setenv(appenv.Prefix+"GLOBAL_DATA", dir)
+	os.Setenv(appenv.Prefix+"SUBAGENTS_DIR", filepath.Join(dir, "agents"))
 
 	code := m.Run()
 

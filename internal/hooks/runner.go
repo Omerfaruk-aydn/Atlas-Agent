@@ -169,6 +169,9 @@ func (r *Runner) run(ctx context.Context, in runInput) (AggregateResult, error) 
 	}
 
 	envVars := BuildEnv(eventName, toolName, sessionID, r.cwd, r.projectDir, toolInputJSON)
+	if in.prompt != "" {
+		envVars = append(envVars, "ATLAS_AGENT_PROMPT="+in.prompt)
+	}
 	payload := buildPayload(in, r.cwd)
 
 	results := make([]HookResult, len(deduped))

@@ -94,7 +94,7 @@ func BuildEnv(eventName, toolName, sessionID, cwd, projectDir, toolInputJSON str
 		fmt.Sprintf("ATLAS_AGENT_CWD=%s", cwd),
 		fmt.Sprintf("ATLAS_AGENT_PROJECT_DIR=%s", projectDir),
 	)
-
+	env = append(env, fmt.Sprintf("ATLAS_AGENT_PROMPT=%s", ""))
 	// Extract tool-specific env vars from the JSON input.
 	if toolInputJSON != "" {
 		if cmd := gjson.Get(toolInputJSON, "command"); cmd.Exists() {

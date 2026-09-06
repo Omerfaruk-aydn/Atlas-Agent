@@ -96,7 +96,7 @@ func TestHooksRunExecutesPostToolUse(t *testing.T) {
 func TestHooksRunExecutesUserPromptSubmit(t *testing.T) {
 	workingDir := t.TempDir()
 	writeAtlasConfig(t, workingDir, `{"hooks":{"UserPromptSubmit":[
-		{"name":"prompt-check","command":"grep -q secret && echo '{\"decision\":\"deny\",\"reason\":\"blocked\"}'"}
+		{"name":"prompt-check","command":"case \"$ATLAS_AGENT_PROMPT\" in *secret*) echo '{\"decision\":\"deny\",\"reason\":\"blocked\"}' ;; esac"}
 	]}}`)
 
 	c := newHooksRunTestCmd(t, workingDir)

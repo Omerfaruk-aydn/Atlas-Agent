@@ -32,7 +32,7 @@ type DelegateParams struct {
 	// Tasks decomposes the overall work: at least two entries, each
 	// naming an agent and carrying that subtask's own prompt. Unlike
 	// orchestrate, the same agent_name may repeat across tasks.
-	Tasks []DelegateTask `json:"tasks" description:"At least two subtasks to run in parallel, each with its own agent_name and prompt."`
+	Tasks taskList `json:"tasks" description:"At least two subtasks to run in parallel, each with its own agent_name and prompt."`
 }
 
 type DelegateResponseMetadata struct {
@@ -72,7 +72,7 @@ func (c *coordinator) delegateTool(ctx context.Context) (fantasy.AgentTool, erro
 
 	return fantasy.NewParallelAgentTool(
 		DelegateToolName,
-		delegateToolDescription,
+		delegateToolDescription+describeConfiguredSubagents(discovered),
 		func(ctx context.Context, params DelegateParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			tasks := validDelegateTasks(params.Tasks)
 			if len(tasks) < 2 {

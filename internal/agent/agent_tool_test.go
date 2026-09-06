@@ -200,7 +200,8 @@ func TestBuildSubagentSessionAgentUnknownRoleErrors(t *testing.T) {
 	_, err := coord.buildSubagentSessionAgent(t.Context(), taskCfg,
 		&subagents.Subagent{Name: "frontend", Description: "d", Model: "@frontend"})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "unknown model role")
+	require.Contains(t, err.Error(), `needs the "@frontend" model role assigned`)
+	require.Contains(t, err.Error(), `role "frontend"`, "the suggested set_role call must strip the @ -- set_role's own role param does not take one")
 }
 
 func TestResolveSubagentCachesTheBuiltAgent(t *testing.T) {

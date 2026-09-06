@@ -81,7 +81,7 @@ func (c *coordinator) agentTool(ctx context.Context) (fantasy.AgentTool, error) 
 
 	return fantasy.NewParallelAgentTool(
 		AgentToolName,
-		agentToolDescription,
+		agentToolDescription+describeConfiguredSubagents(discovered),
 		func(ctx context.Context, params AgentParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			if params.Prompt == "" {
 				return fantasy.NewTextErrorResponse("prompt is required"), nil
@@ -200,7 +200,7 @@ func (c *coordinator) resolveSubagent(
 
 	sub, ok := subagents.Find(discovered, name)
 	if !ok {
-		return nil, fmt.Errorf("no subagent named %q is configured; see `atlas agent list`", name)
+		return nil, fmt.Errorf("no subagent named %q is configured; see the list of configured subagents at the end of this tool's description", name)
 	}
 
 	built, err := c.buildSubagentSessionAgent(ctx, taskCfg, sub)
@@ -225,7 +225,9 @@ func (c *coordinator) buildSubagentSessionAgent(ctx context.Context, taskCfg con
 	if sub.Model != "" {
 		modelCfg, ok := c.cfg.Config().ResolveRole(sub.Model)
 		if !ok {
-			return nil, fmt.Errorf("subagent %q references unknown model role %q; see `atlas models roles`", sub.Name, sub.Model)
+			return nil, fmt.Errorf(
+				"subagent %q needs the %q model role assigned before it can run; call atlas_config with action \"set_role\" and role %q to assign it a provider and model",
+				sub.Name, sub.Model, config.StripRoleReference(sub.Model))
 		}
 		large, err = c.resolveModel(ctx, modelCfg, true)
 		if err != nil {

@@ -1,4 +1,4 @@
-Run the same task on several named subagents (see `atlas agent list`) in parallel and get every one of their answers back side by side, each labelled by which agent produced it.
+Run the same task on several named subagents, from the list at the end of this description, in parallel and get every one of their answers back side by side, each labelled by which agent produced it.
 
 This is different from calling `agent` several times yourself: `agent` runs one task on one agent and returns just that answer, so verifying a result against a second opinion means one call, waiting for it, reading it, then deciding whether a third is worth it. `orchestrate` runs them all at once and returns every answer together, so a single call gets you the material to compare, cross-check, or pick a majority answer from -- worth it when a task is worth more than one perspective (an ambiguous fix, a decision with tradeoffs, a result you don't want to take on faith) but not for routine work a single subagent already handles well.
 

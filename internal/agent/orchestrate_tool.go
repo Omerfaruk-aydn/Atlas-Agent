@@ -26,7 +26,7 @@ type OrchestrateParams struct {
 	Prompt string `json:"prompt" description:"The task to hand to every named agent, verbatim. Each one receives the exact same prompt and runs independently."`
 	// AgentNames names at least two configured subagents (see internal/subagents
 	// and `atlas agent list`) to run this same prompt with, in parallel.
-	AgentNames []string `json:"agent_names" description:"At least two distinct subagent names to run this prompt with, in parallel."`
+	AgentNames stringList `json:"agent_names" description:"At least two distinct subagent names to run this prompt with, in parallel."`
 	// JudgeAgent optionally names a third, distinct subagent that reads
 	// every answer once they are all in and produces one final synthesis
 	// -- the best answer, a merge, or its own correction if all of them
@@ -72,7 +72,7 @@ func (c *coordinator) orchestrateTool(ctx context.Context) (fantasy.AgentTool, e
 
 	return fantasy.NewParallelAgentTool(
 		OrchestrateToolName,
-		orchestrateToolDescription,
+		orchestrateToolDescription+describeConfiguredSubagents(discovered),
 		func(ctx context.Context, params OrchestrateParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			if strings.TrimSpace(params.Prompt) == "" {
 				return fantasy.NewTextErrorResponse("prompt is required"), nil

@@ -722,3 +722,15 @@ func TestPermissionService_Modes(t *testing.T) {
 		assert.False(t, service.SkipRequests())
 	})
 }
+
+// A chat-driven config change to permissions.allowed_tools must reach an
+// already-running session immediately, not just on the next restart -- see
+// SetAllowedTools.
+func TestPermissionService_SetAllowedToolsUpdatesLive(t *testing.T) {
+	service := NewPermissionService("/tmp", false, []string{"bash"})
+	ps := service.(*permissionService)
+	require.ElementsMatch(t, []string{"bash"}, ps.allowedTools.Copy())
+
+	service.SetAllowedTools([]string{"view", "grep"})
+	require.ElementsMatch(t, []string{"view", "grep"}, ps.allowedTools.Copy())
+}

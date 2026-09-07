@@ -167,11 +167,12 @@ type activeCancel struct {
 	cancel context.CancelFunc
 }
 
-// compactModelHolder wraps a *Model so it can live in a csync.Value, which
-// rejects bare pointer types.
-type compactModelHolder struct {
-	model *Model
-}
+// ptrBox wraps a pointer so it can live in a csync.Value, which rejects bare
+// pointer types. Used for every config-derived setting that is itself a
+// pointer (a *Model, a *hooks.Runner, a *int) but still needs to be
+// live-reloadable -- see SetSummarizeOptions, SetLimits, SetHooks,
+// SetAdvisorOptions, and SetEscalateOptions.
+type ptrBox[T any] struct{ v *T }
 
 type sessionAgent struct {
 	largeModel          *csync.Value[Model]
@@ -204,7 +205,7 @@ type sessionAgent struct {
 	// model means summarization uses whatever model the session is
 	// currently on. Wrapped in a struct because csync.Value rejects bare
 	// pointer types.
-	compactModel *csync.Value[compactModelHolder]
+	compactModel *csync.Value[ptrBox[Model]]
 	// autoSummarizeAt is the fraction of the context window that may be
 	// used before the turn stops to summarize. Out of (0,1) means "use
 	// the built-in thresholds" -- see shouldAutoSummarize.
@@ -410,7 +411,7 @@ func NewSessionAgent(
 		sessions:               opts.Sessions,
 		messages:               opts.Messages,
 		disableAutoSummarize:   csync.NewValue(opts.DisableAutoSummarize),
-		compactModel:           csync.NewValue(compactModelHolder{model: opts.CompactModel}),
+		compactModel:           csync.NewValue(ptrBox[Model]{v: opts.CompactModel}),
 		autoSummarizeAt:        csync.NewValue(opts.AutoSummarizeAt),
 		maxProviderRetries:     opts.MaxProviderRetries,
 		maxSessionCost:         opts.MaxSessionCost,
@@ -1575,7 +1576,7 @@ func (a *sessionAgent) Summarize(ctx context.Context, sessionID string, opts fan
 
 	// A configured "compact" model role overrides the session's own large
 	// model for this call only; see coordinator.buildCompactModel.
-	compactModel := a.compactModel.Get().model
+	compactModel := a.compactModel.Get().v
 	usingCompactModel := compactModel != nil
 	summaryModel := a.largeModel.Get()
 	if usingCompactModel {
@@ -2360,7 +2361,7 @@ func (a *sessionAgent) SetSystemPrompt(systemPrompt string) {
 func (a *sessionAgent) SetSummarizeOptions(autoSummarizeAt float64, disableAutoSummarize bool, compactModel *Model) {
 	a.autoSummarizeAt.Set(autoSummarizeAt)
 	a.disableAutoSummarize.Set(disableAutoSummarize)
-	a.compactModel.Set(compactModelHolder{model: compactModel})
+	a.compactModel.Set(ptrBox[Model]{v: compactModel})
 }
 
 func (a *sessionAgent) Model() Model {

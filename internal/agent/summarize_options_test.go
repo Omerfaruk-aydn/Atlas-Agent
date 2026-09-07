@@ -20,16 +20,16 @@ func TestSetSummarizeOptionsUpdatesLiveState(t *testing.T) {
 
 	require.InDelta(t, 0.25, sa.autoSummarizeAt.Get(), 0)
 	require.False(t, sa.disableAutoSummarize.Get())
-	require.Nil(t, sa.compactModel.Get().model)
+	require.Nil(t, sa.compactModel.Get().v)
 
 	newCompact := &Model{}
 	agent.SetSummarizeOptions(0.5, true, newCompact)
 
 	require.InDelta(t, 0.5, sa.autoSummarizeAt.Get(), 0)
 	require.True(t, sa.disableAutoSummarize.Get())
-	require.Same(t, newCompact, sa.compactModel.Get().model)
+	require.Same(t, newCompact, sa.compactModel.Get().v)
 
 	// Switching the compact role back off (nil) must also take effect live.
 	agent.SetSummarizeOptions(0.5, true, nil)
-	require.Nil(t, sa.compactModel.Get().model)
+	require.Nil(t, sa.compactModel.Get().v)
 }

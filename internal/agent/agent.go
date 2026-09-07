@@ -210,18 +210,23 @@ type sessionAgent struct {
 	// used before the turn stops to summarize. Out of (0,1) means "use
 	// the built-in thresholds" -- see shouldAutoSummarize.
 	autoSummarizeAt *csync.Value[float64]
+	// maxProviderRetries, maxSessionCost, and maxStepsPerTurn are
+	// *csync.Value, not plain fields, so a chat-driven config change to
+	// any of them reaches an already-running session on its next turn --
+	// see SetLimits.
+	//
 	// maxProviderRetries is how many times a failed provider request is
 	// retried before the turn gives up. Nil means the provider library's
 	// own default; 0 disables retries.
-	maxProviderRetries *int
+	maxProviderRetries *csync.Value[ptrBox[int]]
 	// maxSessionCost is a per-session spend cap in the session's cost
 	// currency (USD). Zero means unbounded. Checked once at the start of
 	// Run, before any dispatch state or DB write, so a session over
 	// budget costs nothing more to refuse.
-	maxSessionCost float64
+	maxSessionCost *csync.Value[float64]
 	// maxStepsPerTurn caps how many steps one Run may take. Zero means
 	// unbounded. See maxStepsReached.
-	maxStepsPerTurn int
+	maxStepsPerTurn *csync.Value[int]
 	// promptHooks fires UserPromptSubmit hooks before a prompt reaches the
 	// model. Nil when none are configured.
 	promptHooks *hooks.Runner
@@ -413,9 +418,9 @@ func NewSessionAgent(
 		disableAutoSummarize:   csync.NewValue(opts.DisableAutoSummarize),
 		compactModel:           csync.NewValue(ptrBox[Model]{v: opts.CompactModel}),
 		autoSummarizeAt:        csync.NewValue(opts.AutoSummarizeAt),
-		maxProviderRetries:     opts.MaxProviderRetries,
-		maxSessionCost:         opts.MaxSessionCost,
-		maxStepsPerTurn:        opts.MaxStepsPerTurn,
+		maxProviderRetries:     csync.NewValue(ptrBox[int]{v: opts.MaxProviderRetries}),
+		maxSessionCost:         csync.NewValue(opts.MaxSessionCost),
+		maxStepsPerTurn:        csync.NewValue(opts.MaxStepsPerTurn),
 		promptHooks:            opts.PromptHooks,
 		sessionStartHooks:      opts.SessionStartHooks,
 		startedSessions:        csync.NewMap[string, bool](),
@@ -757,8 +762,8 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	prompt = a.fireSessionStart(ctx, call.SessionID, prompt)
 	call.Prompt = a.injectAdvisorNote(call.SessionID, prompt)
 
-	if a.maxSessionCost > 0 {
-		if sess, err := a.sessions.Get(ctx, call.SessionID); err == nil && sess.Cost >= a.maxSessionCost {
+	if maxSessionCost := a.maxSessionCost.Get(); maxSessionCost > 0 {
+		if sess, err := a.sessions.Get(ctx, call.SessionID); err == nil && sess.Cost >= maxSessionCost {
 			return nil, ErrSessionBudgetExceeded
 		}
 		// A lookup failure here is not this check's problem to solve --
@@ -1291,7 +1296,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				return hasRepeatedToolCalls(steps, loopDetectionWindowSize, loopDetectionMaxRepeats)
 			},
 			func(steps []fantasy.StepResult) bool {
-				return maxStepsReached(steps, a.maxStepsPerTurn)
+				return maxStepsReached(steps, a.maxStepsPerTurn.Get())
 			},
 		},
 	})

@@ -8,9 +8,10 @@ package agent
 // turn them off. A configured 0 does disable them. The value is copied so
 // the library cannot be handed a pointer into the agent's own state.
 func (a *sessionAgent) maxRetries() *int {
-	if a.maxProviderRetries == nil {
+	retries := a.maxProviderRetries.Get().v
+	if retries == nil {
 		return nil
 	}
-	n := max(*a.maxProviderRetries, 0)
+	n := max(*retries, 0)
 	return &n
 }

@@ -150,3 +150,13 @@ func TestResumeGoalRunKeepsTheRunItAlreadyHas(t *testing.T) {
 	require.Equal(t, 30, budget)
 	require.Equal(t, 7, used)
 }
+
+// A nil goal judge (never configured) must not block a goal claim -- the
+// agent's own claim stands, the same as before goalJudge became live-
+// reloadable.
+func TestJudgeGoalWithNoJudgeTakesTheClaimAtFaceValue(t *testing.T) {
+	c := &coordinator{goalJudge: csync.NewValue(ptrBox[Model]{})}
+	ok, reason := c.judgeGoal(t.Context(), "s1", "ship the feature")
+	require.True(t, ok)
+	require.Empty(t, reason)
+}

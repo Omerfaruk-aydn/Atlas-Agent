@@ -9,6 +9,7 @@ import (
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/credentials"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/anthropic"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/bedrock"
@@ -73,6 +74,7 @@ func newTestCoordinator(t *testing.T, env fakeEnv, providerID string, providerCf
 		sessions:    env.sessions,
 		messages:    env.messages,
 		credentials: credentials.New(),
+		goalJudge:   csync.NewValue(ptrBox[Model]{}),
 	}
 }
 

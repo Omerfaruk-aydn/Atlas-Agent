@@ -69,6 +69,13 @@ const (
 	// cardMaxWidth caps a single card so the row doesn't sprawl on very
 	// wide terminals.
 	cardMaxWidth = 34
+	// cardMaxItems caps how many rows a card's list may use, independent
+	// of terminal height. Without this, a section with hundreds of
+	// entries (e.g. many discovered skills) grows to fill the whole
+	// screen, and since every card in the row shares one height, the
+	// other two -- often nearly empty -- get stretched to match, pushing
+	// everything below the row down with them.
+	cardMaxItems = 10
 	// cardFrameDivisor halves the wordmark's 60fps tick so the card
 	// borders sweep at 30fps.
 	cardFrameDivisor = 2
@@ -105,8 +112,10 @@ func (m *UI) landingCards(width, availHeight int) string {
 	}
 
 	// Every card is as tall as the tallest, so the row's bottom edge is
-	// straight. maxItems is what each list may render before it elides.
-	maxItems := max(1, availHeight-cardBorderRows)
+	// straight. maxItems is what each list may render before it elides,
+	// bounded above by cardMaxItems so one large list can't drag the
+	// other two -- and the rest of the landing page -- down with it.
+	maxItems := max(1, min(availHeight-cardBorderRows, cardMaxItems))
 	titles := []string{"LSPs", "MCPs", "Skills"}
 	bodies := []string{
 		m.lspListing(widths[0]-cardChrome, maxItems),

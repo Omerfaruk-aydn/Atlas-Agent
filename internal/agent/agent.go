@@ -255,27 +255,39 @@ type sessionAgent struct {
 	// turn against that provider try a different configured API key. Nil
 	// is a valid no-op.
 	onProviderExhausted func(providerID string)
+	// advisorModel, advisorTools, advisorEveryNTurns, and
+	// advisorNotifyThreshold are *csync.Value / *csync.Slice, not plain
+	// fields, so enabling/disabling the advisor or changing its model or
+	// review cadence via chat-driven config reaches an already-running
+	// session's next turn -- see SetAdvisorOptions.
+	//
 	// advisorModel and advisorTools are nil when the advisor is disabled
 	// or has nothing to run on (see coordinator.buildAdvisor). advisorNotes
 	// queues each session's pending note (from the turn that just
 	// finished) to inject ahead of its next prompt; read-and-clear.
-	advisorModel *Model
-	advisorTools []fantasy.AgentTool
+	advisorModel *csync.Value[ptrBox[Model]]
+	advisorTools *csync.Slice[fantasy.AgentTool]
 	advisorNotes *csync.Map[string, string]
 	// advisorEveryNTurns and advisorNotifyThreshold mirror
 	// config.Advisor's TurnInterval/NotifyThreshold; advisorTurnCounts
 	// tracks each session's count of turns seen (not necessarily
 	// reviewed) so "review every Nth turn" has somewhere to keep score.
-	advisorEveryNTurns     int
-	advisorNotifyThreshold string
+	advisorEveryNTurns     *csync.Value[int]
+	advisorNotifyThreshold *csync.Value[string]
 	advisorTurnCounts      *csync.Map[string, int]
+	// escalateModel, escalateTools, and escalateThreshold are
+	// *csync.Value / *csync.Slice, not plain fields, so that turning
+	// AutoEscalate on/off or changing its model/threshold via chat-driven
+	// config reaches an already-running session's next turn -- see
+	// SetEscalateOptions.
+	//
 	// escalateModel and escalateTools are nil unless Advisor.AutoEscalate
 	// is on and has a model to run on (see coordinator.buildEscalator).
 	// When set, a severity meeting escalateThreshold triggers a second,
 	// deeper pass whose output replaces the advisor's one-line note.
-	escalateModel     *Model
-	escalateTools     []fantasy.AgentTool
-	escalateThreshold string
+	escalateModel     *csync.Value[ptrBox[Model]]
+	escalateTools     *csync.Slice[fantasy.AgentTool]
+	escalateThreshold *csync.Value[string]
 	isYolo            bool
 	permissions       permission.Service
 	notify            pubsub.Publisher[notify.Notification]
@@ -432,15 +444,15 @@ func NewSessionAgent(
 		sessionStartHooks:      csync.NewValue(ptrBox[hooks.Runner]{v: opts.SessionStartHooks}),
 		startedSessions:        csync.NewMap[string, bool](),
 		preCompactHooks:        csync.NewValue(ptrBox[hooks.Runner]{v: opts.PreCompactHooks}),
-		advisorModel:           opts.AdvisorModel,
-		advisorTools:           opts.AdvisorTools,
+		advisorModel:           csync.NewValue(ptrBox[Model]{v: opts.AdvisorModel}),
+		advisorTools:           csync.NewSliceFrom(opts.AdvisorTools),
 		advisorNotes:           csync.NewMap[string, string](),
-		advisorEveryNTurns:     opts.AdvisorEveryNTurns,
-		advisorNotifyThreshold: opts.AdvisorNotifyThreshold,
+		advisorEveryNTurns:     csync.NewValue(opts.AdvisorEveryNTurns),
+		advisorNotifyThreshold: csync.NewValue(opts.AdvisorNotifyThreshold),
 		advisorTurnCounts:      csync.NewMap[string, int](),
-		escalateModel:          opts.EscalateModel,
-		escalateTools:          opts.EscalateTools,
-		escalateThreshold:      opts.EscalateThreshold,
+		escalateModel:          csync.NewValue(ptrBox[Model]{v: opts.EscalateModel}),
+		escalateTools:          csync.NewSliceFrom(opts.EscalateTools),
+		escalateThreshold:      csync.NewValue(opts.EscalateThreshold),
 		onProviderExhausted:    opts.OnProviderExhausted,
 		tools:                  csync.NewSliceFrom(opts.Tools),
 		isYolo:                 opts.IsYolo,
@@ -1464,7 +1476,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	// injectAdvisorNote) -- it never delays or changes this turn's own
 	// result. Run in the background: it is a second opinion, not
 	// something the user should wait on.
-	if a.advisorModel != nil && currentAssistant != nil && a.shouldRunAdvisorPass(call.SessionID) {
+	if a.advisorModel.Get().v != nil && currentAssistant != nil && a.shouldRunAdvisorPass(call.SessionID) {
 		go a.runAdvisorPass(context.WithoutCancel(ctx), call.SessionID, call.Prompt, currentAssistant.Content().Text)
 	}
 

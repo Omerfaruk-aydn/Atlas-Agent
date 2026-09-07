@@ -81,7 +81,7 @@ func TestInjectAdvisorNoteWithNoPromptUsesTheNoteAlone(t *testing.T) {
 
 func newTurnCountingAgent(everyN int) *sessionAgent {
 	return &sessionAgent{
-		advisorEveryNTurns: everyN,
+		advisorEveryNTurns: csync.NewValue(everyN),
 		advisorTurnCounts:  csync.NewMap[string, int](),
 	}
 }
@@ -155,7 +155,7 @@ func TestRunEscalationPassNilModelPanicsAreCaught(t *testing.T) {
 	// covers a nil model the same way runAdvisorPass's covers a nil
 	// advisor model, in case that invariant is ever violated by a future
 	// caller.
-	a := &sessionAgent{}
+	a := &sessionAgent{escalateModel: csync.NewValue(ptrBox[Model]{})}
 	note, ok := a.runEscalationPass(t.Context(), "s1", "prompt", "response", "BLOCKER", "advisor note")
 	require.False(t, ok)
 	require.Empty(t, note)

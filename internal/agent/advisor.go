@@ -73,7 +73,7 @@ func advisorShouldNotify(severity, threshold string) bool {
 // turn" means turns 3, 6, 9, ... rather than resetting whenever a review
 // is skipped.
 func (a *sessionAgent) shouldRunAdvisorPass(sessionID string) bool {
-	interval := a.advisorEveryNTurns
+	interval := a.advisorEveryNTurns.Get()
 	if interval <= 0 {
 		interval = 1
 	}
@@ -117,10 +117,11 @@ func (a *sessionAgent) runAdvisorPass(ctx context.Context, sessionID, userPrompt
 	ctx, cancel := context.WithTimeout(ctx, advisorTimeout)
 	defer cancel()
 
+	advisorModel := a.advisorModel.Get().v
 	agent := fantasy.NewAgent(
-		a.advisorModel.Model,
+		advisorModel.Model,
 		fantasy.WithSystemPrompt(advisorSystemPrompt),
-		fantasy.WithTools(a.advisorTools...),
+		fantasy.WithTools(a.advisorTools.Copy()...),
 		fantasy.WithUserAgent(userAgent),
 	)
 
@@ -142,7 +143,7 @@ func (a *sessionAgent) runAdvisorPass(ctx context.Context, sessionID, userPrompt
 	}
 
 	label := "Advisor"
-	if a.escalateModel != nil && shouldEscalate(severity, a.escalateThreshold) {
+	if a.escalateModel.Get().v != nil && shouldEscalate(severity, a.escalateThreshold.Get()) {
 		if escalated, ok := a.runEscalationPass(ctx, sessionID, userPrompt, assistantText, severity, note); ok {
 			note = escalated
 			label = "Escalated review"
@@ -151,7 +152,7 @@ func (a *sessionAgent) runAdvisorPass(ctx context.Context, sessionID, userPrompt
 
 	a.advisorNotes.Set(sessionID, label+" ("+strings.ToLower(severity)+"): "+note)
 
-	if !advisorShouldNotify(severity, a.advisorNotifyThreshold) {
+	if !advisorShouldNotify(severity, a.advisorNotifyThreshold.Get()) {
 		// Below the configured floor: queued for the next prompt above,
 		// but not worth interrupting the session over.
 		slog.Info("Advisor left a note", "session_id", sessionID, "severity", severity, "note", note)
@@ -200,10 +201,11 @@ func (a *sessionAgent) runEscalationPass(ctx context.Context, sessionID, userPro
 	ctx, cancel := context.WithTimeout(ctx, escalateTimeout)
 	defer cancel()
 
+	escalateModel := a.escalateModel.Get().v
 	agent := fantasy.NewAgent(
-		a.escalateModel.Model,
+		escalateModel.Model,
 		fantasy.WithSystemPrompt(escalateSystemPrompt),
-		fantasy.WithTools(a.escalateTools...),
+		fantasy.WithTools(a.escalateTools.Copy()...),
 		fantasy.WithUserAgent(userAgent),
 	)
 

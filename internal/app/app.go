@@ -505,6 +505,19 @@ func (app *App) UpdateAgentModel(ctx context.Context) error {
 	if app.AgentCoordinator == nil {
 		return fmt.Errorf("agent configuration is missing")
 	}
+
+	// The permission allowlist has the same "read once at startup" gap
+	// the agent coordinator's own settings had: a chat-driven change to
+	// permissions.allowed_tools never reached an already-running session.
+	// Refresh it here too, on the same reload path.
+	if app.Permissions != nil {
+		var allowedTools []string
+		if cfg := app.config.Config(); cfg.Permissions != nil && cfg.Permissions.AllowedTools != nil {
+			allowedTools = cfg.Permissions.AllowedTools
+		}
+		app.Permissions.SetAllowedTools(allowedTools)
+	}
+
 	return app.AgentCoordinator.UpdateModels(ctx)
 }
 

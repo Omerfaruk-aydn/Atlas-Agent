@@ -228,13 +228,18 @@ type sessionAgent struct {
 	// maxStepsPerTurn caps how many steps one Run may take. Zero means
 	// unbounded. See maxStepsReached.
 	maxStepsPerTurn *csync.Value[int]
+	// promptHooks, sessionStartHooks, and preCompactHooks are
+	// *csync.Value, not plain fields, so a chat-driven config change that
+	// adds, removes, or edits a hook reaches an already-running session's
+	// next turn -- see SetHooks.
+	//
 	// promptHooks fires UserPromptSubmit hooks before a prompt reaches the
 	// model. Nil when none are configured.
-	promptHooks *hooks.Runner
+	promptHooks *csync.Value[ptrBox[hooks.Runner]]
 	// sessionStartHooks fires EventSessionStart the first time this
 	// process runs a turn for a given session. Nil when none are
 	// configured.
-	sessionStartHooks *hooks.Runner
+	sessionStartHooks *csync.Value[ptrBox[hooks.Runner]]
 	// startedSessions tracks which session IDs sessionStartHooks has
 	// already fired for, in this process, so it fires exactly once per
 	// session rather than on every turn.
@@ -242,7 +247,7 @@ type sessionAgent struct {
 	// preCompactHooks fires EventPreCompact before auto-summarization
 	// runs; a deny/halt decision skips summarization for that turn. Nil
 	// when none are configured.
-	preCompactHooks *hooks.Runner
+	preCompactHooks *csync.Value[ptrBox[hooks.Runner]]
 	// onProviderExhausted is called with a provider ID when a 429 hits it
 	// and the model fallback chain has nowhere further to go, so a caller
 	// (the coordinator's credential rotator) can make the next session or
@@ -422,10 +427,10 @@ func NewSessionAgent(
 		maxProviderRetries:     csync.NewValue(ptrBox[int]{v: opts.MaxProviderRetries}),
 		maxSessionCost:         csync.NewValue(opts.MaxSessionCost),
 		maxStepsPerTurn:        csync.NewValue(opts.MaxStepsPerTurn),
-		promptHooks:            opts.PromptHooks,
-		sessionStartHooks:      opts.SessionStartHooks,
+		promptHooks:            csync.NewValue(ptrBox[hooks.Runner]{v: opts.PromptHooks}),
+		sessionStartHooks:      csync.NewValue(ptrBox[hooks.Runner]{v: opts.SessionStartHooks}),
 		startedSessions:        csync.NewMap[string, bool](),
-		preCompactHooks:        opts.PreCompactHooks,
+		preCompactHooks:        csync.NewValue(ptrBox[hooks.Runner]{v: opts.PreCompactHooks}),
 		advisorModel:           opts.AdvisorModel,
 		advisorTools:           opts.AdvisorTools,
 		advisorNotes:           csync.NewMap[string, string](),

@@ -21,7 +21,8 @@ import (
 // context first keeps it readable as "here's the situation" before "here's
 // what the user asked."
 func (a *sessionAgent) fireSessionStart(ctx context.Context, sessionID, prompt string) string {
-	if a.sessionStartHooks == nil {
+	sessionStartHooks := a.sessionStartHooks.Get().v
+	if sessionStartHooks == nil {
 		return prompt
 	}
 	if _, seen := a.startedSessions.Get(sessionID); seen {
@@ -29,7 +30,7 @@ func (a *sessionAgent) fireSessionStart(ctx context.Context, sessionID, prompt s
 	}
 	a.startedSessions.Set(sessionID, true)
 
-	result, err := a.sessionStartHooks.RunSessionEvent(ctx, hooks.EventSessionStart, sessionID)
+	result, err := sessionStartHooks.RunSessionEvent(ctx, hooks.EventSessionStart, sessionID)
 	if err != nil {
 		slog.Warn("SessionStart hook execution error", "session_id", sessionID, "error", err)
 		return prompt
@@ -49,10 +50,11 @@ func (a *sessionAgent) fireSessionStart(ctx context.Context, sessionID, prompt s
 // hook fails open: a broken script should not change the agent's behavior
 // by accident.
 func (a *sessionAgent) preCompactDenied(ctx context.Context, sessionID string) bool {
-	if a.preCompactHooks == nil {
+	preCompactHooks := a.preCompactHooks.Get().v
+	if preCompactHooks == nil {
 		return false
 	}
-	result, err := a.preCompactHooks.RunSessionEvent(ctx, hooks.EventPreCompact, sessionID)
+	result, err := preCompactHooks.RunSessionEvent(ctx, hooks.EventPreCompact, sessionID)
 	if err != nil {
 		slog.Warn("PreCompact hook execution error, compacting anyway", "session_id", sessionID, "error", err)
 		return false

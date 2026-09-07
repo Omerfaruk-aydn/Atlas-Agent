@@ -4,11 +4,12 @@ import (
 	"testing"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/hooks"
 	"github.com/stretchr/testify/require"
 )
 
-func newPromptRunner(t *testing.T, cmd string) *hooks.Runner {
+func newPromptRunner(t *testing.T, cmd string) *csync.Value[ptrBox[hooks.Runner]] {
 	t.Helper()
 	cfg := &config.Config{
 		Hooks: map[string][]config.HookConfig{
@@ -16,11 +17,12 @@ func newPromptRunner(t *testing.T, cmd string) *hooks.Runner {
 		},
 	}
 	require.NoError(t, cfg.ValidateHooks())
-	return hooks.NewRunner(cfg.Hooks[hooks.EventUserPromptSubmit], t.TempDir(), t.TempDir())
+	runner := hooks.NewRunner(cfg.Hooks[hooks.EventUserPromptSubmit], t.TempDir(), t.TempDir())
+	return csync.NewValue(ptrBox[hooks.Runner]{v: runner})
 }
 
 func TestNoPromptHooksLeavesThePromptAlone(t *testing.T) {
-	a := &sessionAgent{}
+	a := &sessionAgent{promptHooks: csync.NewValue(ptrBox[hooks.Runner]{})}
 	got, err := a.applyPromptHooks(t.Context(), SessionAgentCall{Prompt: "ship it"})
 	require.NoError(t, err)
 	require.Equal(t, "ship it", got)

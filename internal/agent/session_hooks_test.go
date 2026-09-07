@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newSessionEventRunner(t *testing.T, event, cmd string) *hooks.Runner {
+func newSessionEventRunner(t *testing.T, event, cmd string) *csync.Value[ptrBox[hooks.Runner]] {
 	t.Helper()
 	cfg := &config.Config{
 		Hooks: map[string][]config.HookConfig{
@@ -17,11 +17,16 @@ func newSessionEventRunner(t *testing.T, event, cmd string) *hooks.Runner {
 		},
 	}
 	require.NoError(t, cfg.ValidateHooks())
-	return hooks.NewRunner(cfg.Hooks[event], t.TempDir(), t.TempDir())
+	runner := hooks.NewRunner(cfg.Hooks[event], t.TempDir(), t.TempDir())
+	return csync.NewValue(ptrBox[hooks.Runner]{v: runner})
+}
+
+func noHooks() *csync.Value[ptrBox[hooks.Runner]] {
+	return csync.NewValue(ptrBox[hooks.Runner]{})
 }
 
 func TestFireSessionStartWithNoHooksLeavesThePromptAlone(t *testing.T) {
-	a := &sessionAgent{startedSessions: csync.NewMap[string, bool]()}
+	a := &sessionAgent{sessionStartHooks: noHooks(), startedSessions: csync.NewMap[string, bool]()}
 	got := a.fireSessionStart(t.Context(), "s", "hello")
 	require.Equal(t, "hello", got)
 }
@@ -65,7 +70,7 @@ func TestFireSessionStartSilentHookChangesNothing(t *testing.T) {
 }
 
 func TestPreCompactDeniedWithNoHooksAllowsCompaction(t *testing.T) {
-	a := &sessionAgent{}
+	a := &sessionAgent{preCompactHooks: noHooks()}
 	require.False(t, a.preCompactDenied(t.Context(), "s"))
 }
 

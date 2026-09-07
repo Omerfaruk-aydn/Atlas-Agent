@@ -17,11 +17,12 @@ import (
 // script in someone's config should not make the agent unusable, so the
 // error is logged and the prompt goes through unchanged.
 func (a *sessionAgent) applyPromptHooks(ctx context.Context, call SessionAgentCall) (string, error) {
-	if a.promptHooks == nil {
+	promptHooks := a.promptHooks.Get().v
+	if promptHooks == nil {
 		return call.Prompt, nil
 	}
 
-	result, err := a.promptHooks.RunPrompt(ctx, call.SessionID, call.Prompt)
+	result, err := promptHooks.RunPrompt(ctx, call.SessionID, call.Prompt)
 	if err != nil {
 		slog.Warn("UserPromptSubmit hook execution error, running the prompt unchanged",
 			"session_id", call.SessionID, "error", err)

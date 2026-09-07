@@ -230,3 +230,27 @@ func TestSetEscalateOptionsCanTurnAnActiveEscalationOff(t *testing.T) {
 
 	require.Nil(t, a.escalateModel.Get().v)
 }
+
+// SetAdvisorOptions and SetEscalateOptions must also update the tool
+// lists live, not just the model -- a config change to the advisor or
+// escalate model role can come with a different tool set.
+func TestSetAdvisorAndEscalateOptionsUpdateToolsLive(t *testing.T) {
+	a := &sessionAgent{
+		advisorModel:           csync.NewValue(ptrBox[Model]{}),
+		advisorTools:           csync.NewSlice[fantasy.AgentTool](),
+		advisorEveryNTurns:     csync.NewValue(0),
+		advisorNotifyThreshold: csync.NewValue(""),
+		escalateModel:          csync.NewValue(ptrBox[Model]{}),
+		escalateTools:          csync.NewSlice[fantasy.AgentTool](),
+		escalateThreshold:      csync.NewValue(""),
+	}
+	require.Empty(t, a.advisorTools.Copy())
+	require.Empty(t, a.escalateTools.Copy())
+
+	newTools := []fantasy.AgentTool{nil, nil}
+	a.SetAdvisorOptions(&Model{}, newTools, 1, "")
+	a.SetEscalateOptions(&Model{}, newTools, "")
+
+	require.Len(t, a.advisorTools.Copy(), 2)
+	require.Len(t, a.escalateTools.Copy(), 2)
+}

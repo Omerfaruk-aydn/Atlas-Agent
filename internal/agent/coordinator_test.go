@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/credentials"
@@ -48,6 +49,7 @@ func (m *mockSessionAgent) SetAdvisorOptions(advisorModel *Model, advisorTools [
 }
 func (m *mockSessionAgent) SetEscalateOptions(escalateModel *Model, escalateTools []fantasy.AgentTool, threshold string) {
 }
+func (m *mockSessionAgent) SetFallbackCooldown(d time.Duration) {}
 func (m *mockSessionAgent) SetSummarizeOptions(autoSummarizeAt float64, disableAutoSummarize bool, compactModel *Model) {
 }
 func (m *mockSessionAgent) Cancel(sessionID string) {

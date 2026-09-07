@@ -143,6 +143,7 @@ type SessionAgent interface {
 	SetHooks(promptHooks, sessionStartHooks, preCompactHooks *hooks.Runner)
 	SetAdvisorOptions(advisorModel *Model, advisorTools []fantasy.AgentTool, everyNTurns int, notifyThreshold string)
 	SetEscalateOptions(escalateModel *Model, escalateTools []fantasy.AgentTool, threshold string)
+	SetFallbackCooldown(d time.Duration)
 	Cancel(sessionID string)
 	CancelAll()
 	IsSessionBusy(sessionID string) bool
@@ -181,9 +182,11 @@ type ptrBox[T any] struct{ v *T }
 type sessionAgent struct {
 	largeModel          *csync.Value[Model]
 	largeModelFallbacks *csync.Slice[Model]
-	// fallbackCooldown is SessionAgentOptions.FallbackCooldown, copied here
-	// because it never changes after construction.
-	fallbackCooldown time.Duration
+	// fallbackCooldown is SessionAgentOptions.FallbackCooldown. *csync.Value,
+	// not a plain field, so a chat-driven change to fallback_cooldown
+	// reaches an already-running session's next turn -- see
+	// SetFallbackCooldown.
+	fallbackCooldown *csync.Value[time.Duration]
 	// fallbackSticky remembers which fallback model the chain last moved
 	// to, and until when, so a cooldown can survive across Run calls
 	// instead of always resetting to the primary on the next turn. See
@@ -427,7 +430,7 @@ func NewSessionAgent(
 	return &sessionAgent{
 		largeModel:             csync.NewValue(opts.LargeModel),
 		largeModelFallbacks:    csync.NewSliceFrom(opts.LargeModelFallbacks),
-		fallbackCooldown:       opts.FallbackCooldown,
+		fallbackCooldown:       csync.NewValue(opts.FallbackCooldown),
 		smallModelFallbacks:    csync.NewSliceFrom(opts.SmallModelFallbacks),
 		fallbackSticky:         csync.NewValue(stickyFallback{}),
 		smallModel:             csync.NewValue(opts.SmallModel),
@@ -1177,10 +1180,10 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		OnRetry: func(err *fantasy.ProviderError, delay time.Duration) {
 			if chain.HandleRetry(err) {
 				next := chain.Current()
-				if a.fallbackCooldown > 0 {
+				if cooldown := a.fallbackCooldown.Get(); cooldown > 0 {
 					a.fallbackSticky.Set(stickyFallback{
 						index: chain.active,
-						until: time.Now().Add(a.fallbackCooldown),
+						until: time.Now().Add(cooldown),
 					})
 				}
 				slog.Warn("Model rate-limited, failing over",
@@ -2432,6 +2435,14 @@ func (a *sessionAgent) SetEscalateOptions(escalateModel *Model, escalateTools []
 	a.escalateModel.Set(ptrBox[Model]{v: escalateModel})
 	a.escalateTools.SetSlice(escalateTools)
 	a.escalateThreshold.Set(threshold)
+}
+
+// SetFallbackCooldown updates how long a 429-triggered fallback model stays
+// in use before a later turn is willing to try the primary model again, so
+// a chat-driven change to fallback_cooldown reaches an already-running
+// session's next turn. See coordinator.UpdateModels.
+func (a *sessionAgent) SetFallbackCooldown(d time.Duration) {
+	a.fallbackCooldown.Set(d)
 }
 
 func (a *sessionAgent) Model() Model {

@@ -140,6 +140,7 @@ type SessionAgent interface {
 	SetSystemPrompt(systemPrompt string)
 	SetSummarizeOptions(autoSummarizeAt float64, disableAutoSummarize bool, compactModel *Model)
 	SetLimits(maxProviderRetries *int, maxSessionCost float64, maxStepsPerTurn int)
+	SetHooks(promptHooks, sessionStartHooks, preCompactHooks *hooks.Runner)
 	Cancel(sessionID string)
 	CancelAll()
 	IsSessionBusy(sessionID string) bool
@@ -2383,6 +2384,17 @@ func (a *sessionAgent) SetLimits(maxProviderRetries *int, maxSessionCost float64
 	a.maxProviderRetries.Set(ptrBox[int]{v: maxProviderRetries})
 	a.maxSessionCost.Set(maxSessionCost)
 	a.maxStepsPerTurn.Set(maxStepsPerTurn)
+}
+
+// SetHooks updates the UserPromptSubmit, SessionStart, and PreCompact hook
+// runners in place so a chat-driven config change that adds, removes, or
+// edits a hook reaches an already-running session's next turn. Any of the
+// three may be nil, meaning that event has no hooks configured. See
+// coordinator.UpdateModels.
+func (a *sessionAgent) SetHooks(promptHooks, sessionStartHooks, preCompactHooks *hooks.Runner) {
+	a.promptHooks.Set(ptrBox[hooks.Runner]{v: promptHooks})
+	a.sessionStartHooks.Set(ptrBox[hooks.Runner]{v: sessionStartHooks})
+	a.preCompactHooks.Set(ptrBox[hooks.Runner]{v: preCompactHooks})
 }
 
 func (a *sessionAgent) Model() Model {

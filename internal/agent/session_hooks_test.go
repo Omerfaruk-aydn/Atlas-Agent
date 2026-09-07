@@ -88,3 +88,28 @@ func TestPreCompactAllowsCompactionWhenTheHookSaysNothing(t *testing.T) {
 	a := &sessionAgent{preCompactHooks: newSessionEventRunner(t, hooks.EventPreCompact, `true`)}
 	require.False(t, a.preCompactDenied(t.Context(), "s"))
 }
+
+// A live config change to any of the three hook events must reach an
+// already-running session -- see SetHooks.
+func TestSetHooksUpdatesAllThreeEventsLive(t *testing.T) {
+	a := &sessionAgent{
+		promptHooks:       noHooks(),
+		sessionStartHooks: noHooks(),
+		preCompactHooks:   noHooks(),
+		startedSessions:   csync.NewMap[string, bool](),
+	}
+
+	prompt := newPromptRunner(t, `echo '{"context":"prompt hook"}'`).Get().v
+	start := newSessionEventRunner(t, hooks.EventSessionStart, `echo '{"context":"start hook"}'`).Get().v
+	preCompact := newSessionEventRunner(t, hooks.EventPreCompact, `echo '{"decision":"deny","reason":"keep it"}'`).Get().v
+
+	a.SetHooks(prompt, start, preCompact)
+
+	got, err := a.applyPromptHooks(t.Context(), SessionAgentCall{SessionID: "s", Prompt: "hi"})
+	require.NoError(t, err)
+	require.Contains(t, got, "prompt hook")
+
+	require.Contains(t, a.fireSessionStart(t.Context(), "s2", "hi"), "start hook")
+
+	require.True(t, a.preCompactDenied(t.Context(), "s"))
+}

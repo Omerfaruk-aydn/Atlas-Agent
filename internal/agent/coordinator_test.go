@@ -14,6 +14,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/bedrock"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/openaicompat"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/catwalk"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/hooks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,6 +40,8 @@ func (m *mockSessionAgent) SetModels(large, small Model, largeFallbacks []Model,
 func (m *mockSessionAgent) SetTools(tools []fantasy.AgentTool)  {}
 func (m *mockSessionAgent) SetSystemPrompt(systemPrompt string) {}
 func (m *mockSessionAgent) SetLimits(maxProviderRetries *int, maxSessionCost float64, maxStepsPerTurn int) {
+}
+func (m *mockSessionAgent) SetHooks(promptHooks, sessionStartHooks, preCompactHooks *hooks.Runner) {
 }
 func (m *mockSessionAgent) SetSummarizeOptions(autoSummarizeAt float64, disableAutoSummarize bool, compactModel *Model) {
 }

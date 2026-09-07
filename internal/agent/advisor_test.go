@@ -215,3 +215,18 @@ func TestSetAdvisorOptionsCanTurnAnActiveAdvisorOff(t *testing.T) {
 
 	require.Nil(t, a.advisorModel.Get().v, "the advisor must be off immediately, not just on the next agent rebuild")
 }
+
+// Mirrors TestSetAdvisorOptionsCanTurnAnActiveAdvisorOff for AutoEscalate:
+// turning it off live must clear escalateModel immediately.
+func TestSetEscalateOptionsCanTurnAnActiveEscalationOff(t *testing.T) {
+	a := &sessionAgent{
+		escalateModel:     csync.NewValue(ptrBox[Model]{v: &Model{}}),
+		escalateTools:     csync.NewSlice[fantasy.AgentTool](),
+		escalateThreshold: csync.NewValue("BLOCKER"),
+	}
+	require.NotNil(t, a.escalateModel.Get().v)
+
+	a.SetEscalateOptions(nil, nil, "")
+
+	require.Nil(t, a.escalateModel.Get().v)
+}

@@ -160,3 +160,18 @@ func TestJudgeGoalWithNoJudgeTakesTheClaimAtFaceValue(t *testing.T) {
 	require.True(t, ok)
 	require.Empty(t, reason)
 }
+
+// A goal judge that was configured must stop being consulted immediately
+// once a live config change clears it (e.g. the "goal" role is removed
+// and the advisor it fell back to is also disabled) -- mirrors the "off"
+// tests added for hooks, the advisor, and AutoEscalate.
+func TestJudgeGoalStopsConsultingAClearedJudge(t *testing.T) {
+	c := &coordinator{goalJudge: csync.NewValue(ptrBox[Model]{v: &Model{}})}
+	require.NotNil(t, c.goalJudge.Get().v)
+
+	c.goalJudge.Set(ptrBox[Model]{})
+
+	ok, reason := c.judgeGoal(t.Context(), "s1", "ship the feature")
+	require.True(t, ok, "with the judge cleared, the agent's own claim must stand again")
+	require.Empty(t, reason)
+}

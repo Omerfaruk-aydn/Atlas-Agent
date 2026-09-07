@@ -141,10 +141,13 @@ type coordinator struct {
 	// towards a goal (see goal.go). Absent means the session is
 	// taking turns the ordinary way, one per prompt.
 	goalRuns *csync.Map[string, *goalRun]
-	// goalJudge checks the agent's claim that a goal is reached. Nil
-	// when no model is available for it, in which case the claim is
-	// taken at face value.
-	goalJudge   *Model
+	// goalJudge checks the agent's claim that a goal is reached. A nil
+	// model means none is available for it, in which case the claim is
+	// taken at face value. *csync.Value, not a plain field, so a
+	// chat-driven change to the "goal" model role (or to the advisor it
+	// falls back to) reaches an autonomous run already in progress -- see
+	// UpdateModels.
+	goalJudge   *csync.Value[ptrBox[Model]]
 	messages    message.Service
 	permissions permission.Service
 	questions   question.Service
@@ -236,6 +239,7 @@ func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, 
 		credentials:  credentials.Load(filepath.Join(opts.Config.Config().Options.DataDirectory, credentials.StateFileName)),
 		teams:        teams.NewRegistry(),
 		goalRuns:     csync.NewMap[string, *goalRun](),
+		goalJudge:    csync.NewValue(ptrBox[Model]{}),
 	}
 
 	agentCfg, ok := opts.Config.Config().Agents[config.AgentCoder]
@@ -705,7 +709,7 @@ func (c *coordinator) buildAgent(ctx context.Context, prompt *prompt.Prompt, age
 		advisorModel, advisorTools = c.buildAdvisor(ctx)
 		// The goal check reuses the advisor's model unless a "goal"
 		// role names its own, so it is built once the advisor is.
-		c.goalJudge = c.buildGoalJudgeModel(ctx, advisorModel)
+		c.goalJudge.Set(ptrBox[Model]{v: c.buildGoalJudgeModel(ctx, advisorModel)})
 		if adv := c.cfg.Config().Options.Advisor; adv != nil {
 			advisorEveryNTurns = adv.TurnInterval()
 			advisorNotifyThreshold = adv.NotifyThreshold()
@@ -1941,6 +1945,12 @@ func (c *coordinator) UpdateModels(ctx context.Context) error {
 	}
 	c.currentAgent.SetAdvisorOptions(advisorModel, advisorTools, advisorEveryNTurns, advisorNotifyThreshold)
 	c.currentAgent.SetEscalateOptions(escalateModel, escalateTools, escalateThreshold)
+
+	// The goal judge (see judgeGoal) reuses the advisor model just built
+	// above unless a "goal" role names its own -- refresh it here too so
+	// an autonomous run already in progress picks up a changed "goal"
+	// role or advisor on its next check instead of only after a restart.
+	c.goalJudge.Set(ptrBox[Model]{v: c.buildGoalJudgeModel(ctx, advisorModel)})
 
 	agentCfg, ok := c.cfg.Config().Agents[config.AgentCoder]
 	if !ok {

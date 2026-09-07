@@ -266,12 +266,13 @@ func (c *coordinator) nextGoalTurn(ctx context.Context, sessionID, prompt string
 // with no model configured, or on an error, the agent's own claim
 // stands.
 func (c *coordinator) judgeGoal(ctx context.Context, sessionID, goal string) (bool, string) {
-	if c.goalJudge == nil {
+	goalJudge := c.goalJudge.Get().v
+	if goalJudge == nil {
 		return true, ""
 	}
 
 	agent := fantasy.NewAgent(
-		c.goalJudge.Model,
+		goalJudge.Model,
 		fantasy.WithSystemPrompt(goalJudgePrompt),
 		fantasy.WithUserAgent(userAgent),
 	)

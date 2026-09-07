@@ -138,6 +138,7 @@ type SessionAgent interface {
 	SetModels(large Model, small Model, largeFallbacks []Model, smallFallbacks []Model)
 	SetTools(tools []fantasy.AgentTool)
 	SetSystemPrompt(systemPrompt string)
+	SetSummarizeOptions(autoSummarizeAt float64, disableAutoSummarize bool, compactModel *Model)
 	Cancel(sessionID string)
 	CancelAll()
 	IsSessionBusy(sessionID string) bool
@@ -166,6 +167,12 @@ type activeCancel struct {
 	cancel context.CancelFunc
 }
 
+// compactModelHolder wraps a *Model so it can live in a csync.Value, which
+// rejects bare pointer types.
+type compactModelHolder struct {
+	model *Model
+}
+
 type sessionAgent struct {
 	largeModel          *csync.Value[Model]
 	largeModelFallbacks *csync.Slice[Model]
@@ -183,19 +190,25 @@ type sessionAgent struct {
 	systemPrompt        *csync.Value[string]
 	tools               *csync.Slice[fantasy.AgentTool]
 
-	isSubAgent           bool
-	sessions             session.Service
-	messages             message.Service
-	disableAutoSummarize bool
+	isSubAgent bool
+	sessions   session.Service
+	messages   message.Service
+	// disableAutoSummarize and autoSummarizeAt are *csync.Value, not plain
+	// fields, so that a chat-driven config change (atlas_config) takes
+	// effect on the next turn of an already-running session instead of
+	// only on the next agent rebuild -- see SetSummarizeOptions.
+	disableAutoSummarize *csync.Value[bool]
 	// compactModel is the model summarization (auto or manual /summarize)
 	// runs on instead of the session's own large model, when a "compact"
-	// model role is configured (see coordinator.buildCompactModel). Nil
-	// means summarization uses whatever model the session is currently on.
-	compactModel *Model
+	// model role is configured (see coordinator.buildCompactModel). A nil
+	// model means summarization uses whatever model the session is
+	// currently on. Wrapped in a struct because csync.Value rejects bare
+	// pointer types.
+	compactModel *csync.Value[compactModelHolder]
 	// autoSummarizeAt is the fraction of the context window that may be
 	// used before the turn stops to summarize. Out of (0,1) means "use
 	// the built-in thresholds" -- see shouldAutoSummarize.
-	autoSummarizeAt float64
+	autoSummarizeAt *csync.Value[float64]
 	// maxProviderRetries is how many times a failed provider request is
 	// retried before the turn gives up. Nil means the provider library's
 	// own default; 0 disables retries.
@@ -396,9 +409,9 @@ func NewSessionAgent(
 		isSubAgent:             opts.IsSubAgent,
 		sessions:               opts.Sessions,
 		messages:               opts.Messages,
-		disableAutoSummarize:   opts.DisableAutoSummarize,
-		compactModel:           opts.CompactModel,
-		autoSummarizeAt:        opts.AutoSummarizeAt,
+		disableAutoSummarize:   csync.NewValue(opts.DisableAutoSummarize),
+		compactModel:           csync.NewValue(compactModelHolder{model: opts.CompactModel}),
+		autoSummarizeAt:        csync.NewValue(opts.AutoSummarizeAt),
 		maxProviderRetries:     opts.MaxProviderRetries,
 		maxSessionCost:         opts.MaxSessionCost,
 		maxStepsPerTurn:        opts.MaxStepsPerTurn,
@@ -1262,12 +1275,12 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		},
 		StopWhen: []fantasy.StopCondition{
 			func(_ []fantasy.StepResult) bool {
-				if a.disableAutoSummarize {
+				if a.disableAutoSummarize.Get() {
 					return false
 				}
 				cw := int64(largeModel.CatwalkCfg.ContextWindow)
 				tokens := currentSession.CompletionTokens + currentSession.PromptTokens
-				if !shouldAutoSummarize(cw, tokens, a.autoSummarizeAt) {
+				if !shouldAutoSummarize(cw, tokens, a.autoSummarizeAt.Get()) {
 					return false
 				}
 				shouldSummarize = true
@@ -1562,10 +1575,11 @@ func (a *sessionAgent) Summarize(ctx context.Context, sessionID string, opts fan
 
 	// A configured "compact" model role overrides the session's own large
 	// model for this call only; see coordinator.buildCompactModel.
-	usingCompactModel := a.compactModel != nil
+	compactModel := a.compactModel.Get().model
+	usingCompactModel := compactModel != nil
 	summaryModel := a.largeModel.Get()
 	if usingCompactModel {
-		summaryModel = *a.compactModel
+		summaryModel = *compactModel
 	}
 
 	err := a.summarizeAttempt(ctx, sessionID, summaryModel, usingCompactModel, opts, onAuthRefresh)
@@ -2336,6 +2350,17 @@ func (a *sessionAgent) SetTools(tools []fantasy.AgentTool) {
 
 func (a *sessionAgent) SetSystemPrompt(systemPrompt string) {
 	a.systemPrompt.Set(systemPrompt)
+}
+
+// SetSummarizeOptions updates the auto-summarize threshold, the
+// enabled/disabled flag, and the compact-role model in place so a
+// chat-driven config change (atlas_config) takes effect on the next turn
+// of an already-running session, instead of only after the agent is next
+// rebuilt. See coordinator.UpdateModels.
+func (a *sessionAgent) SetSummarizeOptions(autoSummarizeAt float64, disableAutoSummarize bool, compactModel *Model) {
+	a.autoSummarizeAt.Set(autoSummarizeAt)
+	a.disableAutoSummarize.Set(disableAutoSummarize)
+	a.compactModel.Set(compactModelHolder{model: compactModel})
 }
 
 func (a *sessionAgent) Model() Model {

@@ -38,6 +38,8 @@ func (m *mockSessionAgent) SetModels(large, small Model, largeFallbacks []Model,
 }
 func (m *mockSessionAgent) SetTools(tools []fantasy.AgentTool)  {}
 func (m *mockSessionAgent) SetSystemPrompt(systemPrompt string) {}
+func (m *mockSessionAgent) SetSummarizeOptions(autoSummarizeAt float64, disableAutoSummarize bool, compactModel *Model) {
+}
 func (m *mockSessionAgent) Cancel(sessionID string) {
 	m.cancelled = append(m.cancelled, sessionID)
 }

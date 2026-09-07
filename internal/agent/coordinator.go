@@ -1896,6 +1896,15 @@ func (c *coordinator) UpdateModels(ctx context.Context) error {
 	}
 	c.currentAgent.SetModels(large, small, largeFallbacks, smallFallbacks)
 
+	// Re-read the auto-summarize threshold, its enabled flag, and the
+	// compact-role model from the live config too. Without this, a
+	// chat-driven config change (atlas_config) to any of these three only
+	// took effect after the agent was next rebuilt from scratch -- an
+	// already-running session kept summarizing against whatever value was
+	// in place when it started.
+	opts := c.cfg.Config().Options
+	c.currentAgent.SetSummarizeOptions(opts.AutoSummarizeAt, opts.DisableAutoSummarize, c.buildCompactModel(ctx))
+
 	agentCfg, ok := c.cfg.Config().Agents[config.AgentCoder]
 	if !ok {
 		return errCoderAgentNotConfigured

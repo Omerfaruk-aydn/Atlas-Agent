@@ -75,7 +75,7 @@ const (
 	// screen, and since every card in the row shares one height, the
 	// other two -- often nearly empty -- get stretched to match, pushing
 	// everything below the row down with them.
-	cardMaxItems = 10
+	cardMaxItems = 3
 	// cardFrameDivisor halves the wordmark's 60fps tick so the card
 	// borders sweep at 30fps.
 	cardFrameDivisor = 2

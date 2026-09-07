@@ -1892,6 +1892,19 @@ func (c *coordinator) Model() Model {
 	return c.currentAgent.Model()
 }
 
+// UpdateModels reloads every config-derived setting that a chat-driven
+// config change (the atlas_config tool) or a /model switch might have
+// touched, and pushes it into the already-running agent so an in-progress
+// session picks it up on its next turn instead of only after a restart.
+// This includes: the large/small models and their fallback chains, the
+// tool list, the system prompt, the auto-summarize threshold/flag and
+// compact-role model, the per-turn/per-session limits (provider retries,
+// session cost cap, step cap), the fallback cooldown, the three hook
+// events, the advisor and AutoEscalate settings, and the goal judge model.
+// Anything added to config.Options that a session should react to live
+// belongs here too -- see the SetSummarizeOptions/SetLimits/SetHooks/
+// SetAdvisorOptions/SetEscalateOptions/SetFallbackCooldown calls below for
+// the pattern to follow.
 func (c *coordinator) UpdateModels(ctx context.Context) error {
 	// build the models again so we make sure we get the latest config
 	large, small, largeFallbacks, smallFallbacks, err := c.buildAgentModels(ctx, false)

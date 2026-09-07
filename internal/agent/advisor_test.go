@@ -197,3 +197,21 @@ func TestSetEscalateOptionsUpdatesLiveState(t *testing.T) {
 	require.Same(t, newModel, a.escalateModel.Get().v)
 	require.Equal(t, "CONCERN", a.escalateThreshold.Get())
 }
+
+// The advisor must stop being considered "on" once a live config change
+// disables it, mirroring TestSetHooksCanTurnAnActiveHookOff for the
+// advisor's own enabled/disabled signal (a nil advisorModel).
+func TestSetAdvisorOptionsCanTurnAnActiveAdvisorOff(t *testing.T) {
+	a := &sessionAgent{
+		advisorModel:           csync.NewValue(ptrBox[Model]{v: &Model{}}),
+		advisorTools:           csync.NewSlice[fantasy.AgentTool](),
+		advisorEveryNTurns:     csync.NewValue(1),
+		advisorNotifyThreshold: csync.NewValue(""),
+		advisorTurnCounts:      csync.NewMap[string, int](),
+	}
+	require.NotNil(t, a.advisorModel.Get().v, "advisor must start on for this test to prove anything")
+
+	a.SetAdvisorOptions(nil, nil, 0, "")
+
+	require.Nil(t, a.advisorModel.Get().v, "the advisor must be off immediately, not just on the next agent rebuild")
+}

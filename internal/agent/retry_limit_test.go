@@ -2,6 +2,7 @@ package agent
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
 	"github.com/stretchr/testify/require"
@@ -67,4 +68,14 @@ func TestSetLimitsUpdatesRetryBudgetLive(t *testing.T) {
 	require.Equal(t, 5, *got)
 	require.InDelta(t, 12.5, a.maxSessionCost.Get(), 0)
 	require.Equal(t, 40, a.maxStepsPerTurn.Get())
+}
+
+// A live config change to fallback_cooldown must reach an already-running
+// session -- see SetFallbackCooldown.
+func TestSetFallbackCooldownUpdatesLive(t *testing.T) {
+	a := &sessionAgent{fallbackCooldown: csync.NewValue(time.Duration(0))}
+	require.Equal(t, time.Duration(0), a.fallbackCooldown.Get())
+
+	a.SetFallbackCooldown(30 * time.Second)
+	require.Equal(t, 30*time.Second, a.fallbackCooldown.Get())
 }

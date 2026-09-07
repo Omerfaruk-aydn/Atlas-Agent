@@ -79,3 +79,22 @@ func TestSetFallbackCooldownUpdatesLive(t *testing.T) {
 	a.SetFallbackCooldown(30 * time.Second)
 	require.Equal(t, 30*time.Second, a.fallbackCooldown.Get())
 }
+
+// A live config change must be able to lower or clear a limit that was
+// previously set, not just raise one from zero -- mirrors the "off" tests
+// added for hooks and the advisor.
+func TestSetLimitsCanLowerAnAlreadyConfiguredLimit(t *testing.T) {
+	n := 5
+	a := &sessionAgent{
+		maxProviderRetries: csync.NewValue(ptrBox[int]{v: &n}),
+		maxSessionCost:     csync.NewValue(100.0),
+		maxStepsPerTurn:    csync.NewValue(50),
+	}
+	require.Equal(t, 5, *a.maxRetries())
+
+	a.SetLimits(nil, 1.0, 3)
+
+	require.Nil(t, a.maxRetries(), "clearing max_provider_retries live must actually clear it")
+	require.InDelta(t, 1.0, a.maxSessionCost.Get(), 0)
+	require.Equal(t, 3, a.maxStepsPerTurn.Get())
+}

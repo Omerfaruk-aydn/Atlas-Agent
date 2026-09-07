@@ -734,3 +734,16 @@ func TestPermissionService_SetAllowedToolsUpdatesLive(t *testing.T) {
 	service.SetAllowedTools([]string{"view", "grep"})
 	require.ElementsMatch(t, []string{"view", "grep"}, ps.allowedTools.Copy())
 }
+
+// Narrowing the allowlist live must actually revoke access to a tool that
+// was previously allowed, not just add new ones.
+func TestPermissionService_SetAllowedToolsCanRevokeAPreviouslyAllowedTool(t *testing.T) {
+	service := NewPermissionService("/tmp", false, []string{"bash", "view"})
+	ps := service.(*permissionService)
+	require.Contains(t, ps.allowedTools.Copy(), "bash")
+
+	service.SetAllowedTools([]string{"view"})
+
+	require.NotContains(t, ps.allowedTools.Copy(), "bash", "bash must actually lose its allowlist entry, not linger from the old config")
+	require.Contains(t, ps.allowedTools.Copy(), "view")
+}

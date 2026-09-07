@@ -52,6 +52,20 @@ If you installed Atlas Agent via 'go install' instead, run:
 
 		fmt.Printf("Updating v%s → v%s ...\n", info.Current, info.Latest)
 
+		if runtime.GOOS == "windows" {
+			// npm's postinstall step writes the new binary to this exact
+			// process's own executable path. Windows refuses to overwrite
+			// an open file -- only rename is allowed -- so that write
+			// fails with EPERM every time, no matter how many *other*
+			// Atlas Agent windows are closed first: this process is
+			// always the one holding the lock on its own image. Rename it
+			// aside first so the path is free for npm to write the new
+			// binary to.
+			if err := freeRunningBinaryForReplacement(); err != nil {
+				fmt.Printf("Warning: could not free the running binary for replacement (%v); update may fail with EPERM.\n", err)
+			}
+		}
+
 		// The wrapper package is what npm distributes; the binary it
 		// installs is replaced by the postinstall script, so the user
 		// gets a self-contained upgrade without any extra steps.
@@ -88,6 +102,27 @@ If you installed Atlas Agent via 'go install' instead, run:
 		fmt.Printf("\nUpdated to v%s. Restart any running Atlas Agent sessions.\n", info.Latest)
 		return nil
 	},
+}
+
+// freeRunningBinaryForReplacement renames this process's own executable
+// aside (to a ".old" sibling) so its original path is free for npm's
+// install step to write the new binary to. Windows allows renaming a file
+// that's still mapped into a running process -- the running image keeps
+// working from the renamed file -- but never allows overwriting it in
+// place. The ".old" file is left behind; it can't be deleted until this
+// process exits, and the next update's rename simply replaces it.
+func freeRunningBinaryForReplacement() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	exe, err = filepath.EvalSymlinks(exe)
+	if err != nil {
+		return err
+	}
+	old := exe + ".old"
+	os.Remove(old) // best-effort cleanup of a previous update's leftover
+	return os.Rename(exe, old)
 }
 
 // installedBinaryVersion shells out to `npm root -g` to find where the npm

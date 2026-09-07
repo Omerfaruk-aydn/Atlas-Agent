@@ -125,6 +125,11 @@ type Service interface {
 	// SetSkipRequests previously set (and vice versa) since both act on
 	// the same underlying state.
 	SetMode(mode PermissionMode)
+	// SetAllowedTools replaces the tool/command allowlist in place, so a
+	// chat-driven change to permissions.allowed_tools takes effect
+	// immediately on an already-running session instead of requiring a
+	// restart.
+	SetAllowedTools(allowedTools []string)
 	SubscribeNotifications(ctx context.Context) <-chan pubsub.Event[PermissionNotification]
 }
 
@@ -147,7 +152,12 @@ type permissionService struct {
 	autoApproveSessionsMu sync.RWMutex
 	mode                  PermissionMode
 	modeMu                sync.RWMutex
-	allowedTools          []string
+	// allowedTools is *csync.Slice, not a plain slice (which the old code
+	// read here without any lock, a data race with a concurrent config
+	// reload), so that a chat-driven change to permissions.allowed_tools
+	// is both safe to read concurrently and takes effect immediately --
+	// see SetAllowedTools.
+	allowedTools *csync.Slice[string]
 
 	// used to make sure we only process one request at a time
 	requestMu       sync.Mutex
@@ -266,7 +276,8 @@ func (s *permissionService) Request(ctx context.Context, opts CreatePermissionRe
 
 	// Check if the tool/action combination is in the allowlist
 	commandKey := opts.ToolName + ":" + opts.Action
-	if slices.Contains(s.allowedTools, commandKey) || slices.Contains(s.allowedTools, opts.ToolName) {
+	allowedTools := s.allowedTools.Copy()
+	if slices.Contains(allowedTools, commandKey) || slices.Contains(allowedTools, opts.ToolName) {
 		return true, nil
 	}
 
@@ -399,6 +410,13 @@ func (s *permissionService) SetMode(mode PermissionMode) {
 	s.modeMu.Unlock()
 }
 
+// SetAllowedTools replaces the tool/command allowlist in place, so a
+// chat-driven change to permissions.allowed_tools takes effect on the very
+// next Request call instead of requiring a restart.
+func (s *permissionService) SetAllowedTools(allowedTools []string) {
+	s.allowedTools.SetSlice(allowedTools)
+}
+
 func NewPermissionService(workingDir string, skip bool, allowedTools []string) Service {
 	mode := ModeManual
 	if skip {
@@ -410,7 +428,7 @@ func NewPermissionService(workingDir string, skip bool, allowedTools []string) S
 		workingDir:          workingDir,
 		sessionPermissions:  csync.NewMap[PermissionKey, bool](),
 		autoApproveSessions: make(map[string]bool),
-		allowedTools:        allowedTools,
+		allowedTools:        csync.NewSliceFrom(allowedTools),
 		pendingRequests:     csync.NewMap[string, chan bool](),
 		mode:                mode,
 	}

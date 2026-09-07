@@ -45,6 +45,8 @@ func (m *mockBashPermissionService) Mode() permission.PermissionMode {
 
 func (m *mockBashPermissionService) SetMode(mode permission.PermissionMode) {}
 
+func (m *mockBashPermissionService) SetAllowedTools(allowedTools []string) {}
+
 func (m *mockBashPermissionService) SubscribeNotifications(ctx context.Context) <-chan pubsub.Event[permission.PermissionNotification] {
 	return make(<-chan pubsub.Event[permission.PermissionNotification])
 }
@@ -107,6 +109,8 @@ func (m *recordingPermissionService) Mode() permission.PermissionMode {
 }
 
 func (m *recordingPermissionService) SetMode(mode permission.PermissionMode) {}
+
+func (m *recordingPermissionService) SetAllowedTools(allowedTools []string) {}
 
 func (m *recordingPermissionService) Grant(req permission.PermissionRequest) bool { return true }
 

@@ -66,7 +66,7 @@ func TestPermissionService_AllowedCommands(t *testing.T) {
 			// Test the allowlist logic directly
 			commandKey := tt.toolName + ":" + tt.action
 			allowed := false
-			for _, cmd := range ps.allowedTools {
+			for _, cmd := range ps.allowedTools.Copy() {
 				if cmd == commandKey || cmd == tt.toolName {
 					allowed = true
 					break

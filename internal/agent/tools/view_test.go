@@ -238,6 +238,8 @@ func (m *mockViewPermissionService) Mode() permission.PermissionMode {
 
 func (m *mockViewPermissionService) SetMode(mode permission.PermissionMode) {}
 
+func (m *mockViewPermissionService) SetAllowedTools(allowedTools []string) {}
+
 func (m *mockViewPermissionService) SubscribeNotifications(ctx context.Context) <-chan pubsub.Event[permission.PermissionNotification] {
 	return make(<-chan pubsub.Event[permission.PermissionNotification])
 }

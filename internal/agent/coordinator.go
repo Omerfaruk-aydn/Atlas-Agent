@@ -1905,6 +1905,13 @@ func (c *coordinator) UpdateModels(ctx context.Context) error {
 	opts := c.cfg.Config().Options
 	c.currentAgent.SetSummarizeOptions(opts.AutoSummarizeAt, opts.DisableAutoSummarize, c.buildCompactModel(ctx))
 
+	// Same reasoning as the summarize options above: these three budget
+	// caps were only ever read once, at initial agent construction, so a
+	// live edit to max_provider_retries / max_session_cost /
+	// max_steps_per_turn never reached a session that was already
+	// running.
+	c.currentAgent.SetLimits(opts.MaxProviderRetries, opts.MaxSessionCost, opts.MaxStepsPerTurn)
+
 	agentCfg, ok := c.cfg.Config().Agents[config.AgentCoder]
 	if !ok {
 		return errCoderAgentNotConfigured

@@ -32,4 +32,10 @@ func TestSetSummarizeOptionsUpdatesLiveState(t *testing.T) {
 	// Switching the compact role back off (nil) must also take effect live.
 	agent.SetSummarizeOptions(0.5, true, nil)
 	require.Nil(t, sa.compactModel.Get().v)
+
+	// Re-enabling auto-summarize after disabling it must also take effect
+	// live, the same "off, then on again" round trip the other
+	// live-reload settings in this package are tested for.
+	agent.SetSummarizeOptions(0.5, false, nil)
+	require.False(t, sa.disableAutoSummarize.Get(), "disable_auto_summarize must be able to flip back off live")
 }

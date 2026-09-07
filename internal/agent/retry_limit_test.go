@@ -98,3 +98,15 @@ func TestSetLimitsCanLowerAnAlreadyConfiguredLimit(t *testing.T) {
 	require.InDelta(t, 1.0, a.maxSessionCost.Get(), 0)
 	require.Equal(t, 3, a.maxStepsPerTurn.Get())
 }
+
+// Mirrors TestSetLimitsCanLowerAnAlreadyConfiguredLimit for
+// fallback_cooldown: a live change must be able to shorten (or clear) a
+// cooldown that was already set, not just extend one from zero.
+func TestSetFallbackCooldownCanShortenAnAlreadyConfiguredCooldown(t *testing.T) {
+	a := &sessionAgent{fallbackCooldown: csync.NewValue(5 * time.Minute)}
+	require.Equal(t, 5*time.Minute, a.fallbackCooldown.Get())
+
+	a.SetFallbackCooldown(0)
+
+	require.Equal(t, time.Duration(0), a.fallbackCooldown.Get())
+}

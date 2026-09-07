@@ -1560,14 +1560,33 @@ func (a *sessionAgent) Summarize(ctx context.Context, sessionID string, opts fan
 		return ErrSessionBusy
 	}
 
-	// Copy mutable fields under lock to avoid races with SetModels. A
-	// configured "compact" model role overrides the session's own large
+	// A configured "compact" model role overrides the session's own large
 	// model for this call only; see coordinator.buildCompactModel.
-	summaryModel := a.largeModel.Get()
 	usingCompactModel := a.compactModel != nil
+	summaryModel := a.largeModel.Get()
 	if usingCompactModel {
 		summaryModel = *a.compactModel
 	}
+
+	err := a.summarizeAttempt(ctx, sessionID, summaryModel, usingCompactModel, opts, onAuthRefresh)
+	if err == nil || !usingCompactModel || errors.Is(err, context.Canceled) || errors.Is(err, ErrSessionBusy) {
+		return err
+	}
+
+	// The compact role's model built fine at agent construction time but
+	// failed at call time -- revoked credentials, an empty balance, a
+	// provider outage. That is a reason to fall back to the session's own
+	// model for this one summary, not a reason to leave the turn stuck
+	// above its context budget with no summary at all: a session stuck
+	// here never recovers on its own, since every later turn hits the
+	// same over-budget check and retries the same broken compact model.
+	slog.Warn("Compact model role failed to summarize; retrying with the session's own model", "error", err)
+	return a.summarizeAttempt(ctx, sessionID, a.largeModel.Get(), false, opts, onAuthRefresh)
+}
+
+// summarizeAttempt runs one summarize call against a specific model. See
+// Summarize for the retry policy around compact-role failures.
+func (a *sessionAgent) summarizeAttempt(ctx context.Context, sessionID string, summaryModel Model, usingCompactModel bool, opts fantasy.ProviderOptions, onAuthRefresh func(context.Context, *fantasy.ProviderError) error) error {
 	systemPromptPrefix := a.systemPromptPrefix.Get()
 
 	currentSession, err := a.sessions.Get(ctx, sessionID)

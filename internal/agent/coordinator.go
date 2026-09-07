@@ -1915,6 +1915,7 @@ func (c *coordinator) UpdateModels(ctx context.Context) error {
 	// max_steps_per_turn never reached a session that was already
 	// running.
 	c.currentAgent.SetLimits(opts.MaxProviderRetries, opts.MaxSessionCost, opts.MaxStepsPerTurn)
+	c.currentAgent.SetFallbackCooldown(time.Duration(opts.FallbackCooldown) * time.Second)
 
 	// Hooks are similarly stale otherwise: adding, removing, or editing a
 	// hooks.* entry in atlas.json never reached a session that was

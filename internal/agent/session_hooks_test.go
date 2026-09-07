@@ -135,3 +135,22 @@ func TestSetHooksCanTurnAnActiveHookOff(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "deploy", got, "the prompt must go through unchanged once the hook is removed live")
 }
+
+// Mirrors TestSetHooksCanTurnAnActiveHookOff for the other two hook
+// events: a live config change must be able to remove an active
+// SessionStart or PreCompact hook, not just add one.
+func TestSetHooksCanTurnSessionStartAndPreCompactOff(t *testing.T) {
+	a := &sessionAgent{
+		promptHooks:       noHooks(),
+		sessionStartHooks: newSessionEventRunner(t, hooks.EventSessionStart, `echo '{"context":"branch: main"}'`),
+		preCompactHooks:   newSessionEventRunner(t, hooks.EventPreCompact, `echo '{"decision":"deny","reason":"keep it"}'`),
+		startedSessions:   csync.NewMap[string, bool](),
+	}
+	require.Contains(t, a.fireSessionStart(t.Context(), "s", "hi"), "branch: main")
+	require.True(t, a.preCompactDenied(t.Context(), "s"))
+
+	a.SetHooks(nil, nil, nil)
+
+	require.Equal(t, "hi", a.fireSessionStart(t.Context(), "s2", "hi"), "a fresh session must not see the removed SessionStart hook")
+	require.False(t, a.preCompactDenied(t.Context(), "s"), "PreCompact must no longer be denied once the hook is removed live")
+}

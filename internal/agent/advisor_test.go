@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/stretchr/testify/require"
 )
 
@@ -159,4 +160,40 @@ func TestRunEscalationPassNilModelPanicsAreCaught(t *testing.T) {
 	note, ok := a.runEscalationPass(t.Context(), "s1", "prompt", "response", "BLOCKER", "advisor note")
 	require.False(t, ok)
 	require.Empty(t, note)
+}
+
+// A live config change to the advisor's model, tools, cadence, or notify
+// threshold must reach an already-running session -- see SetAdvisorOptions.
+func TestSetAdvisorOptionsUpdatesLiveState(t *testing.T) {
+	a := &sessionAgent{
+		advisorModel:           csync.NewValue(ptrBox[Model]{}),
+		advisorTools:           csync.NewSlice[fantasy.AgentTool](),
+		advisorEveryNTurns:     csync.NewValue(0),
+		advisorNotifyThreshold: csync.NewValue(""),
+		advisorTurnCounts:      csync.NewMap[string, int](),
+	}
+	require.Nil(t, a.advisorModel.Get().v)
+
+	newModel := &Model{}
+	a.SetAdvisorOptions(newModel, nil, 5, "BLOCKER")
+
+	require.Same(t, newModel, a.advisorModel.Get().v)
+	require.Equal(t, 5, a.advisorEveryNTurns.Get())
+	require.Equal(t, "BLOCKER", a.advisorNotifyThreshold.Get())
+}
+
+// Same for the escalation pass -- see SetEscalateOptions.
+func TestSetEscalateOptionsUpdatesLiveState(t *testing.T) {
+	a := &sessionAgent{
+		escalateModel:     csync.NewValue(ptrBox[Model]{}),
+		escalateTools:     csync.NewSlice[fantasy.AgentTool](),
+		escalateThreshold: csync.NewValue(""),
+	}
+	require.Nil(t, a.escalateModel.Get().v)
+
+	newModel := &Model{}
+	a.SetEscalateOptions(newModel, nil, "CONCERN")
+
+	require.Same(t, newModel, a.escalateModel.Get().v)
+	require.Equal(t, "CONCERN", a.escalateThreshold.Get())
 }

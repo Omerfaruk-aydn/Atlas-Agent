@@ -43,6 +43,10 @@ func (m *mockSessionAgent) SetLimits(maxProviderRetries *int, maxSessionCost flo
 }
 func (m *mockSessionAgent) SetHooks(promptHooks, sessionStartHooks, preCompactHooks *hooks.Runner) {
 }
+func (m *mockSessionAgent) SetAdvisorOptions(advisorModel *Model, advisorTools []fantasy.AgentTool, everyNTurns int, notifyThreshold string) {
+}
+func (m *mockSessionAgent) SetEscalateOptions(escalateModel *Model, escalateTools []fantasy.AgentTool, threshold string) {
+}
 func (m *mockSessionAgent) SetSummarizeOptions(autoSummarizeAt float64, disableAutoSummarize bool, compactModel *Model) {
 }
 func (m *mockSessionAgent) Cancel(sessionID string) {

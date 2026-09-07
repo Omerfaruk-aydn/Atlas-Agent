@@ -141,6 +141,8 @@ type SessionAgent interface {
 	SetSummarizeOptions(autoSummarizeAt float64, disableAutoSummarize bool, compactModel *Model)
 	SetLimits(maxProviderRetries *int, maxSessionCost float64, maxStepsPerTurn int)
 	SetHooks(promptHooks, sessionStartHooks, preCompactHooks *hooks.Runner)
+	SetAdvisorOptions(advisorModel *Model, advisorTools []fantasy.AgentTool, everyNTurns int, notifyThreshold string)
+	SetEscalateOptions(escalateModel *Model, escalateTools []fantasy.AgentTool, threshold string)
 	Cancel(sessionID string)
 	CancelAll()
 	IsSessionBusy(sessionID string) bool
@@ -2407,6 +2409,29 @@ func (a *sessionAgent) SetHooks(promptHooks, sessionStartHooks, preCompactHooks 
 	a.promptHooks.Set(ptrBox[hooks.Runner]{v: promptHooks})
 	a.sessionStartHooks.Set(ptrBox[hooks.Runner]{v: sessionStartHooks})
 	a.preCompactHooks.Set(ptrBox[hooks.Runner]{v: preCompactHooks})
+}
+
+// SetAdvisorOptions updates the advisor's model, tools, review cadence, and
+// notify threshold in place so a chat-driven config change -- enabling or
+// disabling the advisor, or changing any of these -- reaches an
+// already-running session's next turn. A nil model means the advisor is
+// disabled or has nothing to run on. See coordinator.UpdateModels.
+func (a *sessionAgent) SetAdvisorOptions(advisorModel *Model, advisorTools []fantasy.AgentTool, everyNTurns int, notifyThreshold string) {
+	a.advisorModel.Set(ptrBox[Model]{v: advisorModel})
+	a.advisorTools.SetSlice(advisorTools)
+	a.advisorEveryNTurns.Set(everyNTurns)
+	a.advisorNotifyThreshold.Set(notifyThreshold)
+}
+
+// SetEscalateOptions updates the escalation pass's model, tools, and
+// severity threshold in place so a chat-driven config change to
+// Advisor.AutoEscalate or its model role reaches an already-running
+// session's next turn. A nil model means AutoEscalate is off or has
+// nothing to run on. See coordinator.UpdateModels.
+func (a *sessionAgent) SetEscalateOptions(escalateModel *Model, escalateTools []fantasy.AgentTool, threshold string) {
+	a.escalateModel.Set(ptrBox[Model]{v: escalateModel})
+	a.escalateTools.SetSlice(escalateTools)
+	a.escalateThreshold.Set(threshold)
 }
 
 func (a *sessionAgent) Model() Model {

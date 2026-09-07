@@ -113,3 +113,25 @@ func TestSetHooksUpdatesAllThreeEventsLive(t *testing.T) {
 
 	require.True(t, a.preCompactDenied(t.Context(), "s"))
 }
+
+// A hook that was active must stop firing once a live config change turns
+// it off -- not just start firing once one is added. Exercises the same
+// SetHooks path in the other direction from TestSetHooksUpdatesAllThreeEventsLive.
+func TestSetHooksCanTurnAnActiveHookOff(t *testing.T) {
+	a := &sessionAgent{
+		promptHooks:       newPromptRunner(t, `echo '{"decision":"deny","reason":"no deploys on friday"}'`),
+		sessionStartHooks: noHooks(),
+		preCompactHooks:   noHooks(),
+		startedSessions:   csync.NewMap[string, bool](),
+	}
+
+	// Confirm the hook is actually active before turning it off.
+	_, err := a.applyPromptHooks(t.Context(), SessionAgentCall{SessionID: "s", Prompt: "deploy"})
+	require.ErrorIs(t, err, ErrPromptBlockedByHook)
+
+	a.SetHooks(nil, nil, nil)
+
+	got, err := a.applyPromptHooks(t.Context(), SessionAgentCall{SessionID: "s", Prompt: "deploy"})
+	require.NoError(t, err)
+	require.Equal(t, "deploy", got, "the prompt must go through unchanged once the hook is removed live")
+}

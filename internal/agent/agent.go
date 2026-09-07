@@ -139,6 +139,7 @@ type SessionAgent interface {
 	SetTools(tools []fantasy.AgentTool)
 	SetSystemPrompt(systemPrompt string)
 	SetSummarizeOptions(autoSummarizeAt float64, disableAutoSummarize bool, compactModel *Model)
+	SetLimits(maxProviderRetries *int, maxSessionCost float64, maxStepsPerTurn int)
 	Cancel(sessionID string)
 	CancelAll()
 	IsSessionBusy(sessionID string) bool
@@ -2367,6 +2368,16 @@ func (a *sessionAgent) SetSummarizeOptions(autoSummarizeAt float64, disableAutoS
 	a.autoSummarizeAt.Set(autoSummarizeAt)
 	a.disableAutoSummarize.Set(disableAutoSummarize)
 	a.compactModel.Set(ptrBox[Model]{v: compactModel})
+}
+
+// SetLimits updates the per-turn provider retry count, per-session spend
+// cap, and per-turn step cap in place so a chat-driven config change to any
+// of them reaches an already-running session's next turn. See
+// coordinator.UpdateModels.
+func (a *sessionAgent) SetLimits(maxProviderRetries *int, maxSessionCost float64, maxStepsPerTurn int) {
+	a.maxProviderRetries.Set(ptrBox[int]{v: maxProviderRetries})
+	a.maxSessionCost.Set(maxSessionCost)
+	a.maxStepsPerTurn.Set(maxStepsPerTurn)
 }
 
 func (a *sessionAgent) Model() Model {

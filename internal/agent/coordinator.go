@@ -1921,6 +1921,27 @@ func (c *coordinator) UpdateModels(ctx context.Context) error {
 		c.hookRunner(hooks.EventPreCompact),
 	)
 
+	// Advisor and escalation settings had the same gap: toggling the
+	// advisor, changing its model role, review cadence, or notify
+	// threshold, and the equivalent knobs for AutoEscalate, were all
+	// baked in at initial agent construction and never revisited.
+	advisorModel, advisorTools := c.buildAdvisor(ctx)
+	var advisorEveryNTurns int
+	var advisorNotifyThreshold string
+	var escalateModel *Model
+	var escalateTools []fantasy.AgentTool
+	var escalateThreshold string
+	if adv := opts.Advisor; adv != nil {
+		advisorEveryNTurns = adv.TurnInterval()
+		advisorNotifyThreshold = adv.NotifyThreshold()
+		if advisorModel != nil {
+			escalateModel, escalateTools = c.buildEscalator(ctx, advisorModel, advisorTools)
+			escalateThreshold = adv.EscalateSeverityThreshold()
+		}
+	}
+	c.currentAgent.SetAdvisorOptions(advisorModel, advisorTools, advisorEveryNTurns, advisorNotifyThreshold)
+	c.currentAgent.SetEscalateOptions(escalateModel, escalateTools, escalateThreshold)
+
 	agentCfg, ok := c.cfg.Config().Agents[config.AgentCoder]
 	if !ok {
 		return errCoderAgentNotConfigured

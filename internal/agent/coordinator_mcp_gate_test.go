@@ -10,6 +10,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/prompt"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools/mcp"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
 	"github.com/stretchr/testify/require"
 )
 
@@ -45,6 +46,7 @@ func newGateTestCoordinator(t *testing.T, interactive bool) *coordinator {
 		filetracker: *env.filetracker,
 		agents:      make(map[string]SessionAgent),
 		interactive: interactive,
+		goalJudge:   csync.NewValue(ptrBox[Model]{}),
 	}
 
 	p, err := coderPrompt(prompt.WithWorkingDir(env.workingDir))

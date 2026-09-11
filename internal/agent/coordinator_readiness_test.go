@@ -10,6 +10,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/prompt"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools/mcp"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
 	"github.com/stretchr/testify/require"
 )
 
@@ -61,6 +62,7 @@ func TestBuildAgentReadinessSurvivesCallerCancellation(t *testing.T) {
 		permissions: env.permissions,
 		history:     env.history,
 		filetracker: *env.filetracker,
+		goalJudge:   csync.NewValue(ptrBox[Model]{}),
 	}
 
 	// Arm the MCP init gate. We never complete init; the readiness goroutines

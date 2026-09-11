@@ -34,8 +34,15 @@ type Subagent struct {
 	// Model is a role reference ("research", "@research", "large") that
 	// Config.ResolveRole resolves to a concrete provider/model pair. Empty
 	// means the subagent runs on whatever model the parent session uses.
-	Model        string `yaml:"model,omitempty" json:"model,omitempty"`
-	Instructions string `yaml:"-" json:"instructions"`
+	Model string `yaml:"model,omitempty" json:"model,omitempty"`
+	// Tools restricts which tools this subagent gets, by name (see
+	// `atlas tools list`). Empty means the default: the same tools as the
+	// primary coding agent, minus the ones that spawn further subagents
+	// (agent, delegate, orchestrate, debate) -- see
+	// agent.subagentAllowedTools, since nothing here caps delegation
+	// depth and an unbounded default would let a subagent invoke itself.
+	Tools        []string `yaml:"tools,omitempty" json:"tools,omitempty"`
+	Instructions string   `yaml:"-" json:"instructions"`
 	// Path is the file this subagent was parsed from. Empty for a
 	// Subagent built in memory rather than discovered from disk.
 	Path string `yaml:"-" json:"path"`

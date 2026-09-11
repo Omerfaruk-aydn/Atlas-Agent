@@ -204,6 +204,67 @@ func TestBuildSubagentSessionAgentUnknownRoleErrors(t *testing.T) {
 	require.Contains(t, err.Error(), `role "frontend"`, "the suggested set_role call must strip the @ -- set_role's own role param does not take one")
 }
 
+// A configured subagent must actually be able to do the work it was
+// defined for -- bash, edit, write, and so on -- not be limited to the
+// generic task agent's read-only search tools. See subagentAllowedTools.
+func TestBuildSubagentSessionAgentGetsFullToolsByDefault(t *testing.T) {
+	coord := hermeticSubagentCoordinator(t)
+	taskCfg := coord.cfg.Config().Agents[config.AgentTask]
+
+	agent, err := coord.buildSubagentSessionAgent(t.Context(), taskCfg, &subagents.Subagent{Name: "generic", Description: "d"})
+	require.NoError(t, err)
+
+	sa, ok := agent.(*sessionAgent)
+	require.True(t, ok)
+	names := toolNames(sa.tools.Copy())
+	require.Contains(t, names, "bash", "a subagent must be able to run commands, not just search")
+	require.Contains(t, names, "edit", "a subagent must be able to edit files, not just search")
+	require.Contains(t, names, "write")
+}
+
+// Without a depth limit on delegation, giving every subagent the tools
+// that spawn further subagents by default would let one invoke itself
+// (directly, or through another subagent that calls back). See
+// subagentSpawningTools.
+func TestBuildSubagentSessionAgentExcludesSpawningToolsByDefault(t *testing.T) {
+	coord := hermeticSubagentCoordinator(t)
+	taskCfg := coord.cfg.Config().Agents[config.AgentTask]
+
+	agent, err := coord.buildSubagentSessionAgent(t.Context(), taskCfg, &subagents.Subagent{Name: "generic", Description: "d"})
+	require.NoError(t, err)
+
+	sa, ok := agent.(*sessionAgent)
+	require.True(t, ok)
+	names := toolNames(sa.tools.Copy())
+	for _, spawner := range []string{"agent", "delegate", "orchestrate", "debate"} {
+		require.NotContains(t, names, spawner, "a subagent must not spawn further subagents unless it explicitly asks for that tool")
+	}
+}
+
+// A subagent that lists its own "tools" gets exactly that list -- including
+// a spawning tool, if it explicitly asked for one.
+func TestBuildSubagentSessionAgentHonorsExplicitToolsList(t *testing.T) {
+	coord := hermeticSubagentCoordinator(t)
+	taskCfg := coord.cfg.Config().Agents[config.AgentTask]
+
+	agent, err := coord.buildSubagentSessionAgent(t.Context(), taskCfg,
+		&subagents.Subagent{Name: "reviewer", Description: "d", Tools: []string{"view", "grep", "agent"}})
+	require.NoError(t, err)
+
+	sa, ok := agent.(*sessionAgent)
+	require.True(t, ok)
+	names := toolNames(sa.tools.Copy())
+	require.ElementsMatch(t, []string{"view", "grep", "agent"}, names)
+}
+
+func toolNames(tools []fantasy.AgentTool) []string {
+	names := make([]string, len(tools))
+	for i, tool := range tools {
+		names[i] = tool.Info().Name
+	}
+	return names
+}
+
 func TestResolveSubagentCachesTheBuiltAgent(t *testing.T) {
 	coord := hermeticSubagentCoordinator(t)
 	taskCfg := coord.cfg.Config().Agents[config.AgentTask]

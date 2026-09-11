@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -16,6 +17,38 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/hooks"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/subagents"
 )
+
+// subagentSpawningTools are excluded from a configured subagent's default
+// tool set. Without this, giving a named subagent the same tools as the
+// primary coding agent would also give it "agent"/"delegate"/"orchestrate"/
+// "debate" -- and nothing in this package caps delegation depth, so a
+// subagent could spawn itself (or another subagent that spawns it back)
+// without limit. A subagent that explicitly lists these in its own "tools"
+// front matter still gets them: this default only applies when Tools is
+// empty.
+var subagentSpawningTools = []string{AgentToolName, DelegateToolName, OrchestrateToolName, DebateToolName}
+
+// subagentAllowedTools decides which tools a named subagent gets built
+// with. A subagent that lists its own "tools" gets exactly that list --
+// the author knows what they need, including recursive delegation if they
+// asked for it. Otherwise it defaults to the same tools as the primary
+// coding agent (coderTools), minus subagentSpawningTools, so a subagent
+// can actually edit files, run commands, and use every other tool the main
+// session has -- not just the small read-only search set the generic,
+// unnamed task agent uses.
+func subagentAllowedTools(sub *subagents.Subagent, coderTools []string) []string {
+	if len(sub.Tools) > 0 {
+		return sub.Tools
+	}
+	out := make([]string, 0, len(coderTools))
+	for _, t := range coderTools {
+		if slices.Contains(subagentSpawningTools, t) {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out
+}
 
 //go:embed templates/agent_tool.md
 var agentToolDescription string
@@ -251,7 +284,16 @@ func (c *coordinator) buildSubagentSessionAgent(ctx context.Context, taskCfg con
 		systemPrompt += "\n\n<subagent name=\"" + sub.Name + "\">\n" + sub.Instructions + "\n</subagent>"
 	}
 
-	agentTools, err := c.buildTools(ctx, taskCfg, true)
+	subCfg := taskCfg
+	if coderCfg, ok := c.cfg.Config().Agents[config.AgentCoder]; ok {
+		subCfg.AllowedTools = subagentAllowedTools(sub, coderCfg.AllowedTools)
+	}
+	// Let a configured subagent reach MCP tools too, same as the primary
+	// coding agent (taskCfg has AllowedMCP: map[string][]string{}, which
+	// means none) -- a subagent is meant to actually do the work it was
+	// defined for, not just search.
+	subCfg.AllowedMCP = nil
+	agentTools, err := c.buildTools(ctx, subCfg, true)
 	if err != nil {
 		return nil, err
 	}

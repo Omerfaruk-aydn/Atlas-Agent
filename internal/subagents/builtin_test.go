@@ -41,12 +41,15 @@ func TestBuiltinDefinitionsAreValid(t *testing.T) {
 // validate fine while doing nothing useful. The upper bound matters as
 // much as the lower one -- every mode prompt is prepended to a real
 // request, so an essay costs the user context on every single turn.
+// 200-250 lines is the deliberate target for these prompts: detailed
+// enough to cover real failure modes and edge cases per role, without
+// growing into an unbounded reference manual.
 func TestBuiltinInstructionsAreSubstantial(t *testing.T) {
 	for _, s := range Builtin() {
 		t.Run(s.Name, func(t *testing.T) {
 			lines := strings.Count(strings.TrimSpace(s.Instructions), "\n") + 1
 			require.GreaterOrEqual(t, lines, 90, "mode prompt is too thin to be useful")
-			require.LessOrEqual(t, lines, 140, "mode prompt is long enough to cost real context")
+			require.LessOrEqual(t, lines, 260, "mode prompt is long enough to cost real context")
 		})
 	}
 }

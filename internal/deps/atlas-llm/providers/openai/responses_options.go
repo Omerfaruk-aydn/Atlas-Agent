@@ -283,14 +283,16 @@ func ParseResponsesOptions(data map[string]any) (*ResponsesProviderOptions, erro
 func IsResponsesModel(modelID string) bool {
 	return slices.Contains(responsesModelIDs, modelID) ||
 		strings.Contains(strings.ToLower(modelID), "gpt-4") ||
-		strings.Contains(strings.ToLower(modelID), "gpt-5")
+		strings.Contains(strings.ToLower(modelID), "gpt-5") ||
+		strings.Contains(strings.ToLower(modelID), "gpt-6")
 }
 
 // IsResponsesReasoningModel checks if a model ID is a Responses API reasoning model for OpenAI.
 func IsResponsesReasoningModel(modelID string) bool {
 	return slices.Contains(responsesReasoningModelIDs, modelID) ||
 		strings.Contains(strings.ToLower(modelID), "gpt-4") ||
-		strings.Contains(strings.ToLower(modelID), "gpt-5")
+		strings.Contains(strings.ToLower(modelID), "gpt-5") ||
+		strings.Contains(strings.ToLower(modelID), "gpt-6")
 }
 
 // SearchContextSize controls how much context window space the

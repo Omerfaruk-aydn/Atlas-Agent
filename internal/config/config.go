@@ -1186,6 +1186,14 @@ type ToolComputer struct {
 // IsEnabled reports whether the computer-use tool should be registered.
 func (t ToolComputer) IsEnabled() bool {
 	return ptrValOr(t.Enabled, false)
+}
+
+// GetActionTimeout returns the user-defined per-action timeout, or its
+// default.
+func (t ToolComputer) GetActionTimeout() time.Duration {
+	return ptrValOr(t.ActionTimeout, 30*time.Second)
+}
+
 // GetActionTimeout returns the user-defined per-action timeout, or its
 // default.
 func (t ToolDebugger) GetActionTimeout() time.Duration {

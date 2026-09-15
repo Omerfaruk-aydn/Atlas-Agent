@@ -55,6 +55,7 @@ var toolCategories = map[string]ToolCategory{
 	"lsp_rename":         CategoryExecute,
 	"lsp_replace_symbol": CategoryExecute,
 	"lsp_restart":        CategoryExecute,
+	"computer":           CategoryExecute,
 	"fetch":              CategoryNetwork,
 	"web_fetch":          CategoryNetwork,
 	"web_search":         CategoryNetwork,

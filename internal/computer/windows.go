@@ -339,3 +339,37 @@ func (b *windowsBackend) DoubleClick(x, y int) error {
 	return sendInputs(clicks)
 }
 
+func (b *windowsBackend) Drag(x, y, endX, endY int) error {
+	if err := ValidatePoint(x, y); err != nil {
+		return err
+	}
+	if err := ValidatePoint(endX, endY); err != nil {
+		return err
+	}
+	if err := b.MoveTo(x, y); err != nil {
+		return err
+	}
+	time.Sleep(10 * time.Millisecond)
+	// Press the button first: the down stroke must already be down
+	// while the pointer walks, or the target sees a click at the
+	// release point instead of a drag.
+	if err := sendInputs([]winInput{
+		{Type: inputMouse, Payload: mousePayload(0, 0, 0, mouseLeftDown)},
+	}); err != nil {
+		return err
+	}
+	// Walk the pointer in small steps so hover states track the drag.
+	const steps = 20
+	for i := 1; i <= steps; i++ {
+		ix := x + (endX-x)*i/steps
+		iy := y + (endY-y)*i/steps
+		if err := b.MoveTo(ix, iy); err != nil {
+			return err
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return sendInputs([]winInput{
+		{Type: inputMouse, Payload: mousePayload(0, 0, 0, mouseLeftUp)},
+	})
+}
+

@@ -324,6 +324,31 @@ func scrollDelta(direction string, amount int) (dx, dy int, err error) {
 	}
 }
 
+// freshSnapshotCap bounds the snapshot attached to state-changing
+// action responses. Enough to act on without another round trip, too
+// small to flood context on element-dense pages.
+const freshSnapshotCap = 100
+
+// withFreshState appends the page's current interactive elements to a
+// successful state-changing action's response. Refs die on navigation
+// and many clicks mutate the DOM, so handing the model a fresh list
+// with the result removes the whole class of stale-ref retries.
+func withFreshState(sess browser.Session, metadata BrowserResponseMetadata, msg string) (fantasy.ToolResponse, error) {
+	var b strings.Builder
+	b.WriteString(msg)
+	elements, err := sess.Snapshot(false)
+	if err != nil {
+		fmt.Fprintf(&b, "\n\nFresh snapshot unavailable: %s.", err.Error())
+	} else {
+		if len(elements) > freshSnapshotCap {
+			elements = elements[:freshSnapshotCap]
+		}
+		b.WriteString("\n\nInteractive elements now:\n")
+		b.WriteString(formatSnapshot(elements, sess.PendingDialogs()))
+	}
+	return fantasy.WithResponseMetadata(fantasy.NewTextResponse(b.String()), metadata), nil
+}
+
 func runBrowserAction(sess browser.Session, action string, params BrowserParams) (fantasy.ToolResponse, error) {
 	metadata := BrowserResponseMetadata{Action: action}
 

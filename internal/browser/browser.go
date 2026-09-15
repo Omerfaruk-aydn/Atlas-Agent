@@ -432,7 +432,53 @@ func (s *chromedpSession) Navigate(url string) error {
 }
 
 func (s *chromedpSession) Click(selector string) error {
-	return s.run(chromedp.Click(selector, chromedp.ByQuery))
+	// Presence check first: fail fast with a stale-ref hint instead of
+	// burning the whole action timeout waiting on an element that is
+	// not there. The selector is JSON-quoted into the script so quotes
+	// in attribute values cannot break out of the string.
+	quoted, err := json.Marshal(selector)
+	if err != nil {
+		return fmt.Errorf("invalid selector %q: %w", selector, err)
+	}
+	var count int
+	if err := s.run(chromedp.Evaluate(
+		fmt.Sprintf("document.querySelectorAll(%s).length", quoted), &count,
+	)); err != nil {
+		return err
+	}
+	if count == 0 {
+		return fmt.Errorf(
+			"no element matches %q -- if this came from a snapshot ref, the page changed since: take a new snapshot",
+			selector,
+		)
+	}
+	return s.run(
+		chromedp.Evaluate(
+			fmt.Sprintf(
+				"document.querySelector(%s).scrollIntoView({block: 'center', inline: 'center'})",
+				quoted,
+			), nil,
+		),
+		chromedp.Click(selector, chromedp.ByQuery),
+	)
+}
+
+// ClickAt presses the left button at viewport coordinates in CSS
+// pixels -- the coordinate fallback when a selector click fails but a
+// fresh snapshot still knows where the element is.
+func (s *chromedpSession) ClickAt(x, y float64) error {
+	return s.run(chromedp.ActionFunc(func(ctx context.Context) error {
+		press := input.DispatchMouseEvent(input.MousePressed, x, y).
+			WithButton(input.Left).
+			WithClickCount(1)
+		if err := press.Do(ctx); err != nil {
+			return err
+		}
+		release := input.DispatchMouseEvent(input.MouseReleased, x, y).
+			WithButton(input.Left).
+			WithClickCount(1)
+		return release.Do(ctx)
+	}))
 }
 
 func (s *chromedpSession) Type(selector, text string) error {

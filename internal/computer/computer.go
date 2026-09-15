@@ -114,3 +114,51 @@ func ValidatePointIn(size Size, x, y int) error {
 	return nil
 }
 
+// ParseButton maps a user string to a MouseButton. Empty means left,
+// matching what a person asking for "a click" expects.
+func ParseButton(s string) (MouseButton, error) {
+	switch s {
+	case "", "left":
+		return ButtonLeft, nil
+	case "right":
+		return ButtonRight, nil
+	case "middle":
+		return ButtonMiddle, nil
+	default:
+		return "", fmt.Errorf("unknown mouse button %q: want left, right, or middle", s)
+	}
+}
+
+// KeyNames maps every named key KeyPress and Hotkey accept to its
+// Win32 virtual-key code. Single characters need no entry: backends
+// type those as Unicode. The codes are plain numbers so validation
+// and tests stay platform-independent; the Windows backend passes
+// them to SendInput as-is.
+var KeyNames = map[string]uint16{
+	"enter": 0x0D, "tab": 0x09, "esc": 0x1B, "escape": 0x1B,
+	"space": 0x20, "backspace": 0x08, "delete": 0x2E,
+	"insert": 0x2D, "home": 0x24, "end": 0x23,
+	"pageup": 0x21, "pagedown": 0x22,
+	"up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27,
+	"f1": 0x70, "f2": 0x71, "f3": 0x72, "f4": 0x73,
+	"f5": 0x74, "f6": 0x75, "f7": 0x76, "f8": 0x77,
+	"f9": 0x78, "f10": 0x79, "f11": 0x7A, "f12": 0x7B,
+	"shift": 0x10, "ctrl": 0x11, "alt": 0x12, "win": 0x5B,
+	"capslock": 0x14, "numlock": 0x90, "scrolllock": 0x91,
+	"printscreen": 0x2C, "pause": 0x13,
+}
+
+// ResolveKey validates a KeyPress/Hotkey key name. It returns the
+// virtual-key code and true for named keys, 0 and true for a single
+// character (typed as Unicode by the backend), and false for anything
+// else.
+func ResolveKey(key string) (uint16, bool) {
+	if vk, ok := KeyNames[key]; ok {
+		return vk, true
+	}
+	if len([]rune(key)) == 1 {
+		return 0, true
+	}
+	return 0, false
+}
+

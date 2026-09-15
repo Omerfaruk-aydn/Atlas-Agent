@@ -29,6 +29,10 @@ func (f *fakeSession) Eval(string) (string, error)     { return "", nil }
 func (f *fakeSession) Text(string) (string, error)     { return "", nil }
 func (f *fakeSession) HTML(string) (string, error)     { return "", nil }
 func (f *fakeSession) Screenshot(bool) ([]byte, error) { return []byte("png"), nil }
+func (f *fakeSession) AnnotatedScreenshot(bool) ([]byte, error) {
+	return []byte("png"), nil
+}
+func (f *fakeSession) ClickAt(float64, float64) error { return nil }
 
 func (f *fakeSession) URL() (string, error)                                  { return "https://example.com", nil }
 func (f *fakeSession) Back() error                                           { return nil }

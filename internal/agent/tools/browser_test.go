@@ -16,21 +16,27 @@ import (
 // the tool's dispatch/validation/permission logic without launching a real
 // browser.
 type fakeBrowserSession struct {
-	navigated   string
-	wentBack    bool
-	wentForward bool
-	clicked     string
-	typedSel    string
-	typedText   string
-	pressedKey  string
-	scrolledDX  int
-	scrolledDY  int
-	evalScript  string
-	evalErr     error
-	textSel     string
-	htmlSel     string
-	screenshot  []byte
-	url         string
+	navigated    string
+	wentBack     bool
+	wentForward  bool
+	clicked      string
+	clickErr     error
+	clickAtX     float64
+	clickAtY     float64
+	clickAtErr   error
+	typedSel     string
+	typedText    string
+	pressedKey   string
+	scrolledDX   int
+	scrolledDY   int
+	evalScript   string
+	evalErr      error
+	textSel      string
+	htmlSel      string
+	screenshot   []byte
+	annotated    []byte
+	annotatedErr error
+	url          string
 
 	snapshot     []browser.SnapshotElement
 	snapshotErr  error

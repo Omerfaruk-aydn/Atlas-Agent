@@ -293,3 +293,61 @@ func (s *computerToolState) runComputerAction(_ context.Context, action string, 
 			return fantasy.NewTextErrorResponse("right_click failed: " + err.Error()), nil
 		}
 		return fantasy.NewTextResponse(fmt.Sprintf("Right-clicked at (%d, %d).", params.X, params.Y)), nil
+	case "drag":
+		if err := s.validatePoint(params.X, params.Y); err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		if err := s.validatePoint(params.EndX, params.EndY); err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		if err := backend.Drag(params.X, params.Y, params.EndX, params.EndY); err != nil {
+			return fantasy.NewTextErrorResponse("drag failed: " + err.Error()), nil
+		}
+		return fantasy.NewTextResponse(fmt.Sprintf("Dragged from (%d, %d) to (%d, %d).", params.X, params.Y, params.EndX, params.EndY)), nil
+	case "scroll":
+		dy := params.ScrollY
+		if params.ScrollX == 0 && dy == 0 {
+			dy = 3
+		}
+		if err := backend.Scroll(params.ScrollX, dy); err != nil {
+			return fantasy.NewTextErrorResponse("scroll failed: " + err.Error()), nil
+		}
+		return fantasy.NewTextResponse("Scrolled."), nil
+	case "type":
+		if params.Text == "" {
+			return fantasy.NewTextErrorResponse("type needs text."), nil
+		}
+		if err := backend.TypeText(params.Text); err != nil {
+			return fantasy.NewTextErrorResponse("type failed: " + err.Error()), nil
+		}
+		return fantasy.NewTextResponse("Typed the text."), nil
+	case "key":
+		key := strings.ToLower(strings.TrimSpace(params.Key))
+		if _, ok := computer.ResolveKey(key); !ok {
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("unknown key %q.", params.Key)), nil
+		}
+		if err := backend.KeyPress(key); err != nil {
+			return fantasy.NewTextErrorResponse("key failed: " + err.Error()), nil
+		}
+		return fantasy.NewTextResponse(fmt.Sprintf("Pressed %s.", key)), nil
+	case "hotkey":
+		mods, err := computer.ParseModifiers(splitModifiers(params.Modifiers))
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		if len(mods) == 0 {
+			return fantasy.NewTextErrorResponse("hotkey needs modifiers, e.g. ctrl or ctrl+shift."), nil
+		}
+		key := strings.ToLower(strings.TrimSpace(params.Key))
+		if _, ok := computer.ResolveKey(key); !ok {
+			return fantasy.NewTextErrorResponse(fmt.Sprintf("unknown key %q.", params.Key)), nil
+		}
+		if err := backend.Hotkey(mods, key); err != nil {
+			return fantasy.NewTextErrorResponse("hotkey failed: " + err.Error()), nil
+		}
+		return fantasy.NewTextResponse(fmt.Sprintf("Pressed %s+%s.", params.Modifiers, key)), nil
+	default:
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("unknown action %q.", action)), nil
+	}
+}
+

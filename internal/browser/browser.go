@@ -554,6 +554,31 @@ func (s *chromedpSession) URL() (string, error) {
 	return url, nil
 }
 
+func (s *chromedpSession) AnnotatedScreenshot(fullPage bool) ([]byte, error) {
+	var dpr float64
+	if err := s.run(chromedp.Evaluate(`window.devicePixelRatio || 1`, &dpr)); err != nil {
+		return nil, fmt.Errorf("reading device pixel ratio: %w", err)
+	}
+	data, err := s.Screenshot(fullPage)
+	if err != nil {
+		return nil, err
+	}
+	elements, err := s.Snapshot(fullPage)
+	if err != nil {
+		return nil, fmt.Errorf("snapshotting for annotation: %w", err)
+	}
+	if !fullPage {
+		visible := elements[:0]
+		for _, el := range elements {
+			if el.Visible {
+				visible = append(visible, el)
+			}
+		}
+		elements = visible
+	}
+	return AnnotateScreenshotPNG(data, elements, dpr, MaxScreenshotWidth)
+}
+
 func (s *chromedpSession) Snapshot(full bool) ([]SnapshotElement, error) {
 	var raw string
 	if err := s.run(chromedp.Evaluate(fmt.Sprintf(snapshotScript, full), &raw)); err != nil {

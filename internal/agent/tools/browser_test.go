@@ -107,6 +107,16 @@ func (f *fakeBrowserSession) Screenshot(bool) ([]byte, error) {
 	return []byte("png-bytes"), nil
 }
 
+func (f *fakeBrowserSession) AnnotatedScreenshot(bool) ([]byte, error) {
+	if f.annotatedErr != nil {
+		return nil, f.annotatedErr
+	}
+	if f.annotated != nil {
+		return f.annotated, nil
+	}
+	return []byte("png-bytes"), nil
+}
+
 func (f *fakeBrowserSession) Snapshot(full bool) ([]browser.SnapshotElement, error) {
 	f.snapshotFull = full
 	return f.snapshot, f.snapshotErr

@@ -384,9 +384,9 @@ func runBrowserAction(sess browser.Session, action string, params BrowserParams)
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		if err := sess.Click(selector); err != nil {
-			return fantasy.NewTextErrorResponse("click failed: " + err.Error()), nil
+			return clickFallback(sess, metadata, params, selector, err)
 		}
-		return fantasy.WithResponseMetadata(fantasy.NewTextResponse("Clicked "+describeTarget(params)), metadata), nil
+		return withFreshState(sess, metadata, "Clicked "+describeTarget(params))
 
 	case "type":
 		selector, err := resolveTargetSelector(action, params)
@@ -396,7 +396,7 @@ func runBrowserAction(sess browser.Session, action string, params BrowserParams)
 		if err := sess.Type(selector, params.Text); err != nil {
 			return fantasy.NewTextErrorResponse("type failed: " + err.Error()), nil
 		}
-		return fantasy.WithResponseMetadata(fantasy.NewTextResponse("Typed into "+describeTarget(params)), metadata), nil
+		return withFreshState(sess, metadata, "Typed into "+describeTarget(params))
 
 	case "key":
 		if params.Key == "" {
@@ -405,7 +405,7 @@ func runBrowserAction(sess browser.Session, action string, params BrowserParams)
 		if err := sess.PressKey(strings.ToLower(params.Key)); err != nil {
 			return fantasy.NewTextErrorResponse("key press failed: " + err.Error()), nil
 		}
-		return fantasy.WithResponseMetadata(fantasy.NewTextResponse("Sent key "+params.Key), metadata), nil
+		return withFreshState(sess, metadata, "Sent key "+params.Key)
 
 	case "scroll":
 		dx, dy, err := scrollDelta(params.Direction, params.Amount)

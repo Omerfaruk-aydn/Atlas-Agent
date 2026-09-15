@@ -89,3 +89,60 @@ func AnnotateScreenshotPNG(data []byte, elements []SnapshotElement, dpr float64,
 	return buf.Bytes(), nil
 }
 
+// scaleRect maps a CSS-pixel box into image pixels, rounding outward
+// so thin elements keep at least one pixel of box.
+func scaleRect(r ElementRect, s float64) image.Rectangle {
+	if r.Width <= 0 || r.Height <= 0 || s <= 0 {
+		return image.Rectangle{}
+	}
+	x0 := int(r.X * s)
+	y0 := int(r.Y * s)
+	x1 := int(r.X*s + r.Width*s + 0.999)
+	y1 := int(r.Y*s + r.Height*s + 0.999)
+	if x1 <= x0 {
+		x1 = x0 + 1
+	}
+	if y1 <= y0 {
+		y1 = y0 + 1
+	}
+	return image.Rect(x0, y0, x1, y1)
+}
+
+// drawBox outlines r and stamps its ref label above the top-left
+// corner (or inside the box when there is no room above).
+func drawBox(dst *image.NRGBA, r image.Rectangle, ref string) {
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		for x := r.Min.X; x < r.Max.X; x++ {
+			edge := x-r.Min.X < boxBorder || r.Max.X-1-x < boxBorder ||
+				y-r.Min.Y < boxBorder || r.Max.Y-1-y < boxBorder
+			if edge {
+				dst.Set(x, y, boxColor)
+			}
+		}
+	}
+	drawLabel(dst, r, ref)
+}
+
+// drawLabel stamps ref on a black plate so basicfont's small white
+// glyphs stay readable over any page background.
+func drawLabel(dst *image.NRGBA, r image.Rectangle, ref string) {
+	const charW, charH = 7, 13
+	pw := len(ref)*charW + 4
+	ph := charH + 4
+	px, py := r.Min.X, r.Min.Y-ph
+	if py < dst.Bounds().Min.Y {
+		py = r.Min.Y
+	}
+	plate := image.Rect(px, py, px+pw, py+ph).Intersect(dst.Bounds())
+	if plate.Empty() {
+		return
+	}
+	draw.Draw(dst, plate, &image.Uniform{plateColor}, image.Point{}, draw.Src)
+	d := &font.Drawer{
+		Dst:  dst,
+		Src:  image.NewUniform(labelColor),
+		Face: basicfont.Face7x13,
+		Dot:  fixed.P(plate.Min.X+2, plate.Min.Y+ph-3),
+	}
+	d.DrawString(ref)
+}

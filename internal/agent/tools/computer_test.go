@@ -246,3 +246,31 @@ func TestComputerToolScreenshotFallsBackOnBadCapture(t *testing.T) {
 	require.Contains(t, resp.Content, "downscaling failed")
 }
 
+func TestComputerToolRejectsOutOfBoundsCoords(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{size: computer.Size{Width: 1920, Height: 1080}}
+	resp := runComputerTool(t, backend, &mockPermissionService{}, true,
+		ComputerParams{Action: "click", X: 2500, Y: 100})
+	require.True(t, resp.IsError)
+	require.Contains(t, resp.Content, "outside the 1920 x 1080 screen")
+	require.Empty(t, backend.clicked)
+}
+
+func TestComputerToolValidatesWithoutKnownSize(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{sizeErr: errComputerTestBoom}
+	resp := runComputerTool(t, backend, &mockPermissionService{}, true,
+		ComputerParams{Action: "click", X: 100, Y: 200})
+	require.False(t, resp.IsError, "a size-read failure falls back to non-negative validation")
+	require.Len(t, backend.clicked, 1)
+}
+
+func TestComputerToolActionTimesOut(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{screenshotDelay: 500 * time.Millisecond}
+	resp := runComputerToolWithTimeout(t, backend, &mockPermissionService{}, true,
+		ComputerParams{Action: "screenshot"}, 20*time.Millisecond)
+	require.True(t, resp.IsError)
+	require.Contains(t, resp.Content, "timed out")
+}
+

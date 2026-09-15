@@ -239,3 +239,57 @@ func computerActionDescription(action string, params ComputerParams) string {
 		return "Control the computer"
 	}
 }
+
+func (s *computerToolState) runComputerAction(_ context.Context, action string, params ComputerParams) (fantasy.ToolResponse, error) {
+	backend := s.backend
+	switch action {
+	case "screenshot":
+		return s.screenshot(params)
+	case "screen_size":
+		size, err := backend.ScreenSize()
+		if err != nil {
+			return fantasy.NewTextErrorResponse("screen_size failed: " + err.Error()), nil
+		}
+		return fantasy.NewTextResponse(fmt.Sprintf("Screen is %d x %d pixels.", size.Width, size.Height)), nil
+	case "cursor_position":
+		pos, err := backend.CursorPosition()
+		if err != nil {
+			return fantasy.NewTextErrorResponse("cursor_position failed: " + err.Error()), nil
+		}
+		return fantasy.NewTextResponse(fmt.Sprintf("Pointer is at (%d, %d).", pos.X, pos.Y)), nil
+	case "move":
+		if err := s.validatePoint(params.X, params.Y); err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		if err := backend.MoveTo(params.X, params.Y); err != nil {
+			return fantasy.NewTextErrorResponse("move failed: " + err.Error()), nil
+		}
+		return fantasy.NewTextResponse(fmt.Sprintf("Pointer moved to (%d, %d).", params.X, params.Y)), nil
+	case "click":
+		if err := s.validatePoint(params.X, params.Y); err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		button, err := computer.ParseButton(params.Button)
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		if err := backend.Click(params.X, params.Y, button); err != nil {
+			return fantasy.NewTextErrorResponse("click failed: " + err.Error()), nil
+		}
+		return fantasy.NewTextResponse(fmt.Sprintf("Clicked %s at (%d, %d).", button, params.X, params.Y)), nil
+	case "double_click":
+		if err := s.validatePoint(params.X, params.Y); err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		if err := backend.DoubleClick(params.X, params.Y); err != nil {
+			return fantasy.NewTextErrorResponse("double_click failed: " + err.Error()), nil
+		}
+		return fantasy.NewTextResponse(fmt.Sprintf("Double-clicked at (%d, %d).", params.X, params.Y)), nil
+	case "right_click":
+		if err := s.validatePoint(params.X, params.Y); err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		if err := backend.Click(params.X, params.Y, computer.ButtonRight); err != nil {
+			return fantasy.NewTextErrorResponse("right_click failed: " + err.Error()), nil
+		}
+		return fantasy.NewTextResponse(fmt.Sprintf("Right-clicked at (%d, %d).", params.X, params.Y)), nil

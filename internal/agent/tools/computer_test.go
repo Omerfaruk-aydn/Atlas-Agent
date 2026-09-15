@@ -274,3 +274,23 @@ func TestComputerToolActionTimesOut(t *testing.T) {
 	require.Contains(t, resp.Content, "timed out")
 }
 
+func TestComputerToolClickDrivesBackend(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{}
+	resp := runComputerTool(t, backend, &mockPermissionService{}, true,
+		ComputerParams{Action: "click", X: 100, Y: 200, Button: "right"})
+	require.False(t, resp.IsError)
+	require.Len(t, backend.clicked, 1)
+	require.Equal(t, computer.Point{X: 100, Y: 200}, backend.clicked[0])
+	require.Equal(t, computer.ButtonRight, backend.clickBtn[0])
+}
+
+func TestComputerToolClickRejectsNegativeCoords(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{}
+	resp := runComputerTool(t, backend, &mockPermissionService{}, true,
+		ComputerParams{Action: "click", X: -1, Y: 5})
+	require.True(t, resp.IsError)
+	require.Empty(t, backend.clicked)
+}
+

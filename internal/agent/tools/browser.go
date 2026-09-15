@@ -263,6 +263,43 @@ func resolveTargetSelector(action string, params BrowserParams) (string, error) 
 	return "", fmt.Errorf("ref or selector is required for the %s action", action)
 }
 
+// clickFallback handles a failed selector click. With a ref, it takes
+// a fresh snapshot and presses the element's center instead of failing
+// outright: the DOM often moved between the model's snapshot and its
+// click. Without a ref there is no box to aim at, so the backend error
+// (which already hints at staleness) stands as-is.
+func clickFallback(sess browser.Session, metadata BrowserResponseMetadata, params BrowserParams, selector string, clickErr error) (fantasy.ToolResponse, error) {
+	if params.Ref == "" {
+		return fantasy.NewTextErrorResponse("click failed: " + clickErr.Error()), nil
+	}
+	elements, err := sess.Snapshot(false)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(fmt.Sprintf(
+			"click failed: %s (fresh snapshot also failed: %s).", clickErr.Error(), err.Error(),
+		)), nil
+	}
+	for _, el := range elements {
+		if el.Ref != params.Ref {
+			continue
+		}
+		x, y := el.Rect.Center()
+		if err := sess.ClickAt(x, y); err != nil {
+			return fantasy.NewTextErrorResponse(fmt.Sprintf(
+				"click failed: %s (coordinate fallback at (%.0f, %.0f) also failed: %s).",
+				clickErr.Error(), x, y, err.Error(),
+			)), nil
+		}
+		return withFreshState(sess, metadata, fmt.Sprintf(
+			"Clicked %s at (%.0f, %.0f) via coordinate fallback.",
+			describeTarget(params), x, y,
+		))
+	}
+	return fantasy.NewTextErrorResponse(fmt.Sprintf(
+		"click failed: %s (ref %q is gone from the page; take a new snapshot and re-aim).",
+		clickErr.Error(), params.Ref,
+	)), nil
+}
+
 // defaultScrollAmount is how far, in pixels, a scroll action moves when
 // the caller does not specify amount.
 const defaultScrollAmount = 800

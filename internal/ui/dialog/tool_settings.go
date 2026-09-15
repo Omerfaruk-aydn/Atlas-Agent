@@ -32,6 +32,7 @@ var toolSettingsCatalog = []struct {
 	{"teams", "Teams (sub-agent broadcast)", "team_send/team_read so sub-agents spawned by the same task can message each other."},
 	{"debugger", "Debugger", "Drive a Go program under Delve (dlv dap): breakpoints, step, inspect variables. Requires dlv installed."},
 	{"browser", "Browser", "Drive a real Chrome/Chromium tab: navigate, click, type, screenshot, read console. Requires Chrome/Chromium installed."},
+	{"computer", "Computer-Use", "See the screen and drive the real desktop: screenshot, click, drag, scroll, type, hotkeys. Windows only. Actions run without per-action approval while on."},
 	{"browser_visible", "Browser: Visible Window", "Show the Chrome window the Browser tool drives instead of running it headless (no window, no audio)."},
 }
 
@@ -47,6 +48,7 @@ func toolEnabled(cfg *config.Config) map[string]bool {
 		"teams":      cfg.Tools.Teams.IsEnabled(),
 		"debugger":   cfg.Tools.Debugger.IsEnabled(),
 		"browser":    cfg.Tools.Browser.IsEnabled(),
+		"computer":   cfg.Tools.Computer.IsEnabled(),
 		// Not a tool group switch like the others: this row reflects the
 		// browser tool's Headless setting, inverted so "enabled" reads as
 		// "the Chrome window is visible" -- the sense the user toggles.

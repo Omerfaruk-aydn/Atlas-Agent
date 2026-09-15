@@ -199,3 +199,15 @@ func TestComputerToolReportsMissingBackend(t *testing.T) {
 	require.Contains(t, resp.Content, "not available")
 }
 
+func TestComputerToolScreenshotReturnsPNG(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{}
+	backend.screenshot = testPNG(t, 800, 600)
+	resp := runComputerTool(t, backend, &mockPermissionService{}, true, ComputerParams{Action: "screenshot"})
+	require.False(t, resp.IsError)
+	require.Equal(t, "image", resp.Type)
+	require.Equal(t, "image/png", resp.MediaType)
+	require.Equal(t, backend.screenshot, resp.Data)
+	require.Empty(t, resp.Content, "a capture within limits passes through with no scale note")
+}
+

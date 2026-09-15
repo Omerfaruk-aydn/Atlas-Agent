@@ -270,3 +270,72 @@ func setCursorPos(x, y int) error {
 	return nil
 }
 
+// sendInputs submits inputs through SendInput and reports how many
+// the system accepted. A partial acceptance is retried once: elevated
+// (UAC) windows and secure-desktop transitions can drop the first
+// batch while the input queue settles.
+func sendInputs(inputs []winInput) error {
+	if len(inputs) == 0 {
+		return nil
+	}
+	if err := sendInputsOnce(inputs); err != nil {
+		slog.Warn("SendInput partially accepted, retrying", "error", err)
+		time.Sleep(50 * time.Millisecond)
+		return sendInputsOnce(inputs)
+	}
+	return nil
+}
+
+func sendInputsOnce(inputs []winInput) error {
+	size := unsafe.Sizeof(winInput{})
+	n, _, err := procSendInput.Call(
+		uintptr(len(inputs)),
+		uintptr(unsafe.Pointer(&inputs[0])),
+		size,
+	)
+	if int(n) != len(inputs) {
+		return fmt.Errorf("computer-use: SendInput accepted %d of %d inputs: %v", n, len(inputs), err)
+	}
+	return nil
+}
+
+func mouseClick(button MouseButton) []winInput {
+	var down, up uint32
+	switch button {
+	case ButtonRight:
+		down, up = mouseRightDown, mouseRightUp
+	case ButtonMiddle:
+		down, up = mouseMiddleDown, mouseMiddleUp
+	default:
+		down, up = mouseLeftDown, mouseLeftUp
+	}
+	return []winInput{
+		{Type: inputMouse, Payload: mousePayload(0, 0, 0, down)},
+		{Type: inputMouse, Payload: mousePayload(0, 0, 0, up)},
+	}
+}
+
+func (b *windowsBackend) Click(x, y int, button MouseButton) error {
+	if err := ValidatePoint(x, y); err != nil {
+		return err
+	}
+	if err := b.MoveTo(x, y); err != nil {
+		return err
+	}
+	// A beat between down and up: some targets ignore zero-width clicks.
+	time.Sleep(10 * time.Millisecond)
+	return sendInputs(mouseClick(button))
+}
+
+func (b *windowsBackend) DoubleClick(x, y int) error {
+	if err := ValidatePoint(x, y); err != nil {
+		return err
+	}
+	if err := b.MoveTo(x, y); err != nil {
+		return err
+	}
+	time.Sleep(10 * time.Millisecond)
+	clicks := append(mouseClick(ButtonLeft), mouseClick(ButtonLeft)...)
+	return sendInputs(clicks)
+}
+

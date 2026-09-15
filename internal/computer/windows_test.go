@@ -4,8 +4,14 @@ package computer
 
 import (
 	"encoding/binary"
+	"errors"
+	"strings"
 	"testing"
+	"unsafe"
 )
+
+// errTestCaptureBoom simulates a failed capture in tests.
+var errTestCaptureBoom = errors.New("boom")
 
 // These tests cover the pure INPUT-encoding helpers. They inject no
 // input and touch no device state, so they are safe to run on a real
@@ -57,6 +63,81 @@ func TestMouseClickEmitsDownThenUp(t *testing.T) {
 		}
 		if got := binary.LittleEndian.Uint32(inputs[1].Payload[12:16]); got != up {
 			t.Fatalf("mouseClick(%q)[1] flags = %#x, want %#x", button, got, up)
+		}
+	}
+}
+
+func TestCaptureWithRetrySucceedsFirstTry(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	err := captureWithRetry(func() error {
+		calls++
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("captureWithRetry = %v, want nil", err)
+	}
+	if calls != 1 {
+		t.Fatalf("capture ran %d times, want 1", calls)
+	}
+}
+
+func TestCaptureWithRetryRetriesOnce(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	err := captureWithRetry(func() error {
+		calls++
+		if calls == 1 {
+			return errTestCaptureBoom
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("captureWithRetry = %v, want nil after retry", err)
+	}
+	if calls != 2 {
+		t.Fatalf("capture ran %d times, want 2", calls)
+	}
+}
+
+func TestCaptureWithRetryGivesUpAfterTwo(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	err := captureWithRetry(func() error {
+		calls++
+		return errTestCaptureBoom
+	})
+	if err != errTestCaptureBoom {
+		t.Fatalf("captureWithRetry = %v, want the persistent error", err)
+	}
+	if calls != 2 {
+		t.Fatalf("capture ran %d times, want exactly 2", calls)
+	}
+}
+
+func TestDibHeaderIsTopDown32Bit(t *testing.T) {
+	t.Parallel()
+	hdr := dibHeader(1920, 1080)
+	if hdr.Width != 1920 {
+		t.Fatalf("Width = %d, want 1920", hdr.Width)
+	}
+	if hdr.Height != -1080 {
+		t.Fatalf("Height = %d, want -1080 for top-down", hdr.Height)
+	}
+	if hdr.BitCount != 32 || hdr.Planes != 1 || hdr.Compression != biRGB {
+		t.Fatalf("unexpected descriptor %+v", hdr)
+	}
+	if hdr.Size != uint32(unsafe.Sizeof(bitmapInfoHeader{})) {
+		t.Fatalf("Size = %d, want header size", hdr.Size)
+	}
+}
+
+func TestCaptureHintNamesCauses(t *testing.T) {
+	t.Parallel()
+	hint := captureHint()
+	for _, want := range []string{"locked", "RDP", "UAC"} {
+		if !strings.Contains(hint, want) {
+			t.Fatalf("hint %q does not mention %q", hint, want)
 		}
 	}
 }

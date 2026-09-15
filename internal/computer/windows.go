@@ -171,35 +171,19 @@ func (b *windowsBackend) Screenshot() ([]byte, error) {
 	}
 	defer procDeleteObject.Call(bitmap)
 
-	procSelectObject.Call(memDC, bitmap)
-	ok, _, _ := procBitBlt.Call(
-		memDC, 0, 0, uintptr(w), uintptr(h),
-		screenDC, uintptr(x), uintptr(y), srccopy,
-	)
-	if ok == 0 {
-		return nil, fmt.Errorf("computer-use: BitBlt failed")
-	}
-
-	// Top-down 32-bit DIB: rows arrive BGRA, first row first.
-	info := bitmapInfo{
-		Header: bitmapInfoHeader{
-			Size:        uint32(unsafe.Sizeof(bitmapInfoHeader{})),
-			Width:       int32(w),
-			Height:      -int32(h),
-			Planes:      1,
-			BitCount:    32,
-			Compression: biRGB,
-		},
+	old, _, _ := procSelectObject.Call(memDC, bitmap)
+	if old == 0 {
+		return nil, fmt.Errorf("computer-use: SelectObject failed")
 	}
 	pixels := make([]byte, 4*w*h)
-	ok, _, _ = procGetDIBits.Call(
-		memDC, bitmap, 0, uintptr(h),
-		uintptr(unsafe.Pointer(&pixels[0])),
-		uintptr(unsafe.Pointer(&info)),
-		0, // DIB_RGB_COLORS
-	)
-	if ok == 0 {
-		return nil, fmt.Errorf("computer-use: GetDIBits failed")
+	// One retry around the blit plus readback: a frame can tear if
+	// the display mode changes mid-capture (resolution switch, monitor
+	// plug/unplug, RDP reconnect), and the second attempt then lands
+	// on a stable desktop.
+	if err := captureWithRetry(func() error {
+		return blitAndRead(memDC, bitmap, screenDC, x, y, w, h, pixels)
+	}); err != nil {
+		return nil, err
 	}
 
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
@@ -216,6 +200,63 @@ func (b *windowsBackend) Screenshot() ([]byte, error) {
 		return nil, fmt.Errorf("computer-use: PNG encode failed: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// captureWithRetry runs capture, retrying once when the first attempt
+// fails. A single retry covers transient frames; a persistent failure
+// is returned as-is so a dead display fails fast instead of hanging
+// the agent loop.
+func captureWithRetry(capture func() error) error {
+	if err := capture(); err != nil {
+		return capture()
+	}
+	return nil
+}
+
+// blitAndRead copies the virtual screen into bitmap through memDC and
+// reads the pixels back into a top-down 32-bit buffer. A failure here
+// with a working cursor and screen size almost always means there is
+// no readable desktop right now, so the errors name the usual causes
+// instead of just the API name.
+func blitAndRead(memDC, bitmap, screenDC uintptr, x, y, w, h int, pixels []byte) error {
+	ok, _, _ := procBitBlt.Call(
+		memDC, 0, 0, uintptr(w), uintptr(h),
+		screenDC, uintptr(x), uintptr(y), srccopy,
+	)
+	if ok == 0 {
+		return fmt.Errorf("computer-use: BitBlt failed (%s)", captureHint())
+	}
+	info := bitmapInfo{Header: dibHeader(w, h)}
+	ok, _, _ = procGetDIBits.Call(
+		memDC, bitmap, 0, uintptr(h),
+		uintptr(unsafe.Pointer(&pixels[0])),
+		uintptr(unsafe.Pointer(&info)),
+		0, // DIB_RGB_COLORS
+	)
+	if ok == 0 {
+		return fmt.Errorf("computer-use: GetDIBits failed (%s)", captureHint())
+	}
+	return nil
+}
+
+// captureHint names the environmental causes of a capture failure.
+// Screen size and cursor reads need no video output, so they keep
+// working while the desktop itself is unreadable.
+func captureHint() string {
+	return "no readable desktop: the workstation may be locked, the RDP window minimized, or a secure desktop (UAC prompt) on screen; restore and retry"
+}
+
+// dibHeader builds the top-down 32-bit DIB descriptor GetDIBits
+// expects: rows arrive BGRA, first row first.
+func dibHeader(w, h int) bitmapInfoHeader {
+	return bitmapInfoHeader{
+		Size:        uint32(unsafe.Sizeof(bitmapInfoHeader{})),
+		Width:       int32(w),
+		Height:      -int32(h),
+		Planes:      1,
+		BitCount:    32,
+		Compression: biRGB,
+	}
 }
 
 func (b *windowsBackend) CursorPosition() (Point, error) {

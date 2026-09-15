@@ -351,3 +351,47 @@ func (s *computerToolState) runComputerAction(_ context.Context, action string, 
 	}
 }
 
+// screenshot captures the screen and, unless full_res is set, downscales
+// the capture for model consumption. Coordinates stay in screen pixels
+// either way; when the image is scaled, the response text states the
+// scale factor so the model can convert (screen = image * scale). If
+// downscaling itself fails, the original capture is returned instead:
+// a post-processing bug must never brick the core workflow.
+func (s *computerToolState) screenshot(params ComputerParams) (fantasy.ToolResponse, error) {
+	data, err := s.backend.Screenshot()
+	if err != nil {
+		return fantasy.NewTextErrorResponse("screenshot failed: " + err.Error()), nil
+	}
+	if params.FullRes {
+		return fantasy.NewImageResponse(data, "image/png"), nil
+	}
+	scaled, err := computer.DownscaleScreenshot(data, computer.MaxScreenshotWidth)
+	if err != nil {
+		resp := fantasy.NewImageResponse(data, "image/png")
+		resp.Content = "Full-resolution fallback: downscaling failed (" + err.Error() + ")."
+		return resp, nil
+	}
+	resp := fantasy.NewImageResponse(scaled.PNG, "image/png")
+	if scaled.Scale > 1 {
+		resp.Content = fmt.Sprintf(
+			"Screenshot is %d x %d but the screen is %d x %d. "+
+				"Multiply image coordinates by %.2f to get screen pixels.",
+			scaled.ImageSize.Width, scaled.ImageSize.Height,
+			scaled.ScreenSize.Width, scaled.ScreenSize.Height,
+			scaled.Scale,
+		)
+	}
+	return resp, nil
+}
+
+// splitModifiers splits a "ctrl+shift" style modifier string into names.
+func splitModifiers(modifiers string) []string {
+	var out []string
+	for _, m := range strings.Split(modifiers, "+") {
+		m = strings.ToLower(strings.TrimSpace(m))
+		if m != "" {
+			out = append(out, m)
+		}
+	}
+	return out
+}

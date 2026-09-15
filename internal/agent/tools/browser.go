@@ -497,11 +497,14 @@ func runBrowserAction(sess browser.Session, action string, params BrowserParams)
 		return fantasy.WithResponseMetadata(fantasy.NewTextResponse(string(resultJSON)), metadata), nil
 
 	case "screenshot":
-		data, err := sess.Screenshot(params.FullPage)
+		data, err := sess.AnnotatedScreenshot(params.FullPage)
 		if err != nil {
 			return fantasy.NewTextErrorResponse("screenshot failed: " + err.Error()), nil
 		}
-		return fantasy.NewImageResponse(data, "image/png"), nil
+		resp := fantasy.NewImageResponse(data, "image/png")
+		resp.Content = "Numbered boxes mark interactive elements, labeled with their snapshot ref. " +
+			"Act with click/type using the shown ref, not pixel coordinates."
+		return resp, nil
 
 	case "url":
 		result, err := sess.URL()

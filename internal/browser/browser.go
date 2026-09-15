@@ -178,7 +178,8 @@ const (
 )
 
 // snapshotScript walks the DOM for interactive elements and returns
-// them as a JSON array of {ref, role, tag, name, value}. A ref is a
+// them as a JSON array of {ref, role, tag, name, value, rect, visible}.
+// A ref is a
 // short, stable id (data-atlas-ref="e3") assigned the first time an
 // element is seen and reused on every later snapshot of the same page
 // -- it does not survive a navigation, since that replaces the DOM the
@@ -201,7 +202,8 @@ const snapshotScript = `(function(full) {
 		if (style.display === 'none' || style.visibility === 'hidden') continue;
 		var rect = el.getBoundingClientRect();
 		if (rect.width === 0 || rect.height === 0) continue;
-		if (!full && (rect.bottom < 0 || rect.top > vh || rect.right < 0 || rect.left > vw)) continue;
+		var visible = !(rect.bottom < 0 || rect.top > vh || rect.right < 0 || rect.left > vw);
+		if (!full && !visible) continue;
 
 		var ref = el.getAttribute('data-atlas-ref');
 		if (!ref) {
@@ -238,7 +240,9 @@ const snapshotScript = `(function(full) {
 		var value = '';
 		if (tag === 'input' || tag === 'textarea' || tag === 'select') value = el.value || '';
 
-		out.push({ref: ref, role: role, tag: tag, name: name, value: value});
+		out.push({ref: ref, role: role, tag: tag, name: name, value: value,
+			rect: {x: rect.left, y: rect.top, width: rect.width, height: rect.height},
+			visible: visible});
 	}
 	window.__atlasRefCounter = counter;
 	return JSON.stringify(out);

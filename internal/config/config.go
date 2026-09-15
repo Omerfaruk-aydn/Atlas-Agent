@@ -1173,6 +1173,19 @@ func (t ToolDebugger) IsEnabled() bool {
 	return ptrValOr(t.Enabled, false)
 }
 
+// ToolComputer configures the computer-use tool, which lets the agent
+// see the screen and drive the mouse and keyboard. Off by default:
+// every action moves the user's real desktop, so turning it on is an
+// explicit opt-in (the /computer-use command). Windows only for now;
+// other platforms report the tool as unavailable.
+type ToolComputer struct {
+	Enabled       *bool          `json:"enabled,omitempty" jsonschema:"description=Turn on the computer-use tool so the agent can screenshot the screen and click / drag / scroll / type / press keys on the real desktop. When on, actions run without per-action approval; when off, the tool refuses every call. Windows only.,default=false"`
+	ActionTimeout *time.Duration `json:"action_timeout,omitempty" jsonschema:"description=How long a single computer action (screenshot, click, type, etc.) may run before it is aborted.,default=30s,example=1m"`
+}
+
+// IsEnabled reports whether the computer-use tool should be registered.
+func (t ToolComputer) IsEnabled() bool {
+	return ptrValOr(t.Enabled, false)
 // GetActionTimeout returns the user-defined per-action timeout, or its
 // default.
 func (t ToolDebugger) GetActionTimeout() time.Duration {

@@ -2800,6 +2800,8 @@ func (m *UI) openAuthenticationDialog(provider catwalk.Provider, model config.Se
 		dlg, cmd = dialog.NewOAuthAntigravity(m.com, isOnboarding, provider, model, modelType)
 	case catwalk.InferenceProviderClaude:
 		dlg, cmd = dialog.NewOAuthClaude(m.com, isOnboarding, provider, model, modelType)
+	case catwalk.InferenceProviderMuse:
+		dlg, cmd = dialog.NewOAuthMuse(m.com, isOnboarding, provider, model, modelType)
 	default:
 		dlg, cmd = dialog.NewAPIKeyInput(m.com, isOnboarding, provider, model, modelType)
 	}

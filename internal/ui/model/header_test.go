@@ -21,7 +21,7 @@ type headerTestWorkspace struct {
 }
 
 func (w *headerTestWorkspace) Config() *config.Config { return w.cfg }
-func (w *headerTestWorkspace) WorkingDir() string      { return "/repo" }
+func (w *headerTestWorkspace) WorkingDir() string     { return "/repo" }
 
 // The only other trace of a goal used to be a status-bar toast that
 // clears itself after a few seconds -- indistinguishable, once gone,

@@ -162,3 +162,27 @@ func ResolveKey(key string) (uint16, bool) {
 	return 0, false
 }
 
+// Modifier key names Hotkey accepts.
+const (
+	ModCtrl  = "ctrl"
+	ModAlt   = "alt"
+	ModShift = "shift"
+	ModWin   = "win"
+)
+
+// ParseModifiers validates hotkey modifier names.
+func ParseModifiers(modifiers []string) ([]string, error) {
+	out := make([]string, 0, len(modifiers))
+	for _, m := range modifiers {
+		switch m {
+		case ModCtrl, ModAlt, ModShift, ModWin:
+			out = append(out, m)
+		default:
+			return nil, fmt.Errorf(
+				"unknown modifier %q: want ctrl, alt, shift, or win",
+				m,
+			)
+		}
+	}
+	return out, nil
+}

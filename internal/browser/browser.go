@@ -124,6 +124,27 @@ type SnapshotElement struct {
 	Tag   string `json:"tag"`
 	Name  string `json:"name,omitempty"`
 	Value string `json:"value,omitempty"`
+	// Rect is the element's bounding box in CSS pixels, for grounding
+	// the element on a screenshot (multiply by the device pixel ratio
+	// for image pixels). Visible reports whether any part of the box
+	// is inside the current viewport.
+	Rect    ElementRect `json:"rect"`
+	Visible bool        `json:"visible"`
+}
+
+// ElementRect is a bounding box in CSS pixels, as reported by
+// getBoundingClientRect.
+type ElementRect struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+
+// Center returns the box center in CSS pixels, the point a coordinate
+// fallback click aims at.
+func (r ElementRect) Center() (x, y float64) {
+	return r.X + r.Width/2, r.Y + r.Height/2
 }
 
 // ImageInfo is one <img> found by Session.Images.

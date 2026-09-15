@@ -294,3 +294,41 @@ func TestComputerToolClickRejectsNegativeCoords(t *testing.T) {
 	require.Empty(t, backend.clicked)
 }
 
+func TestComputerToolHotkeyParsesModifiers(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{}
+	resp := runComputerTool(t, backend, &mockPermissionService{}, true,
+		ComputerParams{Action: "hotkey", Modifiers: "ctrl+shift", Key: "s"})
+	require.False(t, resp.IsError)
+	require.Len(t, backend.hotkeys, 1)
+	require.Equal(t, "ctrl", backend.hotkeys[0][0])
+	require.Equal(t, "s", backend.hotkeys[0][1])
+}
+
+func TestComputerToolHotkeyRejectsBadModifier(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{}
+	resp := runComputerTool(t, backend, &mockPermissionService{}, true,
+		ComputerParams{Action: "hotkey", Modifiers: "hyper", Key: "s"})
+	require.True(t, resp.IsError)
+	require.Empty(t, backend.hotkeys)
+}
+
+func TestComputerToolKeyRejectsUnknownKey(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{}
+	resp := runComputerTool(t, backend, &mockPermissionService{}, true,
+		ComputerParams{Action: "key", Key: "hyper"})
+	require.True(t, resp.IsError)
+	require.Empty(t, backend.keys)
+}
+
+func TestComputerToolNeverTouchesDesktopWhenDenied(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{}
+	resp := runComputerTool(t, backend, &denyingPermissionService{}, true,
+		ComputerParams{Action: "click", X: 10, Y: 10})
+	require.True(t, resp.IsError)
+	require.Empty(t, backend.clicked, "a denied call must not reach the desktop")
+}
+

@@ -147,6 +147,9 @@ func diagnose(ctx context.Context, cfg *config.ConfigStore) []checkResult {
 	if r := checkDebugger(cfg); r != nil {
 		results = append(results, *r)
 	}
+	if r := checkComputer(cfg); r != nil {
+		results = append(results, *r)
+	}
 	if r := checkSandbox(cfg); r != nil {
 		results = append(results, *r)
 	}
@@ -271,6 +274,22 @@ func checkDebugger(cfg *config.ConfigStore) *checkResult {
 		return &checkResult{"debugger", statusOK, path}
 	}
 	return &checkResult{"debugger", statusWarn, "dlv (Delve) not found on PATH; install it with `go install github.com/go-delve/delve/cmd/dlv@latest` or set tools.debugger.dlv_path"}
+}
+
+// checkComputer reports whether the computer-use tool, if turned on,
+// has a desktop it can actually drive. Reports nothing when the tool
+// is off -- opt-in, same reasoning as the browser and debugger checks.
+// Off Windows the tool refuses every call, so an enabled tool there is
+// a warning, not an error: the agent explains the miss on first use,
+// but surfacing it here saves a wasted round trip.
+func checkComputer(cfg *config.ConfigStore) *checkResult {
+	if !cfg.Config().Tools.Computer.IsEnabled() {
+		return nil
+	}
+	if runtime.GOOS != "windows" {
+		return &checkResult{"computer", statusWarn, fmt.Sprintf("not supported on %s; the computer tool reports itself unavailable there", runtime.GOOS)}
+	}
+	return &checkResult{"computer", statusOK, "desktop control active"}
 }
 
 // checkSandbox reports whether sandbox.enabled will actually take effect

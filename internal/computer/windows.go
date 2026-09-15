@@ -218,3 +218,55 @@ func (b *windowsBackend) Screenshot() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func (b *windowsBackend) CursorPosition() (Point, error) {
+	var pt winPoint
+	ok, _, _ := procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
+	if ok == 0 {
+		return Point{}, fmt.Errorf("computer-use: GetCursorPos failed")
+	}
+	return Point{X: int(pt.X), Y: int(pt.Y)}, nil
+}
+
+func (b *windowsBackend) MoveTo(x, y int) error {
+	if err := ValidatePoint(x, y); err != nil {
+		return err
+	}
+	if err := setCursorPos(x, y); err != nil {
+		return err
+	}
+	// Verify the pointer actually arrived: remote-desktop overlays,
+	// cursor clipping (ClipCursor), and UAC prompts can all swallow a
+	// move that the API reported as successful. One retry covers the
+	// transient cases; a persistent mismatch is reported with both
+	// positions so the caller can re-aim instead of clicking blind.
+	pos, err := b.CursorPosition()
+	if err != nil {
+		return err
+	}
+	if pos.X == x && pos.Y == y {
+		return nil
+	}
+	if err := setCursorPos(x, y); err != nil {
+		return err
+	}
+	pos, err = b.CursorPosition()
+	if err != nil {
+		return err
+	}
+	if pos.X != x || pos.Y != y {
+		return fmt.Errorf(
+			"computer-use: pointer is at (%d, %d) after moving to (%d, %d)",
+			pos.X, pos.Y, x, y,
+		)
+	}
+	return nil
+}
+
+func setCursorPos(x, y int) error {
+	ok, _, _ := procSetCursorPos.Call(uintptr(x), uintptr(y))
+	if ok == 0 {
+		return fmt.Errorf("computer-use: SetCursorPos(%d, %d) failed", x, y)
+	}
+	return nil
+}
+

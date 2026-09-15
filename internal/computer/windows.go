@@ -101,3 +101,44 @@ func keyboardPayload(vk, scan uint16, flags uint32) [32]byte {
 	return p
 }
 
+// bitmapInfoHeader mirrors BITMAPINFOHEADER; bitmapInfo adds the single
+// palette entry GetDIBits requires even for 32-bit captures.
+type bitmapInfoHeader struct {
+	Size          uint32
+	Width         int32
+	Height        int32
+	Planes        uint16
+	BitCount      uint16
+	Compression   uint32
+	SizeImage     uint32
+	XPelsPerMeter int32
+	YPelsPerMeter int32
+	ClrUsed       uint32
+	ClrImportant  uint32
+}
+
+type bitmapInfo struct {
+	Header bitmapInfoHeader
+	Colors uint32
+}
+
+type windowsBackend struct{}
+
+func openPlatform() (Backend, error) {
+	return &windowsBackend{}, nil
+}
+
+func getSystemMetrics(n int) int {
+	r, _, _ := procGetSystemMetrics.Call(uintptr(n))
+	return int(r)
+}
+
+func (b *windowsBackend) ScreenSize() (Size, error) {
+	w := getSystemMetrics(smCXVirtualScreen)
+	h := getSystemMetrics(smCYVirtualScreen)
+	if w <= 0 || h <= 0 {
+		return Size{}, fmt.Errorf("computer-use: unexpected screen size %dx%d", w, h)
+	}
+	return Size{Width: w, Height: h}, nil
+}
+

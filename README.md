@@ -752,6 +752,7 @@ with `atlas_config` or `options.disabled_tools`.
 | Tool | What it does |
 | --- | --- |
 | `browser` | Drive a real browser: navigate, click, type, scroll, screenshot, eval, snapshot, CDP. |
+| `computer` | See the Windows screen and drive the real desktop: screenshot, click, drag, scroll, type, hotkeys. Opt-in via `/computer-use`. |
 | `fetch` | Fetch a URL's content, subject to the domain allow/block lists. |
 | `agentic_fetch` | Fetch and extract with a model in the loop, for pages that need reading rather than scraping. |
 
@@ -1406,6 +1407,7 @@ internal/
   subagents/                Subagent definitions: parse, discover, author
   permission/               The permission layer and modes
   browser/                  Chrome/CDP automation, including real-profile snapshots
+  computer/                 Windows desktop control: screenshots plus mouse and keyboard input
   deps/                     Vendored dependencies (LLM client, TUI toolkit, styling)
 ```
 

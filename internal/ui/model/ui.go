@@ -2279,6 +2279,9 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 	case dialog.ActionToggleYoloMode:
 		m.toggleYoloMode()
 		m.dialog.CloseDialog(dialog.CommandsID)
+	case dialog.ActionToggleComputerUse:
+		m.dialog.CloseDialog(dialog.CommandsID)
+		cmds = append(cmds, m.toggleComputerUse)
 	case dialog.ActionCyclePermissionMode:
 		mode := m.cyclePermissionMode()
 		cmds = append(cmds, util.ReportInfo("Permission mode: "+permissionModeLabel(mode)))
@@ -6267,6 +6270,28 @@ func (m *UI) disableDockerMCP() tea.Msg {
 	}
 
 	return util.NewInfoMsg("Docker MCP disabled successfully")
+}
+
+// toggleComputerUse flips the computer-use master switch and reports
+// the new state. Enabling registers the computer tool on the next run
+// (the agent can then see and drive the screen without per-action
+// approval); disabling stops new actions immediately because the tool
+// re-checks the live flag on every call.
+func (m *UI) toggleComputerUse() tea.Msg {
+	cfg := m.com.Config()
+	if cfg == nil {
+		return util.ReportError(errors.New("configuration not found"))()
+	}
+
+	enabled := !cfg.Tools.Computer.IsEnabled()
+	if err := m.com.Workspace.SetComputerUse(enabled); err != nil {
+		return util.ReportError(err)()
+	}
+
+	if enabled {
+		return util.NewInfoMsg("Computer-use enabled: the agent can now see and control the screen")
+	}
+	return util.NewInfoMsg("Computer-use disabled")
 }
 
 // renderLogo renders the ATLAS-AGENT logo with the given styles and dimensions.

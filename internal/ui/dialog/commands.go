@@ -598,6 +598,7 @@ func (c *Commands) defaultCommands() []*CommandItem {
 	commands = append(
 		commands,
 		NewCommandItem(c.com.Styles, "toggle_yolo", "Toggle Yolo Mode", "ctrl+y", ActionToggleYoloMode{}).WithSlash("/yolo").WithSummary("Run every tool without asking first"),
+		NewCommandItem(c.com.Styles, "toggle_computer_use", computerUseCommandLabel(c.com.Config()), "", ActionToggleComputerUse{}).WithSlash("/computer-use").WithSummary("Let the agent see and control the screen (Windows)"),
 		NewCommandItem(c.com.Styles, "cycle_permission_mode", "Cycle Permission Mode", "ctrl+shift+y", ActionCyclePermissionMode{}).WithSlash("/permissions").WithSummary("Cycle what Atlas is allowed to do unasked"),
 		NewCommandItem(c.com.Styles, "rewind", "Rewind to Checkpoint", "ctrl+shift+r", ActionOpenDialog{DialogID: RewindID}).WithSlash("/rewind").WithSummary("Roll the session back to a checkpoint"),
 		NewCommandItem(c.com.Styles, "jobs", "Background Jobs", "p", ActionOpenDialog{DialogID: JobsID}).WithSlash("/jobs").WithSummary("View and manage background jobs"),
@@ -662,4 +663,14 @@ func (c *Commands) StartLoading() tea.Cmd {
 // StopLoading implements [LoadingDialog].
 func (c *Commands) StopLoading() {
 	c.loading = false
+}
+
+// computerUseCommandLabel names the command-palette entry, showing
+// whether computer-use is currently on so the palette itself says what
+// flipping the switch will do.
+func computerUseCommandLabel(cfg *config.Config) string {
+	if cfg != nil && cfg.Tools.Computer.IsEnabled() {
+		return "Disable Computer-Use"
+	}
+	return "Enable Computer-Use"
 }

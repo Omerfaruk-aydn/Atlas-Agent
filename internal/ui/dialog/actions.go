@@ -75,6 +75,7 @@ type (
 	ActionTogglePills             struct{}
 	ActionExternalEditor          struct{}
 	ActionToggleYoloMode          struct{}
+	ActionToggleComputerUse       struct{}
 	ActionCyclePermissionMode     struct{}
 	ActionToggleNotifications     struct{}
 	ActionSelectNotificationStyle struct {

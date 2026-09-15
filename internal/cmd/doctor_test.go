@@ -171,6 +171,25 @@ func TestDoctorAcceptsAnExistingDlvPath(t *testing.T) {
 	require.Contains(t, got, "[ok] debugger: "+goPath)
 }
 
+// Computer-use is opt-in, so doctor says nothing about it unless it's
+// turned on.
+func TestDoctorSaysNothingAboutComputerWhenItIsOff(t *testing.T) {
+	got, _ := doctorOutput(t, t.TempDir(), t.TempDir())
+	require.NotContains(t, got, "computer:")
+}
+
+func TestDoctorReportsComputerStatusWhenEnabled(t *testing.T) {
+	workingDir := t.TempDir()
+	writeAtlasConfig(t, workingDir, `{"tools":{"computer":{"enabled":true}}}`)
+
+	got, _ := doctorOutput(t, workingDir, t.TempDir())
+	if runtime.GOOS == "windows" {
+		require.Contains(t, got, "[ok] computer: desktop control active")
+	} else {
+		require.Contains(t, got, "[warn] computer: not supported on "+runtime.GOOS)
+	}
+}
+
 // Sandboxing is opt-in, so doctor says nothing about it unless it's
 // turned on.
 func TestDoctorSaysNothingAboutSandboxWhenItIsOff(t *testing.T) {

@@ -55,3 +55,97 @@ type ComputerParams struct {
 	FullRes bool `json:"full_res,omitempty" description:"For screenshot: return the capture at full native resolution instead of the default downscaled size."`
 }
 
+// NewComputerTool builds the computer-use tool. The backend drives the
+// desktop; enabled reports the live toggle state so flipping
+// /computer-use off mid-session stops the tool even before the next
+// run rebuilds the tool list.
+func NewComputerTool(
+	permissions permission.Service,
+	workingDir string,
+	cfg config.ToolComputer,
+	backend computer.Backend,
+	enabled func() bool,
+) fantasy.AgentTool {
+	return newComputerTool(permissions, workingDir, backend, enabled, computerDescription, cfg.GetActionTimeout())
+}
+
+// computerToolState carries the tool's runtime dependencies plus the
+// per-action timeout. It is a struct (rather than bare closure
+// captures) so validation helpers and the timeout wrapper share one
+// receiver.
+type computerToolState struct {
+	permissions   permission.Service
+	workingDir    string
+	backend       computer.Backend
+	enabled       func() bool
+	actionTimeout time.Duration
+}
+
+func newComputerTool(
+	permissions permission.Service,
+	workingDir string,
+	backend computer.Backend,
+	enabled func() bool,
+	description string,
+	actionTimeout time.Duration,
+) fantasy.AgentTool {
+	state := &computerToolState{
+		permissions:   permissions,
+		workingDir:    workingDir,
+		backend:       backend,
+		enabled:       enabled,
+		actionTimeout: actionTimeout,
+	}
+	return fantasy.NewAgentTool(
+		ComputerToolName,
+		description,
+		func(ctx context.Context, params ComputerParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			action := strings.ToLower(strings.TrimSpace(params.Action))
+			if !slices.Contains(computerActions, action) {
+				return fantasy.NewTextErrorResponse(fmt.Sprintf("unknown action %q, must be one of: %s", params.Action, strings.Join(computerActions, ", "))), nil
+			}
+
+			if state.enabled != nil && !state.enabled() {
+				return fantasy.NewTextErrorResponse(
+					"computer-use is off. Ask the user to run /computer-use to turn it on, then retry.",
+				), nil
+			}
+			if state.backend == nil {
+				return fantasy.NewTextErrorResponse(
+					"computer-use is not available on this machine: " + computer.ErrUnsupportedPlatform.Error(),
+				), nil
+			}
+
+			sessionID := GetSessionFromContext(ctx)
+
+			// Every computer action runs Safe. Enabling /computer-use is
+			// the consent gate — flipping it on means the user accepts
+			// unattended screen control — so Manual and AutoAcceptEdits
+			// grant immediately instead of prompting per click. Plan
+			// mode still denies the tool outright: its category is
+			// Execute, and Safe never overrides plan mode.
+			p, err := state.permissions.Request(
+				ctx,
+				permission.CreatePermissionRequest{
+					SessionID:   sessionID,
+					Path:        state.workingDir,
+					ToolCallID:  call.ID,
+					ToolName:    ComputerToolName,
+					Action:      action,
+					Description: computerActionDescription(action, params),
+					Params:      ComputerPermissionsParams(params),
+					Safe:        true,
+				},
+			)
+			if err != nil {
+				return fantasy.ToolResponse{}, err
+			}
+			if !p {
+				return NewPermissionDeniedResponse(state.permissions), nil
+			}
+
+			return state.runWithTimeout(ctx, action, params)
+		},
+	)
+}
+

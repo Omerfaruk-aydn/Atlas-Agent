@@ -211,3 +211,38 @@ func TestComputerToolScreenshotReturnsPNG(t *testing.T) {
 	require.Empty(t, resp.Content, "a capture within limits passes through with no scale note")
 }
 
+func TestComputerToolScreenshotDownscalesWideCaptures(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{}
+	backend.screenshot = testPNG(t, 3200, 1800)
+	resp := runComputerTool(t, backend, &mockPermissionService{}, true, ComputerParams{Action: "screenshot"})
+	require.False(t, resp.IsError)
+	require.Equal(t, "image", resp.Type)
+	got := decodePNGSize(t, resp.Data)
+	require.LessOrEqual(t, got.Width, computer.MaxScreenshotWidth)
+	require.Equal(t, 1600, got.Width)
+	require.Equal(t, 900, got.Height)
+	require.Contains(t, resp.Content, "Multiply image coordinates by 2.00")
+	require.Contains(t, resp.Content, "3200 x 1800")
+}
+
+func TestComputerToolScreenshotFullResSkipsDownscale(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{}
+	backend.screenshot = testPNG(t, 3200, 1800)
+	resp := runComputerTool(t, backend, &mockPermissionService{}, true,
+		ComputerParams{Action: "screenshot", FullRes: true})
+	require.False(t, resp.IsError)
+	require.Equal(t, backend.screenshot, resp.Data)
+	require.Empty(t, resp.Content)
+}
+
+func TestComputerToolScreenshotFallsBackOnBadCapture(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{screenshot: []byte{1, 2, 3}}
+	resp := runComputerTool(t, backend, &mockPermissionService{}, true, ComputerParams{Action: "screenshot"})
+	require.False(t, resp.IsError, "a downscale failure must not brick screenshots")
+	require.Equal(t, []byte{1, 2, 3}, resp.Data)
+	require.Contains(t, resp.Content, "downscaling failed")
+}
+

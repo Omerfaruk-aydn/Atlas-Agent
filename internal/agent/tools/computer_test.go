@@ -332,3 +332,9 @@ func TestComputerToolNeverTouchesDesktopWhenDenied(t *testing.T) {
 	require.Empty(t, backend.clicked, "a denied call must not reach the desktop")
 }
 
+func TestSplitModifiers(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, []string{"ctrl", "shift"}, splitModifiers("ctrl+shift"))
+	require.Equal(t, []string{"ctrl"}, splitModifiers("ctrl"))
+	require.Empty(t, splitModifiers(""))
+}

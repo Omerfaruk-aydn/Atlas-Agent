@@ -14,15 +14,16 @@ const (
 	TypeAzure        Type = "azure"
 	TypeBedrock      Type = "bedrock"
 	TypeVertexAI     Type = "google-vertex"
-	TypeAntigravity Type = "antigravity"
-	TypeClaude      Type = "claude"
-	TypeGrokWeb     Type = "grok-web"
-	TypeWindsurf    Type = "windsurf"
-	TypeJetBrains   Type = "jetbrains"
-	TypeAugment     Type = "augment"
-	TypeFactory     Type = "factory"
-	TypeCodeRabbit  Type = "coderabbit"
-	TypeZed         Type = "zed"
+	TypeAntigravity  Type = "antigravity"
+	TypeClaude       Type = "claude"
+	TypeGrokWeb      Type = "grok-web"
+	TypeWindsurf     Type = "windsurf"
+	TypeJetBrains    Type = "jetbrains"
+	TypeAugment      Type = "augment"
+	TypeFactory      Type = "factory"
+	TypeCodeRabbit   Type = "coderabbit"
+	TypeZed          Type = "zed"
+	TypeMuse         Type = "muse"
 )
 
 // Coding-plan provider types: these are the custom protocol adapters
@@ -72,6 +73,7 @@ const (
 	InferenceProviderFactory          InferenceProvider = "factory"
 	InferenceProviderCodeRabbit       InferenceProvider = "coderabbit"
 	InferenceProviderZed              InferenceProvider = "zed"
+	InferenceProviderMuse             InferenceProvider = "muse"
 	InferenceProviderCortecs          InferenceProvider = "cortecs"
 	InferenceProviderVercel           InferenceProvider = "vercel"
 	InferenceProviderMiniMax          InferenceProvider = "minimax"
@@ -196,5 +198,6 @@ func KnownProviderTypes() []Type {
 		TypeFactory,
 		TypeCodeRabbit,
 		TypeZed,
+		TypeMuse,
 	}
 }

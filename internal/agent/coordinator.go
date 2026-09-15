@@ -58,6 +58,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/google"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/grokweb"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/jetbrains"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/muse"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/openai"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/openaicompat"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/openrouter"
@@ -1748,6 +1749,24 @@ func (c *coordinator) buildZedProvider(baseURL, apiKey string, headers map[strin
 	return zed.New(opts...)
 }
 
+// buildMuseProvider wires a Meta Muse Code subscription into a
+// fantasy.Provider. The apiKey is the minted Model API key the
+// login flow stored as the OAuth access token, which the muse
+// package sends to Meta's Anthropic-compatible Messages API.
+func (c *coordinator) buildMuseProvider(baseURL, apiKey string, headers map[string]string) (fantasy.Provider, error) {
+	opts := []muse.Option{
+		muse.WithAccessToken(apiKey),
+		muse.WithHeaders(headers),
+	}
+	if baseURL != "" {
+		opts = append(opts, muse.WithBaseURL(baseURL))
+	}
+	if c.cfg.Config().Options.Debug {
+		opts = append(opts, muse.WithHTTPClient(log.NewHTTPClient()))
+	}
+	return muse.New(opts...)
+}
+
 func (c *coordinator) isAnthropicThinking(model config.SelectedModel) bool {
 	if model.Think {
 		return true
@@ -1829,6 +1848,8 @@ func (c *coordinator) buildProvider(providerCfg config.ProviderConfig, model con
 		return c.buildCodeRabbitProvider(baseURL, apiKey, headers, providerCfg.ExtraParams)
 	case zed.Name:
 		return c.buildZedProvider(baseURL, apiKey, headers, providerCfg.ExtraParams)
+	case muse.Name:
+		return c.buildMuseProvider(baseURL, apiKey, headers)
 	case openaicompat.Name:
 		switch providerCfg.ID {
 		case string(catwalk.InferenceProviderZAI):

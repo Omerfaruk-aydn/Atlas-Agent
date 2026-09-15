@@ -15,12 +15,13 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/antigravity"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/augment"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/claude"
-	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/codex"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/coderabbit"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/codex"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/copilot"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/factory"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/grok"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/jetbrains"
+	museoauth "github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/muse"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/windsurf"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/zed"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workspace"
@@ -35,7 +36,7 @@ var loginCmd = &cobra.Command{
 	Long: `Login ATLAS-AGENT to a specified platform.
 	The platform should be provided as an argument.
 	Available platforms are: copilot, chatgpt, antigravity, claude, grok,
-	windsurf, jetbrains.
+	windsurf, jetbrains, muse.
 
 	Note: antigravity only supports its Gemini-family models
 	(gemini-3-pro-high/low); Claude and GPT-OSS models served through an
@@ -68,6 +69,9 @@ atlas login windsurf
 # Authenticate with a JetBrains AI Pro/Ultimate account
 atlas login jetbrains
 
+# Authenticate with a Meta Muse Code subscription
+atlas login muse
+
 # Force re-authentication even if already logged in
 atlas login -f copilot
   `,
@@ -86,6 +90,8 @@ atlas login -f copilot
 		"factory",
 		"coderabbit",
 		"zed",
+		"muse",
+		"muse-code",
 	},
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -123,6 +129,8 @@ atlas login -f copilot
 			return loginCodeRabbit(ws, force)
 		case "zed":
 			return loginZed(ws, force)
+		case "muse", "muse-code":
+			return loginMuse(ws, force)
 		default:
 			return fmt.Errorf("unknown platform: %s", args[0])
 		}
@@ -814,5 +822,72 @@ func loginZed(ws workspace.Workspace, force bool) error {
 	fmt.Println()
 	fmt.Println("You're now authenticated with Zed Pro!")
 	fmt.Println("(Reminder: the model call layer is still a stub; see the docs in internal/oauth/zed.)")
+	return nil
+}
+
+// loginMuse signs in to a Meta Muse Code subscription. When the
+// official Muse CLI already has a session on disk it is imported;
+// otherwise the Meta OIDC device-code flow runs.
+func loginMuse(ws workspace.Workspace, force bool) error {
+	loginCtx := getLoginContext()
+
+	if !force {
+		cfg := ws.Config()
+		if cfg != nil {
+			if pc, ok := cfg.Providers.Get("muse"); ok && pc.OAuthToken != nil {
+				fmt.Println("You are already logged in to Meta Muse.")
+				fmt.Println("Use --force to re-authenticate.")
+				return nil
+			}
+		}
+	}
+
+	var token *oauth.Token
+
+	if session := museoauth.SessionFromCLI(); session != nil {
+		fmt.Println("Found an existing Muse Code CLI session. Importing it...")
+		t, err := museoauth.TokenFromSession(loginCtx, session)
+		if err != nil {
+			return fmt.Errorf("unable to use the Muse CLI session: %w", err)
+		}
+		token = t
+	} else {
+		fmt.Println("Requesting device code from Meta...")
+		dc, err := museoauth.RequestDeviceCode(loginCtx)
+		if err != nil {
+			return err
+		}
+
+		clipboard.WriteText(dc.UserCode)
+		fmt.Println()
+		fmt.Println("The following code should be on clipboard already:")
+		fmt.Println()
+		lipgloss.Println(lipgloss.NewStyle().Bold(true).Render(dc.UserCode))
+		fmt.Println()
+		fmt.Println("Press enter to open this URL and authenticate with your Meta account:")
+		fmt.Println()
+		verifyURL := dc.VerificationURL()
+		lipgloss.Println(lipgloss.NewStyle().Hyperlink(verifyURL, "id=muse").Render(verifyURL))
+		fmt.Println()
+		waitEnter()
+		if err := browser.OpenURL(verifyURL); err != nil {
+			fmt.Println("Could not open the URL. You'll need to manually open the URL in your browser.")
+		}
+
+		fmt.Println("Waiting for authorization...")
+
+		t, err := museoauth.PollForToken(loginCtx, dc)
+		if err != nil {
+			return err
+		}
+		token = t
+	}
+
+	if err := ws.SetProviderAPIKey(config.ScopeGlobal, "muse", token); err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Println("You're now authenticated with Meta Muse!")
 	return nil
 }

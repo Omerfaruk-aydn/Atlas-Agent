@@ -15,7 +15,7 @@ Change how it is configured just by telling it to.
 [![Go Report Card](https://goreportcard.com/badge/github.com/Omerfaruk-aydn/Atlas-Agent)](https://goreportcard.com/report/github.com/Omerfaruk-aydn/Atlas-Agent)
 [![Stars](https://img.shields.io/github/stars/Omerfaruk-aydn/Atlas-Agent?style=social)](https://github.com/Omerfaruk-aydn/Atlas-Agent/stargazers)
 
-**80+ built-in tools · 10 built-in subagent modes · 61 providers in the embedded catalog · 7 coding-plan logins · MCP + Skills + hooks for everything else**
+**80+ built-in tools · 10 built-in subagent modes · 62 providers in the embedded catalog · 8 coding-plan logins · MCP + Skills + hooks for everything else**
 
 </div>
 
@@ -808,6 +808,7 @@ Flat-rate plans you may already pay for. `atlas-agent login <platform>`:
 | xAI SuperGrok (Heavy) | `atlas-agent login grok` | Scaffold | OAuth client id / envelope are TODOs |
 | Windsurf (Codeium Pro/Teams) | `atlas-agent login windsurf` | Scaffold | OAuth client id / envelope are TODOs |
 | JetBrains AI (Pro/Ultimate) | `atlas-agent login jetbrains` | Scaffold | Token exchange / envelope are TODOs |
+| Meta Muse (Code subscription) | `atlas-agent login muse` | **Live** | Device flow, Model API key mint, Spark 1.3/1.2/1.1 |
 
 - **Live** — login and the model call layer both work end to end.
 - **Scaffold** — login and model picker are wired up; the call layer is a stub that returns "not

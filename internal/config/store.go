@@ -20,6 +20,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/claude"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/codex"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/copilot"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/muse"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"golang.org/x/sync/singleflight"
@@ -841,6 +842,8 @@ func (s *ConfigStore) exchange(ctx context.Context, providerID, refreshToken str
 		return antigravity.RefreshToken(ctx, refreshToken)
 	case string(catwalk.InferenceProviderClaude):
 		return claude.RefreshToken(ctx, refreshToken)
+	case string(catwalk.InferenceProviderMuse):
+		return muse.RefreshToken(ctx, refreshToken)
 	default:
 		return nil, fmt.Errorf("OAuth refresh not supported for provider %s", providerID)
 	}

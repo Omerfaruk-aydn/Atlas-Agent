@@ -48,6 +48,9 @@ var coderabbitConfig []byte
 //go:embed configs/zed.json
 var zedConfig []byte
 
+//go:embed configs/muse.json
+var museConfig []byte
+
 //go:embed configs/minimax-coding.json
 var miniMaxCodingConfig []byte
 
@@ -219,6 +222,7 @@ var providerRegistry = []ProviderFunc{
 	factoryProvider,
 	coderabbitProvider,
 	zedProvider,
+	museProvider,
 	mistralProvider,
 	cohereProvider,
 	ampProvider,
@@ -414,6 +418,10 @@ func coderabbitProvider() catwalk.Provider {
 
 func zedProvider() catwalk.Provider {
 	return loadProviderFromConfig(zedConfig)
+}
+
+func museProvider() catwalk.Provider {
+	return loadProviderFromConfig(museConfig)
 }
 
 func mistralProvider() catwalk.Provider {

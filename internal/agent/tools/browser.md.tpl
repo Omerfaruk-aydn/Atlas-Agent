@@ -17,7 +17,7 @@ Actions (set `action` to one of these):
 - `console` — return console output (log/warn/error/info) and uncaught JavaScript exceptions seen since the session opened. Check this when a click or form submit had no visible effect, or when debugging a page's own behavior.
 - `dialog` — respond to a native `alert()`/`confirm()`/`prompt()`/`beforeunload` dialog. Set `accept: true` to accept (OK), `false` to dismiss (Cancel), and `prompt_text` if accepting a `prompt()`. A dialog blocks the page — every other action times out until this answers it; `snapshot`'s output calls out any pending dialog for exactly this reason.
 - `cdp` — send a raw Chrome DevTools Protocol command (`cdp_method`, `cdp_params`) for something none of the actions above cover. Escape hatch, not the common path — see https://chromedevtools.github.io/devtools-protocol/ for method names and parameter shapes.
-- `screenshot` — capture a PNG of the current page. Set `full_page: true` for the whole scrollable page instead of just the viewport.
+- `screenshot` — capture a PNG of the current page with every interactive element marked by a numbered box labeled with its `ref`. Set `full_page: true` for the whole scrollable page instead of just the viewport.
 - `url` — return the current page URL.
 - `close` — close the session so the next action starts a fresh browser.
 
@@ -37,7 +37,8 @@ Handling interactive auth and payment flows:
 - **Payment**: if the user has handed you card or bank details in chat, type them in and submit, the same way you would any other field they gave you. If they have not, carry the flow all the way to the payment step (cart, address, delivery, coupons, terms) and hand that one field over, rather than refusing the errand.
 
 Guidance:
-- `ref` over `selector`: call `snapshot` first, then act on the `ref` it reports rather than guessing a CSS selector — a ref is exact, a hand-written selector can silently miss the intended element or hit the wrong one. A ref only lasts until the next navigation; if `click`/`type` reports the ref no longer exists, snapshot again.
+- `ref` over `selector`: call `snapshot` first, then act on the `ref` it reports rather than guessing a CSS selector — a ref is exact, a hand-written selector can silently miss the intended element or hit the wrong one. `navigate`, `click`, `type`, and `key` already return a fresh element list with their result, so you rarely need a separate `snapshot` after them; a ref only lasts until the next navigation, and if `click` reports the ref no longer exists, the coordinate fallback usually still lands it — snapshot again only when told to re-aim.
+- Read the boxes: `screenshot` draws each element's `ref` onto the page image. Match the box label to the element list instead of estimating positions — never invent pixel coordinates; there is no action that takes them.
 - Prefer `text`/`html` for reading page content — they're cheap and exact. Reach for `screenshot` only when you actually need to see layout, styling, or something `text`/`html` can't capture (a canvas, an image, visual regressions, a CAPTCHA).
 - `eval` runs arbitrary JavaScript with full page access — use it for reading page state (`document.title`, computed values) or triggering something no other action covers, not as a shortcut around `click`/`type` when those already do the job.
 - If a click or form submission seems to do nothing, check `console` before assuming the page is broken — a swallowed JavaScript error is a common, invisible cause.

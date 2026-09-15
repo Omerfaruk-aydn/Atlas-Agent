@@ -751,7 +751,7 @@ with `atlas_config` or `options.disabled_tools`.
 
 | Tool | What it does |
 | --- | --- |
-| `browser` | Drive a real browser: navigate, click, type, scroll, screenshot, eval, snapshot, CDP. |
+| `browser` | Drive a real browser: navigate, click, type, scroll, annotated screenshots, eval, snapshot, CDP. |
 | `computer` | See the Windows screen and drive the real desktop: screenshot, click, drag, scroll, type, hotkeys. Opt-in via `/computer-use`. |
 | `fetch` | Fetch a URL's content, subject to the domain allow/block lists. |
 | `agentic_fetch` | Fetch and extract with a model in the loop, for pages that need reading rather than scraping. |

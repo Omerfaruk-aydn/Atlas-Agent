@@ -86,3 +86,31 @@ func OpenOrNil() Backend {
 	}
 	return backend
 }
+
+// ValidatePoint rejects negative coordinates before they reach the OS.
+func ValidatePoint(x, y int) error {
+	if x < 0 || y < 0 {
+		return fmt.Errorf("invalid screen coordinates (%d, %d): must be non-negative", x, y)
+	}
+	return nil
+}
+
+// ValidatePointIn rejects coordinates outside the given screen bounds.
+// The upper bound matters as much as the lower one: an out-of-range
+// coordinate would otherwise land silently clamped at the screen edge,
+// and the agent would act on the wrong pixel believing it had aimed
+// correctly. Callers that do not know the screen size yet fall back to
+// ValidatePoint.
+func ValidatePointIn(size Size, x, y int) error {
+	if err := ValidatePoint(x, y); err != nil {
+		return err
+	}
+	if x >= size.Width || y >= size.Height {
+		return fmt.Errorf(
+			"invalid screen coordinates (%d, %d): outside the %d x %d screen",
+			x, y, size.Width, size.Height,
+		)
+	}
+	return nil
+}
+

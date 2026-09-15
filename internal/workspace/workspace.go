@@ -227,6 +227,13 @@ type Workspace interface {
 	PermissionMode() permission.PermissionMode
 	PermissionSetMode(mode permission.PermissionMode)
 
+	// Computer-use
+	//
+	// SetComputerUse flips the computer-use master switch: the agent
+	// may see and drive the desktop only while it is on. The zero
+	// value (off) is the safe default.
+	SetComputerUse(enabled bool) error
+
 	// Questions
 	//
 	// QuestionAnswer resolves the pending question with responses.

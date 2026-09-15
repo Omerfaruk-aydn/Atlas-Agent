@@ -468,6 +468,13 @@ func (w *ClientWorkspace) PermissionSetMode(mode permission.PermissionMode) {
 	}
 }
 
+// SetComputerUse is not supported on remote sessions yet: the toggle
+// writes the server's global config file, which no remote RPC reaches.
+// Run /computer-use where the agent itself runs instead.
+func (w *ClientWorkspace) SetComputerUse(bool) error {
+	return errors.New("computer-use toggle is not supported on remote sessions yet")
+}
+
 // -- Questions --
 
 // QuestionAnswer submits answers for a question via the client SDK.

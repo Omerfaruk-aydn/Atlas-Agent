@@ -312,6 +312,18 @@ func (w *AppWorkspace) PermissionSetMode(mode permission.PermissionMode) {
 	w.app.Permissions.SetMode(mode)
 }
 
+// SetComputerUse persists the computer-use master switch to the global
+// config (tools.computer.enabled) and reloads in-memory state, so the
+// next run registers or drops the tool accordingly. Calls already
+// running keep going; the tool itself re-checks the live flag on every
+// call, so flipping the switch off stops new actions immediately.
+func (w *AppWorkspace) SetComputerUse(enabled bool) error {
+	if err := w.store.SetConfigField(config.ScopeGlobal, "tools.computer.enabled", enabled); err != nil {
+		return fmt.Errorf("failed to save computer-use setting: %w", err)
+	}
+	return nil
+}
+
 // -- Questions --
 
 func (w *AppWorkspace) QuestionAnswer(responses []question.Answer) bool {

@@ -1592,6 +1592,7 @@ func allToolNames() []string {
 		// group on.
 		"browser",
 		"debugger",
+		"computer",
 		"team_send",
 		"team_read",
 		// CodeIntel

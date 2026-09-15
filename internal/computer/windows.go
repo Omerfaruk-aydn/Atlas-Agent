@@ -409,3 +409,84 @@ func abs(n int) int {
 	return n
 }
 
+// typeUnicode sends one UTF-16 code unit as a key down/up pair.
+func typeUnicode(unit uint16) []winInput {
+	return []winInput{
+		{Type: inputKeyboard, Payload: keyboardPayload(0, unit, keyUnicode)},
+		{Type: inputKeyboard, Payload: keyboardPayload(0, unit, keyUnicode|keyUp)},
+	}
+}
+
+func (b *windowsBackend) TypeText(text string) error {
+	if text == "" {
+		return fmt.Errorf("computer-use: nothing to type")
+	}
+	var inputs []winInput
+	for _, unit := range utf16.Encode([]rune(text)) {
+		inputs = append(inputs, typeUnicode(unit)...)
+	}
+	return sendInputs(inputs)
+}
+
+func pressVK(vk uint16) []winInput {
+	return []winInput{
+		{Type: inputKeyboard, Payload: keyboardPayload(vk, 0, 0)},
+		{Type: inputKeyboard, Payload: keyboardPayload(vk, 0, keyUp)},
+	}
+}
+
+func (b *windowsBackend) KeyPress(key string) error {
+	vk, ok := ResolveKey(key)
+	if !ok {
+		return fmt.Errorf("computer-use: unknown key %q", key)
+	}
+	if vk == 0 {
+		// A single character: type it as Unicode.
+		return b.TypeText(key)
+	}
+	return sendInputs(pressVK(vk))
+}
+
+var modifierVKs = map[string]uint16{
+	ModCtrl:  0x11,
+	ModAlt:   0x12,
+	ModShift: 0x10,
+	ModWin:   0x5B,
+}
+
+func (b *windowsBackend) Hotkey(modifiers []string, key string) error {
+	mods, err := ParseModifiers(modifiers)
+	if err != nil {
+		return err
+	}
+	if len(mods) == 0 {
+		return fmt.Errorf("computer-use: hotkey needs at least one modifier")
+	}
+	vk, ok := ResolveKey(key)
+	if !ok {
+		return fmt.Errorf("computer-use: unknown key %q", key)
+	}
+	var inputs []winInput
+	for _, m := range mods {
+		mv := modifierVKs[m]
+		inputs = append(inputs, winInput{
+			Type:    inputKeyboard,
+			Payload: keyboardPayload(mv, 0, 0),
+		})
+	}
+	if vk == 0 {
+		for _, unit := range utf16.Encode([]rune(key)) {
+			inputs = append(inputs, typeUnicode(unit)...)
+		}
+	} else {
+		inputs = append(inputs, pressVK(vk)...)
+	}
+	for i := len(mods) - 1; i >= 0; i-- {
+		mv := modifierVKs[mods[i]]
+		inputs = append(inputs, winInput{
+			Type:    inputKeyboard,
+			Payload: keyboardPayload(mv, 0, keyUp),
+		})
+	}
+	return sendInputs(inputs)
+}

@@ -162,3 +162,40 @@ func decodePNGSize(t *testing.T, data []byte) computer.Size {
 	return computer.Size{Width: cfg.Width, Height: cfg.Height}
 }
 
+func TestComputerToolRejectsUnknownAction(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{}
+	resp := runComputerTool(t, backend, &mockPermissionService{}, true, ComputerParams{Action: "teleport"})
+	require.True(t, resp.IsError)
+	require.Contains(t, resp.Content, "unknown action")
+}
+
+func TestComputerToolRefusesWhenDisabled(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{}
+	resp := runComputerTool(t, backend, &mockPermissionService{}, false, ComputerParams{Action: "screenshot"})
+	require.True(t, resp.IsError)
+	require.Contains(t, resp.Content, "/computer-use")
+	require.Empty(t, backend.moved)
+}
+
+func TestComputerToolReportsMissingBackend(t *testing.T) {
+	t.Parallel()
+	input, err := json.Marshal(ComputerParams{Action: "screenshot"})
+	require.NoError(t, err)
+
+	ctx := context.WithValue(t.Context(), SessionIDContextKey, "test-session")
+	tool := newComputerTool(
+		&mockPermissionService{},
+		t.TempDir(),
+		nil,
+		func() bool { return true },
+		"computer",
+		30*time.Second,
+	)
+	resp, err := tool.Run(ctx, fantasy.ToolCall{ID: "c", Name: ComputerToolName, Input: string(input)})
+	require.NoError(t, err)
+	require.True(t, resp.IsError)
+	require.Contains(t, resp.Content, "not available")
+}
+

@@ -142,3 +142,79 @@ func (b *windowsBackend) ScreenSize() (Size, error) {
 	return Size{Width: w, Height: h}, nil
 }
 
+func (b *windowsBackend) Screenshot() ([]byte, error) {
+	x := getSystemMetrics(smXVirtualScreen)
+	y := getSystemMetrics(smYVirtualScreen)
+	w := getSystemMetrics(smCXVirtualScreen)
+	h := getSystemMetrics(smCYVirtualScreen)
+	if w <= 0 || h <= 0 {
+		return nil, fmt.Errorf("computer-use: unexpected screen size %dx%d", w, h)
+	}
+
+	screenDC, _, _ := procGetDC.Call(0)
+	if screenDC == 0 {
+		return nil, fmt.Errorf("computer-use: GetDC failed")
+	}
+	defer procReleaseDC.Call(0, screenDC)
+
+	memDC, _, _ := procCreateCompatibleDC.Call(screenDC)
+	if memDC == 0 {
+		return nil, fmt.Errorf("computer-use: CreateCompatibleDC failed")
+	}
+	defer procDeleteDC.Call(memDC)
+
+	bitmap, _, _ := procCreateCompatibleBitmap.Call(
+		screenDC, uintptr(w), uintptr(h),
+	)
+	if bitmap == 0 {
+		return nil, fmt.Errorf("computer-use: CreateCompatibleBitmap failed")
+	}
+	defer procDeleteObject.Call(bitmap)
+
+	procSelectObject.Call(memDC, bitmap)
+	ok, _, _ := procBitBlt.Call(
+		memDC, 0, 0, uintptr(w), uintptr(h),
+		screenDC, uintptr(x), uintptr(y), srccopy,
+	)
+	if ok == 0 {
+		return nil, fmt.Errorf("computer-use: BitBlt failed")
+	}
+
+	// Top-down 32-bit DIB: rows arrive BGRA, first row first.
+	info := bitmapInfo{
+		Header: bitmapInfoHeader{
+			Size:        uint32(unsafe.Sizeof(bitmapInfoHeader{})),
+			Width:       int32(w),
+			Height:      -int32(h),
+			Planes:      1,
+			BitCount:    32,
+			Compression: biRGB,
+		},
+	}
+	pixels := make([]byte, 4*w*h)
+	ok, _, _ = procGetDIBits.Call(
+		memDC, bitmap, 0, uintptr(h),
+		uintptr(unsafe.Pointer(&pixels[0])),
+		uintptr(unsafe.Pointer(&info)),
+		0, // DIB_RGB_COLORS
+	)
+	if ok == 0 {
+		return nil, fmt.Errorf("computer-use: GetDIBits failed")
+	}
+
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for i := 0; i < w*h; i++ {
+		// BGRA to NRGBA. Screenshots are opaque, so no un-premultiplying.
+		img.Pix[4*i] = pixels[4*i+2]
+		img.Pix[4*i+1] = pixels[4*i+1]
+		img.Pix[4*i+2] = pixels[4*i]
+		img.Pix[4*i+3] = 0xFF
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil, fmt.Errorf("computer-use: PNG encode failed: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+

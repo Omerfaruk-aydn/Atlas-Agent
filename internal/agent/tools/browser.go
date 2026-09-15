@@ -364,19 +364,19 @@ func runBrowserAction(sess browser.Session, action string, params BrowserParams)
 			return fantasy.NewTextErrorResponse("navigate failed: " + err.Error()), nil
 		}
 		metadata.URL = params.URL
-		return fantasy.WithResponseMetadata(fantasy.NewTextResponse("Navigated to "+params.URL), metadata), nil
+		return withFreshState(sess, metadata, "Navigated to "+params.URL)
 
 	case "back":
 		if err := sess.Back(); err != nil {
 			return fantasy.NewTextErrorResponse("back failed: " + err.Error()), nil
 		}
-		return fantasy.WithResponseMetadata(fantasy.NewTextResponse("Navigated back."), metadata), nil
+		return withFreshState(sess, metadata, "Navigated back.")
 
 	case "forward":
 		if err := sess.Forward(); err != nil {
 			return fantasy.NewTextErrorResponse("forward failed: " + err.Error()), nil
 		}
-		return fantasy.WithResponseMetadata(fantasy.NewTextResponse("Navigated forward."), metadata), nil
+		return withFreshState(sess, metadata, "Navigated forward.")
 
 	case "click":
 		selector, err := resolveTargetSelector(action, params)

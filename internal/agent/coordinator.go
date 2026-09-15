@@ -21,6 +21,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/prompt"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools/mcp"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/credentials"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
@@ -944,6 +945,20 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 	// and requires Delve installed.
 	if c.cfg.Config().Tools.Debugger.IsEnabled() {
 		allTools = append(allTools, tools.NewDebuggerTool(c.permissions, c.cfg.Config().Tools.Debugger))
+	}
+
+	// Computer-use tool is opt-in: every action moves the user's real
+	// desktop. The backend reports unsupported platforms itself, so the
+	// tool registers wherever it is enabled and degrades to a clear
+	// error off Windows.
+	if c.cfg.Config().Tools.Computer.IsEnabled() {
+		allTools = append(allTools, tools.NewComputerTool(
+			c.permissions,
+			c.cfg.WorkingDir(),
+			c.cfg.Config().Tools.Computer,
+			computer.OpenOrNil(),
+			func() bool { return c.cfg.Config().Tools.Computer.IsEnabled() },
+		))
 	}
 
 	// Team tools are opt-in like the others above, even though they have

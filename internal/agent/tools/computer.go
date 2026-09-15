@@ -149,3 +149,39 @@ func newComputerTool(
 	)
 }
 
+// runWithTimeout bounds every backend call: a stuck driver must fail
+// the action, never the agent loop. The backend has no context
+// plumbing (blocking Win32 syscalls), so the call runs on a goroutine
+// and the timeout wins the race. An abandoned call still runs to
+// completion in the background; SendInput and capture syscalls return
+// in milliseconds in practice, so the window is small.
+func (s *computerToolState) runWithTimeout(ctx context.Context, action string, params ComputerParams) (fantasy.ToolResponse, error) {
+	timeout := s.actionTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	type result struct {
+		resp fantasy.ToolResponse
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		resp, err := s.runComputerAction(ctx, action, params)
+		done <- result{resp: resp, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		if ctx.Err() == context.DeadlineExceeded {
+			return fantasy.NewTextErrorResponse(
+				fmt.Sprintf("computer action %q timed out after %s.", action, timeout),
+			), nil
+		}
+		return fantasy.ToolResponse{}, ctx.Err()
+	case r := <-done:
+		return r.resp, r.err
+	}
+}

@@ -854,6 +854,7 @@
             "factory",
             "coderabbit",
             "zed",
+            "muse",
             "litellm",
             "llamacpp",
             "lmstudio",

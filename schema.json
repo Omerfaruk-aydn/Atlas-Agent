@@ -854,6 +854,7 @@
             "factory",
             "coderabbit",
             "zed",
+            "muse",
             "litellm",
             "llamacpp",
             "lmstudio",
@@ -1225,6 +1226,21 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "ToolComputer": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Turn on the computer-use tool so the agent can screenshot the screen and click / drag / scroll / type / press keys on the real desktop. When on",
+          "default": false
+        },
+        "action_timeout": {
+          "type": "integer",
+          "description": "How long a single computer action (screenshot"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "ToolDebugger": {
       "properties": {
         "enabled": {
@@ -1379,6 +1395,9 @@
         },
         "debugger": {
           "$ref": "#/$defs/ToolDebugger"
+        },
+        "computer": {
+          "$ref": "#/$defs/ToolComputer"
         },
         "teams": {
           "$ref": "#/$defs/ToolTeams"

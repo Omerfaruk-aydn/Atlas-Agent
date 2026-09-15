@@ -1063,6 +1063,7 @@ type Tools struct {
 	View     ToolView     `json:"view,omitzero"`
 	Browser  ToolBrowser  `json:"browser,omitzero"`
 	Debugger ToolDebugger `json:"debugger,omitzero"`
+	Computer ToolComputer `json:"computer,omitzero"`
 	Teams    ToolTeams    `json:"teams,omitzero"`
 
 	CodeIntel ToolCodeIntel `json:"code_intel,omitzero"`

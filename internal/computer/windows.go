@@ -373,3 +373,39 @@ func (b *windowsBackend) Drag(x, y, endX, endY int) error {
 	})
 }
 
+func (b *windowsBackend) Scroll(dx, dy int) error {
+	var inputs []winInput
+	for i := 0; i < abs(dy); i++ {
+		// Negation applies to the variable, not the constant: negating
+		// the constant itself overflows uint32 at compile time, while
+		// negating a uint32 value wraps around to the two's-complement
+		// encoding SendInput expects for a downward notch.
+		data := uint32(wheelDelta)
+		if dy < 0 {
+			data = -data
+		}
+		inputs = append(inputs, winInput{
+			Type:    inputMouse,
+			Payload: mousePayload(0, 0, data, mouseWheel),
+		})
+	}
+	for i := 0; i < abs(dx); i++ {
+		data := uint32(wheelDelta)
+		if dx < 0 {
+			data = -data
+		}
+		inputs = append(inputs, winInput{
+			Type:    inputMouse,
+			Payload: mousePayload(0, 0, data, mouseHWheel),
+		})
+	}
+	return sendInputs(inputs)
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+

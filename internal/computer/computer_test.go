@@ -99,3 +99,46 @@ func TestParseModifiersRejectsUnknown(t *testing.T) {
 	}
 }
 
+func TestValidatePointInAcceptsInside(t *testing.T) {
+	t.Parallel()
+	size := Size{Width: 1920, Height: 1080}
+	for _, p := range [][2]int{{0, 0}, {1919, 1079}, {100, 200}} {
+		if err := ValidatePointIn(size, p[0], p[1]); err != nil {
+			t.Fatalf("ValidatePointIn(%d, %d) = %v, want nil", p[0], p[1], err)
+		}
+	}
+}
+
+func TestValidatePointInRejectsOutside(t *testing.T) {
+	t.Parallel()
+	size := Size{Width: 1920, Height: 1080}
+	for _, p := range [][2]int{{1920, 0}, {0, 1080}, {2500, 100}, {-1, 5}} {
+		err := ValidatePointIn(size, p[0], p[1])
+		if err == nil {
+			t.Fatalf("ValidatePointIn(%d, %d) = nil, want error", p[0], p[1])
+		}
+	}
+}
+
+func TestValidatePointInNamesScreenSize(t *testing.T) {
+	t.Parallel()
+	err := ValidatePointIn(Size{Width: 1920, Height: 1080}, 2500, 100)
+	if err == nil {
+		t.Fatal("ValidatePointIn = nil, want error")
+	}
+	if got, want := err.Error(), "1920 x 1080"; !strings.Contains(got, want) {
+		t.Fatalf("error %q does not name the screen size %q", got, want)
+	}
+}
+
+func TestOpenReportsUnsupportedOffWindows(t *testing.T) {
+	t.Parallel()
+	backend, err := Open()
+	if err == nil {
+		_ = backend
+		t.Skip("platform has a computer backend; nothing to assert here")
+	}
+	if !errors.Is(err, ErrUnsupportedPlatform) {
+		t.Fatalf("Open() = %v, want ErrUnsupportedPlatform", err)
+	}
+}

@@ -185,3 +185,57 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 		return r.resp, r.err
 	}
 }
+
+// validatePoint checks coordinates against the live screen size, so
+// out-of-range aims fail loudly instead of landing clamped at the
+// screen edge. The size is read fresh on every call: GetSystemMetrics
+// costs nanoseconds, and a cache would go stale when displays change
+// mid-session. When the size read itself fails, validation falls back
+// to the non-negative check rather than bricking the tool.
+func (s *computerToolState) validatePoint(x, y int) error {
+	size, err := s.backend.ScreenSize()
+	if err != nil {
+		return computer.ValidatePoint(x, y)
+	}
+	return computer.ValidatePointIn(size, x, y)
+}
+
+// ComputerPermissionsParams exposes stable tool/action fields for
+// permission allowlists, mirroring BrowserPermissionsParams.
+func ComputerPermissionsParams(params ComputerParams) map[string]any {
+	return map[string]any{
+		"action": strings.ToLower(strings.TrimSpace(params.Action)),
+	}
+}
+
+func computerActionDescription(action string, params ComputerParams) string {
+	switch action {
+	case "screenshot":
+		return "Capture the screen"
+	case "screen_size":
+		return "Read the screen size"
+	case "cursor_position":
+		return "Read the pointer position"
+	case "move":
+		return fmt.Sprintf("Move the pointer to (%d, %d)", params.X, params.Y)
+	case "click":
+		button, _ := computer.ParseButton(params.Button)
+		return fmt.Sprintf("Click %s at (%d, %d)", button, params.X, params.Y)
+	case "double_click":
+		return fmt.Sprintf("Double-click at (%d, %d)", params.X, params.Y)
+	case "right_click":
+		return fmt.Sprintf("Right-click at (%d, %d)", params.X, params.Y)
+	case "drag":
+		return fmt.Sprintf("Drag from (%d, %d) to (%d, %d)", params.X, params.Y, params.EndX, params.EndY)
+	case "scroll":
+		return fmt.Sprintf("Scroll %+d vertical / %+d horizontal notches", params.ScrollY, params.ScrollX)
+	case "type":
+		return fmt.Sprintf("Type %q", params.Text)
+	case "key":
+		return fmt.Sprintf("Press %s", params.Key)
+	case "hotkey":
+		return fmt.Sprintf("Press %s+%s", params.Modifiers, params.Key)
+	default:
+		return "Control the computer"
+	}
+}

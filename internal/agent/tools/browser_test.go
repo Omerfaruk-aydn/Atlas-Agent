@@ -59,7 +59,12 @@ func (f *fakeBrowserSession) Back() error               { f.wentBack = true; ret
 func (f *fakeBrowserSession) Forward() error            { f.wentForward = true; return nil }
 func (f *fakeBrowserSession) Click(selector string) error {
 	f.clicked = selector
-	return nil
+	return f.clickErr
+}
+
+func (f *fakeBrowserSession) ClickAt(x, y float64) error {
+	f.clickAtX, f.clickAtY = x, y
+	return f.clickAtErr
 }
 
 func (f *fakeBrowserSession) Type(selector, text string) error {

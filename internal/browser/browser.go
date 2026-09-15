@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
@@ -65,6 +66,10 @@ type Session interface {
 	Back() error
 	Forward() error
 	Click(selector string) error
+	// ClickAt presses the left button at viewport coordinates in CSS
+	// pixels -- the coordinate fallback when a selector click fails
+	// but a fresh snapshot still knows where the element is.
+	ClickAt(x, y float64) error
 	Type(selector, text string) error
 	PressKey(name string) error
 	Scroll(dx, dy int) error
@@ -72,6 +77,11 @@ type Session interface {
 	Text(selector string) (string, error)
 	HTML(selector string) (string, error)
 	Screenshot(fullPage bool) ([]byte, error)
+	// AnnotatedScreenshot captures the page like Screenshot, then
+	// draws a numbered box over each interactive element, labeled
+	// with its snapshot ref. The model aims by label, never by pixel
+	// arithmetic: every box maps 1:1 onto the returned image.
+	AnnotatedScreenshot(fullPage bool) ([]byte, error)
 	URL() (string, error)
 	// Snapshot returns every currently visible interactive element (or,
 	// with full, every one in the document regardless of scroll

@@ -28,6 +28,7 @@ import (
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/object"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/google"
 	"github.com/google/uuid"
 )
 
@@ -119,18 +120,27 @@ func (m *languageModel) Provider() string { return Name }
 // -- Gemini-shaped request/response envelope --------------------------------
 
 type geminiPart struct {
+	ThoughtSignature []byte            `json:"thoughtSignature,omitempty"`
+	InlineData       *geminiInlineData `json:"inlineData,omitempty"`
 	Text             string            `json:"text,omitempty"`
 	Thought          bool              `json:"thought,omitempty"`
 	FunctionCall     *geminiFuncCall   `json:"functionCall,omitempty"`
 	FunctionResponse *geminiFuncResult `json:"functionResponse,omitempty"`
 }
 
+type geminiInlineData struct {
+	MIMEType string `json:"mimeType"`
+	Data     []byte `json:"data"`
+}
+
 type geminiFuncCall struct {
+	ID   string         `json:"id,omitempty"`
 	Name string         `json:"name"`
 	Args map[string]any `json:"args,omitempty"`
 }
 
 type geminiFuncResult struct {
+	ID       string         `json:"id,omitempty"`
 	Name     string         `json:"name"`
 	Response map[string]any `json:"response,omitempty"`
 }
@@ -256,17 +266,18 @@ func (m *languageModel) buildEnvelope(call fantasy.Call) (envelope, []fantasy.Ca
 
 	cfg := &generationConfig{}
 	hasCfg := false
-	if call.Temperature != nil {
+	samplingSupported := !strings.HasPrefix(m.modelID, "gemini-3.8-flash")
+	if samplingSupported && call.Temperature != nil {
 		v := float32(*call.Temperature)
 		cfg.Temperature = &v
 		hasCfg = true
 	}
-	if call.TopP != nil {
+	if samplingSupported && call.TopP != nil {
 		v := float32(*call.TopP)
 		cfg.TopP = &v
 		hasCfg = true
 	}
-	if call.TopK != nil {
+	if samplingSupported && call.TopK != nil {
 		v := float32(*call.TopK)
 		cfg.TopK = &v
 		hasCfg = true
@@ -347,6 +358,9 @@ func toGeminiPrompt(prompt fantasy.Prompt) (*geminiContent, []geminiContent, []f
 		case fantasy.MessageRoleUser:
 			var parts []geminiPart
 			for _, part := range msg.Content {
+				if file, ok := fantasy.AsMessagePart[fantasy.FilePart](part); ok {
+					parts = append(parts, geminiPart{InlineData: &geminiInlineData{MIMEType: file.MediaType, Data: file.Data}})
+				}
 				if part.GetType() == fantasy.ContentTypeText {
 					if t, ok := fantasy.AsMessagePart[fantasy.TextPart](part); ok && t.Text != "" {
 						parts = append(parts, geminiPart{Text: t.Text})
@@ -359,11 +373,28 @@ func toGeminiPrompt(prompt fantasy.Prompt) (*geminiContent, []geminiContent, []f
 
 		case fantasy.MessageRoleAssistant:
 			var parts []geminiPart
+			signatures := make(map[string][]byte)
+			for _, part := range msg.Content {
+				if reasoning, ok := fantasy.AsMessagePart[fantasy.ReasoningPart](part); ok {
+					if metadata := google.GetReasoningMetadata(reasoning.ProviderOptions); metadata != nil {
+						signatures[metadata.ToolID] = []byte(metadata.Signature)
+					}
+				}
+			}
 			for _, part := range msg.Content {
 				switch part.GetType() {
+				case fantasy.ContentTypeReasoning:
+					if reasoning, ok := fantasy.AsMessagePart[fantasy.ReasoningPart](part); ok && reasoning.Text != "" {
+						metadata := google.GetReasoningMetadata(reasoning.ProviderOptions)
+						if metadata != nil && metadata.ToolID == "" {
+							parts = append(parts, geminiPart{Text: reasoning.Text, Thought: true, ThoughtSignature: []byte(metadata.Signature)})
+							delete(signatures, "")
+						}
+					}
 				case fantasy.ContentTypeText:
 					if t, ok := fantasy.AsMessagePart[fantasy.TextPart](part); ok && t.Text != "" {
-						parts = append(parts, geminiPart{Text: t.Text})
+						parts = append(parts, geminiPart{Text: t.Text, ThoughtSignature: signatures[""]})
+						delete(signatures, "")
 					}
 				case fantasy.ContentTypeToolCall:
 					tc, ok := fantasy.AsMessagePart[fantasy.ToolCallPart](part)
@@ -375,7 +406,8 @@ func toGeminiPrompt(prompt fantasy.Prompt) (*geminiContent, []geminiContent, []f
 						continue
 					}
 					parts = append(parts, geminiPart{
-						FunctionCall: &geminiFuncCall{Name: tc.ToolName, Args: args},
+						FunctionCall:     &geminiFuncCall{ID: tc.ToolCallID, Name: tc.ToolName, Args: args},
+						ThoughtSignature: signatures[tc.ToolCallID],
 					})
 				}
 			}
@@ -417,7 +449,7 @@ func toGeminiPrompt(prompt fantasy.Prompt) (*geminiContent, []geminiContent, []f
 				}
 				if response != nil {
 					parts = append(parts, geminiPart{
-						FunctionResponse: &geminiFuncResult{Name: toolName, Response: response},
+						FunctionResponse: &geminiFuncResult{ID: result.ToolCallID, Name: toolName, Response: response},
 					})
 				}
 			}
@@ -509,15 +541,24 @@ func mapResponse(gr generateContentResponse, warnings []fantasy.CallWarning) (*f
 			if err != nil {
 				return nil, err
 			}
+			toolCallID := cmp.Or(part.FunctionCall.ID, uuid.NewString())
+			if len(part.ThoughtSignature) > 0 {
+				content = append(content, fantasy.ReasoningContent{ProviderMetadata: fantasy.ProviderMetadata{
+					google.Name: &google.ReasoningMetadata{Signature: string(part.ThoughtSignature), ToolID: toolCallID},
+				}})
+			}
 			content = append(content, fantasy.ToolCallContent{
-				ToolCallID: uuid.NewString(),
+				ToolCallID: toolCallID,
 				ToolName:   part.FunctionCall.Name,
 				Input:      string(input),
 			})
 			hasToolCalls = true
 		case part.Thought:
-			content = append(content, fantasy.ReasoningContent{Text: part.Text})
+			content = append(content, fantasy.ReasoningContent{Text: part.Text, ProviderMetadata: signatureMetadata(part.ThoughtSignature, "")})
 		case part.Text != "":
+			if len(part.ThoughtSignature) > 0 {
+				content = append(content, fantasy.ReasoningContent{ProviderMetadata: signatureMetadata(part.ThoughtSignature, "")})
+			}
 			content = append(content, fantasy.TextContent{Text: part.Text})
 		}
 	}
@@ -596,14 +637,15 @@ func (m *languageModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.
 		}
 
 		var (
-			blockCounter          int
-			isActiveText          bool
-			currentTextBlockID    string
-			isActiveReasoning     bool
-			currentReasoningID    string
-			usage                 fantasy.Usage
-			lastFinishReason      fantasy.FinishReason
-			sawToolCall           bool
+			blockCounter             int
+			isActiveText             bool
+			currentTextBlockID       string
+			isActiveReasoning        bool
+			currentReasoningID       string
+			currentReasoningMetadata fantasy.ProviderMetadata
+			usage                    fantasy.Usage
+			lastFinishReason         fantasy.FinishReason
+			sawToolCall              bool
 		)
 
 		scanner := bufio.NewScanner(resp.Body)
@@ -644,7 +686,7 @@ func (m *languageModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.
 					}
 					if isActiveReasoning {
 						isActiveReasoning = false
-						if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeReasoningEnd, ID: currentReasoningID}) {
+						if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeReasoningEnd, ID: currentReasoningID, ProviderMetadata: currentReasoningMetadata}) {
 							return
 						}
 					}
@@ -653,7 +695,14 @@ func (m *languageModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.
 						yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeError, Error: err})
 						return
 					}
-					toolCallID := uuid.NewString()
+					toolCallID := cmp.Or(part.FunctionCall.ID, uuid.NewString())
+					if len(part.ThoughtSignature) > 0 {
+						signatureID := "signature-" + toolCallID
+						if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeReasoningStart, ID: signatureID}) ||
+							!yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeReasoningEnd, ID: signatureID, ProviderMetadata: signatureMetadata(part.ThoughtSignature, toolCallID)}) {
+							return
+						}
+					}
 					sawToolCall = true
 					if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeToolInputStart, ID: toolCallID, ToolCallName: part.FunctionCall.Name}) {
 						return
@@ -682,11 +731,15 @@ func (m *languageModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.
 					}
 					if !isActiveReasoning {
 						isActiveReasoning = true
+						currentReasoningMetadata = nil
 						currentReasoningID = fmt.Sprintf("%d", blockCounter)
 						blockCounter++
 						if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeReasoningStart, ID: currentReasoningID}) {
 							return
 						}
+					}
+					if len(part.ThoughtSignature) > 0 {
+						currentReasoningMetadata = signatureMetadata(part.ThoughtSignature, "")
 					}
 					if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeReasoningDelta, ID: currentReasoningID, Delta: part.Text}) {
 						return
@@ -695,7 +748,7 @@ func (m *languageModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.
 				case part.Text != "":
 					if isActiveReasoning {
 						isActiveReasoning = false
-						if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeReasoningEnd, ID: currentReasoningID}) {
+						if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeReasoningEnd, ID: currentReasoningID, ProviderMetadata: currentReasoningMetadata}) {
 							return
 						}
 					}
@@ -731,7 +784,7 @@ func (m *languageModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.
 			}
 		}
 		if isActiveReasoning {
-			if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeReasoningEnd, ID: currentReasoningID}) {
+			if !yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeReasoningEnd, ID: currentReasoningID, ProviderMetadata: currentReasoningMetadata}) {
 				return
 			}
 		}
@@ -746,6 +799,13 @@ func (m *languageModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.
 
 		yield(fantasy.StreamPart{Type: fantasy.StreamPartTypeFinish, Usage: usage, FinishReason: finishReason})
 	}, nil
+}
+
+func signatureMetadata(signature []byte, toolID string) fantasy.ProviderMetadata {
+	if len(signature) == 0 {
+		return nil
+	}
+	return fantasy.ProviderMetadata{google.Name: &google.ReasoningMetadata{Signature: string(signature), ToolID: toolID}}
 }
 
 // GenerateObject implements fantasy.LanguageModel via the generic

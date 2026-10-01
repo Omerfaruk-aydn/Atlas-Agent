@@ -94,11 +94,29 @@ var copilotResponsesModels = map[string]bool{
 	"gpt-5.6-luna":  true,
 	"gpt-5.6-terra": true,
 	"gpt-5.6-sol":   true,
+	"gpt-6-astra":   true,
+	"gpt-6-sol":     true,
+	"gpt-6.1-sol":   true,
+	"gpt-6-luna":    true,
 }
 
-// OpenCode models that user Anthropic Messages API instead of Chat Completions.
-var opencodeMessagesModels = map[string]bool{
-	"qwen3.7-max": true,
+// opencodeModelType follows the gateway's per-model protocol routing.
+func opencodeModelType(providerID, modelID string) catwalk.Type {
+	if strings.HasPrefix(modelID, "claude-") ||
+		slices.Contains([]string{"qwen3.8-flash", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus"}, modelID) ||
+		providerID == string(catwalk.InferenceProviderOpenCodeGo) &&
+			(modelID == "qwen3.8-max" || strings.HasPrefix(modelID, "minimax-")) {
+		return catwalk.TypeAnthropic
+	}
+	if strings.HasPrefix(modelID, "gpt-") ||
+		slices.Contains([]string{"grok-4.7", "grok-4.6", "grok-4.5", "grok-build-0.1"}, modelID) ||
+		strings.HasPrefix(modelID, "muse-spark-") {
+		return catwalk.TypeOpenAI
+	}
+	if strings.HasPrefix(modelID, "gemini-") {
+		return catwalk.TypeGoogle
+	}
+	return catwalk.TypeOpenAICompat
 }
 
 type Coordinator interface {
@@ -424,6 +442,19 @@ func effectiveReasoningEffort(model Model) string {
 
 func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.ProviderOptions {
 	options := fantasy.ProviderOptions{}
+	if providerCfg.Type == catwalk.TypeVertexAI {
+		if strings.HasPrefix(model.CatwalkCfg.ID, "claude-") {
+			providerCfg.Type = catwalk.TypeAnthropic
+		} else {
+			providerCfg.Type = catwalk.TypeGoogle
+		}
+	}
+	if providerCfg.ID == string(catwalk.InferenceProviderOpenCodeGo) || providerCfg.ID == string(catwalk.InferenceProviderOpenCodeZen) {
+		providerCfg.Type = opencodeModelType(providerCfg.ID, model.CatwalkCfg.ID)
+	}
+	if providerCfg.ID == string(catwalk.InferenceProviderCopilot) && copilotResponsesModels[model.CatwalkCfg.ID] {
+		providerCfg.Type = catwalk.TypeOpenAI
+	}
 
 	cfgOpts := []byte("{}")
 	providerCfgOpts := []byte("{}")
@@ -481,7 +512,8 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 		if !hasReasoningEffort && shouldSetEffort {
 			mergedOptions["reasoning_effort"] = reasoningEffort
 		}
-		if openai.IsResponsesModel(model.CatwalkCfg.ID) {
+		if openai.IsResponsesModel(model.CatwalkCfg.ID) || providerCfg.ID == string(catwalk.InferenceProviderMetaAPI) ||
+			(providerCfg.ID == string(catwalk.InferenceProviderOpenCodeGo) || providerCfg.ID == string(catwalk.InferenceProviderOpenCodeZen)) {
 			if openai.IsResponsesReasoningModel(model.CatwalkCfg.ID) {
 				mergedOptions["reasoning_summary"] = "auto"
 				mergedOptions["include"] = []openai.IncludeType{openai.IncludeReasoningEncryptedContent}
@@ -497,7 +529,7 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 			}
 		}
 
-	case anthropic.Name, bedrock.Name:
+	case anthropic.Name, bedrock.Name, claude.Name, muse.Name:
 		var (
 			_, hasEffort = mergedOptions["effort"]
 			_, hasThink  = mergedOptions["thinking"]
@@ -589,11 +621,19 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 		}
 
 	case openaicompat.Name:
-		extraBody := make(map[string]any)
+		extraBody, _ := mergedOptions["extra_body"].(map[string]any)
+		if extraBody == nil {
+			extraBody = make(map[string]any)
+		}
 
 		_, hasReasoningEffort := mergedOptions["reasoning_effort"]
 		if !hasReasoningEffort && shouldSetEffort {
 			switch providerCfg.ID {
+			case string(catwalk.InferenceProviderXiaomi),
+				string(catwalk.InferenceProviderXiaomiPlanCN),
+				string(catwalk.InferenceProviderXiaomiPlanSGP),
+				string(catwalk.InferenceProviderXiaomiPlanAMS):
+				// MiMo uses thinking.type rather than reasoning_effort.
 			case string(catwalk.InferenceProviderIoNet):
 				extraBody["reasoning"] = map[string]string{"effort": reasoningEffort}
 			case string(catwalk.InferenceProviderOpenCodeGo), string(catwalk.InferenceProviderOpenCodeZen):
@@ -613,6 +653,17 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 		// TODO: Abstract this in Fantasy somehow?
 		// TODO: Allow custom providers to specify how to set this?
 		switch providerCfg.ID {
+		case string(catwalk.InferenceProviderXiaomi),
+			string(catwalk.InferenceProviderXiaomiPlanCN),
+			string(catwalk.InferenceProviderXiaomiPlanSGP),
+			string(catwalk.InferenceProviderXiaomiPlanAMS):
+			if _, configured := extraBody["thinking"]; !configured && model.CatwalkCfg.CanReason {
+				thinkingType := "disabled"
+				if model.ModelCfg.Think || reasoningEffort != "" && reasoningEffort != "none" {
+					thinkingType = "enabled"
+				}
+				extraBody["thinking"] = map[string]any{"type": thinkingType}
+			}
 		case string(catwalk.InferenceProviderIoNet):
 			if _, ok := extraBody["reasoning"]; !ok && model.CatwalkCfg.CanReason {
 				if model.ModelCfg.Think {
@@ -622,8 +673,8 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 				}
 			}
 
-		case string(catwalk.InferenceProviderZAI), string(catwalk.InferenceProviderDeepSeek):
-			if model.ModelCfg.Think || reasoningEffort != "" {
+		case string(catwalk.InferenceProviderZAI), string(catwalk.InferenceProviderZAIAPI), string(catwalk.InferenceProviderDeepSeek):
+			if model.CatwalkCfg.ID == "glm-5.3-flash" || model.ModelCfg.Think || reasoningEffort != "" {
 				extraBody["thinking"] = map[string]any{"type": "enabled"}
 			} else {
 				extraBody["thinking"] = map[string]any{"type": "disabled"}
@@ -657,9 +708,24 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 				}
 			}
 
-		case string(catwalk.InferenceProviderAlibabaSingapore), string(catwalk.InferenceProviderAlibabaUS):
+		case string(catwalk.InferenceProviderAlibabaCoding),
+			string(catwalk.InferenceProviderAlibabaCodingCN),
+			string(catwalk.InferenceProviderAlibabaPlanSGP),
+			string(catwalk.InferenceProviderAlibabaPlanCN),
+			string(catwalk.InferenceProviderAlibabaTeamSGP),
+			string(catwalk.InferenceProviderAlibabaTeamCN),
+			string(catwalk.InferenceProviderAlibabaSingapore),
+			string(catwalk.InferenceProviderAlibabaUS):
 			if model.CatwalkCfg.CanReason {
-				extraBody["enable_thinking"] = model.ModelCfg.Think || reasoningEffort != ""
+				if model.CatwalkCfg.ID == "glm-5.3" {
+					extraBody["enable_thinking"] = true
+				} else if strings.HasPrefix(strings.ToLower(model.CatwalkCfg.ID), "minimax") {
+					if _, configured := extraBody["thinking"]; !configured {
+						extraBody["thinking"] = map[string]any{"type": "adaptive"}
+					}
+				} else if _, configured := extraBody["enable_thinking"]; !configured {
+					extraBody["enable_thinking"] = model.ModelCfg.Think || reasoningEffort != "" || model.CatwalkCfg.ID == "glm-5.3" || model.CatwalkCfg.ID == "kimi-k2.7-code"
+				}
 			}
 		}
 
@@ -1434,15 +1500,17 @@ func (c *coordinator) buildEscalator(ctx context.Context, advisorModel *Model, a
 
 func (c *coordinator) buildAnthropicProvider(baseURL, apiKey string, headers map[string]string, providerID string) (fantasy.Provider, error) {
 	var opts []anthropic.Option
+	headers = maps.Clone(headers)
+	if headers == nil {
+		headers = make(map[string]string)
+	}
 
 	switch {
 	case strings.HasPrefix(apiKey, "Bearer "):
-		// NOTE: Prevent the SDK from picking up the API key from env.
-		os.Setenv("ANTHROPIC_API_KEY", "")
+		opts = append(opts, anthropic.WithSkipAuth(true))
 		headers["Authorization"] = apiKey
-	case providerID == string(catwalk.InferenceProviderMiniMax) || providerID == string(catwalk.InferenceProviderMiniMaxChina):
-		// NOTE: Prevent the SDK from picking up the API key from env.
-		os.Setenv("ANTHROPIC_API_KEY", "")
+	case providerID == string(catwalk.InferenceProviderMiniMax) || providerID == string(catwalk.InferenceProviderMiniMaxChina) || providerID == "minimax-coding" || providerID == string(catwalk.InferenceProviderMiniMaxMPlan):
+		opts = append(opts, anthropic.WithSkipAuth(true))
 		headers["Authorization"] = "Bearer " + apiKey
 	case apiKey != "":
 		// X-Api-Key header
@@ -1472,6 +1540,9 @@ func (c *coordinator) buildOpenaiProvider(providerID, baseURL, apiKey string, he
 		// OpenAI-shaped provider reported itself as "" and nothing
 		// downstream could tell one from another.
 		openai.WithName(providerID),
+	}
+	if providerID == string(catwalk.InferenceProviderOpenCodeGo) || providerID == string(catwalk.InferenceProviderOpenCodeZen) || providerID == string(catwalk.InferenceProviderMetaAPI) {
+		opts = append(opts, openai.WithResponsesAPIFunc(func(string) bool { return true }))
 	}
 	if c.cfg.Config().Options.Debug {
 		httpClient := log.NewHTTPClient()
@@ -1803,6 +1874,9 @@ func (c *coordinator) pickAPIKey(providerCfg config.ProviderConfig) string {
 }
 
 func (c *coordinator) buildProvider(providerCfg config.ProviderConfig, model config.SelectedModel, isSubAgent bool) (fantasy.Provider, error) {
+	if reason := catwalk.UnavailableProviderReason(providerCfg.Type, catwalk.InferenceProvider(providerCfg.ID)); reason != "" {
+		return nil, fmt.Errorf("provider %s is unavailable: %s", providerCfg.ID, reason)
+	}
 	headers := maps.Clone(providerCfg.ExtraHeaders)
 	if headers == nil {
 		headers = make(map[string]string)
@@ -1822,9 +1896,24 @@ func (c *coordinator) buildProvider(providerCfg config.ProviderConfig, model con
 
 	switch providerCfg.ID {
 	case string(catwalk.InferenceProviderOpenCodeGo), string(catwalk.InferenceProviderOpenCodeZen):
-		if opencodeMessagesModels[model.Model] {
+		switch opencodeModelType(providerCfg.ID, model.Model) {
+		case catwalk.TypeAnthropic:
 			baseURL = strings.TrimSuffix(baseURL, "/v1")
 			return c.buildAnthropicProvider(baseURL, apiKey, headers, providerCfg.ID)
+		case catwalk.TypeOpenAI:
+			return c.buildOpenaiProvider(providerCfg.ID, baseURL, apiKey, headers)
+		case catwalk.TypeGoogle:
+			opts := []google.Option{
+				google.WithBaseURL(strings.TrimSuffix(baseURL, "/v1")),
+				google.WithAPIVersion("v1"),
+				google.WithGeminiAPIKey(apiKey),
+				google.WithHeaders(headers),
+				google.WithName(providerCfg.ID),
+			}
+			if c.cfg.Config().Options.Debug {
+				opts = append(opts, google.WithHTTPClient(log.NewHTTPClient()))
+			}
+			return google.New(opts...)
 		}
 	}
 
@@ -1867,7 +1956,7 @@ func (c *coordinator) buildProvider(providerCfg config.ProviderConfig, model con
 		return c.buildMuseProvider(baseURL, apiKey, headers)
 	case openaicompat.Name:
 		switch providerCfg.ID {
-		case string(catwalk.InferenceProviderZAI):
+		case string(catwalk.InferenceProviderZAI), string(catwalk.InferenceProviderZAIAPI):
 			if providerCfg.ExtraBody == nil {
 				providerCfg.ExtraBody = map[string]any{}
 			}

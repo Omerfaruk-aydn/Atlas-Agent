@@ -24,6 +24,42 @@ var antigravityConfig []byte
 //go:embed configs/anthropic.json
 var anthropicConfig []byte
 
+//go:embed configs/xiaomi.json
+var xiaomiConfig []byte
+
+//go:embed configs/alibaba-coding.json
+var alibabaCodingConfig []byte
+
+//go:embed configs/alibaba-coding-cn.json
+var alibabaCodingCNConfig []byte
+
+//go:embed configs/alibaba-token-plan-sgp.json
+var alibabaTokenPlanSGPConfig []byte
+
+//go:embed configs/alibaba-token-plan-cn.json
+var alibabaTokenPlanCNConfig []byte
+
+//go:embed configs/alibaba-token-plan-team-sgp.json
+var alibabaTokenPlanTeamSGPConfig []byte
+
+//go:embed configs/alibaba-token-plan-team-cn.json
+var alibabaTokenPlanTeamCNConfig []byte
+
+//go:embed configs/minimax-m-plan.json
+var miniMaxMPlanConfig []byte
+
+//go:embed configs/zai-api.json
+var zaiAPIConfig []byte
+
+//go:embed configs/xiaomi-token-plan-cn.json
+var xiaomiPlanCNConfig []byte
+
+//go:embed configs/xiaomi-token-plan-sgp.json
+var xiaomiPlanSGPConfig []byte
+
+//go:embed configs/xiaomi-token-plan-ams.json
+var xiaomiPlanAMSConfig []byte
+
 //go:embed configs/claude.json
 var claudeConfig []byte
 
@@ -51,6 +87,9 @@ var zedConfig []byte
 //go:embed configs/muse.json
 var museConfig []byte
 
+//go:embed configs/meta-api.json
+var metaAPIConfig []byte
+
 //go:embed configs/minimax-coding.json
 var miniMaxCodingConfig []byte
 
@@ -62,9 +101,6 @@ var cohereConfig []byte
 
 //go:embed configs/amp.json
 var ampConfig []byte
-
-//go:embed configs/huggingface.json
-var huggingFaceConfigNew []byte
 
 //go:embed configs/vercel-v0.json
 var vercelV0Config []byte
@@ -102,6 +138,9 @@ var bedrockUnitedStatesConfig []byte
 //go:embed configs/bedrock-europe.json
 var bedrockEuropeConfig []byte
 
+//go:embed configs/bedrock-openai.json
+var bedrockOpenAIConfig []byte
+
 //go:embed configs/cerebras.json
 var cerebrasConfig []byte
 
@@ -138,6 +177,9 @@ var ioNetConfig []byte
 //go:embed configs/kimi.json
 var kimiCodingConfig []byte
 
+//go:embed configs/kimi-coding-global.json
+var kimiCodingGlobalConfig []byte
+
 //go:embed configs/minimax.json
 var miniMaxConfig []byte
 
@@ -170,6 +212,9 @@ var nvidiaNIMConfig []byte
 
 //go:embed configs/qiniucloud.json
 var qiniuCloudConfig []byte
+
+//go:embed configs/qiniu-token-plan.json
+var qiniuTokenPlanConfig []byte
 
 //go:embed configs/scaleway.json
 var scalewayConfig []byte
@@ -206,9 +251,22 @@ var providerRegistry = []ProviderFunc{
 	anthropicProvider,
 	openAIProvider,
 	geminiProvider,
+	xiaomiProvider,
+	alibabaCodingProvider,
+	alibabaCodingCNProvider,
+	alibabaTokenPlanSGPProvider,
+	alibabaTokenPlanCNProvider,
+	alibabaTokenPlanTeamSGPProvider,
+	alibabaTokenPlanTeamCNProvider,
+	miniMaxMPlanProvider,
+	zaiAPIProvider,
+	xiaomiPlanSGPProvider,
+	xiaomiPlanAMSProvider,
+	xiaomiPlanCNProvider,
 	xAIProvider,
 	zAIProvider,
 	kimiCodingProvider,
+	kimiCodingGlobalProvider,
 	miniMaxProvider,
 	miniMaxChinaProvider,
 	miniMaxCodingProvider,
@@ -223,10 +281,10 @@ var providerRegistry = []ProviderFunc{
 	coderabbitProvider,
 	zedProvider,
 	museProvider,
+	metaAPIProvider,
 	mistralProvider,
 	cohereProvider,
 	ampProvider,
-	huggingFaceProviderNew,
 	vercelV0Provider,
 	boltProvider,
 	perplexityProvider,
@@ -245,6 +303,7 @@ var providerRegistry = []ProviderFunc{
 	azureProvider,
 	bedrockUnitedStatesProvider,
 	bedrockEuropeProvider,
+	bedrockOpenAIProvider,
 	cerebrasProvider,
 	chatGPTProvider,
 	chutesProvider,
@@ -262,6 +321,7 @@ var providerRegistry = []ProviderFunc{
 	openCodeZenProvider,
 	openRouterProvider,
 	qiniuCloudProvider,
+	qiniuTokenPlanProvider,
 	scalewayProvider,
 	vercelProvider,
 	veniceProvider,
@@ -274,9 +334,20 @@ var providerRegistry = []ProviderFunc{
 func GetAll() []catwalk.Provider {
 	providers := make([]catwalk.Provider, 0, len(providerRegistry))
 	for _, providerFunc := range providerRegistry {
-		providers = append(providers, providerFunc())
+		p := providerFunc()
+		if catwalk.UnavailableProviderReason(p.Type, p.ID) == "" {
+			providers = append(providers, p)
+		}
 	}
 	return providers
+}
+
+func bedrockOpenAIProvider() catwalk.Provider {
+	return loadProviderFromConfig(bedrockOpenAIConfig)
+}
+
+func metaAPIProvider() catwalk.Provider {
+	return loadProviderFromConfig(metaAPIConfig)
 }
 
 func loadProviderFromConfig(configData []byte) catwalk.Provider {
@@ -306,6 +377,54 @@ func antigravityProvider() catwalk.Provider {
 
 func anthropicProvider() catwalk.Provider {
 	return loadProviderFromConfig(anthropicConfig)
+}
+
+func xiaomiProvider() catwalk.Provider {
+	return loadProviderFromConfig(xiaomiConfig)
+}
+
+func alibabaCodingProvider() catwalk.Provider {
+	return loadProviderFromConfig(alibabaCodingConfig)
+}
+
+func alibabaCodingCNProvider() catwalk.Provider {
+	return loadProviderFromConfig(alibabaCodingCNConfig)
+}
+
+func alibabaTokenPlanSGPProvider() catwalk.Provider {
+	return loadProviderFromConfig(alibabaTokenPlanSGPConfig)
+}
+
+func alibabaTokenPlanCNProvider() catwalk.Provider {
+	return loadProviderFromConfig(alibabaTokenPlanCNConfig)
+}
+
+func alibabaTokenPlanTeamSGPProvider() catwalk.Provider {
+	return loadProviderFromConfig(alibabaTokenPlanTeamSGPConfig)
+}
+
+func alibabaTokenPlanTeamCNProvider() catwalk.Provider {
+	return loadProviderFromConfig(alibabaTokenPlanTeamCNConfig)
+}
+
+func miniMaxMPlanProvider() catwalk.Provider {
+	return loadProviderFromConfig(miniMaxMPlanConfig)
+}
+
+func zaiAPIProvider() catwalk.Provider {
+	return loadProviderFromConfig(zaiAPIConfig)
+}
+
+func xiaomiPlanCNProvider() catwalk.Provider {
+	return loadProviderFromConfig(xiaomiPlanCNConfig)
+}
+
+func xiaomiPlanSGPProvider() catwalk.Provider {
+	return loadProviderFromConfig(xiaomiPlanSGPConfig)
+}
+
+func xiaomiPlanAMSProvider() catwalk.Provider {
+	return loadProviderFromConfig(xiaomiPlanAMSConfig)
 }
 
 func atlasCloudProvider() catwalk.Provider {
@@ -380,6 +499,10 @@ func kimiCodingProvider() catwalk.Provider {
 	return loadProviderFromConfig(kimiCodingConfig)
 }
 
+func kimiCodingGlobalProvider() catwalk.Provider {
+	return loadProviderFromConfig(kimiCodingGlobalConfig)
+}
+
 func miniMaxProvider() catwalk.Provider {
 	return loadProviderFromConfig(miniMaxConfig)
 }
@@ -434,10 +557,6 @@ func cohereProvider() catwalk.Provider {
 
 func ampProvider() catwalk.Provider {
 	return loadProviderFromConfig(ampConfig)
-}
-
-func huggingFaceProviderNew() catwalk.Provider {
-	return loadProviderFromConfig(huggingFaceConfigNew)
 }
 
 func vercelV0Provider() catwalk.Provider {
@@ -502,6 +621,10 @@ func openRouterProvider() catwalk.Provider {
 
 func qiniuCloudProvider() catwalk.Provider {
 	return loadProviderFromConfig(qiniuCloudConfig)
+}
+
+func qiniuTokenPlanProvider() catwalk.Provider {
+	return loadProviderFromConfig(qiniuTokenPlanConfig)
 }
 
 func scalewayProvider() catwalk.Provider {

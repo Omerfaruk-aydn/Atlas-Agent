@@ -3,6 +3,25 @@ package catwalk
 // Type represents the type of AI provider.
 type Type string
 
+// UnavailableProviderReason reports unsupported adapters and built-in connections.
+func UnavailableProviderReason(t Type, ids ...InferenceProvider) string {
+	for _, id := range ids {
+		switch id {
+		case "amp", "bolt", "phind":
+			return "no verified model-inference endpoint is available for this built-in connection"
+		case "codex-ide":
+			return "use openai for API-key billing or chatgpt for Codex account sign-in"
+		}
+	}
+	switch t {
+	case TypeGrokWeb, TypeWindsurf, TypeJetBrains, TypeAugment,
+		TypeFactory, TypeCodeRabbit, TypeZed:
+		return "model calls are not implemented for this account provider"
+	default:
+		return ""
+	}
+}
+
 // All the supported AI provider types.
 const (
 	TypeOpenAI       Type = "openai"
@@ -48,10 +67,23 @@ const (
 	InferenceProviderAzure            InferenceProvider = "azure"
 	InferenceProviderBedrock          InferenceProvider = "bedrock"
 	InferenceProviderBedrockEurope    InferenceProvider = "bedrock-europe"
+	InferenceProviderBedrockOpenAI    InferenceProvider = "bedrock-openai"
 	InferenceProviderVertexAI         InferenceProvider = "vertexai"
 	InferenceProviderXAI              InferenceProvider = "xai"
 	InferenceProviderZAI              InferenceProvider = "zai"
 	InferenceProviderDeepSeek         InferenceProvider = "deepseek"
+	InferenceProviderXiaomi           InferenceProvider = "xiaomi"
+	InferenceProviderAlibabaCoding    InferenceProvider = "alibaba-coding"
+	InferenceProviderAlibabaCodingCN  InferenceProvider = "alibaba-coding-cn"
+	InferenceProviderAlibabaPlanSGP   InferenceProvider = "alibaba-token-plan-sgp"
+	InferenceProviderAlibabaPlanCN    InferenceProvider = "alibaba-token-plan-cn"
+	InferenceProviderAlibabaTeamSGP   InferenceProvider = "alibaba-token-plan-team-sgp"
+	InferenceProviderAlibabaTeamCN    InferenceProvider = "alibaba-token-plan-team-cn"
+	InferenceProviderMiniMaxMPlan     InferenceProvider = "minimax-m-plan"
+	InferenceProviderZAIAPI           InferenceProvider = "zai-api"
+	InferenceProviderXiaomiPlanCN     InferenceProvider = "xiaomi-token-plan-cn"
+	InferenceProviderXiaomiPlanSGP    InferenceProvider = "xiaomi-token-plan-sgp"
+	InferenceProviderXiaomiPlanAMS    InferenceProvider = "xiaomi-token-plan-ams"
 	InferenceProviderZhipu            InferenceProvider = "zhipu"
 	InferenceProviderZhipuCoding      InferenceProvider = "zhipu-coding"
 	InferenceProviderGROQ             InferenceProvider = "groq"
@@ -62,6 +94,7 @@ const (
 	InferenceProviderHuggingFace      InferenceProvider = "huggingface"
 	InferenceAIHubMix                 InferenceProvider = "aihubmix"
 	InferenceKimiCoding               InferenceProvider = "kimi-coding"
+	InferenceKimiCodingGlobal         InferenceProvider = "kimi-coding-global"
 	InferenceProviderCopilot          InferenceProvider = "copilot"
 	InferenceProviderChatGPT          InferenceProvider = "chatgpt"
 	InferenceProviderAntigravity      InferenceProvider = "antigravity"
@@ -74,12 +107,14 @@ const (
 	InferenceProviderCodeRabbit       InferenceProvider = "coderabbit"
 	InferenceProviderZed              InferenceProvider = "zed"
 	InferenceProviderMuse             InferenceProvider = "muse"
+	InferenceProviderMetaAPI          InferenceProvider = "meta-api"
 	InferenceProviderCortecs          InferenceProvider = "cortecs"
 	InferenceProviderVercel           InferenceProvider = "vercel"
 	InferenceProviderMiniMax          InferenceProvider = "minimax"
 	InferenceProviderMiniMaxChina     InferenceProvider = "minimax-china"
 	InferenceProviderIoNet            InferenceProvider = "ionet"
 	InferenceProviderQiniuCloud       InferenceProvider = "qiniucloud"
+	InferenceProviderQiniuTokenPlan   InferenceProvider = "qiniu-token-plan"
 	InferenceProviderAvian            InferenceProvider = "avian"
 	InferenceProviderNebius           InferenceProvider = "nebius"
 	InferenceProviderNeuralwatt       InferenceProvider = "neuralwatt"
@@ -138,12 +173,27 @@ type Model struct {
 func KnownProviders() []InferenceProvider {
 	return []InferenceProvider{
 		InferenceProviderOpenAI,
+		InferenceProviderDeepSeek,
+		InferenceProviderXiaomi,
+		InferenceProviderAlibabaCoding,
+		InferenceProviderAlibabaCodingCN,
+		InferenceProviderAlibabaPlanSGP,
+		InferenceProviderAlibabaPlanCN,
+		InferenceProviderAlibabaTeamSGP,
+		InferenceProviderAlibabaTeamCN,
+		InferenceProviderMiniMaxMPlan,
+		InferenceProviderZAIAPI,
+		InferenceProviderXiaomiPlanCN,
+		InferenceProviderXiaomiPlanSGP,
+		InferenceProviderXiaomiPlanAMS,
 		InferenceProviderSynthetic,
 		InferenceProviderAnthropic,
 		InferenceProviderGemini,
 		InferenceProviderAzure,
 		InferenceProviderBedrock,
 		InferenceProviderBedrockEurope,
+		InferenceProviderBedrockOpenAI,
+		InferenceProviderMetaAPI,
 		InferenceProviderVertexAI,
 		InferenceProviderXAI,
 		InferenceProviderZAI,
@@ -157,6 +207,7 @@ func KnownProviders() []InferenceProvider {
 		InferenceProviderHuggingFace,
 		InferenceAIHubMix,
 		InferenceKimiCoding,
+		InferenceKimiCodingGlobal,
 		InferenceProviderCopilot,
 		InferenceProviderChatGPT,
 		InferenceProviderCortecs,
@@ -164,6 +215,7 @@ func KnownProviders() []InferenceProvider {
 		InferenceProviderMiniMax,
 		InferenceProviderMiniMaxChina,
 		InferenceProviderQiniuCloud,
+		InferenceProviderQiniuTokenPlan,
 		InferenceProviderAvian,
 		InferenceProviderNebius,
 		InferenceProviderNeuralwatt,

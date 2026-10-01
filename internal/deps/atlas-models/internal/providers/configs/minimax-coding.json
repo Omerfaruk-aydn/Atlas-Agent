@@ -15,7 +15,7 @@
       "cost_per_1m_in_cached": 0,
       "cost_per_1m_out_cached": 0,
       "context_window": 1000000,
-      "default_max_tokens": 512000,
+      "default_max_tokens": 131072,
       "can_reason": true,
       "supports_attachments": true
     },
@@ -28,7 +28,7 @@
       "cost_per_1m_out_cached": 0,
       "context_window": 200000,
       "default_max_tokens": 128000,
-      "can_reason": false,
+      "can_reason": true,
       "supports_attachments": false
     },
     {
@@ -40,7 +40,7 @@
       "cost_per_1m_out_cached": 0,
       "context_window": 200000,
       "default_max_tokens": 128000,
-      "can_reason": false,
+      "can_reason": true,
       "supports_attachments": false
     }
   ]

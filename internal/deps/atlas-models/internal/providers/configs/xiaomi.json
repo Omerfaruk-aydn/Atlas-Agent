@@ -1,0 +1,71 @@
+{
+  "name": "Xiaomi MiMo",
+  "id": "xiaomi",
+  "type": "openai-compat",
+  "api_key": "$XIAOMI_API_KEY",
+  "api_endpoint": "https://api.xiaomimimo.com/v1",
+  "default_large_model_id": "mimo-v2.6-pro",
+  "default_small_model_id": "mimo-v2.6-flash",
+  "models": [
+    {
+      "id": "mimo-v2.6-pro",
+      "name": "MiMo-V2.6-Pro",
+      "cost_per_1m_in": 0.435,
+      "cost_per_1m_out": 0.87,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.0036,
+      "context_window": 1048576,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true
+    },
+    {
+      "id": "mimo-v2.6-flash",
+      "name": "MiMo-V2.6-Flash",
+      "cost_per_1m_in": 0.14,
+      "cost_per_1m_out": 0.28,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.0028,
+      "context_window": 1048576,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true
+    },
+    {
+      "id": "mimo-v2.5-pro",
+      "name": "MiMo-V2.5-Pro",
+      "cost_per_1m_in": 0.435,
+      "cost_per_1m_out": 0.87,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.0036,
+      "context_window": 1048576,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": false
+    },
+    {
+      "id": "mimo-v2.5",
+      "name": "MiMo-V2.5",
+      "cost_per_1m_in": 0.14,
+      "cost_per_1m_out": 0.28,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.0028,
+      "context_window": 1048576,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true
+    },
+    {
+      "id": "mimo-v2.6-pro-ultraspeed",
+      "name": "MiMo-V2.6-Pro-UltraSpeed",
+      "cost_per_1m_in": 4.35,
+      "cost_per_1m_out": 8.7,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.036,
+      "context_window": 1048576,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true
+    }
+  ]
+}

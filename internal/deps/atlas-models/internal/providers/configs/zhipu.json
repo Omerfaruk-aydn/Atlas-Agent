@@ -4,9 +4,27 @@
   "api_key": "$ZHIPU_API_KEY",
   "api_endpoint": "https://open.bigmodel.cn/api/paas/v4",
   "type": "openai-compat",
-  "default_large_model_id": "glm-4.7",
-  "default_small_model_id": "glm-4.7-flash",
+  "default_large_model_id": "glm-5.3",
+  "default_small_model_id": "glm-5.3-flash",
   "models": [
+    {
+      "id": "glm-5.3-flash",
+      "name": "GLM 5.3 Flash",
+      "cost_per_1m_in": 0.15,
+      "cost_per_1m_out": 0.5,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.03,
+      "context_window": 1048576,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "high",
+        "low"
+      ],
+      "default_reasoning_effort": "max"
+    },
     {
       "id": "glm-5.3",
       "name": "GLM-5.3",
@@ -40,7 +58,7 @@
       "id": "glm-5-turbo",
       "name": "GLM-5-Turbo",
       "cost_per_1m_in": 1.2,
-      "cost_per_1m_out": 4.0,
+      "cost_per_1m_out": 4,
       "cost_per_1m_in_cached": 0.24,
       "context_window": 200000,
       "default_max_tokens": 128000,
@@ -50,7 +68,7 @@
     {
       "id": "glm-5",
       "name": "GLM-5",
-      "cost_per_1m_in": 1.0,
+      "cost_per_1m_in": 1,
       "cost_per_1m_out": 3.2,
       "cost_per_1m_in_cached": 0.2,
       "context_window": 204800,

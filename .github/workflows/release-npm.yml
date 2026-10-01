@@ -32,10 +32,15 @@ jobs:
     steps:
       - name: Resolve release version
         id: version
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
         run: |
           set -euo pipefail
-          if [ -n "${{ inputs.tag }}" ]; then
-            TAG="${{ inputs.tag }}"
+          if [ -n "$REQUESTED_TAG" ]; then
+            TAG="$REQUESTED_TAG"
+          elif [ "${{ github.event_name }}" = 'workflow_run' ] && [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            TAG="$RELEASE_TAG"
           else
             TAG=$(curl -fsSL \
               -H "Accept: application/vnd.github+json" \
@@ -49,6 +54,7 @@ jobs:
           fi
           VERSION="${TAG#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           # Also export VERSION as an env var so downstream steps can
           # reference it without having to plumb the step id everywhere.
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
@@ -56,11 +62,14 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.version.outputs.tag }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Sync package.json version
         working-directory: npm/cli
@@ -91,11 +100,9 @@ jobs:
 
       - name: Publish to npmjs
         working-directory: npm/cli
-        # Auth via .npmrc: NODE_AUTH_TOKEN is the legacy env var name and
-        # modern npm (10+) sometimes ignores it silently. Writing the token
-        # into .npmrc works on every supported npm version. The file is
-        # scoped to the working dir and ignored by .gitignore.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # setup-node writes registry authentication with an environment
+        # placeholder, so the secret is not interpolated into shell code.
         run: |
-          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc
           npm publish --access public
-          rm -f .npmrc

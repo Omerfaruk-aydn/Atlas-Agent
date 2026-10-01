@@ -51,11 +51,16 @@ func thinkingDisplay(providerOptions *ProviderOptions, modelID string) (Thinking
 
 func defaultsToAdaptiveThinking(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(model))
-	return strings.Contains(model, "claude-mythos-preview")
+	return strings.Contains(model, "claude-mythos-preview") ||
+		strings.Contains(model, "claude-mythos-5") ||
+		strings.Contains(model, "claude-fable-") ||
+		strings.Contains(model, "claude-opus-5") ||
+		strings.Contains(model, "claude-sonnet-5")
 }
 
 func requiresAdaptiveThinking(model string) bool {
-	return defaultsToAdaptiveThinking(model) || defaultsToOmittedOpusThinkingDisplay(model)
+	return defaultsToAdaptiveThinking(model) || defaultsToOmittedOpusThinkingDisplay(model) ||
+		strings.EqualFold(strings.TrimSpace(model), "MiniMax-M3")
 }
 
 func setThinkingDisplay(param interface{ SetExtraFields(map[string]any) }, display ThinkingDisplay) {
@@ -249,8 +254,13 @@ func (a *provider) LanguageModel(ctx context.Context, modelID string) (fantasy.L
 	clientOptions := make([]option.RequestOption, 0, 5+len(a.options.headers))
 	clientOptions = append(clientOptions, option.WithMaxRetries(0))
 
-	if a.options.apiKey != "" && !a.options.useBedrock {
-		clientOptions = append(clientOptions, option.WithAPIKey(a.options.apiKey))
+	if !a.options.useBedrock && a.options.vertexProject == "" {
+		switch {
+		case a.options.skipAuth:
+			clientOptions = append(clientOptions, option.WithAPIKey(""), option.WithAuthToken(""))
+		case a.options.apiKey != "":
+			clientOptions = append(clientOptions, option.WithAPIKey(a.options.apiKey), option.WithAuthToken(""))
+		}
 	}
 	if !a.options.useBedrock && a.options.baseURL != "" {
 		clientOptions = append(clientOptions, option.WithBaseURL(a.options.baseURL))
@@ -417,6 +427,15 @@ func (a languageModel) prepareParams(call fantasy.Call) (
 				setThinkingDisplay(params.Thinking.OfEnabled, display)
 			}
 		}
+	case defaultsToAdaptiveThinking(a.modelID):
+		adaptive := anthropic.ThinkingConfigAdaptiveParam{}
+		if display, ok := thinkingDisplay(providerOptions, a.modelID); ok {
+			setThinkingDisplay(&adaptive, display)
+		}
+		params.Thinking.OfAdaptive = &adaptive
+	}
+
+	if params.Thinking.OfAdaptive != nil || params.Thinking.OfEnabled != nil {
 		if call.Temperature != nil {
 			params.Temperature = param.Opt[float64]{}
 			warnings = append(warnings, fantasy.CallWarning{
@@ -441,12 +460,6 @@ func (a languageModel) prepareParams(call fantasy.Call) (
 				Details: "TopK is not supported when thinking is enabled",
 			})
 		}
-	case defaultsToAdaptiveThinking(a.modelID):
-		adaptive := anthropic.ThinkingConfigAdaptiveParam{}
-		if display, ok := thinkingDisplay(providerOptions, a.modelID); ok {
-			setThinkingDisplay(&adaptive, display)
-		}
-		params.Thinking.OfAdaptive = &adaptive
 	}
 
 	if len(call.Tools) > 0 {

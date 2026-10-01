@@ -65,6 +65,8 @@ func generateOnce(t *testing.T, modelID string, opts ...Option) wireCapture {
 // confusing 401, so SkipAuth must keep the API-key header off the
 // wire entirely.
 func TestRequestsCarryBearerAuthAndNoAPIKey(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "unrelated-api-key")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "unrelated-auth-token")
 	got := generateOnce(t, "muse-spark-1.3", WithAccessToken("alpha"))
 
 	require.Equal(t, authValue("alpha"), got.header.Get("Authorization"))

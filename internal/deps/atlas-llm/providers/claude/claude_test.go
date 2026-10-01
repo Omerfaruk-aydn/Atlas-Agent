@@ -30,6 +30,8 @@ func TestProviderReportsItsOwnName(t *testing.T) {
 // beta flag. Sending x-api-key alongside it is how you get a confusing
 // 401, so SkipAuth must keep the API-key header off the wire entirely.
 func TestRequestsCarryBearerAuthAndNoAPIKey(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "unrelated-api-key")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "unrelated-auth-token")
 	var got http.Header
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.Header.Clone()

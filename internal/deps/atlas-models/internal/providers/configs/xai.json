@@ -4,9 +4,28 @@
   "api_key": "$XAI_API_KEY",
   "api_endpoint": "https://api.x.ai/v1",
   "type": "openai-compat",
-  "default_large_model_id": "grok-4.5",
-  "default_small_model_id": "grok-4.5",
+  "default_large_model_id": "grok-4.7",
+  "default_small_model_id": "grok-4.7",
   "models": [
+    {
+      "id": "grok-4.7",
+      "name": "Grok 4.7",
+      "cost_per_1m_in": 2,
+      "cost_per_1m_out": 6,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.5,
+      "context_window": 500000,
+      "default_max_tokens": 450000,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "xhigh",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default_reasoning_effort": "high"
+    },
     {
       "id": "grok-4.20",
       "name": "Grok 4.20",

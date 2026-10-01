@@ -73,6 +73,21 @@ func TestDiscoverModels_ExistingModelsWin(t *testing.T) {
 	require.Equal(t, "model-b", models[1].Name)
 }
 
+func TestNvidiaDiscoveryDoesNotPromoteUnverifiedModels(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"verified-coding"},{"id":"embedding-model"},{"id":"unknown-model"}]}`))
+	}))
+	defer server.Close()
+	curated := []catwalk.Model{{ID: "verified-coding", Name: "Verified Coding", ContextWindow: 1048576, DefaultMaxTokens: 4096}}
+	models, err := DiscoverModels(t.Context(), Config{
+		ID: string(catwalk.InferenceProviderNvidiaNIM), BaseURL: server.URL, ExistingModels: curated,
+	}, &mockResolver{})
+	require.NoError(t, err)
+	require.Equal(t, curated, models, "a bare model ID does not establish coding support or token limits")
+}
+
 func TestDiscoverModels_HTTPError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

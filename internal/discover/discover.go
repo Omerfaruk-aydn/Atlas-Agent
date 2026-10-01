@@ -130,6 +130,12 @@ func DiscoverModels(ctx context.Context, cfg Config, resolver Resolver) ([]catwa
 	result := make([]catwalk.Model, len(cfg.ExistingModels))
 	copy(result, cfg.ExistingModels)
 
+	// NVIDIA's public list includes embeddings and other non-chat models,
+	// without capability or token-limit metadata. Keep its verified catalog.
+	if cfg.ID == string(catwalk.InferenceProviderNvidiaNIM) {
+		return result, nil
+	}
+
 	// Append discovered models not already in the list.
 	for _, e := range modelsResp.Data {
 		if _, ok := existing[e.ID]; ok {

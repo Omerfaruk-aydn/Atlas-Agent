@@ -11,12 +11,12 @@ import (
 	"reflect"
 	"strings"
 
+	"cloud.google.com/go/auth"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/object"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/anthropic"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/internal/httpheaders"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/schema"
-	"cloud.google.com/go/auth"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-slice"
 	"github.com/google/uuid"
 	"google.golang.org/genai"
@@ -36,6 +36,7 @@ type options struct {
 	apiKey         string
 	name           string
 	baseURL        string
+	apiVersion     string
 	headers        map[string]string
 	userAgent      string
 	client         *http.Client
@@ -103,6 +104,13 @@ func WithVertex(project, location string) Option {
 func WithSkipAuth(skipAuth bool) Option {
 	return func(o *options) {
 		o.skipAuth = skipAuth
+	}
+}
+
+// WithAPIVersion sets the API version for a compatible gateway.
+func WithAPIVersion(version string) Option {
+	return func(o *options) {
+		o.apiVersion = version
 	}
 }
 
@@ -202,8 +210,9 @@ func (a *provider) LanguageModel(ctx context.Context, modelID string) (fantasy.L
 		headers.Set(k, v)
 	}
 	cc.HTTPOptions = genai.HTTPOptions{
-		BaseURL: a.options.baseURL,
-		Headers: headers,
+		BaseURL:    a.options.baseURL,
+		APIVersion: a.options.apiVersion,
+		Headers:    headers,
 	}
 	client, err := genai.NewClient(ctx, cc)
 	if err != nil {
@@ -236,7 +245,9 @@ func (g languageModel) prepareParams(call fantasy.Call) (*genai.GenerateContentC
 	}
 
 	isVertexAI := g.providerOptions.backend == genai.BackendVertexAI
-	systemInstructions, content, warnings := toGooglePrompt(call.Prompt, isVertexAI)
+	// Gemini 3.8 requires matching function call/result IDs on Vertex too.
+	omitToolCallIDs := isVertexAI && !strings.HasPrefix(g.modelID, "gemini-3.8")
+	systemInstructions, content, warnings := toGooglePrompt(call.Prompt, omitToolCallIDs)
 
 	if providerOptions.ThinkingConfig != nil {
 		if providerOptions.ThinkingConfig.IncludeThoughts != nil &&
@@ -292,23 +303,26 @@ func (g languageModel) prepareParams(call fantasy.Call) (*genai.GenerateContentC
 		config.MaxOutputTokens = int32(*call.MaxOutputTokens) //nolint: gosec
 	}
 
-	if call.Temperature != nil {
+	// Gemini 3.8 rejects penalties and deprecates sampling controls. Effort
+	// is configured through thinking_level instead.
+	samplingSupported := !strings.HasPrefix(g.modelID, "gemini-3.8-flash")
+	if samplingSupported && call.Temperature != nil {
 		tmp := float32(*call.Temperature)
 		config.Temperature = &tmp
 	}
-	if call.TopK != nil {
+	if samplingSupported && call.TopK != nil {
 		tmp := float32(*call.TopK)
 		config.TopK = &tmp
 	}
-	if call.TopP != nil {
+	if samplingSupported && call.TopP != nil {
 		tmp := float32(*call.TopP)
 		config.TopP = &tmp
 	}
-	if call.FrequencyPenalty != nil {
+	if samplingSupported && call.FrequencyPenalty != nil {
 		tmp := float32(*call.FrequencyPenalty)
 		config.FrequencyPenalty = &tmp
 	}
-	if call.PresencePenalty != nil {
+	if samplingSupported && call.PresencePenalty != nil {
 		tmp := float32(*call.PresencePenalty)
 		config.PresencePenalty = &tmp
 	}

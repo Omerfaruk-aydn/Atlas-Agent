@@ -1,0 +1,25 @@
+{
+  "checked_at_utc": "2026-10-01T09:31:14.188Z",
+  "sources": [
+    {
+      "url": "https://dev.meta.ai/docs/models",
+      "sha256": "485ea3f28221cddeccdc71bfb702bad49311339d094cc01d7c71db6d459bb0b0"
+    },
+    {
+      "url": "https://dev.meta.ai/docs/pricing-rate-limits",
+      "sha256": "8334880f3d9abb58bd864ab8e99340ad02b18a5e0ad228cbc1928f6ae9a23a7c"
+    },
+    {
+      "url": "https://dev.meta.ai/docs/reasoning",
+      "sha256": "27a1b21468dd92b276755fbd6c1a92ca2e06594aac27f87e5ac61354d3ae5c31"
+    },
+    {
+      "url": "https://dev.meta.ai/docs/protocols/responses",
+      "sha256": "a671bb1e7a72c9ba0bfe1809ac2feadeed30ac805f1e7f9be982ea2f1d4a981b"
+    },
+    {
+      "url": "https://models.dev/api.json",
+      "sha256": "7a25770a9dafac2d7b124b4b945c1a0d1544cb9d5ff408ec39005a645a520fe4"
+    }
+  ]
+}

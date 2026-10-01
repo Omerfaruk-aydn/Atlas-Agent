@@ -1,0 +1,100 @@
+{
+  "checked_at_utc": "2026-10-01T10:02:48.429Z",
+  "platform": "windows/amd64",
+  "go": "go1.27",
+  "environment": {
+    "CGO_ENABLED": "0",
+    "GOEXPERIMENT": "greenteagc"
+  },
+  "checks": [
+    {
+      "command": "go test -p 1 ./internal/config ./internal/cmd ./internal/discover ./internal/ui/dialog ./internal/deps/atlas-models/... ./internal/deps/atlas-llm/providers/...",
+      "exit_code": 0,
+      "passed_packages": [
+        "ok  \tgithub.com/Omerfaruk-aydn/Atlas-Agent/internal/config\t6.664s\r",
+        "ok  \tgithub.com/Omerfaruk-aydn/Atlas-Agent/internal/cmd\t12.497s\r",
+        "ok  \tgithub.com/Omerfaruk-aydn/Atlas-Agent/internal/discover\t(cached)\r",
+        "ok  \tgithub.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/dialog\t(cached)\r",
+        "ok  \tgithub.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/internal/providers\t0.716s\r",
+        "ok  \tgithub.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/anthropic\t0.136s\r",
+        "ok  \tgithub.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/antigravity\t(cached)\r",
+        "ok  \tgithub.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/claude\t0.164s\r",
+        "ok  \tgithub.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/google\t0.154s\r",
+        "ok  \tgithub.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/muse\t0.153s\r",
+        "ok  \tgithub.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/openai\t(cached)\r"
+      ]
+    },
+    {
+      "command": "go test -p 1 ./internal/agent -run <provider-routing-and-Xiaomi-tests>",
+      "exit_code": 0,
+      "output": "ok  \tgithub.com/Omerfaruk-aydn/Atlas-Agent/internal/agent\t0.920s"
+    },
+    {
+      "command": "go build -p 1 -o <TEMP>/atlas-provider-verification.exe .",
+      "exit_code": 0
+    },
+    {
+      "command": "atlas-provider-verification.exe login --list",
+      "exit_code": 0
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    },
+    {
+      "command": "go test -p 1 ./...",
+      "exit_code": 1,
+      "scope": "Ran before final MiniMax/Mythos changes; affected packages were retested afterward.",
+      "failed_packages": [
+        {
+          "package": "github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent",
+          "duration": "8.589s"
+        },
+        {
+          "package": "github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools",
+          "duration": "70.160s"
+        },
+        {
+          "package": "github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools/mcp",
+          "duration": "6.001s"
+        },
+        {
+          "package": "github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/muse",
+          "duration": "2.927s"
+        },
+        {
+          "package": "github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell",
+          "duration": "2.033s"
+        },
+        {
+          "package": "github.com/Omerfaruk-aydn/Atlas-Agent/internal/shellconfig",
+          "duration": "0.522s"
+        }
+      ],
+      "failed_tests": [
+        "TestBuildSubagentSessionAgentUnknownRoleErrors (0.09s)",
+        "TestPromptHookReceivesThePrompt (0.04s)",
+        "TestBashTool_CustomAutoBackgroundThreshold (0.10s)",
+        "TestJobOutputWaitDoesNotHangOnAJobThatNeverExits (0.23s)",
+        "TestBackgroundShell_AutoBackground (0.00s)",
+        "TestMaybeStdioErr_UnwrapsChannelTransport (0.08s)",
+        "TestMaybeStdioErr_UnwrapsEveryWrapper (0.08s)",
+        "TestStdioCheck_DoesNotDuplicateArgv0 (0.08s)",
+        "TestCLIAuthPathHomeFallback (0.00s)",
+        "TestDispatch_ShellSourceNoShebang (0.00s)",
+        "TestDispatch_EmptyFile (0.00s)",
+        "TestDispatch_ShellSourceComposesWithPipe (0.00s)",
+        "TestDispatch_BashShebang (0.00s)",
+        "TestDispatch_ShebangPassesExitCode (0.00s)",
+        "TestDispatch_ProbeWindowClassifiesByHead (0.00s)",
+        "TestRunContinuity (0.00s)",
+        "TestLoadShellConfig_SourceInclude (0.01s)"
+      ]
+    }
+  ],
+  "baseline_verified_failures": [
+    "TestBuildSubagentSessionAgentUnknownRoleErrors",
+    "TestPromptHookReceivesThePrompt"
+  ],
+  "live_paid_inference_performed": false
+}

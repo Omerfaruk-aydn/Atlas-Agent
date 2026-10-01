@@ -24,6 +24,11 @@ curl -fsSL https://github.com/Omerfaruk-aydn/Atlas-Agent/releases/latest/downloa
 atlas-agent
 ```
 
+See the [October 2026 model catalog and Xiaomi API / Token Plan setup](docs/provider-catalog-update-2026-10.md)
+for the verified models, regional endpoints, and key login commands.
+The [catalog verification report](docs/provider-catalog-fixes-2026-10-01.md)
+records the completed provider updates, source evidence, and test results.
+
 <!--
   Demo goes here: a short terminal recording (asciinema, or a GIF made with
   vhs/terminalizer) showing one real task end to end -- e.g. "fix the failing

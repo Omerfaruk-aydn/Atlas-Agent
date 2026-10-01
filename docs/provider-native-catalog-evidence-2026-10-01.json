@@ -1,0 +1,76 @@
+{
+  "checked_at_utc": "2026-10-01T09:54:07.649Z",
+  "sources": [
+    {
+      "url": "https://platform.minimax.io/docs/guides/pricing-paygo.md",
+      "sha256": "f51660c6905bb0559e3b5e58b54d4263eda77df3dee04e6165ce8d73d3211f7d"
+    },
+    {
+      "url": "https://platform.minimaxi.com/docs/guides/pricing-paygo.md",
+      "sha256": "953f59ba8f1cb569579f9801d2b0e02e883d597d2dfbd870f216083c37fcc2b3"
+    },
+    {
+      "url": "https://platform.minimax.io/docs/api-reference/text-anthropic-api.md",
+      "sha256": "81cdd9f6390eeba6f100a53564eaa54736e59e529f9eb964d000d0c79e73a41c"
+    },
+    {
+      "url": "https://platform.minimax.io/docs/api-reference/text-chat-anthropic.md",
+      "sha256": "c7ba8fcbf62d73b474cc648cf95ba2306c89fe916781cce83c6734113dfc22d3"
+    },
+    {
+      "url": "https://platform.minimax.io/docs/guides/pricing-token-plan-team.md",
+      "sha256": "75673b49a59d7899428238f226408e247cb3dd14a1567656bdc67dc229966c87"
+    },
+    {
+      "url": "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml",
+      "sha256": "83b221d44f9b28428a2d18ef65571ad26fdda7c1f117607a863bda8989d4fdcb"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/models/mythos-5-1/overview",
+      "sha256": "3f45564149e88d9cb02b2761923ee809103a8f6b88178d67345886c48b4788e9"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/build-with-claude/claude-on-vertex-ai",
+      "sha256": "a5d817c523dd8394914f7c8feaa2411d55cfd68ab8aaf4dffc6e3ec656045637"
+    },
+    {
+      "url": "https://build.nvidia.com/z-ai/glm-5-3-flash/modelcard",
+      "checked_at_utc": "2026-10-01T10:03:44.424Z",
+      "sha256": "558efadd988d4f9c58c0efe34b3e78c3795003c7246d49b67a70ad4c72fe8340"
+    }
+  ],
+  "changes": [
+    {
+      "id": "minimax",
+      "models": 8,
+      "default_large_model_id": "MiniMax-M3"
+    },
+    {
+      "id": "minimax-china",
+      "models": 8,
+      "default_large_model_id": "MiniMax-M3"
+    },
+    {
+      "id": "minimax-coding",
+      "models": 3,
+      "default_large_model_id": "MiniMax-M3"
+    },
+    {
+      "id": "anthropic",
+      "models": 18,
+      "default_large_model_id": "claude-sonnet-5-5"
+    },
+    {
+      "id": "vertexai",
+      "models": 25,
+      "default_large_model_id": "gemini-3.1-pro-preview"
+    },
+    {
+      "id": "openrouter",
+      "models": 392,
+      "default_large_model_id": "anthropic/claude-sonnet-5.5"
+    }
+  ],
+  "cny_to_usd": 0.14915276500722446,
+  "fx_date": "2026-09-30"
+}

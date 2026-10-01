@@ -1,0 +1,217 @@
+{
+  "checked_at_utc": "2026-10-01T08:46:04.441Z",
+  "sources": [
+    {
+      "url": "https://models.dev/api.json",
+      "sha256": "7a25770a9dafac2d7b124b4b945c1a0d1544cb9d5ff408ec39005a645a520fe4"
+    },
+    {
+      "url": "https://opencode.ai/zen/v1/models",
+      "sha256": "92da55b8131d23a6ab83566657b4e3ed1820b5f0d44304bfdf0c8be4d91eb9f3"
+    },
+    {
+      "url": "https://opencode.ai/zen/go/v1/models",
+      "sha256": "b8dc1de90d33b7041688857ea38f6e3572b1a7b60f19580f3d92fa7f4b282502"
+    },
+    {
+      "url": "https://aihubmix.com/api/v1/models",
+      "sha256": "3b2e25eef017ce1099db69b91acb6e511e5e59c22dee9b3675d4595aff935c0d"
+    },
+    {
+      "url": "https://aihubmix.com/v1/models",
+      "sha256": "b3e9aba8a635bfdfc3600f042db84c370882be701aa8a43da620b92272824091"
+    },
+    {
+      "url": "https://api.cortecs.ai/v1/models",
+      "sha256": "a7527b1de293c0ab390f7ab5db29967c1512e34903d2a8e3d4432d1a02e5af3c"
+    },
+    {
+      "url": "https://router.huggingface.co/v1/models",
+      "sha256": "fbad06dab68576711db36934c6bade459c491e5e53ce96d1cf6e40e6a3af5708"
+    },
+    {
+      "url": "https://api.qnaigc.com/v1/models",
+      "sha256": "b3fc2fc0ab5c1300b4f4f91186ef26877aedc2c787970499d988bdf0f986aef5"
+    },
+    {
+      "url": "https://www.qiniu.com/ai/models",
+      "sha256": "dd8d8e252421d118baf2c4b788d21100c422d9e8139a1ef3b28154ddcb2e5ea5"
+    },
+    {
+      "url": "https://developer.qiniu.com/aitokenapi/13330/subscription-introduction",
+      "sha256": "574158d7e10435d5e97db94a1dee3c783e1d9e1cdb816e26c262032576c51994"
+    },
+    {
+      "url": "https://api.avian.io/v1/models",
+      "sha256": "07a47233dbad972b1cd576bba97c20d55cf150eff028df9afa097582476c24b3"
+    },
+    {
+      "url": "https://integrate.api.nvidia.com/v1/models",
+      "sha256": "3c353e294b4b9deb1e9ae296a703f0f364dfb7fabc8a9f94554ea9d9fb9bb7c7"
+    }
+  ],
+  "changes": [
+    {
+      "provider": "opencode-zen",
+      "before": 82,
+      "after": 82,
+      "added": [],
+      "removed": []
+    },
+    {
+      "provider": "opencode-go",
+      "before": 42,
+      "after": 42,
+      "added": [],
+      "removed": []
+    },
+    {
+      "provider": "aihubmix",
+      "before": 303,
+      "after": 303,
+      "added": [],
+      "removed": []
+    },
+    {
+      "provider": "cortecs",
+      "before": 103,
+      "after": 103,
+      "added": [],
+      "removed": []
+    },
+    {
+      "provider": "huggingface",
+      "before": 171,
+      "after": 171,
+      "added": [],
+      "removed": []
+    },
+    {
+      "provider": "qiniucloud",
+      "before": 14,
+      "after": 38,
+      "added": [
+        "deepseek/deepseek-v4-flash-20260731",
+        "z-ai/glm-5.2",
+        "minimax/minimax-m3",
+        "moonshotai/kimi-k2.7-code",
+        "moonshotai/kimi-k2.6",
+        "deepseek/deepseek-v4-flash",
+        "deepseek/deepseek-v4-pro",
+        "doubao-seed-2.0-mini",
+        "doubao-seed-2.0-lite",
+        "qwen3-next-80b-a3b-thinking",
+        "MiniMax-M1",
+        "qwen3.5-397b-a17b",
+        "qwen/qwen3.6-27b",
+        "qwen/qwen3.7-max",
+        "qwen/qwen3.7-plus",
+        "bytedance/doubao-seed-2-1-pro",
+        "bytedance/doubao-seed-2-1-turbo",
+        "stepfun/step-3.7-flash",
+        "moonshotai/kimi-k3",
+        "qwen/qwen3.8-max",
+        "deepseek/deepseek-v4-pro-0813",
+        "z-ai/glm-5.3",
+        "deepseek/deepseek-v4-flash-vision-exp",
+        "qwen/qwen3.8-flash-next",
+        "z-ai/glm-5.3-flash",
+        "tencent/hy4-preview",
+        "deepseek/deepseek-v4.1-flash",
+        "qwen/qwen3.7-flash",
+        "minimax/minimax-m2.7",
+        "minimax/minimax-m2.5-highspeed",
+        "qwen/qwen3.5-plus",
+        "qwen/qwen3.6-plus",
+        "z-ai/glm-5.1",
+        "deepseek-v3"
+      ],
+      "removed": [
+        "minimax/minimax-m2.1",
+        "moonshotai/kimi-k2-thinking",
+        "z-ai/glm-4.7",
+        "minimax/minimax-m2",
+        "z-ai/glm-4.6",
+        "deepseek/deepseek-v3.1-terminus",
+        "deepseek-v3.1",
+        "qwen3-coder-480b-a35b-instruct",
+        "glm-4.5",
+        "moonshotai/kimi-k2-0905"
+      ]
+    },
+    {
+      "provider": "qiniu-token-plan",
+      "before": 0,
+      "after": 9,
+      "added": [
+        "minimax/minimax-m3",
+        "moonshotai/kimi-k2.6",
+        "minimax/minimax-m2.5",
+        "z-ai/glm-5",
+        "deepseek/deepseek-v4-flash",
+        "deepseek/deepseek-v4-pro",
+        "minimax/minimax-m2.7",
+        "minimax/minimax-m2.5-highspeed",
+        "z-ai/glm-5.1"
+      ],
+      "removed": []
+    },
+    {
+      "provider": "avian",
+      "before": 13,
+      "after": 14,
+      "added": [
+        "xiaomi/mimo-v2.6-flash",
+        "xiaomi/mimo-v2.6-pro"
+      ],
+      "removed": [
+        "xiaomi/mimo-v2.5"
+      ]
+    },
+    {
+      "provider": "nvidia-nim",
+      "before": 14,
+      "after": 21,
+      "added": [
+        "poolside/laguna-xs-2.1",
+        "z-ai/glm-5.3-flash",
+        "z-ai/glm-5.3",
+        "meta/muse-glimmer-30b",
+        "meta/llama-3.2-90b-vision-instruct",
+        "meta/llama-3.2-11b-vision-instruct",
+        "google/gemma-3-12b-it",
+        "google/gemma-3-4b-it",
+        "mistralai/mistral-7b-instruct-v0.3",
+        "moonshotai/kimi-k2.6",
+        "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+        "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+        "nvidia/cosmos-reason2-8b",
+        "openai/gpt-oss-20b",
+        "deepseek-ai/deepseek-v4.1-flash"
+      ],
+      "removed": [
+        "deepseek-ai/deepseek-v4-pro-0813",
+        "deepseek-ai/deepseek-v4-flash-0731",
+        "qwen/qwen3.5-397b-a17b",
+        "qwen/qwen3.5-122b-a10b",
+        "meta/llama-4-maverick-17b-128e-instruct",
+        "meta/llama-4-scout-17b-16e-instruct",
+        "mistralai/mixtral-8x22b-instruct-v0.1",
+        "microsoft/phi-4"
+      ]
+    }
+  ],
+  "excluded": [
+    {
+      "provider": "opencode-go",
+      "model": "omen-alpha",
+      "reason": "Provider publishes availability but no limits, pricing, or protocol metadata."
+    }
+  ],
+  "exchange_rate": {
+    "source": "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml",
+    "date": "2026-09-30",
+    "eur_usd": 1.1355
+  },
+  "qiniu_cost_policy": "Published USD token prices; highest published length/time tier used for conservative estimates."
+}

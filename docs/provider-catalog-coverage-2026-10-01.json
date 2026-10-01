@@ -1,0 +1,788 @@
+{
+  "checked_at_utc": "2026-10-01T09:56:17.880Z",
+  "selectable_providers": 67,
+  "selectable_provider_model_records": 2199,
+  "hidden_connections": 11,
+  "providers": [
+    {
+      "provider": "aihubmix",
+      "name": "AIHubMix",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 303,
+      "baseline_model_records": 285,
+      "default_large": "gpt-6.1-sol",
+      "default_small": "gpt-6-luna"
+    },
+    {
+      "provider": "alibaba-coding",
+      "name": "Alibaba Coding Plan (International)",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 10,
+      "baseline_model_records": null,
+      "default_large": "qwen3.7-plus",
+      "default_small": "qwen3.6-plus"
+    },
+    {
+      "provider": "alibaba-coding-cn",
+      "name": "Alibaba Coding Plan (China)",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 10,
+      "baseline_model_records": null,
+      "default_large": "qwen3.7-plus",
+      "default_small": "qwen3.6-plus"
+    },
+    {
+      "provider": "alibaba-singapore",
+      "name": "Alibaba (Singapore)",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 21,
+      "baseline_model_records": 20,
+      "default_large": "qwen3.8-max",
+      "default_small": "qwen3.8-flash"
+    },
+    {
+      "provider": "alibaba-token-plan-cn",
+      "name": "Alibaba Token Plan Personal (China)",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 12,
+      "baseline_model_records": null,
+      "default_large": "qwen3.8-max",
+      "default_small": "qwen3.8-flash"
+    },
+    {
+      "provider": "alibaba-token-plan-sgp",
+      "name": "Alibaba Token Plan Personal (Singapore)",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 12,
+      "baseline_model_records": null,
+      "default_large": "qwen3.8-max",
+      "default_small": "qwen3.8-flash"
+    },
+    {
+      "provider": "alibaba-token-plan-team-cn",
+      "name": "Alibaba Token Plan Team (China)",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 21,
+      "baseline_model_records": null,
+      "default_large": "qwen3.8-max",
+      "default_small": "qwen3.8-flash"
+    },
+    {
+      "provider": "alibaba-token-plan-team-sgp",
+      "name": "Alibaba Token Plan Team (Singapore)",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 21,
+      "baseline_model_records": null,
+      "default_large": "qwen3.8-max",
+      "default_small": "qwen3.8-flash"
+    },
+    {
+      "provider": "alibaba-us",
+      "name": "Alibaba (US)",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 5,
+      "baseline_model_records": 4,
+      "default_large": "qwen3.8-max",
+      "default_small": "qwen3.8-flash"
+    },
+    {
+      "provider": "amp",
+      "name": "Sourcegraph Amp (Free/Pro/Enterprise)",
+      "type": "openai-compat",
+      "selectable": false,
+      "model_records": 4,
+      "baseline_model_records": 4,
+      "default_large": "claude-opus-5",
+      "default_small": "claude-haiku-4-5-20251001"
+    },
+    {
+      "provider": "anthropic",
+      "name": "Anthropic",
+      "type": "anthropic",
+      "selectable": true,
+      "model_records": 18,
+      "baseline_model_records": 14,
+      "default_large": "claude-sonnet-5-5",
+      "default_small": "claude-haiku-4-5-20251001"
+    },
+    {
+      "provider": "antigravity",
+      "name": "Antigravity",
+      "type": "antigravity",
+      "selectable": true,
+      "model_records": 4,
+      "baseline_model_records": 5,
+      "default_large": "gemini-3.1-pro",
+      "default_small": "gemini-3.8-flash"
+    },
+    {
+      "provider": "atlascloud",
+      "name": "Atlas Cloud",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 35,
+      "baseline_model_records": 32,
+      "default_large": "zai-org/glm-5.3",
+      "default_small": "deepseek-ai/deepseek-v4.1-flash"
+    },
+    {
+      "provider": "augment",
+      "name": "Augment Code (Pro/Enterprise)",
+      "type": "augment",
+      "selectable": false,
+      "model_records": 2,
+      "baseline_model_records": 2,
+      "default_large": "claude-sonnet-4-6",
+      "default_small": "claude-haiku-4-5-20251001"
+    },
+    {
+      "provider": "avian",
+      "name": "Avian",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 14,
+      "baseline_model_records": 13,
+      "default_large": "xiaomi/mimo-v2.6-pro",
+      "default_small": "xiaomi/mimo-v2.6-flash"
+    },
+    {
+      "provider": "azure",
+      "name": "Azure OpenAI",
+      "type": "azure",
+      "selectable": true,
+      "model_records": 37,
+      "baseline_model_records": 14,
+      "default_large": "gpt-6.1-sol",
+      "default_small": "gpt-6-luna"
+    },
+    {
+      "provider": "baseten",
+      "name": "Baseten",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 11,
+      "baseline_model_records": 13,
+      "default_large": "zai-org/GLM-5.3",
+      "default_small": "zai-org/GLM-5.3-Flash"
+    },
+    {
+      "provider": "bedrock",
+      "name": "AWS Bedrock US",
+      "type": "bedrock",
+      "selectable": true,
+      "model_records": 16,
+      "baseline_model_records": 11,
+      "default_large": "us.anthropic.claude-opus-5-5",
+      "default_small": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    },
+    {
+      "provider": "bedrock-europe",
+      "name": "AWS Bedrock Europe",
+      "type": "bedrock",
+      "selectable": true,
+      "model_records": 14,
+      "baseline_model_records": 10,
+      "default_large": "eu.anthropic.claude-opus-5-5",
+      "default_small": "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+    },
+    {
+      "provider": "bedrock-openai",
+      "name": "Amazon Bedrock OpenAI (API Key)",
+      "type": "openai",
+      "selectable": true,
+      "model_records": 7,
+      "baseline_model_records": null,
+      "default_large": "us.openai.gpt-6.1-sol",
+      "default_small": "global.openai.gpt-6-luna"
+    },
+    {
+      "provider": "bolt",
+      "name": "Bolt.new (StackBlitz Pro)",
+      "type": "openai-compat",
+      "selectable": false,
+      "model_records": 3,
+      "baseline_model_records": 3,
+      "default_large": "bolt-claude-opus-4-6",
+      "default_small": "bolt-claude-haiku-4-5"
+    },
+    {
+      "provider": "cerebras",
+      "name": "Cerebras",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 2,
+      "baseline_model_records": 2,
+      "default_large": "gpt-oss-120b",
+      "default_small": "qwen-3.8-27b"
+    },
+    {
+      "provider": "chatgpt",
+      "name": "ChatGPT",
+      "type": "openai",
+      "selectable": true,
+      "model_records": 7,
+      "baseline_model_records": 4,
+      "default_large": "gpt-6.1-sol",
+      "default_small": "gpt-6-luna"
+    },
+    {
+      "provider": "chutes",
+      "name": "Chutes",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 12,
+      "baseline_model_records": 12,
+      "default_large": "moonshotai/Kimi-K2.6-TEE",
+      "default_small": "google/gemma-4-31B-turbo-TEE"
+    },
+    {
+      "provider": "claude",
+      "name": "Claude",
+      "type": "claude",
+      "selectable": true,
+      "model_records": 8,
+      "baseline_model_records": 5,
+      "default_large": "claude-opus-5-5",
+      "default_small": "claude-haiku-4-5-20251001"
+    },
+    {
+      "provider": "coderabbit",
+      "name": "CodeRabbit (Pro/Enterprise)",
+      "type": "coderabbit",
+      "selectable": false,
+      "model_records": 3,
+      "baseline_model_records": 3,
+      "default_large": "gpt-5.4",
+      "default_small": "claude-haiku-4-5-20251001"
+    },
+    {
+      "provider": "codex-ide",
+      "name": "OpenAI Codex IDE (separate from ChatGPT)",
+      "type": "openai-compat",
+      "selectable": false,
+      "model_records": 3,
+      "baseline_model_records": 3,
+      "default_large": "gpt-5.6-sol",
+      "default_small": "gpt-5.6-luna"
+    },
+    {
+      "provider": "cohere",
+      "name": "Cohere Command",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 4,
+      "baseline_model_records": 4,
+      "default_large": "command-a-plus-05-2026",
+      "default_small": "north-mini-code-1-0"
+    },
+    {
+      "provider": "copilot",
+      "name": "GitHub Copilot",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 41,
+      "baseline_model_records": 32,
+      "default_large": "claude-fable-5.1",
+      "default_small": "gpt-6-luna"
+    },
+    {
+      "provider": "cortecs",
+      "name": "Cortecs",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 103,
+      "baseline_model_records": 100,
+      "default_large": "gpt-6.1-sol",
+      "default_small": "gpt-6-luna"
+    },
+    {
+      "provider": "deepseek",
+      "name": "DeepSeek",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 3,
+      "baseline_model_records": 2,
+      "default_large": "deepseek-v4-pro",
+      "default_small": "deepseek-flash"
+    },
+    {
+      "provider": "factory",
+      "name": "Factory AI Droids (Pro/Enterprise)",
+      "type": "factory",
+      "selectable": false,
+      "model_records": 3,
+      "baseline_model_records": 3,
+      "default_large": "claude-opus-5",
+      "default_small": "claude-haiku-4-5-20251001"
+    },
+    {
+      "provider": "fireworks",
+      "name": "Fireworks",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 12,
+      "baseline_model_records": 17,
+      "default_large": "accounts/fireworks/models/kimi-k3",
+      "default_small": "accounts/fireworks/models/glm-5p3-flash"
+    },
+    {
+      "provider": "gemini",
+      "name": "Google Gemini",
+      "type": "google",
+      "selectable": true,
+      "model_records": 10,
+      "baseline_model_records": 10,
+      "default_large": "gemini-3.1-pro-preview-customtools",
+      "default_small": "gemini-3.8-flash"
+    },
+    {
+      "provider": "grok-web",
+      "name": "Grok (SuperGrok)",
+      "type": "grok-web",
+      "selectable": false,
+      "model_records": 7,
+      "baseline_model_records": 7,
+      "default_large": "grok-4.6",
+      "default_small": "grok-4.3"
+    },
+    {
+      "provider": "groq",
+      "name": "Groq",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 3,
+      "baseline_model_records": 2,
+      "default_large": "openai/gpt-oss-120b",
+      "default_small": "openai/gpt-oss-20b"
+    },
+    {
+      "provider": "huggingface",
+      "name": "Hugging Face Inference API",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 171,
+      "baseline_model_records": 4,
+      "default_large": "zai-org/GLM-5.3:baseten",
+      "default_small": "deepseek-ai/DeepSeek-V4.1-Flash:baseten"
+    },
+    {
+      "provider": "ionet",
+      "name": "io.net",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 37,
+      "baseline_model_records": 31,
+      "default_large": "zai-org/GLM-5.3",
+      "default_small": "zai-org/GLM-5.3-Flash"
+    },
+    {
+      "provider": "jetbrains",
+      "name": "JetBrains AI (Pro/Ultimate)",
+      "type": "jetbrains",
+      "selectable": false,
+      "model_records": 13,
+      "baseline_model_records": 13,
+      "default_large": "claude-opus-5",
+      "default_small": "claude-haiku-4-5-20251001"
+    },
+    {
+      "provider": "kimi-coding",
+      "name": "Kimi Coding (China)",
+      "type": "anthropic",
+      "selectable": true,
+      "model_records": 4,
+      "baseline_model_records": 4,
+      "default_large": "k3",
+      "default_small": "kimi-for-coding"
+    },
+    {
+      "provider": "kimi-coding-global",
+      "name": "Kimi Coding (Global)",
+      "type": "anthropic",
+      "selectable": true,
+      "model_records": 4,
+      "baseline_model_records": null,
+      "default_large": "k3",
+      "default_small": "kimi-for-coding"
+    },
+    {
+      "provider": "meta-api",
+      "name": "Meta Model API",
+      "type": "openai",
+      "selectable": true,
+      "model_records": 5,
+      "baseline_model_records": null,
+      "default_large": "muse-spark-1.3",
+      "default_small": "muse-spark-1.3"
+    },
+    {
+      "provider": "minimax",
+      "name": "MiniMax",
+      "type": "anthropic",
+      "selectable": true,
+      "model_records": 8,
+      "baseline_model_records": 8,
+      "default_large": "MiniMax-M3",
+      "default_small": "MiniMax-M3"
+    },
+    {
+      "provider": "minimax-china",
+      "name": "MiniMax China",
+      "type": "anthropic",
+      "selectable": true,
+      "model_records": 8,
+      "baseline_model_records": 8,
+      "default_large": "MiniMax-M3",
+      "default_small": "MiniMax-M3"
+    },
+    {
+      "provider": "minimax-coding",
+      "name": "MiniMax Token Plan (Coding)",
+      "type": "anthropic",
+      "selectable": true,
+      "model_records": 3,
+      "baseline_model_records": 3,
+      "default_large": "MiniMax-M3",
+      "default_small": "MiniMax-M2.7"
+    },
+    {
+      "provider": "minimax-m-plan",
+      "name": "MiniMax M Plan",
+      "type": "anthropic",
+      "selectable": true,
+      "model_records": 1,
+      "baseline_model_records": null,
+      "default_large": "MiniMax-M3.1-Flash-Preview",
+      "default_small": "MiniMax-M3.1-Flash-Preview"
+    },
+    {
+      "provider": "mistral",
+      "name": "Mistral API",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 4,
+      "baseline_model_records": 6,
+      "default_large": "mistral-medium-3-5",
+      "default_small": "codestral-2508"
+    },
+    {
+      "provider": "moonshot",
+      "name": "Moonshot",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 11,
+      "baseline_model_records": 11,
+      "default_large": "kimi-k3",
+      "default_small": "kimi-k2.7-code"
+    },
+    {
+      "provider": "muse",
+      "name": "Muse",
+      "type": "muse",
+      "selectable": true,
+      "model_records": 5,
+      "baseline_model_records": 5,
+      "default_large": "muse-spark-1.3",
+      "default_small": "muse-spark-1.2"
+    },
+    {
+      "provider": "nebius",
+      "name": "Nebius Token Factory",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 20,
+      "baseline_model_records": 24,
+      "default_large": "moonshotai/Kimi-K3",
+      "default_small": "Qwen/Qwen3.8-27B"
+    },
+    {
+      "provider": "neuralwatt",
+      "name": "Neuralwatt",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 22,
+      "baseline_model_records": 18,
+      "default_large": "glm-5.3",
+      "default_small": "glm-5.3-flash"
+    },
+    {
+      "provider": "nvidia-nim",
+      "name": "NVIDIA NIM",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 21,
+      "baseline_model_records": 14,
+      "default_large": "deepseek-ai/deepseek-v4.1-flash",
+      "default_small": "z-ai/glm-5.3-flash"
+    },
+    {
+      "provider": "openai",
+      "name": "OpenAI",
+      "type": "openai",
+      "selectable": true,
+      "model_records": 32,
+      "baseline_model_records": 28,
+      "default_large": "gpt-6.1-sol",
+      "default_small": "gpt-6-luna"
+    },
+    {
+      "provider": "opencode-go",
+      "name": "OpenCode Go",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 42,
+      "baseline_model_records": 39,
+      "default_large": "mimo-v2.6-pro",
+      "default_small": "mimo-v2.6-flash"
+    },
+    {
+      "provider": "opencode-zen",
+      "name": "OpenCode Zen",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 82,
+      "baseline_model_records": 66,
+      "default_large": "claude-fable-5-1",
+      "default_small": "deepseek-v4.1-flash"
+    },
+    {
+      "provider": "openrouter",
+      "name": "OpenRouter",
+      "type": "openrouter",
+      "selectable": true,
+      "model_records": 392,
+      "baseline_model_records": 266,
+      "default_large": "anthropic/claude-sonnet-5.5",
+      "default_small": "anthropic/claude-haiku-4.5"
+    },
+    {
+      "provider": "perplexity",
+      "name": "Perplexity Sonar (Pro)",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 3,
+      "baseline_model_records": 3,
+      "default_large": "sonar-reasoning-pro",
+      "default_small": "sonar"
+    },
+    {
+      "provider": "phind",
+      "name": "Phind (Pro/Enterprise)",
+      "type": "openai-compat",
+      "selectable": false,
+      "model_records": 2,
+      "baseline_model_records": 2,
+      "default_large": "phind-instruct",
+      "default_small": "phind-instruct"
+    },
+    {
+      "provider": "qiniu-token-plan",
+      "name": "Qiniu Token Plan",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 9,
+      "baseline_model_records": null,
+      "default_large": "minimax/minimax-m3",
+      "default_small": "moonshotai/kimi-k2.6"
+    },
+    {
+      "provider": "qiniucloud",
+      "name": "QiniuCloud",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 38,
+      "baseline_model_records": 14,
+      "default_large": "z-ai/glm-5.3",
+      "default_small": "deepseek/deepseek-v4.1-flash"
+    },
+    {
+      "provider": "scaleway",
+      "name": "Scaleway",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 11,
+      "baseline_model_records": 12,
+      "default_large": "qwen3.5-397b-a17b",
+      "default_small": "qwen3.8-27b"
+    },
+    {
+      "provider": "synthetic",
+      "name": "Synthetic",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 11,
+      "baseline_model_records": 11,
+      "default_large": "syn:large:text",
+      "default_small": "syn:small:text"
+    },
+    {
+      "provider": "venice",
+      "name": "Venice AI",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 122,
+      "baseline_model_records": 103,
+      "default_large": "claude-fable-5-1",
+      "default_small": "gemini-3-8-flash"
+    },
+    {
+      "provider": "vercel",
+      "name": "Vercel",
+      "type": "vercel",
+      "selectable": true,
+      "model_records": 252,
+      "baseline_model_records": 222,
+      "default_large": "anthropic/claude-fable-5.1",
+      "default_small": "google/gemini-3.8-flash"
+    },
+    {
+      "provider": "vercel-v0",
+      "name": "Vercel v0 (Pro/Team)",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 3,
+      "baseline_model_records": 3,
+      "default_large": "v0-1.5-md",
+      "default_small": "v0-1.5-sm"
+    },
+    {
+      "provider": "vertexai",
+      "name": "Google Vertex AI",
+      "type": "google-vertex",
+      "selectable": true,
+      "model_records": 25,
+      "baseline_model_records": 12,
+      "default_large": "gemini-3.1-pro-preview",
+      "default_small": "gemini-3.8-flash"
+    },
+    {
+      "provider": "windsurf",
+      "name": "Windsurf (Codeium Pro/Teams)",
+      "type": "windsurf",
+      "selectable": false,
+      "model_records": 5,
+      "baseline_model_records": 5,
+      "default_large": "claude-sonnet-4-6",
+      "default_small": "swe-1.5"
+    },
+    {
+      "provider": "xai",
+      "name": "xAI",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 7,
+      "baseline_model_records": 6,
+      "default_large": "grok-4.7",
+      "default_small": "grok-4.7"
+    },
+    {
+      "provider": "xiaomi",
+      "name": "Xiaomi MiMo",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 5,
+      "baseline_model_records": null,
+      "default_large": "mimo-v2.6-pro",
+      "default_small": "mimo-v2.6-flash"
+    },
+    {
+      "provider": "xiaomi-token-plan-ams",
+      "name": "Xiaomi Token Plan (Europe)",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 4,
+      "baseline_model_records": null,
+      "default_large": "mimo-v2.6-pro",
+      "default_small": "mimo-v2.6-flash"
+    },
+    {
+      "provider": "xiaomi-token-plan-cn",
+      "name": "Xiaomi Token Plan (China)",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 4,
+      "baseline_model_records": null,
+      "default_large": "mimo-v2.6-pro",
+      "default_small": "mimo-v2.6-flash"
+    },
+    {
+      "provider": "xiaomi-token-plan-sgp",
+      "name": "Xiaomi Token Plan (Singapore)",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 4,
+      "baseline_model_records": null,
+      "default_large": "mimo-v2.6-pro",
+      "default_small": "mimo-v2.6-flash"
+    },
+    {
+      "provider": "yi",
+      "name": "01.AI Yi",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 2,
+      "baseline_model_records": 2,
+      "default_large": "yi-lightning",
+      "default_small": "yi-lightning"
+    },
+    {
+      "provider": "zai",
+      "name": "Z.AI Coding Plan",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 13,
+      "baseline_model_records": 12,
+      "default_large": "glm-5.3",
+      "default_small": "glm-5.3-flash"
+    },
+    {
+      "provider": "zai-api",
+      "name": "Z.AI API",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 13,
+      "baseline_model_records": null,
+      "default_large": "glm-5.3",
+      "default_small": "glm-5.3-flash"
+    },
+    {
+      "provider": "zed",
+      "name": "Zed Pro",
+      "type": "zed",
+      "selectable": false,
+      "model_records": 5,
+      "baseline_model_records": 5,
+      "default_large": "claude-opus-5",
+      "default_small": "claude-haiku-4-5-20251001"
+    },
+    {
+      "provider": "zhipu",
+      "name": "Zhipu",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 12,
+      "baseline_model_records": 11,
+      "default_large": "glm-5.3",
+      "default_small": "glm-5.3-flash"
+    },
+    {
+      "provider": "zhipu-coding",
+      "name": "Zhipu Coding",
+      "type": "openai-compat",
+      "selectable": true,
+      "model_records": 13,
+      "baseline_model_records": 12,
+      "default_large": "glm-5.3",
+      "default_small": "glm-5.3-flash"
+    }
+  ]
+}

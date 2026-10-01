@@ -1,0 +1,93 @@
+{
+  "checked_at_utc": "2026-10-01T09:40:51.325Z",
+  "sources": [
+    {
+      "url": "https://models.dev/api.json",
+      "sha256": "3f09b8cf6f3d52e5137ae5549e1ce2099a6c7cf78785c74dfcccad8a6eb40077"
+    },
+    {
+      "url": "https://inference-docs.cerebras.ai/models/overview.md",
+      "sha256": "6a5743b88fd587754345269fbd2390b1c743cd46e66899e001032ccce8b3e8af"
+    },
+    {
+      "url": "https://inference-docs.cerebras.ai/models/qwen-3.8-27b.md",
+      "sha256": "896e4d478292fffade11c97572021a83e3ef7142c75d6c5e063fa0f9f2b6c6ae"
+    },
+    {
+      "url": "https://docs.baseten.co/inference/model-apis/overview.md",
+      "sha256": "4f39112d14e8f4d581edb91300705ac67ac0edd1027cba15446234bf238dc273"
+    },
+    {
+      "url": "https://www.baseten.co/pricing",
+      "sha256": "1e03c10e56f7fbedb0c37f66e203ab737fb202eb05cf6cc957cb7dd3feb81426"
+    },
+    {
+      "url": "https://docs.fireworks.ai/serverless/pricing.md",
+      "sha256": "51f7f677cc9913ee569fb563c517530a65380534ec6a558d7cb92ef2a2166179"
+    },
+    {
+      "url": "https://docs.fireworks.ai/serverless/serverless-modes.md",
+      "sha256": "2264d9abd31b384f2252c53b5f0376b89a3f277629dc501b867adce6bf8e62f4"
+    },
+    {
+      "url": "https://tokenfactory.nebius.com/api/public/models_info",
+      "sha256": "44b1990bf1627176cca75da62b310084554bc40d49336459f9d34b4d9eb330ae"
+    },
+    {
+      "url": "https://www.scaleway.com/en/docs/generative-apis/reference-content/supported-models/",
+      "sha256": "8877948c396b4b02a502691d7e8059b1f38538140096018a3efbafb4e6c16b47"
+    },
+    {
+      "url": "https://www.scaleway.com/en/generative-apis/",
+      "sha256": "6a33346854e8cc6d9323afce4548d5513b278643808fe966decc99d458fe15ec"
+    },
+    {
+      "url": "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml",
+      "sha256": "83b221d44f9b28428a2d18ef65571ad26fdda7c1f117607a863bda8989d4fdcb"
+    }
+  ],
+  "changes": [
+    {
+      "provider": "cerebras",
+      "before": 2,
+      "after": 2,
+      "added": [],
+      "removed": []
+    },
+    {
+      "provider": "baseten",
+      "before": 11,
+      "after": 11,
+      "added": [],
+      "removed": []
+    },
+    {
+      "provider": "fireworks",
+      "before": 12,
+      "after": 12,
+      "added": [],
+      "removed": []
+    },
+    {
+      "provider": "nebius",
+      "before": 20,
+      "after": 20,
+      "added": [],
+      "removed": []
+    },
+    {
+      "provider": "scaleway",
+      "before": 13,
+      "after": 11,
+      "added": [],
+      "removed": [
+        "qwen3-coder-30b-a3b-instruct",
+        "pixtral-12b-2409"
+      ]
+    }
+  ],
+  "eur_to_usd": {
+    "rate": 1.1355,
+    "date": "2026-09-30"
+  }
+}

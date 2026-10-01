@@ -1,0 +1,160 @@
+{
+  "checked_at_utc": "2026-10-01T09:27:30.184Z",
+  "sources": [
+    {
+      "url": "https://models.dev/api.json",
+      "sha256": "7a25770a9dafac2d7b124b4b945c1a0d1544cb9d5ff408ec39005a645a520fe4"
+    },
+    {
+      "url": "https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure",
+      "sha256": "a6d5b1b81e6e9e97b521b77d8fe6b94d46799c972e6003d46161e2939f0abb57"
+    },
+    {
+      "url": "https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+      "sha256": "c316a7df6e3160d5c40cae2394e4a755671c2b0b4f89d9f010332bf2e97591e0"
+    },
+    {
+      "url": "https://techcommunity.microsoft.com/blog/azure-ai-foundry-blog/introducing-gpt-6-1-sol-in-microsoft-foundry-advanced-intelligence-optimized-for/4560811",
+      "sha256": "eb7d1e8cc435b4db0da8616334c87aca8b4111d21a11a24d5181dbf8a9c570ae"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/build-with-claude/claude-on-vertex-ai",
+      "sha256": "f0d806ba9a44b5da7e5f1fb7b0a93364dd2a899fea4622d7573abc0c866166d4"
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "sha256": "8ecdc555683ac5fd3b50de3f6205ec4163c1a9cfd0fb5ae0626fa8a82b04a153"
+    },
+    {
+      "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/google-models",
+      "sha256": "c746ee7d8753e2154903766af2d5cbb745ee4f04538841c4730c1467105eef24"
+    },
+    {
+      "url": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/guides/gemini-3-8-flash",
+      "sha256": "bdd348f3595f9453ce5beb777226fc98489e88ddc0bd5ba55f2780059f5d3b19"
+    },
+    {
+      "url": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+      "sha256": "ef863b2eecfd051590098dc6192f14b978167dc38fcc89d0fb9ba2b53c41b6c8"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html",
+      "sha256": "ffd4b7326ab37ea60a11f72d9ca52769511525982b7464bf22e0f9e1934da15b"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html",
+      "sha256": "dbd1851a0af48d20114af2ca5aea148604606dbc9426c37ff78e97a3103e7b16"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-fable-5-1.html",
+      "sha256": "01857a0e474301e9d6a507ff2d96b527d9f915441881a5a9d8cd7e044524c003"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-1-sol.html",
+      "sha256": "bc1ef99b8f5b8865a239ac0021422b3442e946cea6f7f27254c7be40a4bff2fe"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-astra.html",
+      "sha256": "65c7ae8da799ce41df34c44dc5354920e9d37262692f2d5f9be62f37eb04f0a5"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-sol.html",
+      "sha256": "9cf9af7695f25014ed9e97fc636a92266b1d263be6cd9d3a4301ff298cc96870"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html",
+      "sha256": "b3de98d44aabd0e308ca4764a1809e89352db6349f5b89d3ae0d890c93ca4591"
+    },
+    {
+      "url": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+      "sha256": "eea7be13c66e1fdd547ae356427eb6ccfdf27737d74a58dedf73483dcda2d810"
+    },
+    {
+      "url": "https://www.alibabacloud.com/help/en/model-studio/models",
+      "sha256": "8c093ded67236ba4c7e0bcc98a838e3c9a5b8699b06ad9d09ff6d1515097aaad"
+    },
+    {
+      "url": "https://www.antigravity.google/docs/models/",
+      "sha256": "53f1c4f6d7f09c8a867f5282ab8f20c06ac51ba1c093d26c3aabc873cc6aaefc"
+    }
+  ],
+  "changes": [
+    {
+      "provider": "azure",
+      "before": 37,
+      "after": 37,
+      "added": [],
+      "removed": []
+    },
+    {
+      "provider": "vertexai",
+      "before": 27,
+      "after": 24,
+      "added": [],
+      "removed": [
+        "claude-opus-4-1-20250805",
+        "claude-opus-4-20250514",
+        "claude-sonnet-4-20250514"
+      ]
+    },
+    {
+      "provider": "bedrock",
+      "before": 17,
+      "after": 16,
+      "added": [],
+      "removed": [
+        "us.anthropic.claude-sonnet-5-5"
+      ]
+    },
+    {
+      "provider": "bedrock-europe",
+      "before": 15,
+      "after": 14,
+      "added": [],
+      "removed": [
+        "eu.anthropic.claude-sonnet-5-5"
+      ]
+    },
+    {
+      "provider": "bedrock-openai",
+      "before": 0,
+      "after": 7,
+      "added": [
+        "us.openai.gpt-6.1-sol",
+        "us.openai.gpt-6-astra",
+        "global.openai.gpt-6-astra",
+        "us.openai.gpt-6-sol",
+        "global.openai.gpt-6-sol",
+        "us.openai.gpt-6-luna",
+        "global.openai.gpt-6-luna"
+      ],
+      "removed": []
+    },
+    {
+      "provider": "alibaba-singapore",
+      "before": 21,
+      "after": 21,
+      "added": [],
+      "removed": []
+    },
+    {
+      "provider": "alibaba-us",
+      "before": 5,
+      "after": 5,
+      "added": [],
+      "removed": []
+    },
+    {
+      "provider": "antigravity",
+      "before": 4,
+      "after": 4,
+      "added": [],
+      "removed": []
+    }
+  ],
+  "notes": [
+    "Static prices use Standard/global short-context rates. Regional and long-context billing can differ.",
+    "Vertex Gemini 3.6/3.7/3.8 Flash promotional rates expire on 2026-12-31.",
+    "Availability in a published catalog does not grant account entitlement or regional deployment access."
+  ]
+}

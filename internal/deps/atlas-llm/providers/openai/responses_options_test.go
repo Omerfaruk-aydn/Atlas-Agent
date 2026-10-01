@@ -2,6 +2,16 @@ package openai
 
 import "testing"
 
+func TestGPT6ResponsesConfiguration(t *testing.T) {
+	t.Parallel()
+	for _, id := range []string{"gpt-6-astra", "gpt-6-sol", "gpt-6.1-sol", "gpt-6-luna"} {
+		cfg := getResponsesModelConfig(id)
+		if !cfg.isReasoningModel || cfg.systemMessageMode != "developer" {
+			t.Errorf("GPT-6 model %s must preserve reasoning options and developer instructions", id)
+		}
+	}
+}
+
 // TestIsResponsesModelRecognizesGPT6Regression pins a bug where the
 // ChatGPT provider's "gpt-6-astra" model (added to the catalog after this
 // substring check was written) fell through to the Chat Completions code

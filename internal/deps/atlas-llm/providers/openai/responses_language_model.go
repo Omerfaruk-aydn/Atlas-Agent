@@ -80,6 +80,14 @@ func getResponsesModelConfig(modelID string) responsesModelConfig {
 		supportsPriorityProcessing: supportsPriorityProcessing,
 	}
 
+	// Responses gateways also serve these reasoning families. Preserve their
+	// effort selections without applying OpenAI-specific instruction roles.
+	if modelID == "grok-4.7" || modelID == "grok-4.6" || modelID == "grok-4.5" ||
+		modelID == "grok-build-0.1" || strings.HasPrefix(modelID, "muse-spark-") {
+		defaults.isReasoningModel = true
+		return defaults
+	}
+
 	if strings.Contains(strings.ToLower(modelID), "gpt-5-chat") {
 		return responsesModelConfig{
 			isReasoningModel:           false,
@@ -95,6 +103,7 @@ func getResponsesModelConfig(modelID string) responsesModelConfig {
 		strings.HasPrefix(modelID, "o4") || strings.Contains(modelID, "-o4") ||
 		strings.HasPrefix(modelID, "oss") || strings.Contains(modelID, "-oss") ||
 		strings.Contains(strings.ToLower(modelID), "gpt-5") ||
+		strings.Contains(strings.ToLower(modelID), "gpt-6") ||
 		strings.Contains(modelID, "codex-") || strings.Contains(modelID, "computer-use") {
 		if strings.Contains(modelID, "o1-mini") || strings.Contains(modelID, "o1-preview") {
 			return responsesModelConfig{

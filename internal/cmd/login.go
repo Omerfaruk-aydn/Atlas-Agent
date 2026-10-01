@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"slices"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/clipboard"
@@ -35,18 +36,19 @@ var loginCmd = &cobra.Command{
 	Short:   "Login ATLAS-AGENT to a platform",
 	Long: `Login ATLAS-AGENT to a specified platform.
 	The platform should be provided as an argument.
-	Available platforms are: copilot, chatgpt, antigravity, claude, grok,
-	windsurf, jetbrains, muse.
+	Account sign-in platforms include copilot, chatgpt, antigravity, claude,
+	and muse. API and Token Plan providers can
+	also be configured here, including xiaomi, xiaomi-token-plan-sgp,
+	xiaomi-token-plan-ams, xiaomi-token-plan-cn, and opencode-go.
+	Use login --list for the full list. API keys are entered without echo,
+	or read from standard input with --api-key-stdin.
 
 	Note: antigravity only supports its Gemini-family models
 	(gemini-3-pro-high/low); Claude and GPT-OSS models served through an
 	Antigravity account are not supported.
 
-	Note: claude, grok, windsurf, and jetbrains are coding-plan OAuth
-	scaffolds. They are wired into the login flow and the model picker,
-	but their model call layer is a stub that returns "not implemented"
-	until the real request envelopes are captured against the official
-	clients (see the package docs in internal/oauth/<plan>).`,
+	Account adapters with unfinished model calls are unavailable and
+	are excluded from login --list and the model picker.`,
 	Example: `
 # Authenticate with GitHub Copilot
 atlas login copilot
@@ -59,15 +61,6 @@ atlas login antigravity
 
 # Authenticate with a Claude Pro/Max/Team account
 atlas login claude
-
-# Authenticate with an xAI SuperGrok account
-atlas login grok
-
-# Authenticate with a Windsurf (Codeium) Pro/Teams account
-atlas login windsurf
-
-# Authenticate with a JetBrains AI Pro/Ultimate account
-atlas login jetbrains
 
 # Authenticate with a Meta Muse Code subscription
 atlas login muse
@@ -95,17 +88,35 @@ atlas login -f copilot
 	},
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		list, _ := cmd.Flags().GetBool("list")
+		if list {
+			return listLoginProviders(cmd.OutOrStdout())
+		}
+		provider := "copilot"
+		if len(args) > 0 {
+			provider = resolveLoginAlias(args[0])
+		}
+		if slices.Contains(unavailableAccountProviders, provider) {
+			return fmt.Errorf("%s account sign-in is unavailable: model calls are not implemented; use login --list for supported providers", provider)
+		}
+		keyStdin, _ := cmd.Flags().GetBool("api-key-stdin")
+		keyProvider, usesKey := apiKeyLoginProvider(provider)
+		if keyStdin && !usesKey {
+			return fmt.Errorf("--api-key-stdin requires an API-key provider; %s uses account sign-in", provider)
+		}
+		if !usesKey && !isAccountLoginProvider(provider) {
+			return fmt.Errorf("unknown platform: %s; use login --list to see supported providers", provider)
+		}
 		ws, cleanup, err := setupWorkspaceWithProgressBar(cmd)
 		if err != nil {
 			return err
 		}
 		defer cleanup()
 
-		provider := "copilot"
-		if len(args) > 0 {
-			provider = args[0]
-		}
 		force, _ := cmd.Flags().GetBool("force")
+		if usesKey {
+			return loginAPIKey(cmd, ws, keyProvider, force, keyStdin)
+		}
 		switch provider {
 		case "copilot", "github", "github-copilot":
 			return loginCopilot(ws, force)
@@ -139,6 +150,9 @@ atlas login -f copilot
 
 func init() {
 	loginCmd.Flags().BoolP("force", "f", false, "Force re-authentication even if already logged in")
+	loginCmd.Flags().Bool("api-key-stdin", false, "Read an API or Token Plan key from standard input")
+	loginCmd.Flags().Bool("list", false, "List API-key providers and account sign-in platforms")
+	addAPIKeyLoginCompletions()
 }
 
 func loginCopilot(ws workspace.Workspace, force bool) error {
@@ -335,10 +349,8 @@ func waitEnter() {
 }
 
 // loginClaude signs in to a Claude Pro/Max/Team subscription via
-// the claude.ai console OAuth flow (internal/oauth/claude). Sign-in
-// itself is real; only the model call envelope is still a stub (see
-// internal/oauth/claude/oauth.go). The login/token persistence path is
-// the same one the other coding plans use.
+// the claude.ai console OAuth flow (internal/oauth/claude). The stored
+// subscription token is used by the Claude inference provider.
 func loginClaude(ws workspace.Workspace, force bool) error {
 	loginCtx := getLoginContext()
 
@@ -352,11 +364,6 @@ func loginClaude(ws workspace.Workspace, force bool) error {
 			}
 		}
 	}
-
-	fmt.Println("Note: the Claude model call envelope is not yet wired up.")
-	fmt.Println("You can complete sign-in, but chatting through this login will return \"not implemented\" for now.")
-	fmt.Println("See internal/oauth/claude/oauth.go for the TODOs.")
-	fmt.Println()
 
 	// A machine that already runs the official Claude Code CLI has a
 	// working subscription grant on disk. Reusing it skips the browser

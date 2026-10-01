@@ -4,9 +4,89 @@
   "type": "bedrock",
   "api_key": "",
   "api_endpoint": "",
-  "default_large_model_id": "eu.anthropic.claude-opus-5",
+  "default_large_model_id": "eu.anthropic.claude-opus-5-5",
   "default_small_model_id": "eu.anthropic.claude-haiku-4-5-20251001-v1:0",
   "models": [
+    {
+      "id": "eu.anthropic.claude-opus-5-5",
+      "name": "Claude Opus 5.5 (EU)",
+      "cost_per_1m_in": 4.4,
+      "cost_per_1m_out": 22,
+      "cost_per_1m_in_cached": 5.5,
+      "cost_per_1m_out_cached": 0.22,
+      "context_window": 1000000,
+      "default_max_tokens": 128000,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "xhigh",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "global.anthropic.claude-opus-5-5",
+      "name": "Claude Opus 5.5 (Global)",
+      "cost_per_1m_in": 4,
+      "cost_per_1m_out": 20,
+      "cost_per_1m_in_cached": 5,
+      "cost_per_1m_out_cached": 0.19999999999999998,
+      "context_window": 1000000,
+      "default_max_tokens": 128000,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "xhigh",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "global.anthropic.claude-sonnet-5-5",
+      "name": "Claude Sonnet 5.5 (Global)",
+      "cost_per_1m_in": 2,
+      "cost_per_1m_out": 10,
+      "cost_per_1m_in_cached": 2.5,
+      "cost_per_1m_out_cached": 0.19999999999999998,
+      "context_window": 1000000,
+      "default_max_tokens": 128000,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "xhigh",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "global.anthropic.claude-fable-5-1",
+      "name": "Claude Fable 5.1 (Global)",
+      "cost_per_1m_in": 10,
+      "cost_per_1m_out": 50,
+      "cost_per_1m_in_cached": 12.5,
+      "cost_per_1m_out_cached": 0.25,
+      "context_window": 1000000,
+      "default_max_tokens": 128000,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "xhigh",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default_reasoning_effort": "high"
+    },
     {
       "id": "eu.anthropic.claude-sonnet-5",
       "name": "Claude Sonnet 5",
@@ -17,7 +97,12 @@
       "context_window": 1000000,
       "default_max_tokens": 64000,
       "can_reason": true,
-      "reasoning_levels": ["low", "medium", "high", "max"],
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
       "default_reasoning_effort": "high",
       "supports_attachments": true
     },
@@ -31,7 +116,12 @@
       "context_window": 1000000,
       "default_max_tokens": 64000,
       "can_reason": true,
-      "reasoning_levels": ["low", "medium", "high", "max"],
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
       "default_reasoning_effort": "high",
       "supports_attachments": true
     },
@@ -69,7 +159,13 @@
       "context_window": 1000000,
       "default_max_tokens": 128000,
       "can_reason": true,
-      "reasoning_levels": ["low", "medium", "high", "xhigh", "max"],
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
       "default_reasoning_effort": "high",
       "supports_attachments": true
     },
@@ -83,7 +179,13 @@
       "context_window": 1000000,
       "default_max_tokens": 128000,
       "can_reason": true,
-      "reasoning_levels": ["low", "medium", "high", "xhigh", "max"],
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
       "default_reasoning_effort": "high",
       "supports_attachments": true
     },
@@ -97,7 +199,13 @@
       "context_window": 1000000,
       "default_max_tokens": 128000,
       "can_reason": true,
-      "reasoning_levels": ["low", "medium", "high", "xhigh", "max"],
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
       "default_reasoning_effort": "high",
       "supports_attachments": true
     },
@@ -111,7 +219,12 @@
       "context_window": 1000000,
       "default_max_tokens": 128000,
       "can_reason": true,
-      "reasoning_levels": ["low", "medium", "high", "max"],
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
       "default_reasoning_effort": "high",
       "supports_attachments": true
     },

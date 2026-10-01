@@ -1,0 +1,157 @@
+{
+  "id": "bedrock-openai",
+  "name": "Amazon Bedrock OpenAI (API Key)",
+  "type": "openai",
+  "api_key": "$AWS_BEDROCK_OPENAI_API_KEY",
+  "api_endpoint": "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1",
+  "models": [
+    {
+      "id": "us.openai.gpt-6.1-sol",
+      "name": "GPT-6.1 Sol (US)",
+      "cost_per_1m_in": 2.2,
+      "cost_per_1m_out": 11,
+      "cost_per_1m_in_cached": 2.75,
+      "cost_per_1m_out_cached": 0.11,
+      "context_window": 1000000,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "us.openai.gpt-6-astra",
+      "name": "GPT-6 Astra (US)",
+      "cost_per_1m_in": 11,
+      "cost_per_1m_out": 55,
+      "cost_per_1m_in_cached": 13.75,
+      "cost_per_1m_out_cached": 1.1,
+      "context_window": 1000000,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "global.openai.gpt-6-astra",
+      "name": "GPT-6 Astra (Global)",
+      "cost_per_1m_in": 10,
+      "cost_per_1m_out": 50,
+      "cost_per_1m_in_cached": 12.5,
+      "cost_per_1m_out_cached": 1,
+      "context_window": 1000000,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "us.openai.gpt-6-sol",
+      "name": "GPT-6 Sol (US)",
+      "cost_per_1m_in": 2.2,
+      "cost_per_1m_out": 11,
+      "cost_per_1m_in_cached": 2.75,
+      "cost_per_1m_out_cached": 0.22,
+      "context_window": 1000000,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "global.openai.gpt-6-sol",
+      "name": "GPT-6 Sol (Global)",
+      "cost_per_1m_in": 2,
+      "cost_per_1m_out": 10,
+      "cost_per_1m_in_cached": 2.5,
+      "cost_per_1m_out_cached": 0.2,
+      "context_window": 1000000,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "us.openai.gpt-6-luna",
+      "name": "GPT-6 Luna (US)",
+      "cost_per_1m_in": 0.11,
+      "cost_per_1m_out": 0.55,
+      "cost_per_1m_in_cached": 0.1375,
+      "cost_per_1m_out_cached": 0.011,
+      "context_window": 1000000,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "global.openai.gpt-6-luna",
+      "name": "GPT-6 Luna (Global)",
+      "cost_per_1m_in": 0.1,
+      "cost_per_1m_out": 0.5,
+      "cost_per_1m_in_cached": 0.125,
+      "cost_per_1m_out_cached": 0.01,
+      "context_window": 1000000,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_reasoning_effort": "medium"
+    }
+  ],
+  "default_large_model_id": "us.openai.gpt-6.1-sol",
+  "default_small_model_id": "global.openai.gpt-6-luna"
+}

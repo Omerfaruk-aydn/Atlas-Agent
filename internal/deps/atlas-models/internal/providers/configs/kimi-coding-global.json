@@ -1,9 +1,9 @@
 {
-  "name": "Kimi Coding (China)",
-  "id": "kimi-coding",
+  "name": "Kimi Coding (Global)",
+  "id": "kimi-coding-global",
   "type": "anthropic",
-  "api_key": "$KIMI_CODING_API_KEY",
-  "api_endpoint": "https://api.kimi.com/coding",
+  "api_key": "$KIMI_CODING_GLOBAL_API_KEY",
+  "api_endpoint": "https://api.kimi.ai/coding",
   "default_large_model_id": "k3",
   "default_small_model_id": "kimi-for-coding",
   "models": [

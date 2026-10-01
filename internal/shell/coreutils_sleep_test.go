@@ -21,7 +21,7 @@ func runCoreutilsCommand(t *testing.T, ctx context.Context, command string) (str
 	var stderr bytes.Buffer
 	runner, err := interp.New(interp.StdIO(nil, nil, &stderr),
 		interp.Env(expand.ListEnviron("PATH=")),
-		interp.ExecHandler(coreUtilsExecHandler(interp.DefaultExecHandler(0))))
+		interp.ExecHandlers(coreUtilsExecHandler))
 	require.NoError(t, err)
 	file, err := syntax.NewParser().Parse(strings.NewReader(command), "test")
 	require.NoError(t, err)

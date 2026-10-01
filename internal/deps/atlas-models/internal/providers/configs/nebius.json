@@ -4,277 +4,227 @@
   "api_key": "$NEBIUS_API_KEY",
   "api_endpoint": "https://api.tokenfactory.nebius.com/v1",
   "type": "openai-compat",
-  "default_large_model_id": "moonshotai/Kimi-K2.5",
-  "default_small_model_id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+  "default_large_model_id": "moonshotai/Kimi-K3",
+  "default_small_model_id": "Qwen/Qwen3.8-27B",
   "models": [
     {
-      "id": "deepseek-ai/DeepSeek-V3.2",
-      "name": "DeepSeek-V3.2",
+      "id": "deepseek-ai/DeepSeek-V4.1-Flash",
+      "name": "DeepSeek V4.1 Flash",
       "cost_per_1m_in": 0.3,
-      "cost_per_1m_out": 0.45,
+      "cost_per_1m_out": 1.2,
       "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 163000,
-      "default_max_tokens": 16300,
+      "cost_per_1m_out_cached": 0.3,
+      "context_window": 1048000,
+      "default_max_tokens": 1048000,
       "can_reason": true,
+      "supports_attachments": true,
       "reasoning_levels": [
+        "none",
         "low",
-        "medium",
-        "high"
+        "high",
+        "max"
       ],
-      "default_reasoning_effort": "medium",
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-V4-Flash-0731",
+      "name": "DeepSeek V4 Flash 0731",
+      "cost_per_1m_in": 0.14,
+      "cost_per_1m_out": 0.28,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.14,
+      "context_window": 1024000,
+      "default_max_tokens": 1024000,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "none",
+        "low",
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-V4-Pro",
+      "name": "DeepSeek V4 Pro",
+      "cost_per_1m_in": 1.75,
+      "cost_per_1m_out": 3.5,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.15,
+      "context_window": 1048576,
+      "default_max_tokens": 1048576,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "none",
+        "low",
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "deepseek-ai/DeepSeek-V4-Pro-0813",
+      "name": "DeepSeek V4 Pro 0813",
+      "cost_per_1m_in": 1.32,
+      "cost_per_1m_out": 3.96,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 1.32,
+      "context_window": 979000,
+      "default_max_tokens": 979000,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "none",
+        "low",
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "google/gemma-3-27b-it",
+      "name": "Gemma-3-27b-it",
+      "cost_per_1m_in": 0.1,
+      "cost_per_1m_out": 0.3,
+      "cost_per_1m_in_cached": 0.125,
+      "cost_per_1m_out_cached": 0.01,
+      "context_window": 110000,
+      "default_max_tokens": 8192,
+      "can_reason": false,
       "supports_attachments": false
     },
     {
-      "id": "deepseek-ai/DeepSeek-V3.2-fast",
-      "name": "DeepSeek-V3.2 (fast)",
-      "cost_per_1m_in": 0.4,
-      "cost_per_1m_out": 2,
+      "id": "MiniMaxAI/MiniMax-M3",
+      "name": "MiniMax-M3",
+      "cost_per_1m_in": 0.3,
+      "cost_per_1m_out": 1.2,
       "cost_per_1m_in_cached": 0,
       "cost_per_1m_out_cached": 0,
-      "context_window": 8000,
-      "default_max_tokens": 800,
+      "context_window": 1048576,
+      "default_max_tokens": 1048576,
       "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
       "supports_attachments": false
     },
     {
-      "id": "zai-org/GLM-5",
-      "name": "GLM-5",
-      "cost_per_1m_in": 1,
-      "cost_per_1m_out": 3.2,
+      "id": "moonshotai/Kimi-K2.7-Code",
+      "name": "Kimi K2.7 Code",
+      "cost_per_1m_in": 0.95,
+      "cost_per_1m_out": 4,
       "cost_per_1m_in_cached": 0,
       "cost_per_1m_out_cached": 0,
-      "context_window": 202752,
-      "default_max_tokens": 20275,
+      "context_window": 262144,
+      "default_max_tokens": 8000,
       "can_reason": true,
+      "supports_attachments": false
+    },
+    {
+      "id": "moonshotai/Kimi-K3",
+      "name": "Kimi K3",
+      "cost_per_1m_in": 3,
+      "cost_per_1m_out": 15,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 3,
+      "context_window": 1024000,
+      "default_max_tokens": 8000,
+      "can_reason": true,
+      "supports_attachments": true,
       "reasoning_levels": [
+        "none",
         "low",
         "medium",
-        "high"
+        "high",
+        "max"
       ],
-      "default_reasoning_effort": "medium",
-      "supports_attachments": false
+      "default_reasoning_effort": "high"
     },
     {
       "id": "NousResearch/Hermes-4-405B",
       "name": "Hermes-4-405B",
       "cost_per_1m_in": 1,
       "cost_per_1m_out": 3,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
+      "cost_per_1m_in_cached": 1.25,
+      "cost_per_1m_out_cached": 0.1,
       "context_window": 131072,
-      "default_max_tokens": 13107,
+      "default_max_tokens": 8192,
       "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
-      "supports_attachments": false
-    },
-    {
-      "id": "NousResearch/Hermes-4-70B",
-      "name": "Hermes-4-70B",
-      "cost_per_1m_in": 0.13,
-      "cost_per_1m_out": 0.4,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 131072,
-      "default_max_tokens": 13107,
-      "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
-      "supports_attachments": false
-    },
-    {
-      "id": "PrimeIntellect/INTELLECT-3",
-      "name": "INTELLECT-3",
-      "cost_per_1m_in": 0.2,
-      "cost_per_1m_out": 1.1,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 131072,
-      "default_max_tokens": 13107,
-      "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
-      "supports_attachments": false
-    },
-    {
-      "id": "moonshotai/Kimi-K2.5",
-      "name": "Kimi-K2.5",
-      "cost_per_1m_in": 0.5,
-      "cost_per_1m_out": 2.5,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 262144,
-      "default_max_tokens": 26214,
-      "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
-      "supports_attachments": false
-    },
-    {
-      "id": "moonshotai/Kimi-K2.5-fast",
-      "name": "Kimi-K2.5 (fast)",
-      "cost_per_1m_in": 0.5,
-      "cost_per_1m_out": 2.5,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 8000,
-      "default_max_tokens": 800,
-      "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
-      "supports_attachments": false
-    },
-    {
-      "id": "meta-llama/Llama-3.3-70B-Instruct",
-      "name": "Llama-3.3-70B-Instruct",
-      "cost_per_1m_in": 0.13,
-      "cost_per_1m_out": 0.4,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 131072,
-      "default_max_tokens": 13107,
-      "can_reason": false,
-      "supports_attachments": false
-    },
-    {
-      "id": "meta-llama/Meta-Llama-3.1-8B-Instruct",
-      "name": "Meta-Llama-3.1-8B-Instruct",
-      "cost_per_1m_in": 0.02,
-      "cost_per_1m_out": 0.06,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 131072,
-      "default_max_tokens": 13107,
-      "can_reason": false,
-      "supports_attachments": false
-    },
-    {
-      "id": "MiniMaxAI/MiniMax-M2.5",
-      "name": "MiniMax-M2.5",
-      "cost_per_1m_in": 0.3,
-      "cost_per_1m_out": 1.2,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 196608,
-      "default_max_tokens": 19660,
-      "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
-      "supports_attachments": false
-    },
-    {
-      "id": "MiniMaxAI/MiniMax-M2.5-fast",
-      "name": "MiniMax-M2.5 (fast)",
-      "cost_per_1m_in": 0.3,
-      "cost_per_1m_out": 1.2,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 8000,
-      "default_max_tokens": 800,
-      "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
-      "supports_attachments": false
-    },
-    {
-      "id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
-      "name": "Nemotron-3-Nano-30B-A3B",
-      "cost_per_1m_in": 0.06,
-      "cost_per_1m_out": 0.24,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 262144,
-      "default_max_tokens": 26214,
-      "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
       "supports_attachments": false
     },
     {
       "id": "nvidia/nemotron-3-super-120b-a12b",
-      "name": "Nemotron-3-Super-120b-a12b",
+      "name": "Nemotron-3-Super-120B-A12B",
       "cost_per_1m_in": 0.3,
       "cost_per_1m_out": 0.9,
       "cost_per_1m_in_cached": 0,
       "cost_per_1m_out_cached": 0,
       "context_window": 262144,
-      "default_max_tokens": 26214,
+      "default_max_tokens": 32768,
       "can_reason": true,
+      "supports_attachments": false
+    },
+    {
+      "id": "nvidia/Nemotron-3-Ultra-550b-a55b",
+      "name": "Nemotron 3 Ultra 550B A55B",
+      "cost_per_1m_in": 1,
+      "cost_per_1m_out": 3,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 1,
+      "context_window": 1048576,
+      "default_max_tokens": 1048576,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "none",
+        "high"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "nvidia/Nemotron-3_5-Lightning",
+      "name": "Nemotron 3.5 Lightning 30B A3B",
+      "cost_per_1m_in": 0.06,
+      "cost_per_1m_out": 0.24,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.06,
+      "context_window": 1048576,
+      "default_max_tokens": 1048576,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "none",
+        "high"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "openai/gpt-oss-120b",
+      "name": "gpt-oss-120b",
+      "cost_per_1m_in": 0.15,
+      "cost_per_1m_out": 0.6,
+      "cost_per_1m_in_cached": 0.18,
+      "cost_per_1m_out_cached": 0.015,
+      "context_window": 131072,
+      "default_max_tokens": 8192,
+      "can_reason": true,
+      "supports_attachments": false,
       "reasoning_levels": [
         "low",
         "medium",
         "high"
       ],
-      "default_reasoning_effort": "medium",
-      "supports_attachments": false
+      "default_reasoning_effort": "high"
     },
     {
       "id": "Qwen/Qwen3-235B-A22B-Instruct-2507",
-      "name": "Qwen3-235B-A22B-Instruct-2507",
+      "name": "Qwen3 235B A22B Instruct 2507",
       "cost_per_1m_in": 0.2,
       "cost_per_1m_out": 0.6,
       "cost_per_1m_in_cached": 0,
       "cost_per_1m_out_cached": 0,
       "context_window": 262144,
-      "default_max_tokens": 26214,
+      "default_max_tokens": 8192,
       "can_reason": false,
-      "supports_attachments": false
-    },
-    {
-      "id": "Qwen/Qwen3-235B-A22B-Thinking-2507-fast",
-      "name": "Qwen3-235B-A22B-Thinking-2507 (fast)",
-      "cost_per_1m_in": 0.5,
-      "cost_per_1m_out": 2,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 8000,
-      "default_max_tokens": 800,
-      "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
       "supports_attachments": false
     },
     {
@@ -282,65 +232,11 @@
       "name": "Qwen3-30B-A3B-Instruct-2507",
       "cost_per_1m_in": 0.1,
       "cost_per_1m_out": 0.3,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
+      "cost_per_1m_in_cached": 0.125,
+      "cost_per_1m_out_cached": 0.01,
       "context_window": 262144,
-      "default_max_tokens": 26214,
+      "default_max_tokens": 8192,
       "can_reason": false,
-      "supports_attachments": false
-    },
-    {
-      "id": "Qwen/Qwen3-32B",
-      "name": "Qwen3-32B",
-      "cost_per_1m_in": 0.1,
-      "cost_per_1m_out": 0.3,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 40960,
-      "default_max_tokens": 4096,
-      "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
-      "supports_attachments": false
-    },
-    {
-      "id": "Qwen/Qwen3-Next-80B-A3B-Thinking",
-      "name": "Qwen3-Next-80B-A3B-Thinking",
-      "cost_per_1m_in": 0.15,
-      "cost_per_1m_out": 1.2,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 128000,
-      "default_max_tokens": 12800,
-      "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
-      "supports_attachments": false
-    },
-    {
-      "id": "Qwen/Qwen3-Next-80B-A3B-Thinking-fast",
-      "name": "Qwen3-Next-80B-A3B-Thinking (fast)",
-      "cost_per_1m_in": 0.15,
-      "cost_per_1m_out": 1.2,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 8000,
-      "default_max_tokens": 800,
-      "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
       "supports_attachments": false
     },
     {
@@ -348,72 +244,85 @@
       "name": "Qwen3.5-397B-A17B",
       "cost_per_1m_in": 0.6,
       "cost_per_1m_out": 3.6,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
+      "cost_per_1m_in_cached": 0.75,
+      "cost_per_1m_out_cached": 0.06,
       "context_window": 262144,
-      "default_max_tokens": 26214,
+      "default_max_tokens": 8192,
       "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
       "supports_attachments": false
     },
     {
-      "id": "Qwen/Qwen3.5-397B-A17B-fast",
-      "name": "Qwen3.5-397B-A17B (fast)",
-      "cost_per_1m_in": 0.6,
-      "cost_per_1m_out": 3.6,
+      "id": "Qwen/Qwen3.8-27B",
+      "name": "Qwen3.8 27B",
+      "cost_per_1m_in": 0.45,
+      "cost_per_1m_out": 3,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.45,
+      "context_window": 262144,
+      "default_max_tokens": 262144,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "none",
+        "low",
+        "medium",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "none"
+    },
+    {
+      "id": "zai-org/GLM-5.2",
+      "name": "GLM-5.2",
+      "cost_per_1m_in": 1.4,
+      "cost_per_1m_out": 4.4,
       "cost_per_1m_in_cached": 0,
       "cost_per_1m_out_cached": 0,
-      "context_window": 8000,
-      "default_max_tokens": 800,
+      "context_window": 1048576,
+      "default_max_tokens": 1048576,
       "can_reason": true,
+      "supports_attachments": false,
       "reasoning_levels": [
         "low",
         "medium",
         "high"
       ],
-      "default_reasoning_effort": "medium",
-      "supports_attachments": false
+      "default_reasoning_effort": "high"
     },
     {
-      "id": "openai/gpt-oss-120b",
-      "name": "gpt-oss-120b",
+      "id": "zai-org/GLM-5.3",
+      "name": "GLM-5.3",
+      "cost_per_1m_in": 1.4,
+      "cost_per_1m_out": 4.4,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 1.4,
+      "context_window": 1024000,
+      "default_max_tokens": 1024000,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "low",
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "zai-org/GLM-5.3-Flash",
+      "name": "GLM-5.3-Flash",
       "cost_per_1m_in": 0.15,
-      "cost_per_1m_out": 0.6,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 131072,
-      "default_max_tokens": 13107,
-      "can_reason": true,
-      "reasoning_levels": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "default_reasoning_effort": "medium",
-      "supports_attachments": false
-    },
-    {
-      "id": "openai/gpt-oss-120b-fast",
-      "name": "gpt-oss-120b (fast)",
-      "cost_per_1m_in": 0.1,
       "cost_per_1m_out": 0.5,
       "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0,
-      "context_window": 8000,
-      "default_max_tokens": 800,
+      "cost_per_1m_out_cached": 0.15,
+      "context_window": 1024000,
+      "default_max_tokens": 1024000,
       "can_reason": true,
+      "supports_attachments": true,
       "reasoning_levels": [
         "low",
-        "medium",
-        "high"
+        "high",
+        "max"
       ],
-      "default_reasoning_effort": "medium",
-      "supports_attachments": false
+      "default_reasoning_effort": "high"
     }
   ]
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/version"
 	"github.com/stretchr/testify/require"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 // TestLoadShellConfig_Provider verifies that the provider builtin produces
@@ -260,17 +261,18 @@ option debug`
 func TestLoadShellConfig_SourceInclude(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
+	dir := filepath.Join(t.TempDir(), "space & quote's dir")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 
 	// Create an included file with a provider definition.
 	includeContent := `provider add openai --api-key "included-key"`
 	includePath := filepath.Join(dir, "shared.sh")
 	require.NoError(t, os.WriteFile(includePath, []byte(includeContent), 0o644))
 
-	// Create the main script that sources the include. Use forward
-	// slashes so the path survives the bash interpreter on Windows,
-	// where backslashes would be treated as escape characters.
-	script := `source ` + filepath.ToSlash(includePath) + `
+	// Quote the path so shell metacharacters are passed literally.
+	quotedInclude, err := syntax.Quote(filepath.ToSlash(includePath), syntax.LangBash)
+	require.NoError(t, err)
+	script := `source ` + quotedInclude + `
 provider add anthropic --api-key "main-key"`
 	path := filepath.Join(dir, "atlasrc")
 

@@ -2,6 +2,7 @@ package shell
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -79,13 +80,16 @@ func TestRunCommandError(t *testing.T) {
 
 func TestRunContinuity(t *testing.T) {
 	tempDir1 := t.TempDir()
-	tempDir2 := t.TempDir()
+	tempDir2 := filepath.Join(t.TempDir(), "space & quote's dir")
+	if err := os.MkdirAll(tempDir2, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	shell := NewShell(&Options{WorkingDir: tempDir1})
 	if _, _, err := shell.Exec(t.Context(), "export FOO=bar"); err != nil {
 		t.Fatalf("failed to set env: %v", err)
 	}
-	if _, _, err := shell.Exec(t.Context(), "cd "+filepath.ToSlash(tempDir2)); err != nil {
+	if _, _, err := shell.Exec(t.Context(), "cd "+quoteShellPath(t, tempDir2)); err != nil {
 		t.Fatalf("failed to change directory: %v", err)
 	}
 	out, _, err := shell.Exec(t.Context(), "echo $FOO ; pwd")

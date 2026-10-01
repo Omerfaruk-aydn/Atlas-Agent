@@ -116,6 +116,7 @@ func TestCLIAuthPathHomeFallback(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("MUSE_AUTH_PATH", "")
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", "")
 
 	require.Equal(t, filepath.Join(home, ".config", "muse", "auth.json"), CLIAuthPath())

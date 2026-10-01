@@ -11,7 +11,44 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"mvdan.cc/sh/v3/syntax"
 )
+
+func quoteShellPath(t *testing.T, path string) string {
+	t.Helper()
+	quoted, err := syntax.Quote(filepath.ToSlash(path), syntax.LangBash)
+	if err != nil {
+		t.Fatalf("Quote shell path: %v", err)
+	}
+	return quoted
+}
+
+// useTestBash selects a working native Bash rather than a Windows WSL shim.
+func useTestBash(t *testing.T) {
+	t.Helper()
+	var candidates []string
+	if runtime.GOOS == "windows" {
+		for _, base := range []string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)"), filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs")} {
+			if base != "" {
+				candidates = append(candidates, filepath.Join(base, "Git", "bin", "bash.exe"))
+			}
+		}
+		if git, err := exec.LookPath("git"); err == nil {
+			candidates = append(candidates, filepath.Join(filepath.Dir(filepath.Dir(git)), "bin", "bash.exe"))
+		}
+	}
+	if bash, err := exec.LookPath("bash"); err == nil {
+		candidates = append(candidates, bash)
+	}
+	for _, bash := range candidates {
+		if out, err := exec.CommandContext(t.Context(), bash, "--noprofile", "--norc", "-c", "printf atlas-test-bash").Output(); err == nil && string(out) == "atlas-test-bash" {
+			t.Setenv("PATH", filepath.Dir(bash)+string(os.PathListSeparator)+os.Getenv("PATH"))
+			return
+		}
+	}
+	t.Fatalf("No working Bash interpreter found in %v", candidates)
+}
 
 // writeScript is a small helper that drops a file with the given contents
 // and executable mode into dir. Tests that need exec semantics rely on the
@@ -210,12 +247,15 @@ func TestIsBinary(t *testing.T) {
 // branch: a file without a shebang runs via a nested runner and sees
 // positional params from argv[1:].
 func TestDispatch_ShellSourceNoShebang(t *testing.T) {
-	dir := t.TempDir()
+	dir := filepath.Join(t.TempDir(), "space & quote's dir")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	script := writeScript(t, dir, "args.sh", `echo "$1 $2"`)
 
 	var stdout bytes.Buffer
 	err := Run(t.Context(), RunOptions{
-		Command: script + " alpha beta",
+		Command: quoteShellPath(t, script) + " alpha beta",
 		Cwd:     dir,
 		Stdout:  &stdout,
 	})
@@ -235,7 +275,7 @@ func TestDispatch_EmptyFile(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	err := Run(t.Context(), RunOptions{
-		Command: script,
+		Command: quoteShellPath(t, script),
 		Cwd:     dir,
 		Stdout:  &stdout,
 		Stderr:  &stderr,
@@ -257,7 +297,7 @@ func TestDispatch_ShellSourceComposesWithPipe(t *testing.T) {
 
 	var stdout bytes.Buffer
 	err := Run(t.Context(), RunOptions{
-		Command: script + ` | jq -r .`,
+		Command: quoteShellPath(t, script) + ` | jq -r .`,
 		Cwd:     dir,
 		Stdout:  &stdout,
 	})
@@ -274,7 +314,7 @@ func TestDispatch_MissingFile(t *testing.T) {
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "nope.sh")
 	err := Run(t.Context(), RunOptions{
-		Command: missing,
+		Command: quoteShellPath(t, missing),
 		Cwd:     dir,
 	})
 	if err == nil {
@@ -305,21 +345,16 @@ func TestDispatch_DirectoryNotFile(t *testing.T) {
 	}
 }
 
-// TestDispatch_BashShebang runs a #!/bin/bash script via os/exec. Skipped
-// if bash isn't available (rare in CI, but keep the test robust).
+// TestDispatch_BashShebang runs a Bash script via a real external interpreter.
 func TestDispatch_BashShebang(t *testing.T) {
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skipf("bash not in PATH: %v", err)
-	}
-	_ = bash
+	useTestBash(t)
 
 	dir := t.TempDir()
 	script := writeScript(t, dir, "bash-echo.sh", "#!/usr/bin/env bash\necho bashout\n")
 
 	var stdout, stderr bytes.Buffer
-	err = Run(t.Context(), RunOptions{
-		Command: script,
+	err := Run(t.Context(), RunOptions{
+		Command: quoteShellPath(t, script),
 		Cwd:     dir,
 		Stdout:  &stdout,
 		Stderr:  &stderr,
@@ -335,14 +370,12 @@ func TestDispatch_BashShebang(t *testing.T) {
 // TestDispatch_ShebangPassesExitCode maps interpreter exit codes through to
 // interp.ExitStatus so the caller can inspect them with ExitCode.
 func TestDispatch_ShebangPassesExitCode(t *testing.T) {
-	if _, err := exec.LookPath("bash"); err != nil {
-		t.Skipf("bash not in PATH: %v", err)
-	}
+	useTestBash(t)
 	dir := t.TempDir()
 	script := writeScript(t, dir, "fail.sh", "#!/usr/bin/env bash\nexit 5\n")
 
 	err := Run(t.Context(), RunOptions{
-		Command: script,
+		Command: quoteShellPath(t, script),
 		Cwd:     dir,
 	})
 	if err == nil {
@@ -362,7 +395,7 @@ func TestDispatch_MissingInterpreter(t *testing.T) {
 
 	var stderr bytes.Buffer
 	err := Run(t.Context(), RunOptions{
-		Command: script,
+		Command: quoteShellPath(t, script),
 		Cwd:     dir,
 		Stderr:  &stderr,
 	})
@@ -406,7 +439,7 @@ func TestDispatch_ProbeWindowClassifiesByHead(t *testing.T) {
 
 	var stdout bytes.Buffer
 	err := Run(t.Context(), RunOptions{
-		Command: script,
+		Command: quoteShellPath(t, script),
 		Cwd:     dir,
 		Stdout:  &stdout,
 	})
@@ -448,7 +481,7 @@ func TestDispatch_BinaryPassthroughExecutes(t *testing.T) {
 	}
 
 	runErr := Run(t.Context(), RunOptions{
-		Command: dst,
+		Command: quoteShellPath(t, dst),
 		Cwd:     dir,
 		// Default handler needs PATH to resolve dynamic linker / loader
 		// helpers on some systems; inherit the process env so the copy
@@ -479,7 +512,7 @@ func TestDispatch_UnreadableFile(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(script, 0o644) })
 
 	err := Run(t.Context(), RunOptions{
-		Command: script,
+		Command: quoteShellPath(t, script),
 		Cwd:     dir,
 	})
 	if err == nil {
@@ -508,7 +541,7 @@ func TestDispatch_SymlinkLoop(t *testing.T) {
 	}
 
 	err := Run(t.Context(), RunOptions{
-		Command: a,
+		Command: quoteShellPath(t, a),
 		Cwd:     dir,
 	})
 	if err == nil {

@@ -1808,6 +1808,7 @@ func sessionHeaders(sessionID string) map[string]string {
 	return map[string]string{
 		"x-session-id":       hash,
 		"x-session-affinity": hash,
+		"x-opencode-session": hash,
 	}
 }
 

@@ -374,7 +374,7 @@ func (m *Models) setProviderItems() error {
 	itemsMap := make(map[string]*ModelItem)
 	groups := []ModelGroup{}
 	for id, p := range cfg.Providers.Seq2() {
-		if p.Disable {
+		if p.Disable || catwalk.UnavailableProviderReason(p.Type, catwalk.InferenceProvider(p.ID)) != "" {
 			continue
 		}
 
@@ -406,13 +406,16 @@ func (m *Models) setProviderItems() error {
 	// Now add known providers from the predefined list.
 	// Providers already has Hyper at the front of the list.
 	for _, provider := range m.providers {
+		if catwalk.UnavailableProviderReason(provider.Type, provider.ID) != "" {
+			continue
+		}
 		providerID := string(provider.ID)
 		if addedProviders[providerID] {
 			continue
 		}
 
 		providerConfig, providerConfigured := cfg.Providers.Get(providerID)
-		if providerConfigured && providerConfig.Disable {
+		if providerConfigured && (providerConfig.Disable || catwalk.UnavailableProviderReason(providerConfig.Type, catwalk.InferenceProvider(providerConfig.ID)) != "") {
 			continue
 		}
 

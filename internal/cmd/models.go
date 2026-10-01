@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/catwalk"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-style/v2/tree"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
@@ -49,7 +50,7 @@ atlas models gpt5`,
 
 		// Add configured providers first.
 		for providerID, provider := range cfg.Config().Providers.Seq2() {
-			if provider.Disable {
+			if provider.Disable || catwalk.UnavailableProviderReason(provider.Type) != "" {
 				continue
 			}
 			entry := &providerEntry{
@@ -79,6 +80,9 @@ atlas models gpt5`,
 
 		// Add known but unconfigured providers from catwalk.
 		for _, kp := range cfg.KnownProviders() {
+			if catwalk.UnavailableProviderReason(kp.Type) != "" {
+				continue
+			}
 			providerID := string(kp.ID)
 			if _, exists := entries[providerID]; exists {
 				continue

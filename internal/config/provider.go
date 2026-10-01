@@ -146,6 +146,9 @@ func Providers(cfg *Config) ([]catwalk.Provider, error) {
 		}
 
 		providerList = slices.Collect(providers.Seq())
+		providerList = slices.DeleteFunc(providerList, func(p catwalk.Provider) bool {
+			return catwalk.UnavailableProviderReason(p.Type, p.ID) != ""
+		})
 		providerErr = catwalkErr
 	})
 	return providerList, providerErr

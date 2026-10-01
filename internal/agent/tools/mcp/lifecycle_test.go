@@ -3,7 +3,9 @@ package mcp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"sync/atomic"
@@ -483,6 +485,35 @@ type testTransportWrapper struct {
 
 func (t *testTransportWrapper) unwrapTransport() mcp.Transport { return t.inner }
 
+// stdioDiagnosticCommand runs the test executable as a failing MCP child,
+// without depending on a platform-specific shell or executable on PATH.
+func stdioDiagnosticCommand(t *testing.T, stream, diagnostic string) *exec.Cmd {
+	t.Helper()
+	executable, err := os.Executable()
+	require.NoError(t, err)
+	cmd := exec.CommandContext(t.Context(), executable,
+		"-test.run=^TestStdioDiagnosticProcess$", "--", stream, diagnostic)
+	cmd.Env = append(os.Environ(), "ATLAS_MCP_STDIO_DIAGNOSTIC_PROCESS=1")
+	return cmd
+}
+
+func TestStdioDiagnosticProcess(t *testing.T) {
+	if os.Getenv("ATLAS_MCP_STDIO_DIAGNOSTIC_PROCESS") != "1" {
+		return
+	}
+	// Verify the exact child arguments before emitting the diagnostic, so a
+	// duplicated argv0 cannot accidentally satisfy the parent assertions.
+	if len(os.Args) != 5 || os.Args[1] != "-test.run=^TestStdioDiagnosticProcess$" || os.Args[2] != "--" {
+		os.Exit(2)
+	}
+	var output io.Writer = os.Stdout
+	if os.Args[3] == "stderr" {
+		output = os.Stderr
+	}
+	fmt.Fprintln(output, os.Args[4])
+	os.Exit(3)
+}
+
 // TestMaybeStdioErr_UnwrapsChannelTransport pins that maybeStdioErr sees
 // through the channelTransport wrapper to the inner CommandTransport.
 //
@@ -493,7 +524,7 @@ func (t *testTransportWrapper) unwrapTransport() mcp.Transport { return t.inner 
 // both that the unwrap reaches the command (the error is no longer bare EOF)
 // and that the re-executed child's output surfaces in the joined error.
 func TestMaybeStdioErr_UnwrapsChannelTransport(t *testing.T) {
-	cmd := exec.CommandContext(t.Context(), "sh", "-c", "echo 'startup failed: bad config'; exit 3")
+	cmd := stdioDiagnosticCommand(t, "stdout", "startup failed: bad config")
 	inner := &mcp.CommandTransport{Command: cmd}
 	wrapped := &channelTransport{inner: inner, name: "t", gate: newChannelGate()}
 
@@ -507,7 +538,7 @@ func TestMaybeStdioErr_UnwrapsChannelTransport(t *testing.T) {
 // TestMaybeStdioErr_UnwrapsEveryWrapper pins the unwrap against future
 // decorators: it must peel the whole stack, not a fixed number of layers.
 func TestMaybeStdioErr_UnwrapsEveryWrapper(t *testing.T) {
-	cmd := exec.CommandContext(t.Context(), "sh", "-c", "echo boom-diagnostic >&2; exit 3")
+	cmd := stdioDiagnosticCommand(t, "stderr", "boom-diagnostic")
 	var transport mcp.Transport = &mcp.CommandTransport{Command: cmd}
 	transport = &channelTransport{inner: transport, name: "t", gate: newChannelGate()}
 	transport = &testTransportWrapper{inner: transport}
@@ -523,12 +554,13 @@ func TestMaybeStdioErr_UnwrapsEveryWrapper(t *testing.T) {
 // whole re-ran "sh sh -c ..." — and the error reported that malformed
 // command's failure instead of the child's real startup output.
 func TestStdioCheck_DoesNotDuplicateArgv0(t *testing.T) {
-	cmd := exec.CommandContext(t.Context(), "sh", "-c", "echo 'real startup error'; exit 3")
+	cmd := stdioDiagnosticCommand(t, "stdout", "real startup error")
 
 	err := stdioCheck(cmd)
 	require.Error(t, err)
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, err, &exitErr)
+	require.Equal(t, 3, exitErr.ExitCode(), "the original child's exit status must survive")
 	require.ErrorContains(t, err, "real startup error",
 		"the re-run must execute the original command, not a duplicated argv0")
-	require.NotContains(t, err.Error(), "cannot execute binary file",
-		"a duplicated argv0 makes the shell try to exec itself as a script")
 }

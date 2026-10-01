@@ -4,9 +4,45 @@
   "api_key": "$ALIBABA_SINGAPORE_API_KEY",
   "api_endpoint": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
   "type": "openai-compat",
-  "default_large_model_id": "qwen3.6-plus",
-  "default_small_model_id": "qwen3.6-flash",
+  "default_large_model_id": "qwen3.8-max",
+  "default_small_model_id": "qwen3.8-flash",
   "models": [
+    {
+      "id": "qwen3.8-max",
+      "name": "Qwen3.8 Max",
+      "cost_per_1m_in": 2,
+      "cost_per_1m_out": 6,
+      "cost_per_1m_in_cached": 2.5,
+      "cost_per_1m_out_cached": 0.25,
+      "context_window": 1000000,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "qwen3.8-flash",
+      "name": "Qwen3.8 Flash",
+      "cost_per_1m_in": 0.15,
+      "cost_per_1m_out": 0.47,
+      "cost_per_1m_in_cached": 0.2,
+      "cost_per_1m_out_cached": 0.016,
+      "context_window": 1000000,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "medium"
+    },
     {
       "id": "qwen3.5-35b-a3b",
       "name": "Qwen3.5-35B-A3B",
@@ -102,18 +138,6 @@
       "default_max_tokens": 64000,
       "can_reason": true,
       "supports_attachments": false
-    },
-    {
-      "id": "qwen3.8-max",
-      "name": "Qwen3.8-Max",
-      "cost_per_1m_in": 2,
-      "cost_per_1m_out": 6,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0.25,
-      "context_window": 1000000,
-      "default_max_tokens": 65536,
-      "can_reason": true,
-      "supports_attachments": true
     },
     {
       "id": "qwen3.8-27b",

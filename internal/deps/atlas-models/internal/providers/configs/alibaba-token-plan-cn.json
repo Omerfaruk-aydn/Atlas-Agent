@@ -1,0 +1,201 @@
+{
+  "id": "alibaba-token-plan-cn",
+  "name": "Alibaba Token Plan Personal (China)",
+  "type": "openai-compat",
+  "api_key": "$ALIBABA_TOKEN_PLAN_CN_API_KEY",
+  "api_endpoint": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+  "default_large_model_id": "qwen3.8-max",
+  "default_small_model_id": "qwen3.8-flash",
+  "models": [
+    {
+      "id": "auto",
+      "name": "auto",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 128000,
+      "default_max_tokens": 4096,
+      "can_reason": true,
+      "supports_attachments": false
+    },
+    {
+      "id": "qwen3.8-max",
+      "name": "qwen3.8-max",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 128000,
+      "default_max_tokens": 4096,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "xhigh"
+    },
+    {
+      "id": "qwen3.8-flash",
+      "name": "qwen3.8-flash",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 128000,
+      "default_max_tokens": 4096,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "xhigh"
+    },
+    {
+      "id": "qwen3.7-max",
+      "name": "qwen3.7-max",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 128000,
+      "default_max_tokens": 4096,
+      "can_reason": true,
+      "supports_attachments": false
+    },
+    {
+      "id": "qwen3.7-plus",
+      "name": "qwen3.7-plus",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 128000,
+      "default_max_tokens": 4096,
+      "can_reason": true,
+      "supports_attachments": true
+    },
+    {
+      "id": "qwen3.6-flash",
+      "name": "qwen3.6-flash",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 128000,
+      "default_max_tokens": 4096,
+      "can_reason": true,
+      "supports_attachments": true
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "name": "deepseek-v4.1-flash",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 128000,
+      "default_max_tokens": 4096,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "low",
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "name": "deepseek-v4-pro",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 128000,
+      "default_max_tokens": 4096,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "deepseek-v4-pro-0813",
+      "name": "deepseek-v4-pro-0813",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 128000,
+      "default_max_tokens": 4096,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "low",
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "deepseek-v4-flash-0731",
+      "name": "deepseek-v4-flash-0731",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 128000,
+      "default_max_tokens": 4096,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "low",
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "glm-5.3",
+      "name": "glm-5.3",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 128000,
+      "default_max_tokens": 4096,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "low",
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "max"
+    },
+    {
+      "id": "glm-5.2",
+      "name": "glm-5.2",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 128000,
+      "default_max_tokens": 4096,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "high"
+    }
+  ]
+}

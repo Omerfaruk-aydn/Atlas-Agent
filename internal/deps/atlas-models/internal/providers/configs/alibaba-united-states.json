@@ -4,9 +4,45 @@
   "api_key": "$ALIBABA_US_API_KEY",
   "api_endpoint": "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
   "type": "openai-compat",
-  "default_large_model_id": "deepseek-v4-pro-us",
-  "default_small_model_id": "deepseek-v4-flash-us",
+  "default_large_model_id": "qwen3.8-max",
+  "default_small_model_id": "qwen3.8-flash",
   "models": [
+    {
+      "id": "qwen3.8-max",
+      "name": "Qwen3.8 Max",
+      "cost_per_1m_in": 1.65,
+      "cost_per_1m_out": 4.951,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 1000000,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "qwen3.8-flash",
+      "name": "Qwen3.8 Flash",
+      "cost_per_1m_in": 0.113,
+      "cost_per_1m_out": 0.382,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 1000000,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "xhigh"
+      ],
+      "default_reasoning_effort": "medium"
+    },
     {
       "id": "deepseek-v4-pro-us",
       "name": "DeepSeek-V4-Pro",
@@ -57,18 +93,6 @@
       ],
       "default_reasoning_effort": "high",
       "supports_attachments": false
-    },
-    {
-      "id": "qwen3.8-max",
-      "name": "Qwen3.8-Max",
-      "cost_per_1m_in": 1.65,
-      "cost_per_1m_out": 4.951,
-      "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0.206,
-      "context_window": 1000000,
-      "default_max_tokens": 65536,
-      "can_reason": true,
-      "supports_attachments": true
     }
   ]
 }

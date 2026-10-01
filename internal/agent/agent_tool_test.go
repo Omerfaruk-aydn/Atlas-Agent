@@ -24,6 +24,11 @@ import (
 // never call Run.
 func hermeticSubagentCoordinator(t *testing.T) *coordinator {
 	t.Helper()
+	// Keep personal config, persisted model roles, and provider caches out of
+	// tests that construct their own complete provider configuration.
+	for _, name := range []string{"GLOBAL_CONFIG", "GLOBAL_DATA", "CACHE_DIR"} {
+		t.Setenv("ATLAS_AGENT_"+name, t.TempDir())
+	}
 	env := testEnv(t)
 
 	atlasJSON := `{

@@ -74,11 +74,8 @@ func openAICompatBuilder(model string) builderFunc {
 }
 
 func testEnv(t *testing.T) fakeEnv {
-	workingDir := filepath.Join("/tmp/Atlas-Agent-test/", t.Name())
-	os.RemoveAll(workingDir)
-
-	err := os.MkdirAll(workingDir, 0o755)
-	require.NoError(t, err)
+	t.Helper()
+	workingDir := t.TempDir()
 
 	conn, err := db.Connect(t.Context(), t.TempDir())
 	require.NoError(t, err)
@@ -94,7 +91,6 @@ func testEnv(t *testing.T) fakeEnv {
 
 	t.Cleanup(func() {
 		conn.Close()
-		os.RemoveAll(workingDir)
 	})
 
 	return fakeEnv{

@@ -63,10 +63,15 @@ func TestSilentPromptHookChangesNothing(t *testing.T) {
 // The hook sees the prompt itself, which is the whole point of the event.
 func TestPromptHookReceivesThePrompt(t *testing.T) {
 	a := &sessionAgent{promptHooks: newPromptRunner(t,
-		`grep -q "secret plan" && echo '{"decision":"deny","reason":"saw it"}'`)}
+		`IFS= read -r payload; case "$payload" in *"secret plan"*) echo '{"decision":"deny","reason":"saw it"}';; esac`)}
 
 	_, err := a.applyPromptHooks(t.Context(), SessionAgentCall{SessionID: "s", Prompt: "the secret plan"})
 	require.ErrorIs(t, err, ErrPromptBlockedByHook)
+	require.Contains(t, err.Error(), "saw it")
+
+	got, err := a.applyPromptHooks(t.Context(), SessionAgentCall{SessionID: "s", Prompt: "public plan"})
+	require.NoError(t, err)
+	require.Equal(t, "public plan", got)
 }
 
 func TestAppendPromptContext(t *testing.T) {

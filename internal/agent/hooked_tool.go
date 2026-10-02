@@ -25,6 +25,11 @@ func newHookedTool(inner fantasy.AgentTool, pre, post *hooks.Runner) *hookedTool
 	return &hookedTool{inner: inner, pre: pre, post: post}
 }
 
+// WithToolHooks applies the ordinary hook protocol to model-free tool runs.
+func WithToolHooks(inner fantasy.AgentTool, pre, post *hooks.Runner) fantasy.AgentTool {
+	return newHookedTool(inner, pre, post)
+}
+
 // wrapToolsWithHooks returns a tool slice with each entry wrapped in a
 // hookedTool. Returns the original slice unchanged when runner is nil or
 // when isSubAgent is true — sub-agents never fire hooks, the top-level

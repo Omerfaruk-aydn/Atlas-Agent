@@ -3,6 +3,7 @@ package hooks
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/execution"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell"
 )
 
@@ -34,9 +36,17 @@ type compiledHook struct {
 
 // Runner executes hook commands and aggregates their results.
 type Runner struct {
-	hooks      []compiledHook
-	cwd        string
-	projectDir string
+	hooks            []compiledHook
+	cwd              string
+	projectDir       string
+	executionBinding *execution.Binding
+}
+
+// WithExecution binds every hook event to the same command isolation policy.
+func (r *Runner) WithExecution(binding execution.Binding) *Runner {
+	copy := *r
+	copy.executionBinding = &binding
+	return &copy
 }
 
 // NewRunner creates a Runner from the given hook configs. Each hook's
@@ -237,6 +247,9 @@ func (r *Runner) matchingHooks(toolName string) []config.HookConfig {
 //   - on the abandon path, the goroutine may still be writing and the
 //     outer frame must not touch them again.
 func (r *Runner) runOne(parentCtx context.Context, hook config.HookConfig, envVars []string, payload []byte) HookResult {
+	if r.executionBinding != nil && !execution.HasBinding(parentCtx) {
+		parentCtx = execution.WithBinding(parentCtx, *r.executionBinding)
+	}
 	timeout := hook.TimeoutDuration()
 	ctx, cancel := context.WithTimeout(parentCtx, timeout)
 	defer cancel()
@@ -270,10 +283,18 @@ func (r *Runner) runOne(parentCtx context.Context, hook config.HookConfig, envVa
 			)
 			// The goroutine may still be writing to stdout/stderr; do
 			// not read either buffer below this point.
+			if execution.HasBinding(parentCtx) {
+				return HookResult{Decision: DecisionDeny, Reason: "Required hook isolation did not finish cancellation"}
+			}
 			return HookResult{Decision: DecisionNone}
 		}
 	}
 
+	if err != nil && execution.HasBinding(parentCtx) {
+		if _, observedExit := errors.AsType[execution.ExitError](err); !observedExit {
+			return HookResult{Decision: DecisionDeny, Reason: "Required hook isolation failed: " + err.Error()}
+		}
+	}
 	if shell.IsInterrupt(err) {
 		// Distinguish timeout from parent cancellation.
 		if parentCtx.Err() != nil {

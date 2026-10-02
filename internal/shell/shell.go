@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-slice"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/execution"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -121,6 +122,46 @@ func (s *Shell) Exec(ctx context.Context, command string) (string, string, error
 	defer s.mu.Unlock()
 
 	return s.exec(ctx, command)
+}
+
+// ExecArgv executes literal arguments without parsing or expanding source.
+// It uses the same interpreter handlers and execution binding as Exec.
+func (s *Shell) ExecArgv(ctx context.Context, argv []string) (string, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return "", "", err
+	}
+	if len(argv) == 0 || len(argv) > 128 || argv[0] == "" {
+		return "", "", fmt.Errorf("invalid literal command arguments")
+	}
+	total := 0
+	for _, arg := range argv {
+		total += len(arg)
+		if strings.ContainsRune(arg, 0) || len(arg) > 4096 || total > 16*1024 {
+			return "", "", fmt.Errorf("literal command arguments exceed bounds")
+		}
+	}
+	for _, block := range s.blockFuncs {
+		if block(argv) {
+			return "", "", fmt.Errorf("command blocked by policy")
+		}
+	}
+	var stdout, stderr bytes.Buffer
+	if execution.HasBinding(ctx) {
+		err := execution.RunArgv(ctx, s.cwd, argv, s.env, &stdout, &stderr)
+		return stdout.String(), stderr.String(), err
+	}
+	words := make([]*syntax.Word, len(argv))
+	for i, arg := range argv {
+		words[i] = &syntax.Word{Parts: []syntax.WordPart{&syntax.SglQuoted{Value: arg}}}
+	}
+	runner, err := s.newInterp(nil, &stdout, &stderr)
+	if err != nil {
+		return "", "", err
+	}
+	err = runner.Run(ctx, &syntax.File{Stmts: []*syntax.Stmt{{Cmd: &syntax.CallExpr{Args: words}}}})
+	return stdout.String(), stderr.String(), err
 }
 
 // ExecStream executes a command in the shell with streaming output to provided writers
@@ -257,6 +298,12 @@ func (s *Shell) updateShellFromRunner(runner *interp.Runner) {
 
 // execCommon is the shared implementation for executing commands
 func (s *Shell) execCommon(ctx context.Context, command string, stdout, stderr io.Writer) (err error) {
+	if execution.HasBinding(ctx) {
+		if err := checkIsolatedScript(command, s.blockFuncs); err != nil {
+			return err
+		}
+		return execution.RunShell(ctx, s.cwd, command, s.env, nil, stdout, stderr)
+	}
 	var runner *interp.Runner
 	defer func() {
 		if r := recover(); r != nil {
@@ -300,6 +347,18 @@ func IsInterrupt(err error) bool {
 		errors.Is(err, context.DeadlineExceeded)
 }
 
+// ObservedExit excludes policy, setup and cancellation errors from evidence.
+func ObservedExit(err error) bool {
+	if err == nil {
+		return true
+	}
+	if _, ok := errors.AsType[interp.ExitStatus](err); ok {
+		return true
+	}
+	_, ok := errors.AsType[execution.ExitError](err)
+	return ok
+}
+
 // ExitCode extracts the exit code from an error
 func ExitCode(err error) int {
 	if err == nil {
@@ -307,6 +366,9 @@ func ExitCode(err error) int {
 	}
 	if exitErr, ok := errors.AsType[interp.ExitStatus](err); ok {
 		return int(exitErr)
+	}
+	if exitErr, ok := errors.AsType[execution.ExitError](err); ok {
+		return exitErr.Code
 	}
 	return 1
 }

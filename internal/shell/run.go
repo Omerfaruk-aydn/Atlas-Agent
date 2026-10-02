@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/execution"
+
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
@@ -67,6 +69,12 @@ func Run(ctx context.Context, opts RunOptions) (err error) {
 
 	if opts.Cwd == "" {
 		return fmt.Errorf("shell.Run: Cwd is required")
+	}
+	if execution.HasBinding(ctx) {
+		if err := checkIsolatedScript(opts.Command, opts.BlockFuncs); err != nil {
+			return err
+		}
+		return execution.RunShell(ctx, opts.Cwd, opts.Command, opts.Env, opts.Stdin, opts.Stdout, opts.Stderr)
 	}
 
 	stdout := opts.Stdout

@@ -556,6 +556,8 @@ func (Attribution) JSONSchemaExtend(schema *jsonschema.Schema) {
 }
 
 type Options struct {
+	WorkflowPaths        []string    `json:"workflow_paths,omitempty" jsonschema:"description=Directories or JSON files containing versioned project workflow recipes"`
+	Execution            *Execution  `json:"execution,omitempty" jsonschema:"description=Command isolation policy; does not isolate LSP or MCP"`
 	ContextPaths         []string    `json:"context_paths,omitempty" jsonschema:"description=Paths to files containing context information for the AI,example=.cursorrules,example=ATLAS-AGENT.md"`
 	GlobalContextPaths   []string    `json:"global_context_paths,omitempty" jsonschema:"description=Paths to files containing global context information for the AI,default=~/.config/Atlas-Agent/ATLAS-AGENT.md,default=~/.config/AGENTS.md"`
 	SkillsPaths          []string    `json:"skills_paths,omitempty" jsonschema:"description=Paths to directories containing Agent Skills (folders with SKILL.md files),example=~/.config/atlas/skills,example=./skills"`
@@ -652,7 +654,8 @@ type Options struct {
 	// features when present: "advisor" and "escalate" (see Advisor below),
 	// and "compact", which -- when set -- summarization (auto or
 	// /summarize) runs on instead of the session's own model.
-	ModelRoles map[string]SelectedModel `json:"model_roles,omitempty" jsonschema:"description=Named model roles a subagent's model field can reference by name\\, e.g. \"frontend\" or \"research\". A few names are recognized by built-in features when present: advisor\\, escalate\\, and compact (used to summarize with a different model than the session's own).,example={\"research\":{\"model\":\"o3\",\"provider\":\"openai\"}}"`
+	ModelRoles         map[string]SelectedModel      `json:"model_roles,omitempty" jsonschema:"description=Named model roles a subagent's model field can reference by name\\, e.g. \"frontend\" or \"research\". A few names are recognized by built-in features when present: advisor\\, escalate\\, and compact (used to summarize with a different model than the session's own).,example={\"research\":{\"model\":\"o3\",\"provider\":\"openai\"}}"`
+	RoleModelSelection map[string]RoleModelSelection `json:"role_model_selection,omitempty" jsonschema:"description=Opt-in role model selection using comparable live evaluation records and explicit candidate policies."`
 	// SessionMode names a mode (see internal/subagents' built-in modes,
 	// plus any subagent the user has authored) whose instructions are
 	// folded into the main session's own system prompt, so the agent you
@@ -1560,6 +1563,7 @@ func allToolNames() []string {
 		"lsp_rename",
 		"lsp_rename_file",
 		"lsp_replace_symbol",
+		"lsp_edit_plan",
 		"fetch",
 		"agentic_fetch",
 		"orchestrate",
@@ -1577,6 +1581,13 @@ func allToolNames() []string {
 		"skill_manage",
 		"sourcegraph",
 		"todos",
+		"design_search",
+		"workflow",
+		"verify",
+		"project_map",
+		"worktree",
+		"ui_verify",
+		"scenario",
 		"usage",
 		"view",
 		"write",
@@ -1650,7 +1661,7 @@ func resolveAllowedTools(allTools []string, disabledTools []string) []string {
 }
 
 func resolveReadOnlyTools(tools []string) []string {
-	readOnlyTools := []string{"glob", "grep", "ls", "lsp_call_hierarchy", "lsp_definition", "lsp_symbols", "session_search", "sourcegraph", "usage", "view"}
+	readOnlyTools := []string{"glob", "grep", "ls", "lsp_call_hierarchy", "lsp_definition", "lsp_symbols", "session_search", "sourcegraph", "usage", "view", "design_search"}
 	// filter to only include tools that are in allowedtools (include mode)
 	return filterSlice(tools, readOnlyTools, true)
 }

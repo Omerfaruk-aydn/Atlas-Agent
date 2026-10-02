@@ -151,6 +151,55 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "Execution": {
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "legacy",
+            "container-required"
+          ],
+          "default": "legacy"
+        },
+        "runtime_path": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "network": {
+          "type": "string",
+          "enum": [
+            "none",
+            "unrestricted"
+          ],
+          "default": "none"
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "cpus": {
+          "type": "number"
+        },
+        "memory_bytes": {
+          "type": "integer"
+        },
+        "max_processes": {
+          "type": "integer"
+        },
+        "timeout_ms": {
+          "type": "integer"
+        },
+        "environment_keys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "HookConfig": {
       "properties": {
         "name": {
@@ -500,6 +549,17 @@
     },
     "Options": {
       "properties": {
+        "workflow_paths": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Directories or JSON files containing versioned project workflow recipes"
+        },
+        "execution": {
+          "$ref": "#/$defs/Execution",
+          "description": "Command isolation policy; does not isolate LSP or MCP"
+        },
         "context_paths": {
           "items": {
             "type": "string",
@@ -773,6 +833,13 @@
           "type": "object",
           "description": "Named model roles a subagent's model field can reference by name, e.g. \"frontend\" or \"research\". A few names are recognized by built-in features when present: advisor, escalate, and compact (used to summarize with a different model than the session's own)."
         },
+        "role_model_selection": {
+          "additionalProperties": {
+            "$ref": "#/$defs/RoleModelSelection"
+          },
+          "type": "object",
+          "description": "Opt-in role model selection using comparable live evaluation records and explicit candidate policies."
+        },
         "session_mode": {
           "type": "string",
           "description": "Name of the mode whose instructions are folded into the main session's system prompt, e.g. review or security. A model role of the same name also switches the session's model. Empty runs the ordinary coder prompt.",
@@ -933,6 +1000,22 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "RoleModelSelection": {
+      "properties": {
+        "results_file": {
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/$defs/SelectionPolicy"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "results_file",
+        "policy"
+      ]
+    },
     "Sandbox": {
       "properties": {
         "enabled": {
@@ -1036,6 +1119,51 @@
       "required": [
         "model",
         "provider"
+      ]
+    },
+    "SelectionPolicy": {
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "scenarios": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "candidates": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "prompt_version": {
+          "type": "string"
+        },
+        "min_samples": {
+          "type": "integer"
+        },
+        "min_success_rate": {
+          "type": "number"
+        },
+        "max_mean_cost_usd": {
+          "type": "number"
+        },
+        "max_mean_duration_ms": {
+          "type": "integer"
+        },
+        "max_age_hours": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "role",
+        "scenarios",
+        "candidates",
+        "prompt_version"
       ]
     },
     "TUIOptions": {

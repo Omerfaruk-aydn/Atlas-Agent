@@ -48,6 +48,9 @@ func handleOption(ctx context.Context, args []string, stdin io.Reader, stdout, s
 	if key == "ui" {
 		return optionUI(o, args, stderr)
 	}
+	if key == "execution" {
+		return optionExecution(ctx, o, args, stderr)
+	}
 
 	// "option reset <key>" wipes a list back to empty. Because the builder
 	// applies operations in execution order, this is just an assignment:
@@ -199,6 +202,7 @@ var optionSpecs = map[string]optionSpec{
 	"context-path":        {jsonKey: "context_paths", kind: optList},
 	"global-context-path": {jsonKey: "global_context_paths", kind: optList},
 	"skill-path":          {jsonKey: "skills_paths", kind: optList},
+	"workflow-path":       {jsonKey: "workflow_paths", kind: optList},
 	"disable-skill":       {jsonKey: "disabled_skills", kind: optList},
 }
 

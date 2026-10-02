@@ -430,9 +430,7 @@ func (m *UI) handleSaveSubagentMeta(msg dialog.ActionSaveSubagentMeta) tea.Cmd {
 			_, err := ws.SaveSubagent(context.Background(), sub, msg.UserScope)
 			return subagentSavedMsg{err: err}
 		}
-		// Editing: preserve the existing instructions body instead of
-		// overwriting it with the placeholder template, which is only
-		// used for a genuinely new subagent.
+		// Preserve role policy and instructions when editing only metadata.
 		existing, err := ws.ListSubagents(context.Background())
 		if err != nil {
 			return subagentSavedMsg{err: err}
@@ -440,11 +438,15 @@ func (m *UI) handleSaveSubagentMeta(msg dialog.ActionSaveSubagentMeta) tea.Cmd {
 		for _, e := range existing {
 			if e.Name == name {
 				sub.Instructions = e.Instructions
-				break
+				sub.Contract = e.Contract
+				sub.Tools = e.Tools
+				sub.ReadOnly = e.ReadOnly
+				sub.AllowCommands = e.AllowCommands
+				_, err = ws.SaveSubagent(context.Background(), sub, msg.UserScope)
+				return subagentSavedMsg{err: err}
 			}
 		}
-		_, err = ws.SaveSubagent(context.Background(), sub, msg.UserScope)
-		return subagentSavedMsg{err: err}
+		return subagentSavedMsg{err: fmt.Errorf("subagent %q no longer exists", name)}
 	}
 }
 

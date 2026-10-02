@@ -67,6 +67,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/styles"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/util"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/version"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workflows"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workspace"
 )
 
@@ -141,6 +142,7 @@ type (
 	// userCommandsLoadedMsg is sent when user commands are loaded.
 	userCommandsLoadedMsg struct {
 		Commands []commands.CustomCommand
+		Err      error
 	}
 	// mcpPromptsLoadedMsg is sent when mcp prompts are loaded.
 	mcpPromptsLoadedMsg struct {
@@ -174,6 +176,7 @@ type (
 
 // UI represents the main user interface model.
 type UI struct {
+	workflow     workflowPanel
 	com          *common.Common
 	session      *session.Session
 	sessionFiles []SessionFile
@@ -749,7 +752,15 @@ func (m *UI) loadCustomCommands() tea.Cmd {
 			slog.Error("Failed to load skill commands", "error", err)
 		}
 		customCommands = append(customCommands, commands.FromSkillCatalog(skillEntries)...)
-		return userCommandsLoadedMsg{Commands: customCommands}
+		recipes, recipeErr := workflows.Load(context.Background(), workflows.Paths(m.com.Workspace.WorkingDir(), m.com.Config().Options.WorkflowPaths))
+		if recipeErr == nil {
+			combined, combineErr := commands.AppendRecipes(customCommands, recipes)
+			if combineErr == nil {
+				customCommands = combined
+			}
+			recipeErr = combineErr
+		}
+		return userCommandsLoadedMsg{Commands: customCommands, Err: recipeErr}
 	}
 }
 
@@ -768,7 +779,14 @@ func (m *UI) loadMCPrompts() tea.Msg {
 
 // Update handles updates to the UI model.
 func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	workflowHandled, workflowCmd := m.handleWorkflowPanel(msg)
+	if workflowHandled {
+		return m, workflowCmd
+	}
 	var cmds []tea.Cmd
+	if workflowCmd != nil {
+		cmds = append(cmds, workflowCmd)
+	}
 	// Update terminal capabilities
 	m.caps.Update(msg)
 
@@ -940,6 +958,9 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.sendMessage(msg.Content, msg.Attachments...))
 
 	case userCommandsLoadedMsg:
+		if msg.Err != nil {
+			cmds = append(cmds, util.ReportError(fmt.Errorf("loading workflow commands: %w", msg.Err)))
+		}
 		m.customCommands = msg.Commands
 		dia := m.dialog.Dialog(dialog.CommandsID)
 		if dia == nil {
@@ -2579,6 +2600,16 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 			break
 		}
 		content := msg.Content
+		if msg.Recipe != nil {
+			invocation, err := commands.RecipeInvocation(*msg.Recipe, msg.Args)
+			if err != nil {
+				cmds = append(cmds, util.ReportError(err))
+				break
+			}
+			cmds = append(cmds, m.sendMessage(invocation))
+			m.dialog.CloseFrontDialog()
+			break
+		}
 		if msg.Args != nil {
 			content = substituteArgs(content, msg.Args)
 		}
@@ -2820,6 +2851,9 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 
 	handleGlobalKeys := func(msg tea.KeyPressMsg) bool {
 		switch {
+		case key.Matches(msg, m.keyMap.Workflow) && m.hasSession():
+			cmds = append(cmds, m.openWorkflowPanel())
+			return true
 		case key.Matches(msg, m.keyMap.Help):
 			m.status.ToggleHelp()
 			m.updateLayoutAndSize()
@@ -3447,6 +3481,10 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 				if cmd := m.openAgentHubDialog(); cmd != nil {
 					cmds = append(cmds, cmd)
 				}
+			case key.Matches(msg, m.keyMap.Workflow):
+				if cmd := m.openWorkflowPanel(); cmd != nil {
+					cmds = append(cmds, cmd)
+				}
 			case key.Matches(msg, m.keyMap.InterruptWithCorrection):
 				if cmd := m.interruptWithCorrection(); cmd != nil {
 					cmds = append(cmds, cmd)
@@ -3485,6 +3523,10 @@ func (m *UI) drawHeader(scr uv.Screen, area uv.Rectangle) {
 
 // Draw implements [uv.Drawable] and draws the UI model.
 func (m *UI) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
+	if m.workflow.open {
+		m.drawWorkflowPanel(scr, area)
+		return nil
+	}
 	layout := m.generateLayout(area.Dx(), area.Dy())
 
 	if m.layout != layout {
@@ -5229,6 +5271,10 @@ func (m *UI) openDialog(id string) tea.Cmd {
 		}
 	case dialog.JobsID:
 		if cmd := m.openJobsDialog(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	case "workflow-controls":
+		if cmd := m.openWorkflowPanel(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	case dialog.AgentHubID:

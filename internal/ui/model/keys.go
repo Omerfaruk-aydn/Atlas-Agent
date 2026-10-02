@@ -87,6 +87,7 @@ type KeyMap struct {
 	Rewind                  key.Binding
 	Jobs                    key.Binding
 	AgentHub                key.Binding
+	Workflow                key.Binding
 	InterruptWithCorrection key.Binding
 	BackToSession           key.Binding
 	FocusMode               key.Binding
@@ -149,6 +150,7 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("p"),
 			key.WithHelp("p", "jobs"),
 		),
+		Workflow: key.NewBinding(key.WithKeys("alt+w"), key.WithHelp("alt+w", "agent controls")),
 		AgentHub: key.NewBinding(
 			key.WithKeys("alt+a"),
 			key.WithHelp("alt+a", "agent hub"),

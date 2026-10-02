@@ -19,6 +19,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/skills"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/common"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/util"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workflows"
 )
 
 // ActionClose is a message to close the current dialog.
@@ -209,6 +210,7 @@ type (
 	}
 	// ActionRunCustomCommand is a message to run a custom command.
 	ActionRunCustomCommand struct {
+		Recipe    *workflows.Recipe
 		Content   string
 		Arguments []commands.Argument
 		Args      map[string]string // Actual argument values

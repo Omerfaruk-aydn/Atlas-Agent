@@ -440,6 +440,7 @@ func (c *Commands) customCommandItems() []*CommandItem {
 			action = ActionAttachSkill{ID: cmd.Skill.SkillFilePath, Name: cmd.Skill.Name}
 		} else {
 			action = ActionRunCustomCommand{
+				Recipe:    cmd.Recipe,
 				Content:   cmd.Content,
 				Arguments: cmd.Arguments,
 				Skill:     cmd.Skill,
@@ -603,6 +604,7 @@ func (c *Commands) defaultCommands() []*CommandItem {
 		NewCommandItem(c.com.Styles, "rewind", "Rewind to Checkpoint", "ctrl+shift+r", ActionOpenDialog{DialogID: RewindID}).WithSlash("/rewind").WithSummary("Roll the session back to a checkpoint"),
 		NewCommandItem(c.com.Styles, "jobs", "Background Jobs", "p", ActionOpenDialog{DialogID: JobsID}).WithSlash("/jobs").WithSummary("View and manage background jobs"),
 		NewCommandItem(c.com.Styles, "agent-hub", "Agent Hub", "alt+a", ActionOpenDialog{DialogID: AgentHubID}).WithSlash("/agents").WithSummary("View and switch between running agents"),
+		NewCommandItem(c.com.Styles, "workflow-controls", "Agent Controls", "alt+w", ActionOpenDialog{DialogID: "workflow-controls"}).WithSlash("/workflow").WithSummary("Inspect tasks, budgets and revision-checked controls"),
 		NewCommandItem(c.com.Styles, "session-mode", sessionModeCommandLabel(c.com.Config()), "", ActionOpenDialog{DialogID: ModesID}).WithAliases("mode").WithSlash("/mode").WithSummary("Switch the session's working mode"),
 		NewCommandItem(c.com.Styles, "model-roles", "Model Roles", "", ActionOpenDialog{DialogID: ModelRolesID}).WithSlash("/roles").WithSummary("Assign models to roles like title and summary"),
 		NewCommandItem(c.com.Styles, "model-fallbacks", "Model Fallbacks", "", ActionOpenDialog{DialogID: FallbacksID}).WithSlash("/fallbacks").WithSummary("Set which models to fall back to on failure"),

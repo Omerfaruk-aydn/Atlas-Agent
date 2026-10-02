@@ -14,11 +14,14 @@ var coderPromptTmpl []byte
 //go:embed templates/task.md.tpl
 var taskPromptTmpl []byte
 
+//go:embed templates/agent_contract.md.tpl
+var agentContractTmpl []byte
+
 //go:embed templates/initialize.md.tpl
 var initializePromptTmpl []byte
 
 func coderPrompt(opts ...prompt.Option) (*prompt.Prompt, error) {
-	systemPrompt, err := prompt.NewPrompt("coder", string(coderPromptTmpl), opts...)
+	systemPrompt, err := prompt.NewPrompt("coder", string(coderPromptTmpl)+string(agentContractTmpl), opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -26,7 +29,7 @@ func coderPrompt(opts ...prompt.Option) (*prompt.Prompt, error) {
 }
 
 func taskPrompt(opts ...prompt.Option) (*prompt.Prompt, error) {
-	systemPrompt, err := prompt.NewPrompt("task", string(taskPromptTmpl), opts...)
+	systemPrompt, err := prompt.NewPrompt("task", string(taskPromptTmpl)+string(agentContractTmpl), opts...)
 	if err != nil {
 		return nil, err
 	}

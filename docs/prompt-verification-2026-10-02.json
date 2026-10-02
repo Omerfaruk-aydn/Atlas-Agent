@@ -1,0 +1,24 @@
+{
+  "prompt_revision": "atlas-prompts-v2",
+  "date": "2026-10-02",
+  "tests": {
+    "command": "go test -count=1 -p 1 -ldflags='-w -s' -timeout 3m ./internal/subagents ./internal/agent ./internal/agent/prompt ./internal/evaluation ./internal/cmd",
+    "result": "Five packages passed. Agent tests rerun successfully after final tool-template edit."
+  },
+  "build": {
+    "sha256": "B09AEC4030E3B8C71136DA6CB6673A0B925CBA72587EBA4C3A8B6DD66C52AAF1",
+    "result": "passed",
+    "binary": "C:\\Users\\Ömer&Ceylin\\AppData\\Local\\Temp\\atlas-prompts-v2-20261002.exe"
+  },
+  "cli_smoke": {
+    "detailed_completion_contracts": 11,
+    "result": "passed",
+    "builtin_roles": 11,
+    "custom_roles_preserved": true
+  },
+  "formatting": "gofumpt clean for changed Go tests; git diff --check passed",
+  "source_fingerprints": "docs/prompt-sources-2026-10-02.json",
+  "live_model_benchmark": "not run",
+  "behavioral_improvement_measured": false,
+  "published": false
+}

@@ -1,0 +1,97 @@
+[
+  {
+    "path": "D:\\Atlas\\internal\\agent\\templates\\agent_contract.md.tpl",
+    "bytes": 7289,
+    "sha256": "6C824D1177DED684EA70868EE5C2BC039FA92A2226DC1EFCD5634B2C6370EDFE"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\templates\\coder.md.tpl",
+    "bytes": 16933,
+    "sha256": "A1474D3D672BB46B65B57E668771FEC88CA3E8CEFB233CAEF87A9488B446A7FB"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\templates\\task.md.tpl",
+    "bytes": 4261,
+    "sha256": "14ECE6A16B2C804330DCD0F4DF7ADF37737ACECD6D56EA443B7FDE2103C68CBD"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\templates\\initialize.md.tpl",
+    "bytes": 3729,
+    "sha256": "F3F3D26AC53E94006B1B6F3B8BE7E614A55874B6F9F7F5C4882C82B12E3D5D48"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\templates\\summary.md",
+    "bytes": 3830,
+    "sha256": "521FA76FDF13EBC66AB6253E212377759C5D1CB1CFFA8F5AF45A2E8B9CD06FF7"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\templates\\agent_tool.md",
+    "bytes": 1738,
+    "sha256": "F31DAA5CA5AC45D957819AC8F53F6951A2BDDEA5F236B11D5BF87BE42AD673F2"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\templates\\orchestrate_tool.md",
+    "bytes": 2602,
+    "sha256": "52BC0229791A4283AFAE30F9557DADE9661CAB7938B26AB972ED35DA213A1DFE"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\templates\\debate_tool.md",
+    "bytes": 3855,
+    "sha256": "CBC30833EE5E0D95C63A84C371C7B786E1C5A2B240D07C3E9EE9C562A239C91F"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\subagents\\builtin\\architect.md",
+    "bytes": 7914,
+    "sha256": "417B2671EDB267FA3EEF7C8E7BF45642A2710E9939006141F900F92925F859B6"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\subagents\\builtin\\backend.md",
+    "bytes": 15814,
+    "sha256": "D6B125B4F1BCCC282B42A148B432073D98DADE483902D3E43623449392A493EE"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\subagents\\builtin\\debug.md",
+    "bytes": 16092,
+    "sha256": "AD64BC19777FCA3CC8C36195E0B6A69FC0137E7795204367E5AD55DB8944BE24"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\subagents\\builtin\\docs.md",
+    "bytes": 15662,
+    "sha256": "783FC9625C2130ABC1AA8C827076B9CAB9B5B22FEA479E20D1C3F5D718701323"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\subagents\\builtin\\frontend.md",
+    "bytes": 16176,
+    "sha256": "45712EB2CDB3CB5FC0D148189A6373A3CC8FA72F9974BC147CA37BAC7B39FAAF"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\subagents\\builtin\\planner.md",
+    "bytes": 15030,
+    "sha256": "8E4A92BCBDBCE6A140041AB82C56C442FF9E64C49CA2A5DEC80AD3E6507825C4"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\subagents\\builtin\\refactor.md",
+    "bytes": 15558,
+    "sha256": "C94B5BEF06A6F74CB71B3EA37A7CFD704D32171974281C13744E4F0A06FAE903"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\subagents\\builtin\\research.md",
+    "bytes": 16722,
+    "sha256": "D59A0C0853F039A278255EE93FCB45B69667816E553A3A581E94DDEBF6C9BE3F"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\subagents\\builtin\\review.md",
+    "bytes": 15851,
+    "sha256": "DE6FE528D267C2B8C797DE54D8BF0762F3CB169E845030C367E6AF8238700C5B"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\subagents\\builtin\\security.md",
+    "bytes": 16982,
+    "sha256": "B5E408344B7C8D2B491B00A6E84EFB51F4F22024FF34F71A03C4283F73142DE2"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\subagents\\builtin\\test.md",
+    "bytes": 15394,
+    "sha256": "77E39CCA9D6536A08FE4A64AB7BF609977991E8ED855D774D5F16445DDC6295E"
+  }
+]

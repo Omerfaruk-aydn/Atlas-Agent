@@ -27,3 +27,24 @@ Analyze this codebase and create/update **{{.Config.Options.InitializeAs}}** to 
 **Format**: Clear markdown sections. Use your judgment on structure based on what you find. Aim for completeness over brevity - include everything an agent would need to know.
 
 **Critical**: Only document what you actually observe. Never invent commands, patterns, or conventions. If you can't find something, don't include it.
+
+**Repository contract and verification**:
+
+- Preserve existing user-authored instructions and their scope. Resolve outdated
+  factual descriptions against current source; do not silently remove deliberate
+  policies. Explain consequential conflicts rather than inventing a new policy.
+- Trace a representative path from entry point through orchestration, domain logic,
+  storage and output. Document authoritative state, configuration precedence,
+  generated-source ownership and lifecycle boundaries when they are non-obvious.
+- Inspect dependency manifests, task definitions and CI to establish exact commands
+  and required environment. Distinguish a discovered command from one actually run.
+  Do not run deploy, publish, destructive setup or paid services just to document them.
+- Include practical verification guidance: focused checks for normal edits,
+  integration checks for shared contracts, and known platform/toolchain limitations.
+  Explain generated files and their source commands; avoid advising hand edits.
+- Give future agents navigable paths and scoped guidance. Keep frequently needed
+  invariants in this document and link specialized detail instead of copying manuals.
+  Never include credentials, transient task status or speculative recommendations
+  as established repository facts.
+- Before finishing inspect the document diff against sources. Confirm every command,
+  path and asserted convention, and report material knowledge that remains unverified.

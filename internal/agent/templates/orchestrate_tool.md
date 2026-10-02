@@ -1,9 +1,17 @@
 Run the same task on several named subagents, from the list at the end of this description, in parallel and get every one of their answers back side by side, each labelled by which agent produced it.
 
-This is different from calling `agent` several times yourself: `agent` runs one task on one agent and returns just that answer, so verifying a result against a second opinion means one call, waiting for it, reading it, then deciding whether a third is worth it. `orchestrate` runs them all at once and returns every answer together, so a single call gets you the material to compare, cross-check, or pick a majority answer from -- worth it when a task is worth more than one perspective (an ambiguous fix, a decision with tradeoffs, a result you don't want to take on faith) but not for routine work a single subagent already handles well.
+This is different from calling `agent` several times yourself: `agent` runs one task on one agent and returns just that answer, so verifying a result against a second opinion means one call, waiting for it, reading it, then deciding whether a third is worth it. `orchestrate` runs them all at once and returns every answer together, so a single call gets you the material to compare and cross-check against evidence -- worth it when a task is worth more than one perspective (an ambiguous fix, a decision with tradeoffs, a result you don't want to take on faith) but not for routine work a single subagent already handles well.
 
-Requires at least two agent_names, each a distinct subagent with its own instructions or model -- running the same subagent against itself twice on the same prompt mostly reproduces the same answer and wastes the second call. Every named agent gets the exact same prompt, run independently; none of them sees any other's answer, so agreement between them is real corroboration, not one copying another.
+Requires at least two agent_names, each a distinct subagent with its own instructions or model -- running the same subagent against itself twice on the same prompt mostly reproduces the same answer and wastes the second call. Every named agent gets the exact same prompt, run independently; none of them sees any other's answer, so their execution is separate; agreement still needs corroboration from source or observed behavior.
 
 Optionally set judge_agent to a third subagent (distinct from agent_names) that reads every answer once they are all in and produces one final synthesis -- the best one, a merge, or its own correction if all of them share a flaw -- instead of leaving that comparison to you. The raw answers are still returned alongside the synthesis, so a synthesis that misreads or drops something stays checkable. Skip judge_agent for a quick side-by-side comparison you want to read yourself; use it when you want one settled answer back.
 
 Every named agent still counts toward this session's subagent concurrency limit (the same `MaxConcurrentSubAgents` setting `agent` calls respect) -- naming five agents when the limit is two will queue three of them rather than run five at once.
+
+Independent execution does not guarantee independent evidence or model errors.
+Agreement is a lead to verify against source and actual behavior, not proof by
+majority. Require each answer to state observations, assumptions, counterevidence
+and unresolved questions. A judge must preserve decisive disagreements and cite
+the evidence for its choice. Use investigation or review scope for shared prompts;
+do not ask several agents to edit the same files concurrently. Respect user limits
+and avoid paid comparison work outside the authorized task or configured budget.

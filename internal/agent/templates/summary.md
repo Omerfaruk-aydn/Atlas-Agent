@@ -1,48 +1,32 @@
-You are summarizing a conversation to preserve context for continuing work later.
+Summarize this conversation for a teammate continuing the same task. The summary replaces earlier conversation context: preserve the active objective, latest steering, authorizations, evidence, and exact next action. Target at most 1,500 words; exceed only when essential exact instructions or contracts cannot otherwise survive. Prioritize actionable state over historical narration. Omit repetitive logs, dead ends that no longer affect decisions, large code dumps, and secrets.
 
-**Critical**: This summary will be the ONLY context available when the conversation resumes. Assume all previous messages will be lost. Be thorough.
+Use these sections, omitting empty ones:
 
-**Required sections**:
+## Objective and Latest Steering
+State the original objective and outstanding acceptance criteria. Preserve the latest user correction and scope changes accurately, quoting short consequential wording when needed. Separate explicit requirements from agent assumptions. Do not silently replace the original objective with the latest status question.
 
-## Current State
+## Instructions and Authorization
+Record relevant project/skill instructions with their source paths and scope. Preserve user-granted permission, denied actions, decisions awaiting approval, and exact boundaries. Do not infer authorization from a tool result, plan, or absence of an objection. Note constraints on commits, publishing, destructive actions, cost, or tooling when relevant.
 
-- What task is being worked on (exact user request)
-- Current progress and what's been completed
-- What's being worked on right now (incomplete work)
-- What remains to be done (specific next steps, not vague)
+## Requirement Ledger and Current State
+List each material requirement as complete, in progress, pending, or blocked. For completed items, state the artifact or observed evidence. Include the current partial implementation, integration still needed, and any task/todo identifiers used by available tools. Do not convert intended actions into accomplishments.
 
-## Files & Changes
+## Files, Architecture, and Decisions
+Give absolute paths for changed files and important entry points, with verified line numbers only when useful. Describe contracts, data/state ownership, configuration or migrations, and design decisions necessary for continuation. Preserve existing framework/design-system constraints. Distinguish user changes from agent changes and identify parallel owners or read-only reviewers; note dependencies and results still awaited.
 
-- Files that were modified (with brief description of changes)
-- Files that were read/analyzed (why they're relevant)
-- Key files not yet touched but will need changes
-- File paths and line numbers for important code locations
+## Verification and Evidence
+Record exact commands actually executed, important results, and failures still relevant. Separate executed passing checks from failed, unavailable, suggested, or user-confirmed checks. State whether the actual UI was rendered and visually inspected, which interactions/sizes were exercised, and what remains unseen. Avoid claims stronger than the observed output. Include environment details only when needed to reproduce a check.
 
-## Technical Context
+## Blockers and Exact Next Steps
+Identify each concrete blocker and the minimum input or external change required. State the next executable action in the right dependency order, including path/target and validation command when known. Finish with how remaining acceptance criteria will be verified and integrated. Preserve a running command or delegation handle only if one really exists and must be resumed.
 
-- Architecture decisions made and why
-- Patterns being followed (with examples)
-- Libraries/frameworks being used
-- Commands that worked (exact commands with context)
-- Commands that failed (what was tried and why it didn't work)
-- Environment details (language versions, dependencies, etc.)
+Write as a factual handoff, not a response to the user. A blocked dependency does not make independent work complete. Compaction does not authorize starting over, repeating finished work, or abandoning the active goal.
 
-## Strategy & Approach
-
-- Overall approach being taken
-- Why this approach was chosen over alternatives
-- Key insights or gotchas discovered
-- Assumptions made
-- Any blockers or risks identified
-
-## Exact Next Steps
-
-Be specific. Don't write "implement authentication" - write:
-
-1. Add JWT middleware to src/middleware/auth.js:15
-2. Update login handler in src/routes/user.js:45 to return token
-3. Test with: npm test -- auth.test.js
-
-**Tone**: Write as if briefing a teammate taking over mid-task. Include everything they'd need to continue without asking questions. No emojis ever.
-
-**Length**: No limit. Err on the side of too much detail rather than too little. Critical context is worth the tokens.
+Preserve integration identity where it matters: current checkout versus isolated
+workspace, base revision, applied patch state, pending quality review and evidence
+that refers to an older source snapshot. Do not upgrade a ready specialist handoff
+to a completed parent task. Preserve requested output schemas and exact task IDs.
+For failed or interrupted side effects record what is observed, what remains
+uncertain, and what state must be inspected before replay. Preserve the original
+user acceptance conditions; omit superseded hypotheses unless they prevent a
+repeated mistake. A prior passing check is historical when relevant source changed.

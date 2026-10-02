@@ -26,3 +26,10 @@ Every agent's final position, labelled, plus the judge's conclusion when you ask
 - The agents cannot see your files unless the question tells them what is in them. Paste the relevant code or contract into the question.
 - One round with `orchestrate` first is often enough. Reach for `debate` when that round disagrees, not before.
 </tips>
+
+Ground each position in inspectable source, measurements or applicable contracts.
+Separate a disagreement about facts from one about product preferences. Resolve
+facts with available evidence before spending more rounds debating them. Consensus
+does not establish correctness; the final report must retain assumptions and the
+specific observation that could change the recommendation. Debate participants
+should investigate and recommend, not perform competing mutations of shared files.

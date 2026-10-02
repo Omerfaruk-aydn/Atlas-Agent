@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
-	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/filepathext"
+
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/home"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/memory"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell"
@@ -40,6 +40,7 @@ type PromptDat struct {
 	GitStatus          string
 	ContextFiles       []ContextFile
 	GlobalContextFiles []ContextFile
+	ContextNotice      string
 	AvailSkillXML      string
 	// ProjectMemory and UserMemory are the persistent stores, read once
 	// here and then frozen for the life of the session. See
@@ -51,6 +52,8 @@ type PromptDat struct {
 type ContextFile struct {
 	Path    string
 	Content string
+	Origin  string
+	Scope   string
 }
 
 type Option func(*Prompt)
@@ -103,42 +106,11 @@ func (p *Prompt) Build(ctx context.Context, provider, model string, store *confi
 }
 
 func processFile(filePath string) *ContextFile {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil
-	}
-	return &ContextFile{
-		Path:    filePath,
-		Content: string(content),
-	}
+	return readContextFile(filePath, contextFileLimit)
 }
 
 func processContextPath(p string, store *config.ConfigStore) []ContextFile {
-	var contexts []ContextFile
-	fullPath := filepathext.SmartJoin(store.WorkingDir(), p)
-	info, err := os.Stat(fullPath)
-	if err != nil {
-		return contexts
-	}
-	if info.IsDir() {
-		filepath.WalkDir(fullPath, func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if !d.IsDir() {
-				if result := processFile(path); result != nil {
-					contexts = append(contexts, *result)
-				}
-			}
-			return nil
-		})
-	} else {
-		result := processFile(fullPath)
-		if result != nil {
-			contexts = append(contexts, *result)
-		}
-	}
-	return contexts
+	return newContextLoader().load([]string{p}, store, "project")
 }
 
 // expandPath expands ~ and environment variables in file paths
@@ -173,8 +145,9 @@ func (p *Prompt) promptData(ctx context.Context, provider, model string, store *
 	platform := cmp.Or(p.platform, runtime.GOOS)
 
 	cfg := store.Config()
-	contextFiles := loadContextFiles(cfg.Options.ContextPaths, store)
-	globalContextFiles := loadContextFiles(cfg.Options.GlobalContextPaths, store)
+	loader := newContextLoader()
+	contextFiles := loader.load(cfg.Options.ContextPaths, store, "project")
+	globalContextFiles := loader.load(cfg.Options.GlobalContextPaths, store, "global")
 
 	// Discover and load skills metadata.
 	var availSkillXML string
@@ -231,12 +204,11 @@ func (p *Prompt) promptData(ctx context.Context, provider, model string, store *
 		}
 	}
 
-	for _, files := range contextFiles {
-		data.ContextFiles = append(data.ContextFiles, files...)
+	if loader.limited {
+		data.ContextNotice = "Additional context omitted: a shared content budget (256 KiB or 64 files) or directory discovery budget (8192 entries, 4096 candidates, depth 32) was reached."
 	}
-	for _, files := range globalContextFiles {
-		data.GlobalContextFiles = append(data.GlobalContextFiles, files...)
-	}
+	data.ContextFiles = contextFiles
+	data.GlobalContextFiles = globalContextFiles
 	return data, nil
 }
 

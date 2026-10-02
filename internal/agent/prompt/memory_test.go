@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,11 +14,9 @@ import (
 func buildCoderPrompt(t *testing.T, workingDir string) string {
 	t.Helper()
 
-	tpl, err := os.ReadFile(filepath.Join("..", "templates", "coder.md.tpl"))
-	require.NoError(t, err)
+	tpl := loadCoderTemplate(t)
 
-	store, err := config.Init(workingDir, "", false)
-	require.NoError(t, err)
+	store := newPromptTestConfig(t, workingDir)
 
 	p, err := NewPrompt("coder", string(tpl), WithWorkingDir(workingDir))
 	require.NoError(t, err)
@@ -27,6 +24,15 @@ func buildCoderPrompt(t *testing.T, workingDir string) string {
 	out, err := p.Build(t.Context(), "openai", "gpt-5", store)
 	require.NoError(t, err)
 	return out
+}
+
+func loadCoderTemplate(t *testing.T) []byte {
+	t.Helper()
+	tpl, err := os.ReadFile(filepath.Join("..", "templates", "coder.md.tpl"))
+	require.NoError(t, err)
+	contract, err := os.ReadFile(filepath.Join("..", "templates", "agent_contract.md.tpl"))
+	require.NoError(t, err)
+	return append(tpl, contract...)
 }
 
 func writeMemory(t *testing.T, dir, name, content string) {
@@ -88,11 +94,9 @@ func TestOperatingConstraintsAppearWhenConfigured(t *testing.T) {
 	workingDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	tpl, err := os.ReadFile(filepath.Join("..", "templates", "coder.md.tpl"))
-	require.NoError(t, err)
+	tpl := loadCoderTemplate(t)
 
-	store, err := config.Init(workingDir, "", false)
-	require.NoError(t, err)
+	store := newPromptTestConfig(t, workingDir)
 	store.Config().Options.MaxSessionCost = 5
 	store.Config().Options.MaxStepsPerTurn = 40
 	store.Config().Options.AllowedDomains = []string{"docs.example.com"}

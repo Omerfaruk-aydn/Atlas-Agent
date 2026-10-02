@@ -68,6 +68,20 @@ func (m *mockSessionService) Save(_ context.Context, s session.Session) (session
 	return s, nil
 }
 
+func (m *mockSessionService) CompareAndSwapTodos(_ context.Context, id, expected string, todos []session.Todo) (session.Session, error) {
+	for i := range m.sessions {
+		if m.sessions[i].ID != id {
+			continue
+		}
+		if session.TodosFingerprint(m.sessions[i].Todos) != expected {
+			return session.Session{}, fmt.Errorf("task graph revision conflict")
+		}
+		m.sessions[i].Todos = todos
+		return m.sessions[i], nil
+	}
+	return session.Session{}, sql.ErrNoRows
+}
+
 func (m *mockSessionService) UpdateTitleAndUsage(context.Context, string, string, int64, int64, float64) error {
 	return nil
 }

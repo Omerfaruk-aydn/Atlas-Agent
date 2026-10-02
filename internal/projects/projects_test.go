@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestRegisterAndList(t *testing.T) {
@@ -57,6 +59,25 @@ func TestRegisterAndList(t *testing.T) {
 	if projects[0].Path != "/home/user/project2" {
 		t.Errorf("Expected most recent project first, got %s", projects[0].Path)
 	}
+}
+
+func TestRegistrationRecencySurvivesClockTiesAndRollback(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("ATLAS_AGENT_GLOBAL_DATA", filepath.Join(dir, "Atlas-Agent"))
+	now := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
+	require.NoError(t, registerAt("project1", "data1", now))
+	require.NoError(t, registerAt("project2", "data2", now))
+	items, err := List()
+	require.NoError(t, err)
+	require.Equal(t, "project2", items[0].Path)
+	require.True(t, items[0].LastAccessed.After(items[1].LastAccessed))
+	require.NoError(t, registerAt("project1", "updated", now.Add(-time.Hour)))
+	items, err = List()
+	require.NoError(t, err)
+	require.Equal(t, "project1", items[0].Path)
+	require.Equal(t, "updated", items[0].DataDir)
+	require.True(t, items[0].LastAccessed.After(items[1].LastAccessed))
 }
 
 func TestRegisterUpdatesExisting(t *testing.T) {

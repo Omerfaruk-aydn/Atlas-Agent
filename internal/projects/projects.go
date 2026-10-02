@@ -76,12 +76,21 @@ func Save(list *ProjectList) error {
 
 // Register adds or updates a project in the list.
 func Register(workingDir, dataDir string) error {
+	return registerAt(workingDir, dataDir, time.Now().UTC())
+}
+
+func registerAt(workingDir, dataDir string, now time.Time) error {
 	list, err := Load()
 	if err != nil {
 		return err
 	}
 
-	now := time.Now().UTC()
+	// Keep registration order when clock resolution ties or time moves back.
+	for _, p := range list.Projects {
+		if !now.After(p.LastAccessed) {
+			now = p.LastAccessed.Add(time.Nanosecond)
+		}
+	}
 
 	// Check if project already exists
 	found := false

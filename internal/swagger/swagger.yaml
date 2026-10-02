@@ -1,4 +1,4 @@
-﻿basePath: /v1
+basePath: /v1
 definitions:
   catwalk.Model:
     properties:
@@ -47,6 +47,44 @@ definitions:
       top_p:
         type: number
     type: object
+  config.Advisor:
+    properties:
+      auto_escalate:
+        description: |-
+          AutoEscalate runs a second, deeper pass with the "escalate" model
+          role (falling back to the advisor's own model when no "escalate"
+          role is configured) whenever the advisor's severity meets
+          EscalateThreshold, replacing the advisor's one-line note with
+          whatever that second pass produces -- a fuller diagnosis, or a
+          concrete fix description, from a pass explicitly asked to try
+          harder than a quick review. It never changes the turn that was
+          reviewed or delays the user; only the note queued for the next
+          prompt differs.
+        type: boolean
+      enabled:
+        type: boolean
+      escalate_threshold:
+        description: |-
+          EscalateThreshold is the minimum severity that triggers
+          AutoEscalate. Defaults to BLOCKER: escalation costs a second model
+          call, so it is reserved for the severity that already means
+          "should be addressed before the work continues."
+        type: string
+      every_n_turns:
+        description: |-
+          EveryNTurns reviews only every Nth finished turn instead of all of
+          them, so a chatty session does not double its model spend. 1 (the
+          zero value, via EveryNTurns()) reviews every turn.
+        type: integer
+      min_severity:
+        description: |-
+          MinSeverity is the lowest severity that raises a
+          notify.TypeAdvisorNote notification. Every severity above NONE is
+          still queued for the session's next prompt regardless -- this only
+          controls what interrupts the user mid-session versus waiting
+          quietly for the next turn.
+        type: string
+    type: object
   config.Attribution:
     properties:
       co_authored_by:
@@ -63,6 +101,41 @@ definitions:
       max_items:
         type: integer
     type: object
+  config.Execution:
+    properties:
+      cpus:
+        type: number
+      environment_keys:
+        items:
+          type: string
+        type: array
+      image:
+        type: string
+      max_processes:
+        type: integer
+      memory_bytes:
+        type: integer
+      mode:
+        type: string
+      network:
+        type: string
+      read_only:
+        type: boolean
+      runtime_path:
+        type: string
+      timeout_ms:
+        type: integer
+    type: object
+  config.ExitBanner:
+    enum:
+    - default
+    - compact
+    - none
+    type: string
+    x-enum-varnames:
+    - ExitBannerDefault
+    - ExitBannerCompact
+    - ExitBannerNone
   config.HookConfig:
     properties:
       command:
@@ -182,6 +255,20 @@ definitions:
         description: |-
           OAuthToken is the persisted OAuth token for this server. It is
           managed internally and stored in the global data config.
+      sessionless:
+        description: |-
+          Sessionless marks a server that does not maintain an MCP session (it
+          never issues a Mcp-Session-Id). When true, Atlas-Agent omits the
+          tools/prompts/resources list-changed handlers: the go-sdk opens a
+          SEP-2575 "subscriptions/listen" stream whenever any of those handlers
+          is set, and sessionless streamable-HTTP servers (e.g. GitHub MCP)
+          answer that POST with 404 ("session not found"), which the SDK treats
+          as fatal. The cost is no live list-changed notifications from this
+          server.
+
+          When nil, Atlas-Agent auto-detects a set of known sessionless servers (see
+          IsSessionless); set it explicitly to override that detection.
+        type: boolean
       timeout:
         type: integer
       type:
@@ -203,12 +290,46 @@ definitions:
     additionalProperties:
       $ref: '#/definitions/config.MCPConfig'
     type: object
+  config.Memory:
+    properties:
+      project_limit:
+        type: integer
+      user_limit:
+        type: integer
+    type: object
   config.Permissions:
     properties:
       allowed_tools:
         items:
           type: string
         type: array
+    type: object
+  config.RoleModelSelection:
+    properties:
+      policy:
+        $ref: '#/definitions/evaluation.SelectionPolicy'
+      results_file:
+        type: string
+    type: object
+  config.Sandbox:
+    properties:
+      enabled:
+        type: boolean
+      max_memory_mb:
+        description: |-
+          MaxMemoryMB caps the committed memory of any single contained
+          process. 0 means unlimited -- ordinary dev tools (go build, npm
+          install) can legitimately need more memory than a one-size guess
+          would allow, so unlike MaxProcesses this has no default ceiling.
+        type: integer
+      max_processes:
+        description: |-
+          MaxProcesses caps how many processes may be active in the
+          container at once, as a basic fork-bomb mitigation. 0 (the zero
+          value, via MaxProcessesOrDefault) uses a generous default rather
+          than no limit at all, since "enabled" should mean something even
+          when the user hasn't tuned it.
+        type: integer
     type: object
   config.SelectedModel:
     properties:
@@ -258,15 +379,78 @@ definitions:
     - SelectedModelTypeSmall
   config.TUIOptions:
     properties:
+      box_corners:
+        type: string
       compact_mode:
         type: boolean
       completions:
         $ref: '#/definitions/config.Completions'
       diff_mode:
         type: string
+      exit_banner:
+        $ref: '#/definitions/config.ExitBanner'
       scrollbar:
         type: string
       transparent:
+        type: boolean
+    type: object
+  config.ToolBash:
+    properties:
+      auto_background_after:
+        type: integer
+      max_output_length:
+        type: integer
+    type: object
+  config.ToolBrowser:
+    properties:
+      action_timeout:
+        $ref: '#/definitions/time.Duration'
+      enabled:
+        type: boolean
+      executable_path:
+        type: string
+      headless:
+        type: boolean
+      idle_timeout:
+        $ref: '#/definitions/time.Duration'
+      real_profile_pin:
+        type: string
+      remote_url:
+        type: string
+      use_real_profile:
+        type: boolean
+      user_data_dir:
+        type: string
+    type: object
+  config.ToolCodeIntel:
+    properties:
+      enabled:
+        type: boolean
+    type: object
+  config.ToolComputer:
+    properties:
+      action_timeout:
+        $ref: '#/definitions/time.Duration'
+      enabled:
+        type: boolean
+    type: object
+  config.ToolDebugger:
+    properties:
+      action_timeout:
+        $ref: '#/definitions/time.Duration'
+      dlv_path:
+        type: string
+      enabled:
+        type: boolean
+    type: object
+  config.ToolDocs:
+    properties:
+      enabled:
+        type: boolean
+    type: object
+  config.ToolGit:
+    properties:
+      enabled:
         type: boolean
     type: object
   config.ToolGlob:
@@ -286,14 +470,53 @@ definitions:
       max_items:
         type: integer
     type: object
+  config.ToolQuality:
+    properties:
+      enabled:
+        type: boolean
+    type: object
+  config.ToolTeams:
+    properties:
+      enabled:
+        type: boolean
+    type: object
+  config.ToolView:
+    properties:
+      default_read_limit:
+        type: integer
+      hash_anchors:
+        type: boolean
+      max_line_length:
+        type: integer
+    type: object
   config.Tools:
     properties:
+      bash:
+        $ref: '#/definitions/config.ToolBash'
+      browser:
+        $ref: '#/definitions/config.ToolBrowser'
+      code_intel:
+        $ref: '#/definitions/config.ToolCodeIntel'
+      computer:
+        $ref: '#/definitions/config.ToolComputer'
+      debugger:
+        $ref: '#/definitions/config.ToolDebugger'
+      docs:
+        $ref: '#/definitions/config.ToolDocs'
+      git:
+        $ref: '#/definitions/config.ToolGit'
       glob:
         $ref: '#/definitions/config.ToolGlob'
       grep:
         $ref: '#/definitions/config.ToolGrep'
       ls:
         $ref: '#/definitions/config.ToolLs'
+      quality:
+        $ref: '#/definitions/config.ToolQuality'
+      teams:
+        $ref: '#/definitions/config.ToolTeams'
+      view:
+        $ref: '#/definitions/config.ToolView'
     type: object
   config.TrailerStyle:
     enum:
@@ -307,7 +530,270 @@ definitions:
     - TrailerStyleAssistedBy
   csync.Map-string-config_ProviderConfig:
     type: object
-  github_com_charmbracelet_Atlas-Agent_internal_config.Config:
+  engineering.Check:
+    properties:
+      checked_at:
+        type: integer
+      contract_hash:
+        type: string
+      evidence:
+        type: string
+      finding_id:
+        type: string
+      finding_review:
+        type: string
+      input_hash:
+        type: string
+      name:
+        type: string
+      passed:
+        type: boolean
+      run_id:
+        type: string
+      task_id:
+        type: string
+      tool:
+        type: string
+    type: object
+  engineering.Checkpoint:
+    properties:
+      id:
+        type: string
+      message_id:
+        type: string
+      operations:
+        items:
+          type: string
+        type: array
+      parameters_hash:
+        type: string
+      plan_fingerprint:
+        type: string
+      recipe_hash:
+        type: string
+      root:
+        type: string
+      session_id:
+        type: string
+      source_fingerprint:
+        type: string
+      stage:
+        type: integer
+      task_fingerprints:
+        additionalProperties:
+          type: string
+        type: object
+      workspaces:
+        items:
+          type: string
+        type: array
+    type: object
+  engineering.ContractCheck:
+    properties:
+      input_json:
+        type: string
+      name:
+        type: string
+      tool:
+        type: string
+    type: object
+  engineering.Finding:
+    properties:
+      checks:
+        items:
+          $ref: '#/definitions/engineering.ContractCheck'
+        type: array
+      end_line:
+        type: integer
+      evidence:
+        type: string
+      expected:
+        type: string
+      id:
+        type: string
+      implementer_execution_id:
+        type: string
+      issue:
+        type: string
+      path:
+        type: string
+      remediation_task_id:
+        type: string
+      reviewer_execution_id:
+        type: string
+      root:
+        type: string
+      severity:
+        type: integer
+      source_fingerprint:
+        type: string
+      start_line:
+        type: integer
+      status:
+        type: string
+      task_fingerprint:
+        type: string
+      task_id:
+        type: string
+      verification_reviewer_id:
+        type: string
+      verification_run_ids:
+        items:
+          type: string
+        type: array
+      verified_source_fingerprint:
+        type: string
+      verified_task_fingerprint:
+        type: string
+      waiver_provenance:
+        type: string
+      waiver_reason:
+        type: string
+      waiver_source_fingerprint:
+        type: string
+    type: object
+  engineering.Limits:
+    properties:
+      max_cost_usd:
+        type: number
+      max_duration_ms:
+        type: integer
+      max_tokens:
+        type: integer
+      max_tool_calls:
+        type: integer
+    type: object
+  engineering.Operation:
+    properties:
+      agent_name:
+        type: string
+      background_id:
+        type: string
+      call_id:
+        type: string
+      evidence_hash:
+        type: string
+      fingerprint:
+        type: string
+      finished_at:
+        type: integer
+      id:
+        type: string
+      outcome_observed:
+        type: boolean
+      started_at:
+        type: integer
+      status:
+        type: string
+      task_id:
+        type: string
+      tool:
+        type: string
+    type: object
+  engineering.QualityRun:
+    properties:
+      agent:
+        type: string
+      error:
+        type: string
+      execution_id:
+        type: string
+      handoff:
+        $ref: '#/definitions/subagents.Handoff'
+    type: object
+  engineering.RoleExecution:
+    properties:
+      agent:
+        type: string
+      error:
+        type: string
+      execution_id:
+        type: string
+      handoff:
+        $ref: '#/definitions/subagents.Handoff'
+      machine_checks:
+        items:
+          $ref: '#/definitions/engineering.Check'
+        type: array
+      passed:
+        type: boolean
+      require_review:
+        type: boolean
+      reviews:
+        items:
+          $ref: '#/definitions/engineering.QualityRun'
+        type: array
+      root:
+        type: string
+      source_fingerprint:
+        type: string
+      task_fingerprint:
+        type: string
+      task_id:
+        type: string
+      workspace_id:
+        type: string
+    type: object
+  engineering.Usage:
+    properties:
+      cost_usd:
+        type: number
+      duration_ms:
+        type: integer
+      repeated_failed_calls:
+        type: integer
+      tokens:
+        type: integer
+      tool_calls:
+        type: integer
+    type: object
+  engineering.WorkflowTask:
+    properties:
+      agent:
+        type: string
+      content:
+        type: string
+      depends_on:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+      owned_paths:
+        items:
+          type: string
+        type: array
+      spec_fingerprint:
+        type: string
+      status:
+        type: string
+    type: object
+  evaluation.SelectionPolicy:
+    properties:
+      candidates:
+        items:
+          type: string
+        type: array
+      max_age_hours:
+        type: integer
+      max_mean_cost_usd:
+        type: number
+      max_mean_duration_ms:
+        type: integer
+      min_samples:
+        type: integer
+      min_success_rate:
+        type: number
+      prompt_version:
+        type: string
+      role:
+        type: string
+      scenarios:
+        items:
+          type: string
+        type: array
+    type: object
+  github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Config:
     properties:
       $schema:
         type: string
@@ -332,7 +818,7 @@ definitions:
         description: We currently only support large/small as values here.
         type: object
       options:
-        $ref: '#/definitions/github_com_charmbracelet_Atlas-Agent_internal_config.Options'
+        $ref: '#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Options'
       permissions:
         $ref: '#/definitions/config.Permissions'
       providers:
@@ -349,19 +835,71 @@ definitions:
       tools:
         $ref: '#/definitions/config.Tools'
     type: object
-  github_com_charmbracelet_Atlas-Agent_internal_config.Options:
+  github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Options:
     properties:
+      advisor:
+        allOf:
+        - $ref: '#/definitions/config.Advisor'
+        description: |-
+          Advisor enables a second model that reviews each finished turn (the
+          user's prompt and the assistant's final response) with read-only
+          tools (glob, grep, ls, view) of its own, and can leave a note that
+          is injected ahead of the session's next prompt. It runs on the
+          "advisor" ModelRoles entry; with none configured, Advisor has
+          nothing to run on and is silently inert even if Enabled is true.
+      agent_models:
+        additionalProperties:
+          $ref: '#/definitions/config.SelectedModelType'
+        description: |-
+          AgentModels overrides which model type (large or small) a built-in
+          agent uses, keyed by agent ID (coder, task). An agent not named here
+          keeps its default. Unknown agent IDs and invalid model types are
+          ignored rather than rejected, since a stale key here should not stop
+          startup over a knob nobody is relying on any more.
+        type: object
+      allowed_commands:
+        description: |-
+          AllowedCommands and BlockedCommands adjust the bash tool's built-in
+          list of banned commands. Allowing a command also lifts the
+          subcommand blocks on it (e.g. allowing "npm" permits "npm install
+          -g"), so an allow is the more specific instruction and wins over a
+          block of the same name.
+        items:
+          type: string
+        type: array
+      allowed_domains:
+        description: |-
+          AllowedDomains and BlockedDomains govern which hosts the fetch,
+          download, and agentic-fetch tools may reach. Blocked wins over
+          allowed. Matching a domain also matches its subdomains.
+        items:
+          type: string
+        type: array
       attribution:
         $ref: '#/definitions/config.Attribution'
       auto_lsp:
         type: boolean
+      auto_summarize_at:
+        description: |-
+          AutoSummarizeAt is the fraction of the model's context window that
+          may be used before a turn stops to summarize. Values outside (0,1)
+          keep the built-in thresholds.
+        type: number
+      blocked_commands:
+        items:
+          type: string
+        type: array
+      blocked_domains:
+        items:
+          type: string
+        type: array
       context_paths:
         items:
           type: string
         type: array
       data_directory:
         description: |-
-          DataDirectory is where Atlas-Agent keeps per-project state such as
+          DataDirectory is where ATLAS-AGENT keeps per-project state such as
           the SQLite database and workspace overrides. Relative paths are
           resolved against the working directory; absolute paths are used
           verbatim. After defaulting the stored value is always absolute.
@@ -386,24 +924,135 @@ definitions:
         items:
           type: string
         type: array
+      execution:
+        $ref: '#/definitions/config.Execution'
+      fallback_cooldown:
+        description: |-
+          FallbackCooldown is how many seconds a model fallback chain stays on
+          the model it failed over to before the next turn resets the chain
+          back to the primary. Zero (the default) resets on every turn, which
+          is the existing behavior; a nonzero value avoids retrying a model
+          that is likely still rate-limited from the previous turn.
+        type: integer
       global_context_paths:
         items:
           type: string
         type: array
       initialize_as:
         type: string
+      max_concurrent_subagents:
+        description: |-
+          MaxConcurrentSubAgents caps how many agent-tool sub-agents run at
+          once. Zero or unset means no limit.
+        type: integer
+      max_download_bytes:
+        description: |-
+          MaxDownloadBytes caps what the download tool may write. Zero or
+          unset means no cap beyond the client timeout.
+        type: integer
+      max_provider_retries:
+        description: |-
+          MaxProviderRetries caps how many times a failed request to the
+          provider is retried before the turn gives up. Unset keeps the
+          provider library's default; 0 disables retries.
+        type: integer
+      max_session_cost:
+        description: |-
+          MaxSessionCost, if positive, refuses a new prompt once the
+          session's accumulated cost has reached it. The refusal happens
+          before the request is dispatched, so it costs nothing beyond the
+          spend already on the session.
+        type: number
+      max_steps_per_turn:
+        description: |-
+          MaxStepsPerTurn caps how many model/tool-call steps a single turn
+          may take, independent of whether it is repeating itself (that is
+          hasRepeatedToolCalls's job). Zero means unbounded.
+        type: integer
+      memory:
+        $ref: '#/definitions/config.Memory'
+      model_fallbacks:
+        additionalProperties:
+          items:
+            $ref: '#/definitions/config.SelectedModel'
+          type: array
+        description: |-
+          ModelFallbacks lists, per model role, alternate provider/model pairs
+          tried in order when the role's primary model answers with a
+          rate-limit or quota error (HTTP 429). The large-model chain applies
+          mid-turn, to the main conversation; the small-model chain applies to
+          background small-model calls that already retry against the large
+          model on failure (e.g. session title generation), inserted ahead of
+          that existing large-model fallback.
+        type: object
+      model_roles:
+        additionalProperties:
+          $ref: '#/definitions/config.SelectedModel'
+        description: |-
+          ModelRoles maps a free-form role name (e.g. "frontend", "research",
+          "review") to a concrete provider/model pair, distinct from the
+          large/small model types. A subagent's Model field can reference one
+          of these by name (with or without a leading "@") so different kinds
+          of work can run on different models without changing the session's
+          primary model. A handful of names are also recognized by built-in
+          features when present: "advisor" and "escalate" (see Advisor below),
+          and "compact", which -- when set -- summarization (auto or
+          /summarize) runs on instead of the session's own model.
+        type: object
       notifications:
         type: string
       progress:
         type: boolean
+      restrict_writes_to_working_dir:
+        description: |-
+          RestrictWritesToWorkingDir refuses writes outside the working
+          directory outright, before any permission is requested. Off by
+          default: editing a file in a sibling checkout is ordinary work.
+        type: boolean
+      role_model_selection:
+        additionalProperties:
+          $ref: '#/definitions/config.RoleModelSelection'
+        type: object
+      sandbox:
+        allOf:
+        - $ref: '#/definitions/config.Sandbox'
+        description: |-
+          Sandbox contains every external process the shell interpreter
+          spawns (bash tool commands, hook commands, scripts they invoke) in
+          a Windows Job Object. See the Sandbox type doc for exactly what
+          this does and does not protect against.
+      session_mode:
+        description: |-
+          SessionMode names a mode (see internal/subagents' built-in modes,
+          plus any subagent the user has authored) whose instructions are
+          folded into the main session's own system prompt, so the agent you
+          are talking to takes on that specialty instead of delegating to it.
+          When a model role shares the mode's name, the session also switches
+          to that model. Empty -- the default -- leaves the session on its
+          ordinary coder prompt and its large model.
+        type: string
       skills_paths:
         items:
           type: string
         type: array
+      subagents_paths:
+        items:
+          type: string
+        type: array
+      tool_timeout:
+        description: |-
+          ToolTimeout bounds a single tool call, in seconds. Zero or unset
+          means unbounded: a tool call that legitimately takes ten minutes is
+          ordinary work in a large repository.
+        type: integer
       tui:
         $ref: '#/definitions/config.TUIOptions'
+      workflow_paths:
+        items:
+          type: string
+        type: array
     type: object
-  github_com_charmbracelet_Atlas-Agent_internal_config.Scope:
+  github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Scope:
     enum:
     - 0
     - 1
@@ -411,12 +1060,14 @@ definitions:
     x-enum-varnames:
     - ScopeGlobal
     - ScopeWorkspace
-  github_com_charmbracelet_Atlas-Agent_internal_proto.Message:
+  github_com_Omerfaruk-aydn_Atlas-Agent_internal_proto.Message:
     properties:
       created_at:
         type: integer
       id:
         type: string
+      is_summary_message:
+        type: boolean
       model:
         type: string
       parts:
@@ -464,12 +1115,42 @@ definitions:
     properties:
       access_token:
         type: string
+      account_id:
+        description: |-
+          AccountID and PlanType carry provider-specific account metadata
+          decoded once at token exchange/refresh time (e.g. the ChatGPT
+          account id a Codex-style OAuth login needs on every request).
+          Empty for providers that don't need them.
+        type: string
       client:
         $ref: '#/definitions/oauth.OAuthClient'
+      email:
+        description: |-
+          Email, OrgID, OrgName, and IssuedAt carry provider-specific
+          identity metadata. They are all optional; providers that do not
+          surface them (Codex, Antigravity) leave them empty. The Claude
+          subscription flow populates them from the
+          `/api/claude_cli/bootstrap` endpoint after the initial token
+          exchange, never on refresh -- re-resolving org on every refresh
+          could silently re-key stored credentials.
+
+          IssuedAt is Unix seconds for the moment the access token was
+          first issued. The Claude subscription grant expires ~30 days
+          after this regardless of refresh activity, so consumers use it
+          to surface a pre-deadline warning. Zero means "unknown".
+        type: string
       expires_at:
         type: integer
       expires_in:
         type: integer
+      issued_at:
+        type: integer
+      org_id:
+        type: string
+      org_name:
+        type: string
+      plan_type:
+        type: string
       refresh_token:
         type: string
     type: object
@@ -481,6 +1162,21 @@ definitions:
     x-enum-varnames:
     - APIKeyKindString
     - APIKeyKindOAuth
+  proto.AgentHubEntry:
+    properties:
+      busy:
+        type: boolean
+      cost:
+        type: number
+      message_count:
+        type: integer
+      session_id:
+        type: string
+      started_at:
+        type: string
+      title:
+        type: string
+    type: object
   proto.AgentInfo:
     properties:
       is_busy:
@@ -549,12 +1245,31 @@ definitions:
       mime_type:
         type: string
     type: object
+  proto.BackgroundJob:
+    properties:
+      command:
+        type: string
+      description:
+        type: string
+      done:
+        type: boolean
+      exit_err:
+        type: string
+      id:
+        type: string
+      started_at:
+        type: string
+      status:
+        type: string
+      working_dir:
+        type: string
+    type: object
   proto.ConfigCompactRequest:
     properties:
       enabled:
         type: boolean
       scope:
-        $ref: '#/definitions/github_com_charmbracelet_Atlas-Agent_internal_config.Scope'
+        $ref: '#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Scope'
     type: object
   proto.ConfigModelRequest:
     properties:
@@ -563,7 +1278,7 @@ definitions:
       model_type:
         $ref: '#/definitions/config.SelectedModelType'
       scope:
-        $ref: '#/definitions/github_com_charmbracelet_Atlas-Agent_internal_config.Scope'
+        $ref: '#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Scope'
     type: object
   proto.ConfigProviderKeyRequest:
     properties:
@@ -576,28 +1291,28 @@ definitions:
       provider_id:
         type: string
       scope:
-        $ref: '#/definitions/github_com_charmbracelet_Atlas-Agent_internal_config.Scope'
+        $ref: '#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Scope'
     type: object
   proto.ConfigRefreshOAuthRequest:
     properties:
       provider_id:
         type: string
       scope:
-        $ref: '#/definitions/github_com_charmbracelet_Atlas-Agent_internal_config.Scope'
+        $ref: '#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Scope'
     type: object
   proto.ConfigRemoveRequest:
     properties:
       key:
         type: string
       scope:
-        $ref: '#/definitions/github_com_charmbracelet_Atlas-Agent_internal_config.Scope'
+        $ref: '#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Scope'
     type: object
   proto.ConfigSetRequest:
     properties:
       key:
         type: string
       scope:
-        $ref: '#/definitions/github_com_charmbracelet_Atlas-Agent_internal_config.Scope'
+        $ref: '#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Scope'
       value: {}
     type: object
   proto.CurrentSession:
@@ -657,6 +1372,14 @@ definitions:
       path:
         type: string
     type: object
+  proto.MCPAuthResponse:
+    properties:
+      auth_url:
+        description: |-
+          AuthURL is the OAuth authorization URL the user must visit, when
+          the flow is still in progress.
+        type: string
+    type: object
   proto.MCPClientInfo:
     properties:
       connected_at:
@@ -692,6 +1415,13 @@ definitions:
   proto.MCPNameRequest:
     properties:
       name:
+        type: string
+    type: object
+  proto.MCPPendingAuthServer:
+    properties:
+      name:
+        type: string
+      url:
         type: string
     type: object
   proto.MCPPrompt:
@@ -855,6 +1585,34 @@ definitions:
       result:
         $ref: '#/definitions/proto.SkillReadResult'
     type: object
+  proto.RewindPreview:
+    properties:
+      files_to_delete:
+        type: integer
+      files_to_write:
+        type: integer
+    type: object
+  proto.RewindRequest:
+    properties:
+      up_to_message_id:
+        type: string
+    type: object
+  proto.RewindResult:
+    properties:
+      files_deleted:
+        type: integer
+      files_written:
+        type: integer
+      session:
+        $ref: '#/definitions/proto.Session'
+    type: object
+  proto.SaveSubagentRequest:
+    properties:
+      subagent:
+        $ref: '#/definitions/proto.Subagent'
+      user_scope:
+        type: boolean
+    type: object
   proto.ServerControl:
     properties:
       command:
@@ -952,13 +1710,78 @@ definitions:
       state:
         $ref: '#/definitions/proto.SkillDiscoveryState'
     type: object
+  proto.SubAgentRun:
+    properties:
+      session_id:
+        type: string
+      started_at:
+        type: string
+      title:
+        type: string
+    type: object
+  proto.Subagent:
+    properties:
+      allow_commands:
+        type: boolean
+      contract:
+        $ref: '#/definitions/subagents.RoleContract'
+      description:
+        type: string
+      instructions:
+        type: string
+      model:
+        type: string
+      name:
+        type: string
+      path:
+        description: |-
+          Path is the file this subagent was loaded from, empty for one not
+          yet saved. Read-only: SaveSubagentRequest ignores it and resolves
+          the destination itself (see workspace.SaveSubagent).
+        type: string
+      read_only:
+        type: boolean
+      tools:
+        items:
+          type: string
+        type: array
+    type: object
   proto.Todo:
     properties:
+      acceptance_criteria:
+        items:
+          type: string
+        type: array
       active_form:
+        type: string
+      agent:
         type: string
       content:
         type: string
+      depends_on:
+        items:
+          type: string
+        type: array
+      evidence:
+        items:
+          $ref: '#/definitions/proto.TodoEvidence'
+        type: array
+      id:
+        type: string
+      owned_paths:
+        items:
+          type: string
+        type: array
       status:
+        type: string
+      verification:
+        type: string
+    type: object
+  proto.TodoEvidence:
+    properties:
+      detail:
+        type: string
+      kind:
         type: string
     type: object
   proto.VersionInfo:
@@ -974,6 +1797,62 @@ definitions:
       version:
         type: string
     type: object
+  proto.WorkflowControl:
+    properties:
+      action:
+        type: string
+      agent:
+        type: string
+      expected_revision:
+        type: string
+      task_id:
+        type: string
+    type: object
+  proto.WorkflowSnapshot:
+    properties:
+      busy:
+        type: boolean
+      capabilities:
+        additionalProperties:
+          type: string
+        type: object
+      checkpoints:
+        items:
+          $ref: '#/definitions/engineering.Checkpoint'
+        type: array
+      checks:
+        items:
+          $ref: '#/definitions/engineering.Check'
+        type: array
+      executions:
+        items:
+          $ref: '#/definitions/engineering.RoleExecution'
+        type: array
+      findings:
+        items:
+          $ref: '#/definitions/engineering.Finding'
+        type: array
+      limits:
+        $ref: '#/definitions/engineering.Limits'
+      operations:
+        items:
+          $ref: '#/definitions/engineering.Operation'
+        type: array
+      paused:
+        type: boolean
+      revision:
+        type: string
+      session_id:
+        type: string
+      stage:
+        type: integer
+      tasks:
+        items:
+          $ref: '#/definitions/engineering.WorkflowTask'
+        type: array
+      usage:
+        $ref: '#/definitions/engineering.Usage'
+    type: object
   proto.Workspace:
     properties:
       channels:
@@ -986,7 +1865,7 @@ definitions:
       client_id:
         type: string
       config:
-        $ref: '#/definitions/github_com_charmbracelet_Atlas-Agent_internal_config.Config'
+        $ref: '#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Config'
       data_dir:
         type: string
       debug:
@@ -1012,10 +1891,100 @@ definitions:
       yolo:
         type: boolean
     type: object
+  subagents.Handoff:
+    properties:
+      changed_files:
+        items:
+          type: string
+        type: array
+      checks:
+        items:
+          $ref: '#/definitions/subagents.HandoffCheck'
+        type: array
+      decision:
+        type: string
+      dependencies:
+        items:
+          type: string
+        type: array
+      findings:
+        items:
+          $ref: '#/definitions/subagents.HandoffFinding'
+        type: array
+      risks:
+        items:
+          type: string
+        type: array
+      summary:
+        type: string
+      task_id:
+        type: string
+    type: object
+  subagents.HandoffCheck:
+    properties:
+      command:
+        type: string
+      evidence:
+        type: string
+      exit_code:
+        type: integer
+    type: object
+  subagents.HandoffFinding:
+    properties:
+      end_line:
+        type: integer
+      evidence:
+        type: string
+      expected:
+        type: string
+      issue:
+        type: string
+      path:
+        type: string
+      severity:
+        type: integer
+      start_line:
+        type: integer
+    type: object
+  subagents.RoleContract:
+    properties:
+      completion:
+        items:
+          type: string
+        type: array
+      independent_review:
+        type: boolean
+      inputs:
+        items:
+          type: string
+        type: array
+      outputs:
+        items:
+          type: string
+        type: array
+      required_tools:
+        items:
+          type: string
+        type: array
+      responsibilities:
+        items:
+          type: string
+        type: array
+      task_types:
+        items:
+          type: string
+        type: array
+    type: object
   time.Duration:
     enum:
     - -9223372036854775808
     - 9223372036854775807
+    - 1
+    - 1000
+    - 1000000
+    - 1000000000
+    - 60000000000
+    - 3600000000000
     - 1
     - 1000
     - 1000000
@@ -1033,17 +2002,23 @@ definitions:
     - Second
     - Minute
     - Hour
+    - Nanosecond
+    - Microsecond
+    - Millisecond
+    - Second
+    - Minute
+    - Hour
 info:
   contact:
     name: Atlas
     url: https://charm.sh
-  description: Atlas-Agent is a terminal-based AI coding assistant. This API is served over
-    a Unix socket (or Windows named pipe) and provides programmatic access to workspaces,
-    sessions, agents, LSP, MCP, and more.
+  description: ATLAS-AGENT is a terminal-based AI coding assistant. This API is served
+    over a Unix socket (or Windows named pipe) and provides programmatic access to
+    workspaces, sessions, agents, LSP, MCP, and more.
   license:
     name: MIT
-    url: https://github.com/charmbracelet/Atlas-Agent/blob/main/LICENSE
-  title: Atlas-Agent API
+    url: https://github.com/Omerfaruk-aydn/Atlas-Agent/blob/main/LICENSE
+  title: ATLAS-AGENT API
   version: "1.0"
 paths:
   /clients/{client_id}:
@@ -1562,6 +2537,82 @@ paths:
       summary: Update agent
       tags:
       - agent
+  /workspaces/{id}/agents:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/proto.Subagent'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/proto.Error'
+      summary: List subagents
+      tags:
+      - config
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Save subagent request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/proto.SaveSubagentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/proto.Subagent'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/proto.Error'
+      summary: Save a subagent
+      tags:
+      - config
+  /workspaces/{id}/agents/{name}:
+    delete:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Subagent name
+        in: path
+        name: name
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/proto.Error'
+      summary: Delete a subagent
+      tags:
+      - config
   /workspaces/{id}/config:
     get:
       parameters:
@@ -1948,6 +2999,61 @@ paths:
       summary: Record file read
       tags:
       - filetracker
+  /workspaces/{id}/jobs:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/proto.BackgroundJob'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/proto.Error'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/proto.Error'
+      summary: List background jobs
+      tags:
+      - jobs
+  /workspaces/{id}/jobs/{jid}:
+    delete:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Job ID
+        in: path
+        name: jid
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/proto.Error'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/proto.Error'
+      summary: Kill background job
+      tags:
+      - jobs
   /workspaces/{id}/lsps:
     get:
       parameters:
@@ -2063,6 +3169,71 @@ paths:
       summary: Stop all LSP servers
       tags:
       - lsp
+  /workspaces/{id}/mcp/auth:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: MCP name request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/proto.MCPNameRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/proto.MCPAuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/proto.Error'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/proto.Error'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/proto.Error'
+      summary: Authenticate an MCP server
+      tags:
+      - mcp
+  /workspaces/{id}/mcp/auth-url:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: MCP server name
+        in: query
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/proto.MCPAuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/proto.Error'
+      summary: Get MCP OAuth authorization URL
+      tags:
+      - mcp
   /workspaces/{id}/mcp/docker/disable:
     post:
       parameters:
@@ -2143,6 +3314,34 @@ paths:
           schema:
             $ref: '#/definitions/proto.Error'
       summary: Get MCP prompt
+      tags:
+      - mcp
+  /workspaces/{id}/mcp/pending-auth:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/proto.MCPPendingAuthServer'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/proto.Error'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/proto.Error'
+      summary: Get MCP servers pending OAuth
       tags:
       - mcp
   /workspaces/{id}/mcp/prompts:
@@ -2356,7 +3555,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/github_com_charmbracelet_Atlas-Agent_internal_proto.Message'
+              $ref: '#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_proto.Message'
             type: array
         "404":
           description: Not Found
@@ -2792,6 +3991,39 @@ paths:
       summary: Update session
       tags:
       - sessions
+  /workspaces/{id}/sessions/{sid}/agenthub:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: sid
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/proto.AgentHubEntry'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/proto.Error'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/proto.Error'
+      summary: List agent hub entries for session
+      tags:
+      - sessions
   /workspaces/{id}/sessions/{sid}/filetracker/files:
     get:
       parameters:
@@ -2878,7 +4110,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/github_com_charmbracelet_Atlas-Agent_internal_proto.Message'
+              $ref: '#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_proto.Message'
             type: array
         "404":
           description: Not Found
@@ -2911,7 +4143,7 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/github_com_charmbracelet_Atlas-Agent_internal_proto.Message'
+              $ref: '#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_proto.Message'
             type: array
         "404":
           description: Not Found
@@ -2922,6 +4154,225 @@ paths:
           schema:
             $ref: '#/definitions/proto.Error'
       summary: Get user messages for session
+      tags:
+      - sessions
+  /workspaces/{id}/sessions/{sid}/rewind:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: sid
+        required: true
+        type: string
+      - description: Rewind target
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/proto.RewindRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/proto.RewindResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/proto.Error'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/proto.Error'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/proto.Error'
+      summary: Rewind session
+      tags:
+      - sessions
+  /workspaces/{id}/sessions/{sid}/rewind/preview:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: sid
+        required: true
+        type: string
+      - description: Rewind target
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/proto.RewindRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/proto.RewindPreview'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/proto.Error'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/proto.Error'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/proto.Error'
+      summary: Preview a session rewind
+      tags:
+      - sessions
+  /workspaces/{id}/sessions/{sid}/subagents:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: sid
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/proto.SubAgentRun'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/proto.Error'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/proto.Error'
+      summary: List sub-agent runs for session
+      tags:
+      - sessions
+  /workspaces/{id}/sessions/{sid}/workflow:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: sid
+        required: true
+        type: string
+      - description: Attached client ID
+        in: query
+        name: client_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/proto.WorkflowSnapshot'
+      summary: Read coordinated workflow state
+      tags:
+      - workflow
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: sid
+        required: true
+        type: string
+      - description: Attached client ID
+        in: query
+        name: client_id
+        required: true
+        type: string
+      - description: Revision-checked control
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/proto.WorkflowControl'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/proto.WorkflowSnapshot'
+      summary: Control coordinated workflow with revision checking
+      tags:
+      - workflow
+  /workspaces/{id}/sessions/search:
+    get:
+      parameters:
+      - description: Workspace ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/proto.Session'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/proto.Error'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/proto.Error'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/proto.Error'
+      summary: Search sessions by message content
       tags:
       - sessions
   /workspaces/{id}/skills:

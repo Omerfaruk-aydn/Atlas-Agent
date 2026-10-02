@@ -11,7 +11,7 @@ const docTemplate = `{
         "title": "{{.Title}}",
         "contact": {
             "name": "Atlas",
-            "url": "https://atlas-agent.io"
+            "url": "https://charm.sh"
         },
         "license": {
             "name": "MIT",
@@ -813,6 +813,122 @@ const docTemplate = `{
                 }
             }
         },
+        "/workspaces/{id}/agents": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "config"
+                ],
+                "summary": "List subagents",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/proto.Subagent"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "config"
+                ],
+                "summary": "Save a subagent",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Save subagent request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/proto.SaveSubagentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Subagent"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/workspaces/{id}/agents/{name}": {
+            "delete": {
+                "tags": [
+                    "config"
+                ],
+                "summary": "Delete a subagent",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Subagent name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    }
+                }
+            }
+        },
         "/workspaces/{id}/config": {
             "get": {
                 "produces": [
@@ -1403,6 +1519,90 @@ const docTemplate = `{
                 }
             }
         },
+        "/workspaces/{id}/jobs": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "jobs"
+                ],
+                "summary": "List background jobs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/proto.BackgroundJob"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/workspaces/{id}/jobs/{jid}": {
+            "delete": {
+                "tags": [
+                    "jobs"
+                ],
+                "summary": "Kill background job",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "jid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    }
+                }
+            }
+        },
         "/workspaces/{id}/lsps": {
             "get": {
                 "produces": [
@@ -1579,6 +1779,105 @@ const docTemplate = `{
                 }
             }
         },
+        "/workspaces/{id}/mcp/auth": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Authenticate an MCP server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "MCP name request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/proto.MCPNameRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/proto.MCPAuthResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/workspaces/{id}/mcp/auth-url": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Get MCP OAuth authorization URL",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "MCP server name",
+                        "name": "name",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/proto.MCPAuthResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    }
+                }
+            }
+        },
         "/workspaces/{id}/mcp/docker/disable": {
             "post": {
                 "tags": [
@@ -1688,6 +1987,49 @@ const docTemplate = `{
                         "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/proto.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/workspaces/{id}/mcp/pending-auth": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Get MCP servers pending OAuth",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/proto.MCPPendingAuthServer"
+                            }
                         }
                     },
                     "404": {
@@ -2029,7 +2371,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_omerdgn_Atlas_Agent_internal_proto.Message"
+                                "$ref": "#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_proto.Message"
                             }
                         }
                     },
@@ -2544,6 +2886,62 @@ const docTemplate = `{
                 }
             }
         },
+        "/workspaces/{id}/sessions/search": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Search sessions by message content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search query",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/proto.Session"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    }
+                }
+            }
+        },
         "/workspaces/{id}/sessions/{sid}": {
             "get": {
                 "produces": [
@@ -2693,6 +3091,56 @@ const docTemplate = `{
                 }
             }
         },
+        "/workspaces/{id}/sessions/{sid}/agenthub": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "List agent hub entries for session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "sid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/proto.AgentHubEntry"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    }
+                }
+            }
+        },
         "/workspaces/{id}/sessions/{sid}/filetracker/files": {
             "get": {
                 "produces": [
@@ -2824,7 +3272,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_omerdgn_Atlas_Agent_internal_proto.Message"
+                                "$ref": "#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_proto.Message"
                             }
                         }
                     },
@@ -2874,7 +3322,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/github_com_omerdgn_Atlas_Agent_internal_proto.Message"
+                                "$ref": "#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_proto.Message"
                             }
                         }
                     },
@@ -2888,6 +3336,280 @@ const docTemplate = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/proto.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/workspaces/{id}/sessions/{sid}/rewind": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Rewind session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "sid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Rewind target",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/proto.RewindRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/proto.RewindResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/workspaces/{id}/sessions/{sid}/rewind/preview": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Preview a session rewind",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "sid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Rewind target",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/proto.RewindRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/proto.RewindPreview"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/workspaces/{id}/sessions/{sid}/subagents": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "List sub-agent runs for session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "sid",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/proto.SubAgentRun"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/proto.Error"
+                        }
+                    }
+                }
+            }
+        },
+        "/workspaces/{id}/sessions/{sid}/workflow": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflow"
+                ],
+                "summary": "Read coordinated workflow state",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "sid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Attached client ID",
+                        "name": "client_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/proto.WorkflowSnapshot"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workflow"
+                ],
+                "summary": "Control coordinated workflow with revision checking",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Workspace ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "sid",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Attached client ID",
+                        "name": "client_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "description": "Revision-checked control",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/proto.WorkflowControl"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/proto.WorkflowSnapshot"
                         }
                     }
                 }
@@ -3067,6 +3789,30 @@ const docTemplate = `{
                 }
             }
         },
+        "config.Advisor": {
+            "type": "object",
+            "properties": {
+                "auto_escalate": {
+                    "description": "AutoEscalate runs a second, deeper pass with the \"escalate\" model\nrole (falling back to the advisor's own model when no \"escalate\"\nrole is configured) whenever the advisor's severity meets\nEscalateThreshold, replacing the advisor's one-line note with\nwhatever that second pass produces -- a fuller diagnosis, or a\nconcrete fix description, from a pass explicitly asked to try\nharder than a quick review. It never changes the turn that was\nreviewed or delays the user; only the note queued for the next\nprompt differs.",
+                    "type": "boolean"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "escalate_threshold": {
+                    "description": "EscalateThreshold is the minimum severity that triggers\nAutoEscalate. Defaults to BLOCKER: escalation costs a second model\ncall, so it is reserved for the severity that already means\n\"should be addressed before the work continues.\"",
+                    "type": "string"
+                },
+                "every_n_turns": {
+                    "description": "EveryNTurns reviews only every Nth finished turn instead of all of\nthem, so a chatty session does not double its model spend. 1 (the\nzero value, via EveryNTurns()) reviews every turn.",
+                    "type": "integer"
+                },
+                "min_severity": {
+                    "description": "MinSeverity is the lowest severity that raises a\nnotify.TypeAdvisorNote notification. Every severity above NONE is\nstill queued for the session's next prompt regardless -- this only\ncontrols what interrupts the user mid-session versus waiting\nquietly for the next turn.",
+                    "type": "string"
+                }
+            }
+        },
         "config.Attribution": {
             "type": "object",
             "properties": {
@@ -3091,6 +3837,57 @@ const docTemplate = `{
                     "type": "integer"
                 }
             }
+        },
+        "config.Execution": {
+            "type": "object",
+            "properties": {
+                "cpus": {
+                    "type": "number"
+                },
+                "environment_keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "image": {
+                    "type": "string"
+                },
+                "max_processes": {
+                    "type": "integer"
+                },
+                "memory_bytes": {
+                    "type": "integer"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "network": {
+                    "type": "string"
+                },
+                "read_only": {
+                    "type": "boolean"
+                },
+                "runtime_path": {
+                    "type": "string"
+                },
+                "timeout_ms": {
+                    "type": "integer"
+                }
+            }
+        },
+        "config.ExitBanner": {
+            "type": "string",
+            "enum": [
+                "default",
+                "compact",
+                "none"
+            ],
+            "x-enum-varnames": [
+                "ExitBannerDefault",
+                "ExitBannerCompact",
+                "ExitBannerNone"
+            ]
         },
         "config.HookConfig": {
             "type": "object",
@@ -3229,6 +4026,10 @@ const docTemplate = `{
                         }
                     ]
                 },
+                "sessionless": {
+                    "description": "Sessionless marks a server that does not maintain an MCP session (it\nnever issues a Mcp-Session-Id). When true, Atlas-Agent omits the\ntools/prompts/resources list-changed handlers: the go-sdk opens a\nSEP-2575 \"subscriptions/listen\" stream whenever any of those handlers\nis set, and sessionless streamable-HTTP servers (e.g. GitHub MCP)\nanswer that POST with 404 (\"session not found\"), which the SDK treats\nas fatal. The cost is no live list-changed notifications from this\nserver.\n\nWhen nil, Atlas-Agent auto-detects a set of known sessionless servers (see\nIsSessionless); set it explicitly to override that detection.",
+                    "type": "boolean"
+                },
                 "timeout": {
                     "type": "integer"
                 },
@@ -3259,6 +4060,17 @@ const docTemplate = `{
                 "$ref": "#/definitions/config.MCPConfig"
             }
         },
+        "config.Memory": {
+            "type": "object",
+            "properties": {
+                "project_limit": {
+                    "type": "integer"
+                },
+                "user_limit": {
+                    "type": "integer"
+                }
+            }
+        },
         "config.Permissions": {
             "type": "object",
             "properties": {
@@ -3267,6 +4079,33 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "config.RoleModelSelection": {
+            "type": "object",
+            "properties": {
+                "policy": {
+                    "$ref": "#/definitions/evaluation.SelectionPolicy"
+                },
+                "results_file": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.Sandbox": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "max_memory_mb": {
+                    "description": "MaxMemoryMB caps the committed memory of any single contained\nprocess. 0 means unlimited -- ordinary dev tools (go build, npm\ninstall) can legitimately need more memory than a one-size guess\nwould allow, so unlike MaxProcesses this has no default ceiling.",
+                    "type": "integer"
+                },
+                "max_processes": {
+                    "description": "MaxProcesses caps how many processes may be active in the\ncontainer at once, as a basic fork-bomb mitigation. 0 (the zero\nvalue, via MaxProcessesOrDefault) uses a generous default rather\nthan no limit at all, since \"enabled\" should mean something even\nwhen the user hasn't tuned it.",
+                    "type": "integer"
                 }
             }
         },
@@ -3329,6 +4168,9 @@ const docTemplate = `{
         "config.TUIOptions": {
             "type": "object",
             "properties": {
+                "box_corners": {
+                    "type": "string"
+                },
                 "compact_mode": {
                     "type": "boolean"
                 },
@@ -3338,10 +4180,105 @@ const docTemplate = `{
                 "diff_mode": {
                     "type": "string"
                 },
+                "exit_banner": {
+                    "$ref": "#/definitions/config.ExitBanner"
+                },
                 "scrollbar": {
                     "type": "string"
                 },
                 "transparent": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.ToolBash": {
+            "type": "object",
+            "properties": {
+                "auto_background_after": {
+                    "type": "integer"
+                },
+                "max_output_length": {
+                    "type": "integer"
+                }
+            }
+        },
+        "config.ToolBrowser": {
+            "type": "object",
+            "properties": {
+                "action_timeout": {
+                    "$ref": "#/definitions/time.Duration"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "executable_path": {
+                    "type": "string"
+                },
+                "headless": {
+                    "type": "boolean"
+                },
+                "idle_timeout": {
+                    "$ref": "#/definitions/time.Duration"
+                },
+                "real_profile_pin": {
+                    "type": "string"
+                },
+                "remote_url": {
+                    "type": "string"
+                },
+                "use_real_profile": {
+                    "type": "boolean"
+                },
+                "user_data_dir": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.ToolCodeIntel": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.ToolComputer": {
+            "type": "object",
+            "properties": {
+                "action_timeout": {
+                    "$ref": "#/definitions/time.Duration"
+                },
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.ToolDebugger": {
+            "type": "object",
+            "properties": {
+                "action_timeout": {
+                    "$ref": "#/definitions/time.Duration"
+                },
+                "dlv_path": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.ToolDocs": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.ToolGit": {
+            "type": "object",
+            "properties": {
+                "enabled": {
                     "type": "boolean"
                 }
             }
@@ -3373,9 +4310,60 @@ const docTemplate = `{
                 }
             }
         },
+        "config.ToolQuality": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.ToolTeams": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "config.ToolView": {
+            "type": "object",
+            "properties": {
+                "default_read_limit": {
+                    "type": "integer"
+                },
+                "hash_anchors": {
+                    "type": "boolean"
+                },
+                "max_line_length": {
+                    "type": "integer"
+                }
+            }
+        },
         "config.Tools": {
             "type": "object",
             "properties": {
+                "bash": {
+                    "$ref": "#/definitions/config.ToolBash"
+                },
+                "browser": {
+                    "$ref": "#/definitions/config.ToolBrowser"
+                },
+                "code_intel": {
+                    "$ref": "#/definitions/config.ToolCodeIntel"
+                },
+                "computer": {
+                    "$ref": "#/definitions/config.ToolComputer"
+                },
+                "debugger": {
+                    "$ref": "#/definitions/config.ToolDebugger"
+                },
+                "docs": {
+                    "$ref": "#/definitions/config.ToolDocs"
+                },
+                "git": {
+                    "$ref": "#/definitions/config.ToolGit"
+                },
                 "glob": {
                     "$ref": "#/definitions/config.ToolGlob"
                 },
@@ -3384,6 +4372,15 @@ const docTemplate = `{
                 },
                 "ls": {
                     "$ref": "#/definitions/config.ToolLs"
+                },
+                "quality": {
+                    "$ref": "#/definitions/config.ToolQuality"
+                },
+                "teams": {
+                    "$ref": "#/definitions/config.ToolTeams"
+                },
+                "view": {
+                    "$ref": "#/definitions/config.ToolView"
                 }
             }
         },
@@ -3403,7 +4400,407 @@ const docTemplate = `{
         "csync.Map-string-config_ProviderConfig": {
             "type": "object"
         },
-        "github_com_omerdgn_Atlas_Agent_internal_config.Config": {
+        "engineering.Check": {
+            "type": "object",
+            "properties": {
+                "checked_at": {
+                    "type": "integer"
+                },
+                "contract_hash": {
+                    "type": "string"
+                },
+                "evidence": {
+                    "type": "string"
+                },
+                "finding_id": {
+                    "type": "string"
+                },
+                "finding_review": {
+                    "type": "string"
+                },
+                "input_hash": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "passed": {
+                    "type": "boolean"
+                },
+                "run_id": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "tool": {
+                    "type": "string"
+                }
+            }
+        },
+        "engineering.Checkpoint": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "message_id": {
+                    "type": "string"
+                },
+                "operations": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "parameters_hash": {
+                    "type": "string"
+                },
+                "plan_fingerprint": {
+                    "type": "string"
+                },
+                "recipe_hash": {
+                    "type": "string"
+                },
+                "root": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "source_fingerprint": {
+                    "type": "string"
+                },
+                "stage": {
+                    "type": "integer"
+                },
+                "task_fingerprints": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "workspaces": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "engineering.ContractCheck": {
+            "type": "object",
+            "properties": {
+                "input_json": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "tool": {
+                    "type": "string"
+                }
+            }
+        },
+        "engineering.Finding": {
+            "type": "object",
+            "properties": {
+                "checks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/engineering.ContractCheck"
+                    }
+                },
+                "end_line": {
+                    "type": "integer"
+                },
+                "evidence": {
+                    "type": "string"
+                },
+                "expected": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "implementer_execution_id": {
+                    "type": "string"
+                },
+                "issue": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "remediation_task_id": {
+                    "type": "string"
+                },
+                "reviewer_execution_id": {
+                    "type": "string"
+                },
+                "root": {
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "integer"
+                },
+                "source_fingerprint": {
+                    "type": "string"
+                },
+                "start_line": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "task_fingerprint": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "verification_reviewer_id": {
+                    "type": "string"
+                },
+                "verification_run_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "verified_source_fingerprint": {
+                    "type": "string"
+                },
+                "verified_task_fingerprint": {
+                    "type": "string"
+                },
+                "waiver_provenance": {
+                    "type": "string"
+                },
+                "waiver_reason": {
+                    "type": "string"
+                },
+                "waiver_source_fingerprint": {
+                    "type": "string"
+                }
+            }
+        },
+        "engineering.Limits": {
+            "type": "object",
+            "properties": {
+                "max_cost_usd": {
+                    "type": "number"
+                },
+                "max_duration_ms": {
+                    "type": "integer"
+                },
+                "max_tokens": {
+                    "type": "integer"
+                },
+                "max_tool_calls": {
+                    "type": "integer"
+                }
+            }
+        },
+        "engineering.Operation": {
+            "type": "object",
+            "properties": {
+                "agent_name": {
+                    "type": "string"
+                },
+                "background_id": {
+                    "type": "string"
+                },
+                "call_id": {
+                    "type": "string"
+                },
+                "evidence_hash": {
+                    "type": "string"
+                },
+                "fingerprint": {
+                    "type": "string"
+                },
+                "finished_at": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "outcome_observed": {
+                    "type": "boolean"
+                },
+                "started_at": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "tool": {
+                    "type": "string"
+                }
+            }
+        },
+        "engineering.QualityRun": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "execution_id": {
+                    "type": "string"
+                },
+                "handoff": {
+                    "$ref": "#/definitions/subagents.Handoff"
+                }
+            }
+        },
+        "engineering.RoleExecution": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "execution_id": {
+                    "type": "string"
+                },
+                "handoff": {
+                    "$ref": "#/definitions/subagents.Handoff"
+                },
+                "machine_checks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/engineering.Check"
+                    }
+                },
+                "passed": {
+                    "type": "boolean"
+                },
+                "require_review": {
+                    "type": "boolean"
+                },
+                "reviews": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/engineering.QualityRun"
+                    }
+                },
+                "root": {
+                    "type": "string"
+                },
+                "source_fingerprint": {
+                    "type": "string"
+                },
+                "task_fingerprint": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "workspace_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "engineering.Usage": {
+            "type": "object",
+            "properties": {
+                "cost_usd": {
+                    "type": "number"
+                },
+                "duration_ms": {
+                    "type": "integer"
+                },
+                "repeated_failed_calls": {
+                    "type": "integer"
+                },
+                "tokens": {
+                    "type": "integer"
+                },
+                "tool_calls": {
+                    "type": "integer"
+                }
+            }
+        },
+        "engineering.WorkflowTask": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "depends_on": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "owned_paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "spec_fingerprint": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "evaluation.SelectionPolicy": {
+            "type": "object",
+            "properties": {
+                "candidates": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "max_age_hours": {
+                    "type": "integer"
+                },
+                "max_mean_cost_usd": {
+                    "type": "number"
+                },
+                "max_mean_duration_ms": {
+                    "type": "integer"
+                },
+                "min_samples": {
+                    "type": "integer"
+                },
+                "min_success_rate": {
+                    "type": "number"
+                },
+                "prompt_version": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "scenarios": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Config": {
             "type": "object",
             "properties": {
                 "$schema": {
@@ -3439,7 +4836,7 @@ const docTemplate = `{
                     }
                 },
                 "options": {
-                    "$ref": "#/definitions/github_com_omerdgn_Atlas_Agent_internal_config.Options"
+                    "$ref": "#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Options"
                 },
                 "permissions": {
                     "$ref": "#/definitions/config.Permissions"
@@ -3467,14 +4864,59 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_omerdgn_Atlas_Agent_internal_config.Options": {
+        "github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Options": {
             "type": "object",
             "properties": {
+                "advisor": {
+                    "description": "Advisor enables a second model that reviews each finished turn (the\nuser's prompt and the assistant's final response) with read-only\ntools (glob, grep, ls, view) of its own, and can leave a note that\nis injected ahead of the session's next prompt. It runs on the\n\"advisor\" ModelRoles entry; with none configured, Advisor has\nnothing to run on and is silently inert even if Enabled is true.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.Advisor"
+                        }
+                    ]
+                },
+                "agent_models": {
+                    "description": "AgentModels overrides which model type (large or small) a built-in\nagent uses, keyed by agent ID (coder, task). An agent not named here\nkeeps its default. Unknown agent IDs and invalid model types are\nignored rather than rejected, since a stale key here should not stop\nstartup over a knob nobody is relying on any more.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/config.SelectedModelType"
+                    }
+                },
+                "allowed_commands": {
+                    "description": "AllowedCommands and BlockedCommands adjust the bash tool's built-in\nlist of banned commands. Allowing a command also lifts the\nsubcommand blocks on it (e.g. allowing \"npm\" permits \"npm install\n-g\"), so an allow is the more specific instruction and wins over a\nblock of the same name.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "allowed_domains": {
+                    "description": "AllowedDomains and BlockedDomains govern which hosts the fetch,\ndownload, and agentic-fetch tools may reach. Blocked wins over\nallowed. Matching a domain also matches its subdomains.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "attribution": {
                     "$ref": "#/definitions/config.Attribution"
                 },
                 "auto_lsp": {
                     "type": "boolean"
+                },
+                "auto_summarize_at": {
+                    "description": "AutoSummarizeAt is the fraction of the model's context window that\nmay be used before a turn stops to summarize. Values outside (0,1)\nkeep the built-in thresholds.",
+                    "type": "number"
+                },
+                "blocked_commands": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "blocked_domains": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "context_paths": {
                     "type": "array",
@@ -3516,6 +4958,13 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "execution": {
+                    "$ref": "#/definitions/config.Execution"
+                },
+                "fallback_cooldown": {
+                    "description": "FallbackCooldown is how many seconds a model fallback chain stays on\nthe model it failed over to before the next turn resets the chain\nback to the primary. Zero (the default) resets on every turn, which\nis the existing behavior; a nonzero value avoids retrying a model\nthat is likely still rate-limited from the previous turn.",
+                    "type": "integer"
+                },
                 "global_context_paths": {
                     "type": "array",
                     "items": {
@@ -3525,11 +4974,73 @@ const docTemplate = `{
                 "initialize_as": {
                     "type": "string"
                 },
+                "max_concurrent_subagents": {
+                    "description": "MaxConcurrentSubAgents caps how many agent-tool sub-agents run at\nonce. Zero or unset means no limit.",
+                    "type": "integer"
+                },
+                "max_download_bytes": {
+                    "description": "MaxDownloadBytes caps what the download tool may write. Zero or\nunset means no cap beyond the client timeout.",
+                    "type": "integer"
+                },
+                "max_provider_retries": {
+                    "description": "MaxProviderRetries caps how many times a failed request to the\nprovider is retried before the turn gives up. Unset keeps the\nprovider library's default; 0 disables retries.",
+                    "type": "integer"
+                },
+                "max_session_cost": {
+                    "description": "MaxSessionCost, if positive, refuses a new prompt once the\nsession's accumulated cost has reached it. The refusal happens\nbefore the request is dispatched, so it costs nothing beyond the\nspend already on the session.",
+                    "type": "number"
+                },
+                "max_steps_per_turn": {
+                    "description": "MaxStepsPerTurn caps how many model/tool-call steps a single turn\nmay take, independent of whether it is repeating itself (that is\nhasRepeatedToolCalls's job). Zero means unbounded.",
+                    "type": "integer"
+                },
+                "memory": {
+                    "$ref": "#/definitions/config.Memory"
+                },
+                "model_fallbacks": {
+                    "description": "ModelFallbacks lists, per model role, alternate provider/model pairs\ntried in order when the role's primary model answers with a\nrate-limit or quota error (HTTP 429). The large-model chain applies\nmid-turn, to the main conversation; the small-model chain applies to\nbackground small-model calls that already retry against the large\nmodel on failure (e.g. session title generation), inserted ahead of\nthat existing large-model fallback.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/definitions/config.SelectedModel"
+                        }
+                    }
+                },
+                "model_roles": {
+                    "description": "ModelRoles maps a free-form role name (e.g. \"frontend\", \"research\",\n\"review\") to a concrete provider/model pair, distinct from the\nlarge/small model types. A subagent's Model field can reference one\nof these by name (with or without a leading \"@\") so different kinds\nof work can run on different models without changing the session's\nprimary model. A handful of names are also recognized by built-in\nfeatures when present: \"advisor\" and \"escalate\" (see Advisor below),\nand \"compact\", which -- when set -- summarization (auto or\n/summarize) runs on instead of the session's own model.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/config.SelectedModel"
+                    }
+                },
                 "notifications": {
                     "type": "string"
                 },
                 "progress": {
                     "type": "boolean"
+                },
+                "restrict_writes_to_working_dir": {
+                    "description": "RestrictWritesToWorkingDir refuses writes outside the working\ndirectory outright, before any permission is requested. Off by\ndefault: editing a file in a sibling checkout is ordinary work.",
+                    "type": "boolean"
+                },
+                "role_model_selection": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/config.RoleModelSelection"
+                    }
+                },
+                "sandbox": {
+                    "description": "Sandbox contains every external process the shell interpreter\nspawns (bash tool commands, hook commands, scripts they invoke) in\na Windows Job Object. See the Sandbox type doc for exactly what\nthis does and does not protect against.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.Sandbox"
+                        }
+                    ]
+                },
+                "session_mode": {
+                    "description": "SessionMode names a mode (see internal/subagents' built-in modes,\nplus any subagent the user has authored) whose instructions are\nfolded into the main session's own system prompt, so the agent you\nare talking to takes on that specialty instead of delegating to it.\nWhen a model role shares the mode's name, the session also switches\nto that model. Empty -- the default -- leaves the session on its\nordinary coder prompt and its large model.",
+                    "type": "string"
                 },
                 "skills_paths": {
                     "type": "array",
@@ -3537,12 +5048,28 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "subagents_paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "tool_timeout": {
+                    "description": "ToolTimeout bounds a single tool call, in seconds. Zero or unset\nmeans unbounded: a tool call that legitimately takes ten minutes is\nordinary work in a large repository.",
+                    "type": "integer"
+                },
                 "tui": {
                     "$ref": "#/definitions/config.TUIOptions"
+                },
+                "workflow_paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
-        "github_com_omerdgn_Atlas_Agent_internal_config.Scope": {
+        "github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Scope": {
             "type": "integer",
             "enum": [
                 0,
@@ -3553,7 +5080,7 @@ const docTemplate = `{
                 "ScopeWorkspace"
             ]
         },
-        "github_com_omerdgn_Atlas_Agent_internal_proto.Message": {
+        "github_com_Omerfaruk-aydn_Atlas-Agent_internal_proto.Message": {
             "type": "object",
             "properties": {
                 "created_at": {
@@ -3561,6 +5088,9 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "string"
+                },
+                "is_summary_message": {
+                    "type": "boolean"
                 },
                 "model": {
                     "type": "string"
@@ -3628,14 +5158,34 @@ const docTemplate = `{
                 "access_token": {
                     "type": "string"
                 },
+                "account_id": {
+                    "description": "AccountID and PlanType carry provider-specific account metadata\ndecoded once at token exchange/refresh time (e.g. the ChatGPT\naccount id a Codex-style OAuth login needs on every request).\nEmpty for providers that don't need them.",
+                    "type": "string"
+                },
                 "client": {
                     "$ref": "#/definitions/oauth.OAuthClient"
+                },
+                "email": {
+                    "description": "Email, OrgID, OrgName, and IssuedAt carry provider-specific\nidentity metadata. They are all optional; providers that do not\nsurface them (Codex, Antigravity) leave them empty. The Claude\nsubscription flow populates them from the\n` + "`" + `/api/claude_cli/bootstrap` + "`" + ` endpoint after the initial token\nexchange, never on refresh -- re-resolving org on every refresh\ncould silently re-key stored credentials.\n\nIssuedAt is Unix seconds for the moment the access token was\nfirst issued. The Claude subscription grant expires ~30 days\nafter this regardless of refresh activity, so consumers use it\nto surface a pre-deadline warning. Zero means \"unknown\".",
+                    "type": "string"
                 },
                 "expires_at": {
                     "type": "integer"
                 },
                 "expires_in": {
                     "type": "integer"
+                },
+                "issued_at": {
+                    "type": "integer"
+                },
+                "org_id": {
+                    "type": "string"
+                },
+                "org_name": {
+                    "type": "string"
+                },
+                "plan_type": {
+                    "type": "string"
                 },
                 "refresh_token": {
                     "type": "string"
@@ -3652,6 +5202,29 @@ const docTemplate = `{
                 "APIKeyKindString",
                 "APIKeyKindOAuth"
             ]
+        },
+        "proto.AgentHubEntry": {
+            "type": "object",
+            "properties": {
+                "busy": {
+                    "type": "boolean"
+                },
+                "cost": {
+                    "type": "number"
+                },
+                "message_count": {
+                    "type": "integer"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
         },
         "proto.AgentInfo": {
             "type": "object",
@@ -3757,6 +5330,35 @@ const docTemplate = `{
                 }
             }
         },
+        "proto.BackgroundJob": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "done": {
+                    "type": "boolean"
+                },
+                "exit_err": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "working_dir": {
+                    "type": "string"
+                }
+            }
+        },
         "proto.ConfigCompactRequest": {
             "type": "object",
             "properties": {
@@ -3764,7 +5366,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "scope": {
-                    "$ref": "#/definitions/github_com_omerdgn_Atlas_Agent_internal_config.Scope"
+                    "$ref": "#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Scope"
                 }
             }
         },
@@ -3778,7 +5380,7 @@ const docTemplate = `{
                     "$ref": "#/definitions/config.SelectedModelType"
                 },
                 "scope": {
-                    "$ref": "#/definitions/github_com_omerdgn_Atlas_Agent_internal_config.Scope"
+                    "$ref": "#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Scope"
                 }
             }
         },
@@ -3798,7 +5400,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "scope": {
-                    "$ref": "#/definitions/github_com_omerdgn_Atlas_Agent_internal_config.Scope"
+                    "$ref": "#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Scope"
                 }
             }
         },
@@ -3809,7 +5411,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "scope": {
-                    "$ref": "#/definitions/github_com_omerdgn_Atlas_Agent_internal_config.Scope"
+                    "$ref": "#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Scope"
                 }
             }
         },
@@ -3820,7 +5422,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "scope": {
-                    "$ref": "#/definitions/github_com_omerdgn_Atlas_Agent_internal_config.Scope"
+                    "$ref": "#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Scope"
                 }
             }
         },
@@ -3831,7 +5433,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "scope": {
-                    "$ref": "#/definitions/github_com_omerdgn_Atlas_Agent_internal_config.Scope"
+                    "$ref": "#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Scope"
                 },
                 "value": {}
             }
@@ -3924,6 +5526,15 @@ const docTemplate = `{
                 }
             }
         },
+        "proto.MCPAuthResponse": {
+            "type": "object",
+            "properties": {
+                "auth_url": {
+                    "description": "AuthURL is the OAuth authorization URL the user must visit, when\nthe flow is still in progress.",
+                    "type": "string"
+                }
+            }
+        },
         "proto.MCPClientInfo": {
             "type": "object",
             "properties": {
@@ -3977,6 +5588,17 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "proto.MCPPendingAuthServer": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "url": {
                     "type": "string"
                 }
             }
@@ -4220,6 +5842,50 @@ const docTemplate = `{
                 }
             }
         },
+        "proto.RewindPreview": {
+            "type": "object",
+            "properties": {
+                "files_to_delete": {
+                    "type": "integer"
+                },
+                "files_to_write": {
+                    "type": "integer"
+                }
+            }
+        },
+        "proto.RewindRequest": {
+            "type": "object",
+            "properties": {
+                "up_to_message_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "proto.RewindResult": {
+            "type": "object",
+            "properties": {
+                "files_deleted": {
+                    "type": "integer"
+                },
+                "files_written": {
+                    "type": "integer"
+                },
+                "session": {
+                    "$ref": "#/definitions/proto.Session"
+                }
+            }
+        },
+        "proto.SaveSubagentRequest": {
+            "type": "object",
+            "properties": {
+                "subagent": {
+                    "$ref": "#/definitions/proto.Subagent"
+                },
+                "user_scope": {
+                    "type": "boolean"
+                }
+            }
+        },
         "proto.ServerControl": {
             "type": "object",
             "properties": {
@@ -4368,16 +6034,110 @@ const docTemplate = `{
                 }
             }
         },
+        "proto.SubAgentRun": {
+            "type": "object",
+            "properties": {
+                "session_id": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "proto.Subagent": {
+            "type": "object",
+            "properties": {
+                "allow_commands": {
+                    "type": "boolean"
+                },
+                "contract": {
+                    "$ref": "#/definitions/subagents.RoleContract"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "instructions": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "description": "Path is the file this subagent was loaded from, empty for one not\nyet saved. Read-only: SaveSubagentRequest ignores it and resolves\nthe destination itself (see workspace.SaveSubagent).",
+                    "type": "string"
+                },
+                "read_only": {
+                    "type": "boolean"
+                },
+                "tools": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "proto.Todo": {
             "type": "object",
             "properties": {
+                "acceptance_criteria": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "active_form": {
+                    "type": "string"
+                },
+                "agent": {
                     "type": "string"
                 },
                 "content": {
                     "type": "string"
                 },
+                "depends_on": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "evidence": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/proto.TodoEvidence"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "owned_paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "status": {
+                    "type": "string"
+                },
+                "verification": {
+                    "type": "string"
+                }
+            }
+        },
+        "proto.TodoEvidence": {
+            "type": "object",
+            "properties": {
+                "detail": {
+                    "type": "string"
+                },
+                "kind": {
                     "type": "string"
                 }
             }
@@ -4402,6 +6162,91 @@ const docTemplate = `{
                 }
             }
         },
+        "proto.WorkflowControl": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "agent": {
+                    "type": "string"
+                },
+                "expected_revision": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "proto.WorkflowSnapshot": {
+            "type": "object",
+            "properties": {
+                "busy": {
+                    "type": "boolean"
+                },
+                "capabilities": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "checkpoints": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/engineering.Checkpoint"
+                    }
+                },
+                "checks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/engineering.Check"
+                    }
+                },
+                "executions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/engineering.RoleExecution"
+                    }
+                },
+                "findings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/engineering.Finding"
+                    }
+                },
+                "limits": {
+                    "$ref": "#/definitions/engineering.Limits"
+                },
+                "operations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/engineering.Operation"
+                    }
+                },
+                "paused": {
+                    "type": "boolean"
+                },
+                "revision": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "stage": {
+                    "type": "integer"
+                },
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/engineering.WorkflowTask"
+                    }
+                },
+                "usage": {
+                    "$ref": "#/definitions/engineering.Usage"
+                }
+            }
+        },
         "proto.Workspace": {
             "type": "object",
             "properties": {
@@ -4416,7 +6261,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "config": {
-                    "$ref": "#/definitions/github_com_omerdgn_Atlas_Agent_internal_config.Config"
+                    "$ref": "#/definitions/github_com_Omerfaruk-aydn_Atlas-Agent_internal_config.Config"
                 },
                 "data_dir": {
                     "type": "string"
@@ -4451,6 +6296,134 @@ const docTemplate = `{
                 }
             }
         },
+        "subagents.Handoff": {
+            "type": "object",
+            "properties": {
+                "changed_files": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "checks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/subagents.HandoffCheck"
+                    }
+                },
+                "decision": {
+                    "type": "string"
+                },
+                "dependencies": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "findings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/subagents.HandoffFinding"
+                    }
+                },
+                "risks": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "subagents.HandoffCheck": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string"
+                },
+                "evidence": {
+                    "type": "string"
+                },
+                "exit_code": {
+                    "type": "integer"
+                }
+            }
+        },
+        "subagents.HandoffFinding": {
+            "type": "object",
+            "properties": {
+                "end_line": {
+                    "type": "integer"
+                },
+                "evidence": {
+                    "type": "string"
+                },
+                "expected": {
+                    "type": "string"
+                },
+                "issue": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "integer"
+                },
+                "start_line": {
+                    "type": "integer"
+                }
+            }
+        },
+        "subagents.RoleContract": {
+            "type": "object",
+            "properties": {
+                "completion": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "independent_review": {
+                    "type": "boolean"
+                },
+                "inputs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "outputs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "required_tools": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "responsibilities": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "task_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "time.Duration": {
             "type": "integer",
             "format": "int64",
@@ -4462,11 +6435,23 @@ const docTemplate = `{
                 1000000,
                 1000000000,
                 60000000000,
+                3600000000000,
+                1,
+                1000,
+                1000000,
+                1000000000,
+                60000000000,
                 3600000000000
             ],
             "x-enum-varnames": [
                 "minDuration",
                 "maxDuration",
+                "Nanosecond",
+                "Microsecond",
+                "Millisecond",
+                "Second",
+                "Minute",
+                "Hour",
                 "Nanosecond",
                 "Microsecond",
                 "Millisecond",

@@ -25,6 +25,19 @@ func TestPermissionRequestParamsTypeAssertable(t *testing.T) {
 		assert   func(t *testing.T, got any)
 	}{
 		{
+			name:     "semantic edit recovery",
+			toolName: tools.LSPEditPlanToolName,
+			params:   tools.SemanticEditPermissionsParams{PlanID: "plan", Operation: "delete", FilePath: "/tmp/file.go", OldContent: "edited", NewContent: "original", Recovery: true},
+			assert: func(t *testing.T, got any) {
+				v, ok := got.(tools.SemanticEditPermissionsParams)
+				require.True(t, ok, "semantic permissions must retain their concrete type")
+				require.Equal(t, "plan", v.PlanID)
+				require.Equal(t, "edited", v.OldContent)
+				require.Equal(t, "original", v.NewContent)
+				require.True(t, v.Recovery)
+			},
+		},
+		{
 			name:     "bash",
 			toolName: tools.BashToolName,
 			params: tools.BashPermissionsParams{

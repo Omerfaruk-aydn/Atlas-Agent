@@ -2,6 +2,8 @@ package proto
 
 import (
 	"encoding/json"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
 )
 
 // CreatePermissionRequest represents a request to create a permission.
@@ -82,6 +84,12 @@ func (p *CreatePermissionRequest) UnmarshalJSON(data []byte) error {
 
 func unmarshalToolParams(toolName string, raw json.RawMessage) (any, error) {
 	switch toolName {
+	case tools.LSPEditPlanToolName:
+		var params tools.SemanticEditPermissionsParams
+		if err := json.Unmarshal(raw, &params); err != nil {
+			return nil, err
+		}
+		return params, nil
 	case BashToolName:
 		var params BashPermissionsParams
 		if err := json.Unmarshal(raw, &params); err != nil {

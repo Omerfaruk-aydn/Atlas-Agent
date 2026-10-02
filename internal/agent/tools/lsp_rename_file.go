@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -25,6 +26,7 @@ const LspRenameFileToolName = "lsp_rename_file"
 var lspRenameFileDescription string
 
 type LspRenameFileParams struct {
+	Preview bool   `json:"preview,omitempty" description:"Prepare a source-checked move/reference plan without changing files"`
 	OldPath string `json:"old_path" description:"The file's current path."`
 	NewPath string `json:"new_path" description:"Where it should end up. Must not already exist."`
 }
@@ -35,7 +37,9 @@ func NewLspRenameFileTool(
 	files history.Service,
 	filetracker filetracker.Service,
 	workingDir string,
+	options ...SemanticEditServices,
 ) fantasy.AgentTool {
+	services := semanticServices(workingDir, permissions, files, filetracker, lspManager, options)
 	return fantasy.NewAgentTool(
 		LspRenameFileToolName,
 		lspRenameFileDescription,
@@ -47,8 +51,12 @@ func NewLspRenameFileTool(
 				return fantasy.NewTextErrorResponse("new_path is required"), nil
 			}
 
-			oldPath := resolvePath(workingDir, params.OldPath)
-			newPath := resolvePath(workingDir, params.NewPath)
+			root, err := services.sourceRoot(ctx)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			oldPath := resolvePath(root, params.OldPath)
+			newPath := resolvePath(root, params.NewPath)
 
 			if _, err := os.Stat(oldPath); err != nil {
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("%s does not exist", relOrAbs(oldPath, workingDir))), nil
@@ -65,91 +73,52 @@ func NewLspRenameFileTool(
 				), nil
 			}
 
+			_, sourceHash, err := lsputil.ReadEditSource(ctx, root, oldPath)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
 			edit, err := client.WillRenameFiles(ctx, oldPath, newPath)
 			if err != nil && !isMethodNotFoundError(err) {
 				slog.Error("willRenameFiles request failed", "error", err, "old_path", oldPath, "new_path", newPath)
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("willRenameFiles failed: %s", err)), nil
 			}
 
-			affectedFiles := collectAffectedFiles(edit)
-
-			sessionID := GetSessionFromContext(ctx)
-			if sessionID != "" {
-				desc := fmt.Sprintf("Move %s to %s", relOrAbs(oldPath, workingDir), relOrAbs(newPath, workingDir))
-				if len(affectedFiles) > 0 {
-					desc = fmt.Sprintf("%s, updating references in %d other file(s)", desc, len(affectedFiles))
+			if edit == nil {
+				edit = &protocol.WorkspaceEdit{}
+			}
+			// Convert map edits into ordered document changes before appending
+			// the actual move, so references and both move targets share one
+			// preflight and journal rather than separate filesystem mutations.
+			uris := make([]protocol.DocumentURI, 0, len(edit.Changes))
+			for uri := range edit.Changes {
+				uris = append(uris, uri)
+			}
+			slices.Sort(uris)
+			for _, uri := range uris {
+				text := &protocol.TextDocumentEdit{TextDocument: protocol.OptionalVersionedTextDocumentIdentifier{TextDocumentIdentifier: protocol.TextDocumentIdentifier{URI: uri}}}
+				for _, change := range edit.Changes[uri] {
+					text.Edits = append(text.Edits, protocol.Or_TextDocumentEdit_edits_Elem{Value: change})
 				}
-				granted, err := permissions.Request(ctx, permission.CreatePermissionRequest{
-					SessionID:   sessionID,
-					ToolCallID:  call.ID,
-					ToolName:    LspRenameFileToolName,
-					Action:      "rename",
-					Description: desc,
-				})
-				if err != nil {
-					return fantasy.ToolResponse{}, err
-				}
-				if !granted {
-					return NewPermissionDeniedResponse(permissions), nil
+				edit.DocumentChanges = append(edit.DocumentChanges, protocol.DocumentChange{TextDocumentEdit: text})
+			}
+			edit.Changes = nil
+			movePresent := false
+			for _, change := range edit.DocumentChanges {
+				if change.RenameFile != nil && change.RenameFile.OldURI == protocol.URIFromPath(oldPath) && change.RenameFile.NewURI == protocol.URIFromPath(newPath) {
+					movePresent = true
 				}
 			}
-
-			if files != nil && sessionID != "" {
-				for _, path := range affectedFiles {
-					content, err := os.ReadFile(path)
-					if err != nil {
-						slog.Warn("Failed to read file for version tracking", "path", path, "error", err)
-						continue
-					}
-					if _, err := files.CreateVersion(ctx, sessionID, path, string(content), GetMessageFromContext(ctx)); err != nil {
-						slog.Warn("Failed to create file version", "path", path, "error", err)
-					}
-				}
+			if !movePresent {
+				edit.DocumentChanges = append(edit.DocumentChanges, protocol.DocumentChange{RenameFile: &protocol.RenameFile{Kind: "rename", OldURI: protocol.URIFromPath(oldPath), NewURI: protocol.URIFromPath(newPath)}})
 			}
-
-			if edit != nil && !workspaceEditEmpty(edit) {
-				if err := lsputil.ApplyWorkspaceEdit(*edit, client.GetOffsetEncoding()); err != nil {
-					return fantasy.NewTextErrorResponse(fmt.Sprintf("failed to apply cascading edits: %s", err)), nil
-				}
+			plan, err := lsputil.PrepareWorkspaceEdit(ctx, root, *edit, client.GetOffsetEncoding())
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
-
-			// The edit above updates *other* files' references; the move
-			// itself is the client's job unless the server unusually
-			// already performed it as part of the edit (checked here so
-			// this never double-moves or errors on an already-done move).
-			if _, err := os.Stat(newPath); err != nil {
-				if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err != nil {
-					return fantasy.ToolResponse{}, err
-				}
-				if err := os.Rename(oldPath, newPath); err != nil {
-					return fantasy.NewTextErrorResponse(fmt.Sprintf("failed to move the file: %s", err)), nil
-				}
+			if err := semanticSourceUnchanged(ctx, root, oldPath, sourceHash); err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
-
-			if err := client.DidRenameFiles(ctx, oldPath, newPath); err != nil {
-				slog.Warn("didRenameFiles notification failed", "error", err)
-			}
-
-			if filetracker != nil && sessionID != "" {
-				for _, path := range affectedFiles {
-					filetracker.RecordRead(ctx, sessionID, path)
-				}
-			}
-
-			notifyLSPs(ctx, lspManager, "")
-
-			var b strings.Builder
-			fmt.Fprintf(&b, "Moved %s to %s.\n", relOrAbs(oldPath, workingDir), relOrAbs(newPath, workingDir))
-			if len(affectedFiles) == 0 {
-				b.WriteString("No other files needed updating.\n")
-			} else {
-				fmt.Fprintf(&b, "Updated %d other file(s):\n", len(affectedFiles))
-				for _, f := range affectedFiles {
-					fmt.Fprintf(&b, "  %s\n", relOrAbs(f, workingDir))
-				}
-			}
-
-			return fantasy.NewTextResponse(b.String()), nil
+			return services.submit(ctx, plan, params.Preview, call)
 		},
 	)
 }

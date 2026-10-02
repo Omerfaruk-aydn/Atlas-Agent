@@ -6,4 +6,9 @@ Actions:
 - `add_after`: insert text after the symbol
 - `delete`: remove the symbol entirely
 
-Returns diagnostics after the edit.
+Uses the negotiated UTF-8/UTF-16/UTF-32 symbol range, preserving surrounding
+content and CRLF. Set `preview=true` to save the exact diff and a plan ID without
+source changes. `lsp_edit_plan` inspects/applies/recoveries the saved plan. Every
+actual target needs unchanged source, ownership and ordinary permission. Results
+contain plan/diff references and observed edit state; apply does not certify
+compilation or tests. Interrupted multi-file mutations require journal recovery.

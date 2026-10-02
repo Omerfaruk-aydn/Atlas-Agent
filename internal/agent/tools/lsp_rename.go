@@ -1,13 +1,10 @@
 package tools
 
 import (
-	"cmp"
 	"context"
 	_ "embed"
 	"fmt"
 	"log/slog"
-	"os"
-	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 
@@ -19,6 +16,7 @@ import (
 )
 
 type RenameParams struct {
+	Preview bool   `json:"preview,omitempty" description:"Prepare a source-checked plan and exact diff without changing files"`
 	Symbol  string `json:"symbol" description:"The symbol name to rename"`
 	NewName string `json:"new_name" description:"The new name for the symbol"`
 	Path    string `json:"path,omitempty" description:"The directory to search in. Defaults to the current working directory."`
@@ -34,7 +32,9 @@ func NewRenameTool(
 	permissions permission.Service,
 	files history.Service,
 	filetracker filetracker.Service,
+	options ...SemanticEditServices,
 ) fantasy.AgentTool {
+	services := semanticServices("", permissions, files, filetracker, lspManager, options)
 	return fantasy.NewAgentTool(
 		RenameToolName,
 		renameDescription,
@@ -45,10 +45,21 @@ func NewRenameTool(
 			if params.NewName == "" {
 				return fantasy.NewTextErrorResponse("new_name is required"), nil
 			}
-			workingDir := cmp.Or(params.Path, ".")
+			root, err := services.sourceRoot(ctx)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			workingDir := root
+			if params.Path != "" {
+				workingDir = resolvePath(root, params.Path)
+			}
 			resolved, err := resolveSymbol(ctx, lspManager, params.Symbol, workingDir)
 			if err != nil {
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("Symbol '%s' not found", params.Symbol)), nil
+			}
+			_, sourceHash, err := lsputil.ReadEditSource(ctx, root, resolved.path)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
 
 			edit, err := resolved.client.Rename(ctx, resolved.path, resolved.line, resolved.char, params.NewName)
@@ -60,61 +71,14 @@ func NewRenameTool(
 				return fantasy.NewTextResponse(fmt.Sprintf("No rename edits generated for symbol '%s'", params.Symbol)), nil
 			}
 
-			sessionID := GetSessionFromContext(ctx)
-			if sessionID != "" && permissions != nil {
-				granted, err := permissions.Request(ctx, permission.CreatePermissionRequest{
-					SessionID:   sessionID,
-					ToolName:    RenameToolName,
-					Description: fmt.Sprintf("Rename '%s' to '%s'", params.Symbol, params.NewName),
-				})
-				if err != nil {
-					return fantasy.ToolResponse{}, fmt.Errorf("permission request failed: %w", err)
-				}
-				if !granted {
-					return NewPermissionDeniedResponse(permissions), nil
-				}
+			plan, err := lsputil.PrepareWorkspaceEdit(ctx, root, *edit, resolved.client.GetOffsetEncoding())
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
-
-			affectedFiles := collectAffectedFiles(edit)
-
-			if files != nil && sessionID != "" {
-				for _, path := range affectedFiles {
-					content, err := os.ReadFile(path)
-					if err != nil {
-						slog.Warn("Failed to read file for version tracking", "path", path, "error", err)
-						continue
-					}
-					if _, err := files.CreateVersion(ctx, sessionID, path, string(content), GetMessageFromContext(ctx)); err != nil {
-						slog.Warn("Failed to create file version", "path", path, "error", err)
-					}
-				}
+			if err := semanticSourceUnchanged(ctx, root, resolved.path, sourceHash); err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
-
-			encoding := resolved.client.GetOffsetEncoding()
-			if err := lsputil.ApplyWorkspaceEdit(*edit, encoding); err != nil {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("failed to apply rename edits: %s", err)), nil
-			}
-
-			if filetracker != nil && sessionID != "" {
-				for _, path := range affectedFiles {
-					filetracker.RecordRead(ctx, sessionID, path)
-				}
-			}
-
-			notifyLSPs(ctx, lspManager, "")
-
-			var b strings.Builder
-			fmt.Fprintf(&b, "Renamed '%s' to '%s' in %d file(s):\n\n", params.Symbol, params.NewName, len(affectedFiles))
-			for _, f := range affectedFiles {
-				fmt.Fprintf(&b, "  %s\n", f)
-			}
-
-			text := b.String()
-			if len(affectedFiles) > 0 {
-				text += "\n" + getDiagnostics(affectedFiles[0], lspManager)
-			}
-
-			return fantasy.NewTextResponse(text), nil
+			return services.submit(ctx, plan, params.Preview, call)
 		},
 	)
 }

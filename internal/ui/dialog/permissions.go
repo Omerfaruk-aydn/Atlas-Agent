@@ -322,7 +322,7 @@ func (p *Permissions) respond(action PermissionAction) tea.Msg {
 func (p *Permissions) hasDiffView() bool {
 	switch p.permission.ToolName {
 	case tools.EditToolName, tools.WriteToolName, tools.MultiEditToolName, tools.ReplaceSymbolToolName,
-		tools.MemoryToolName, tools.SkillManageToolName:
+		tools.MemoryToolName, tools.SkillManageToolName, tools.LSPEditPlanToolName:
 		return true
 	}
 	return false
@@ -460,7 +460,7 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 	// Show generic Path only for tools that don't render their own file/path line.
 	switch p.permission.ToolName {
 	case tools.EditToolName, tools.WriteToolName, tools.MultiEditToolName,
-		tools.ViewToolName, tools.ReplaceSymbolToolName,
+		tools.ViewToolName, tools.ReplaceSymbolToolName, tools.LSPEditPlanToolName,
 		tools.DownloadToolName, tools.LSToolName, tools.MemoryToolName,
 		tools.SkillManageToolName:
 		// These tools show their own File/Directory line below.
@@ -480,7 +480,7 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 			lines = append(lines, p.renderKeyValue("File", fsext.PrettyPath(params.FilePath), contentWidth))
 		}
 	case tools.EditToolName, tools.WriteToolName, tools.MultiEditToolName, tools.ViewToolName,
-		tools.ReplaceSymbolToolName, tools.MemoryToolName, tools.SkillManageToolName:
+		tools.ReplaceSymbolToolName, tools.MemoryToolName, tools.SkillManageToolName, tools.LSPEditPlanToolName:
 		var filePath string
 		switch params := p.permission.Params.(type) {
 		case tools.MemoryPermissionParams:
@@ -496,6 +496,8 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 		case tools.ViewPermissionsParams:
 			filePath = params.FilePath
 		case tools.ReplaceSymbolPermissionsParams:
+			filePath = params.FilePath
+		case tools.SemanticEditPermissionsParams:
 			filePath = params.FilePath
 		}
 		if filePath != "" {
@@ -560,6 +562,11 @@ func (p *Permissions) renderContent(width int) string {
 		return p.renderMultiEditContent(width)
 	case tools.ReplaceSymbolToolName:
 		return p.renderReplaceSymbolContent(width)
+	case tools.LSPEditPlanToolName:
+		if params, ok := p.permission.Params.(tools.SemanticEditPermissionsParams); ok {
+			return p.renderDiff(params.FilePath, params.OldContent, params.NewContent, width)
+		}
+		return p.renderDefaultContent(width)
 	case tools.DownloadToolName:
 		return p.renderDownloadContent(width)
 	case tools.FetchToolName:
@@ -581,6 +588,14 @@ func (p *Permissions) renderBashContent(width int) string {
 		return ""
 	}
 
+	if len(params.Argv) > 0 {
+		argv, _ := json.MarshalIndent(params.Argv, "", "  ")
+		root := params.WorkingDir
+		if root == "" {
+			root = p.com.Workspace.WorkingDir()
+		}
+		return p.renderContentPanel("Working directory: "+root+"\nLiteral arguments:\n"+string(argv), width)
+	}
 	cmd := common.StripBashDisplayPrefix(params.Command, p.com.Workspace.WorkingDir())
 	command, err := common.SyntaxHighlightLexerName(p.com.Styles, cmd, "bash", p.com.Styles.Dialog.ContentPanelBg)
 	if err != nil {

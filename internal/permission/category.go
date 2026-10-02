@@ -53,6 +53,7 @@ var toolCategories = map[string]ToolCategory{
 	"bash":               CategoryExecute,
 	"job_kill":           CategoryExecute,
 	"lsp_rename":         CategoryExecute,
+	"lsp_edit_plan":      CategoryExecute,
 	"lsp_replace_symbol": CategoryExecute,
 	"lsp_restart":        CategoryExecute,
 	"computer":           CategoryExecute,

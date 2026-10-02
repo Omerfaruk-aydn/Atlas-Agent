@@ -1,7 +1,11 @@
 package dialog
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ansi"
 
 	tea "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ui/v2"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
@@ -20,6 +24,34 @@ func newTestPermissions(t *testing.T) *Permissions {
 		ToolName:   "bash",
 	}
 	return NewPermissions(com, perm)
+}
+
+func TestPermissionsLiteralArgumentsShowExactInvocation(t *testing.T) {
+	t.Parallel()
+	p := newTestPermissions(t)
+	p.permission.Params = tools.BashPermissionsParams{Argv: []string{"program", "argument with spaces", "$not-shell"}, WorkingDir: "D:/Project"}
+	p.viewportDirty = true
+	text := ansi.Strip(p.renderContent(80))
+	require.Contains(t, text, "D:/Project")
+	require.Contains(t, text, "argument with spaces")
+	require.Contains(t, text, "$not-shell")
+}
+
+func TestPermissionsSemanticDiffShowsActualRecoveryContent(t *testing.T) {
+	t.Parallel()
+	p := newTestPermissions(t)
+	p.permission.ToolName = tools.LSPEditPlanToolName
+	p.permission.Params = tools.SemanticEditPermissionsParams{FilePath: "/tmp/file.go", OldContent: "old_name\n", NewContent: "restored_name\n", Recovery: true}
+	require.True(t, p.hasDiffView())
+	for _, width := range []int{40, 80, 120} {
+		p.viewportDirty = true
+		rendered := p.renderContent(width)
+		require.Contains(t, ansi.Strip(rendered), "old_name")
+		require.Contains(t, ansi.Strip(rendered), "restored_name")
+		for _, line := range strings.Split(rendered, "\n") {
+			require.LessOrEqual(t, ansi.StringWidth(line), width)
+		}
+	}
 }
 
 // TestPermissions_ActionKeysResolve verifies that action keys produce the

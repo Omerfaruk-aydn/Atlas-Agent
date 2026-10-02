@@ -4,19 +4,18 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"log/slog"
-	"os"
-	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-powernap/pkg/lsp/protocol"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/filetracker"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/history"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/lsp"
+	lsputil "github.com/Omerfaruk-aydn/Atlas-Agent/internal/lsp/util"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 )
 
 type ReplaceSymbolParams struct {
+	Preview     bool   `json:"preview,omitempty" description:"Prepare a source-checked plan and exact diff without changing files"`
 	Symbol      string `json:"symbol" description:"The symbol name to target (e.g., function name, method name, type name)"`
 	FilePath    string `json:"file_path" description:"The path to the file containing the symbol"`
 	Replacement string `json:"replacement,omitempty" description:"The replacement text. Required for 'replace' action. For 'add_before'/'add_after', the text to insert. Ignored for 'delete'."`
@@ -48,7 +47,9 @@ func NewReplaceSymbolTool(
 	permissions permission.Service,
 	files history.Service,
 	filetracker filetracker.Service,
+	options ...SemanticEditServices,
 ) fantasy.AgentTool {
+	services := semanticServices("", permissions, files, filetracker, lspManager, options)
 	return fantasy.NewAgentTool(
 		ReplaceSymbolToolName,
 		replaceSymbolDescription,
@@ -73,6 +74,11 @@ func NewReplaceSymbolTool(
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("replacement is required for action %q", action)), nil
 			}
 
+			root, err := services.sourceRoot(ctx)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			params.FilePath = resolvePath(root, params.FilePath)
 			lspManager.Start(ctx, params.FilePath)
 
 			client := findLSPClient(lspManager, params.FilePath)
@@ -80,6 +86,10 @@ func NewReplaceSymbolTool(
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("no LSP client handles file: %s", params.FilePath)), nil
 			}
 
+			_, sourceHash, err := lsputil.ReadEditSource(ctx, root, params.FilePath)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
 			symbols, err := client.DocumentSymbols(ctx, params.FilePath)
 			if err != nil {
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("failed to get document symbols: %s", err)), nil
@@ -92,101 +102,26 @@ func NewReplaceSymbolTool(
 
 			rng := target.GetRange()
 
-			content, err := os.ReadFile(params.FilePath)
+			text := params.Replacement
+			switch action {
+			case "add_before":
+				rng.End = rng.Start
+				text += "\n"
+			case "add_after":
+				rng.Start = rng.End
+				text = "\n" + text
+			case "delete":
+				text = ""
+			}
+			edit := protocol.WorkspaceEdit{Changes: map[protocol.DocumentURI][]protocol.TextEdit{protocol.URIFromPath(params.FilePath): {{Range: rng, NewText: text}}}}
+			plan, err := lsputil.PrepareWorkspaceEdit(ctx, root, edit, client.GetOffsetEncoding())
 			if err != nil {
-				return fantasy.ToolResponse{}, fmt.Errorf("failed to read file: %w", err)
+				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
-
-			lines := strings.Split(string(content), "\n")
-			startLine := int(rng.Start.Line)
-			endLine := int(rng.End.Line)
-			if startLine >= len(lines) || endLine >= len(lines) {
-				return fantasy.NewTextErrorResponse("symbol range exceeds file length"), nil
+			if err := semanticSourceUnchanged(ctx, root, params.FilePath, sourceHash); err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
-
-			// Compute new content before permission so the dialog can show a diff.
-			var newLines []string
-			switch action {
-			case "replace":
-				newLines = make([]string, 0, len(lines))
-				newLines = append(newLines, lines[:startLine]...)
-				newLines = append(newLines, strings.Split(params.Replacement, "\n")...)
-				newLines = append(newLines, lines[endLine+1:]...)
-			case "add_before":
-				newLines = make([]string, 0, len(lines)+strings.Count(params.Replacement, "\n")+1)
-				newLines = append(newLines, lines[:startLine]...)
-				newLines = append(newLines, strings.Split(params.Replacement, "\n")...)
-				newLines = append(newLines, lines[startLine:]...)
-			case "add_after":
-				newLines = make([]string, 0, len(lines)+strings.Count(params.Replacement, "\n")+1)
-				newLines = append(newLines, lines[:endLine+1]...)
-				newLines = append(newLines, strings.Split(params.Replacement, "\n")...)
-				newLines = append(newLines, lines[endLine+1:]...)
-			case "delete":
-				newLines = make([]string, 0, len(lines))
-				newLines = append(newLines, lines[:startLine]...)
-				newLines = append(newLines, lines[endLine+1:]...)
-			}
-
-			newContent := strings.Join(newLines, "\n")
-
-			sessionID := GetSessionFromContext(ctx)
-			if sessionID != "" && permissions != nil {
-				granted, err := permissions.Request(ctx, permission.CreatePermissionRequest{
-					SessionID:   sessionID,
-					Path:        params.FilePath,
-					ToolName:    ReplaceSymbolToolName,
-					Description: fmt.Sprintf("%s symbol '%s' in %s", action, params.Symbol, params.FilePath),
-					Params: ReplaceSymbolPermissionsParams{
-						FilePath:   params.FilePath,
-						OldContent: string(content),
-						NewContent: newContent,
-					},
-				})
-				if err != nil {
-					return fantasy.ToolResponse{}, fmt.Errorf("permission request failed: %w", err)
-				}
-				if !granted {
-					return NewPermissionDeniedResponse(permissions), nil
-				}
-			}
-
-			if files != nil && sessionID != "" {
-				if _, err := files.CreateVersion(ctx, sessionID, params.FilePath, string(content), GetMessageFromContext(ctx)); err != nil {
-					slog.Warn("Failed to create file version before replace", "path", params.FilePath, "error", err)
-				}
-			}
-
-			if err := os.WriteFile(params.FilePath, []byte(newContent), 0o644); err != nil {
-				return fantasy.ToolResponse{}, fmt.Errorf("failed to write file: %w", err)
-			}
-
-			if filetracker != nil && sessionID != "" {
-				filetracker.RecordRead(ctx, sessionID, params.FilePath)
-			}
-
-			notifyLSPs(ctx, lspManager, params.FilePath)
-
-			var summary string
-			switch action {
-			case "replace":
-				summary = fmt.Sprintf("Replaced symbol '%s' in %s (lines %d-%d)", params.Symbol, params.FilePath, startLine+1, endLine+1)
-			case "add_before":
-				summary = fmt.Sprintf("Inserted before symbol '%s' in %s (before line %d)", params.Symbol, params.FilePath, startLine+1)
-			case "add_after":
-				summary = fmt.Sprintf("Inserted after symbol '%s' in %s (after line %d)", params.Symbol, params.FilePath, endLine+1)
-			case "delete":
-				summary = fmt.Sprintf("Deleted symbol '%s' from %s (lines %d-%d)", params.Symbol, params.FilePath, startLine+1, endLine+1)
-			}
-
-			resp := fantasy.NewTextResponse(summary + "\n" + getDiagnostics(params.FilePath, lspManager))
-			resp = fantasy.WithResponseMetadata(resp, ReplaceSymbolResponseMetadata{
-				FilePath:   params.FilePath,
-				OldContent: string(content),
-				NewContent: newContent,
-				Action:     action,
-			})
-			return resp, nil
+			return services.submit(ctx, plan, params.Preview, call)
 		},
 	)
 }

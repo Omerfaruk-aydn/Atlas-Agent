@@ -290,6 +290,7 @@ type chromedpSession struct {
 	cancel        context.CancelFunc
 	actionTimeout time.Duration
 	closeOnce     sync.Once
+	ownedBrowser  bool
 
 	// mu guards console and dialogs, which the CDP event listener
 	// (chromedp.ListenTarget's callback, invoked synchronously and
@@ -339,6 +340,7 @@ func newChromedpSession(opts Options) (Session, error) {
 		ctx:           ctx,
 		cancel:        func() { cancel(); allocCancel() },
 		actionTimeout: opts.ActionTimeout,
+		ownedBrowser:  opts.RemoteURL == "",
 	}
 
 	// Runtime and Page must be explicitly enabled for their events
@@ -509,11 +511,11 @@ func (s *chromedpSession) Scroll(dx, dy int) error {
 }
 
 func (s *chromedpSession) Eval(expression string) (string, error) {
-	var result string
+	var result json.RawMessage
 	if err := s.run(chromedp.Evaluate(expression, &result)); err != nil {
 		return "", err
 	}
-	return result, nil
+	return string(result), nil
 }
 
 func (s *chromedpSession) Text(selector string) (string, error) {
@@ -648,7 +650,16 @@ func (s *chromedpSession) RawCDP(method string, params map[string]any) (map[stri
 }
 
 func (s *chromedpSession) Close() {
-	s.closeOnce.Do(s.cancel)
+	s.closeOnce.Do(func() {
+		if s.ownedBrowser {
+			// Graceful owned-browser shutdown flushes persistent profile data.
+			// Attached user browsers retain their existing tab-only cleanup.
+			ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
+			defer cancel()
+			_ = chromedp.Cancel(ctx)
+		}
+		s.cancel()
+	})
 }
 
 // newSessionFunc lets tests substitute a fake driver instead of launching a

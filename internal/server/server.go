@@ -172,6 +172,8 @@ func (s *Server) installHandler() {
 	mux.HandleFunc("GET /v1/workspaces/{id}/sessions/search", c.handleGetWorkspaceSessionsSearch)
 	mux.HandleFunc("POST /v1/workspaces/{id}/sessions", c.handlePostWorkspaceSessions)
 	mux.HandleFunc("GET /v1/workspaces/{id}/sessions/{sid}", c.handleGetWorkspaceSession)
+	mux.HandleFunc("GET /v1/workspaces/{id}/sessions/{sid}/workflow", c.handleGetWorkflow)
+	mux.HandleFunc("POST /v1/workspaces/{id}/sessions/{sid}/workflow", c.handlePostWorkflow)
 	mux.HandleFunc("PUT /v1/workspaces/{id}/sessions/{sid}", c.handlePutWorkspaceSession)
 	mux.HandleFunc("DELETE /v1/workspaces/{id}/sessions/{sid}", c.handleDeleteWorkspaceSession)
 	mux.HandleFunc("POST /v1/workspaces/{id}/sessions/{sid}/rewind/preview", c.handlePostWorkspaceSessionRewindPreview)

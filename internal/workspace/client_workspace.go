@@ -609,9 +609,10 @@ func (w *ClientWorkspace) AgentHubEntries(ctx context.Context, sessionID string)
 
 func protoToSubagent(s proto.Subagent) subagents.Subagent {
 	return subagents.Subagent{
-		Name:         s.Name,
-		Description:  s.Description,
-		Model:        s.Model,
+		Name:        s.Name,
+		Description: s.Description,
+		Model:       s.Model,
+		ReadOnly:    s.ReadOnly, AllowCommands: s.AllowCommands, Tools: s.Tools, Contract: s.Contract,
 		Instructions: s.Instructions,
 		Path:         s.Path,
 	}
@@ -619,9 +620,10 @@ func protoToSubagent(s proto.Subagent) subagents.Subagent {
 
 func subagentToProto(s subagents.Subagent) proto.Subagent {
 	return proto.Subagent{
-		Name:         s.Name,
-		Description:  s.Description,
-		Model:        s.Model,
+		Name:        s.Name,
+		Description: s.Description,
+		Model:       s.Model,
+		ReadOnly:    s.ReadOnly, AllowCommands: s.AllowCommands, Tools: s.Tools, Contract: s.Contract,
 		Instructions: s.Instructions,
 		Path:         s.Path,
 	}
@@ -1331,6 +1333,8 @@ func (w *ClientWorkspace) translateEvent(ev any) tea.Msg {
 			Type:    e.Type,
 			Payload: protoToSession(e.Payload),
 		}
+	case pubsub.Event[proto.WorkflowChanged]:
+		return e
 	case pubsub.Event[proto.File]:
 		return pubsub.Event[history.File]{
 			Type:    e.Type,
@@ -1439,6 +1443,12 @@ func protoToTodos(todos []proto.Todo) []session.Todo {
 			Content:    t.Content,
 			Status:     session.TodoStatus(t.Status),
 			ActiveForm: t.ActiveForm,
+			ID:         t.ID, DependsOn: t.DependsOn, Agent: t.Agent, OwnedPaths: t.OwnedPaths,
+			AcceptanceCriteria: t.AcceptanceCriteria,
+			Verification:       t.Verification,
+		}
+		for _, evidence := range t.Evidence {
+			out[i].Evidence = append(out[i].Evidence, session.TodoEvidence{Kind: evidence.Kind, Detail: evidence.Detail})
 		}
 	}
 	return out
@@ -1583,6 +1593,12 @@ func todosToProto(todos []session.Todo) []proto.Todo {
 			Content:    t.Content,
 			Status:     string(t.Status),
 			ActiveForm: t.ActiveForm,
+			ID:         t.ID, DependsOn: t.DependsOn, Agent: t.Agent, OwnedPaths: t.OwnedPaths,
+			AcceptanceCriteria: t.AcceptanceCriteria,
+			Verification:       t.Verification,
+		}
+		for _, evidence := range t.Evidence {
+			out[i].Evidence = append(out[i].Evidence, proto.TodoEvidence{Kind: evidence.Kind, Detail: evidence.Detail})
 		}
 	}
 	return out

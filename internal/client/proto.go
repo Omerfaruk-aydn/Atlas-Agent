@@ -213,6 +213,11 @@ func (c *Client) SubscribeEvents(ctx context.Context, id string) (<-chan any, er
 				if !sendEvent(ctx, events, e) {
 					return
 				}
+			case pubsub.PayloadTypeWorkflowChanged:
+				var e pubsub.Event[proto.WorkflowChanged]
+				if json.Unmarshal(p.Payload, &e) == nil && !sendEvent(ctx, events, e) {
+					return
+				}
 			case pubsub.PayloadTypeSession:
 				var e pubsub.Event[proto.Session]
 				_ = json.Unmarshal(p.Payload, &e)

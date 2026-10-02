@@ -6,6 +6,7 @@ import (
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/subagents"
 )
 
 // ConfigSetRequest represents a request to set a config field.
@@ -89,10 +90,14 @@ type ConfigRefreshOAuthRequest struct {
 // Subagent is the wire form of a subagent definition (see
 // internal/subagents.Subagent) for the subagent management endpoints.
 type Subagent struct {
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	Model        string `json:"model,omitempty"`
-	Instructions string `json:"instructions"`
+	Contract      *subagents.RoleContract `json:"contract,omitempty"`
+	ReadOnly      bool                    `json:"read_only,omitempty"`
+	AllowCommands bool                    `json:"allow_commands,omitempty"`
+	Tools         []string                `json:"tools,omitempty"`
+	Name          string                  `json:"name"`
+	Description   string                  `json:"description"`
+	Model         string                  `json:"model,omitempty"`
+	Instructions  string                  `json:"instructions"`
 	// Path is the file this subagent was loaded from, empty for one not
 	// yet saved. Read-only: SaveSubagentRequest ignores it and resolves
 	// the destination itself (see workspace.SaveSubagent).

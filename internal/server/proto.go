@@ -526,9 +526,10 @@ func (c *controllerV1) handleGetWorkspaceSessionAgentHub(w http.ResponseWriter, 
 // subagentToProto converts a subagents.Subagent to its wire form.
 func subagentToProto(s subagents.Subagent) proto.Subagent {
 	return proto.Subagent{
-		Name:         s.Name,
-		Description:  s.Description,
-		Model:        s.Model,
+		Name:        s.Name,
+		Description: s.Description,
+		Model:       s.Model,
+		ReadOnly:    s.ReadOnly, AllowCommands: s.AllowCommands, Tools: s.Tools, Contract: s.Contract,
 		Instructions: s.Instructions,
 		Path:         s.Path,
 	}
@@ -579,9 +580,10 @@ func (c *controllerV1) handlePostWorkspaceSubagent(w http.ResponseWriter, r *htt
 	}
 
 	sub := subagents.Subagent{
-		Name:         req.Subagent.Name,
-		Description:  req.Subagent.Description,
-		Model:        req.Subagent.Model,
+		Name:        req.Subagent.Name,
+		Description: req.Subagent.Description,
+		Model:       req.Subagent.Model,
+		ReadOnly:    req.Subagent.ReadOnly, AllowCommands: req.Subagent.AllowCommands, Tools: req.Subagent.Tools, Contract: req.Subagent.Contract,
 		Instructions: req.Subagent.Instructions,
 	}
 	path, err := c.backend.SaveSubagent(id, sub, req.UserScope)

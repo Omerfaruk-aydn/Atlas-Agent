@@ -9,6 +9,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+
 	mcptools "github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools/mcp"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/commands"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
@@ -149,6 +151,8 @@ type AgentHubEntry struct {
 // workspace, regardless of whether the workspace is in-process or
 // remote.
 type Workspace interface {
+	WorkflowSnapshot(context.Context, string) (engineering.WorkflowSnapshot, error)
+	WorkflowControl(context.Context, string, engineering.WorkflowControl) error
 	// Sessions
 	CreateSession(ctx context.Context, title string) (session.Session, error)
 	GetSession(ctx context.Context, sessionID string) (session.Session, error)

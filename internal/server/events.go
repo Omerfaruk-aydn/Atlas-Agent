@@ -27,6 +27,8 @@ import (
 // proper JSON tags. Returns nil if the event type is unrecognized.
 func wrapEvent(ev any) *pubsub.Payload {
 	switch e := ev.(type) {
+	case pubsub.Event[proto.WorkflowChanged]:
+		return envelope(pubsub.PayloadTypeWorkflowChanged, e)
 	case pubsub.Event[app.LSPEvent]:
 		return envelope(pubsub.PayloadTypeLSPEvent, pubsub.Event[proto.LSPEvent]{
 			Type: e.Type,
@@ -254,6 +256,12 @@ func todosToProto(todos []session.Todo) []proto.Todo {
 			Content:    t.Content,
 			Status:     string(t.Status),
 			ActiveForm: t.ActiveForm,
+			ID:         t.ID, DependsOn: t.DependsOn, Agent: t.Agent, OwnedPaths: t.OwnedPaths,
+			AcceptanceCriteria: t.AcceptanceCriteria,
+			Verification:       t.Verification,
+		}
+		for _, evidence := range t.Evidence {
+			out[i].Evidence = append(out[i].Evidence, proto.TodoEvidence{Kind: evidence.Kind, Detail: evidence.Detail})
 		}
 	}
 	return out

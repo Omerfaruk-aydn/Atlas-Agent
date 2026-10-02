@@ -16,6 +16,7 @@ const (
 type PayloadType = string
 
 const (
+	PayloadTypeWorkflowChanged        PayloadType = "workflow_changed"
 	PayloadTypeLSPEvent               PayloadType = "lsp_event"
 	PayloadTypeMCPEvent               PayloadType = "mcp_event"
 	PayloadTypePermissionRequest      PayloadType = "permission_request"

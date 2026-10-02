@@ -51,7 +51,20 @@ type RewindPreview struct {
 
 // Todo represents a single todo entry on a session in the proto layer.
 type Todo struct {
-	Content    string `json:"content"`
-	Status     string `json:"status"`
-	ActiveForm string `json:"active_form"`
+	ID                 string         `json:"id,omitempty"`
+	DependsOn          []string       `json:"depends_on,omitempty"`
+	Agent              string         `json:"agent,omitempty"`
+	OwnedPaths         []string       `json:"owned_paths,omitempty"`
+	Content            string         `json:"content"`
+	Status             string         `json:"status"`
+	ActiveForm         string         `json:"active_form"`
+	AcceptanceCriteria []string       `json:"acceptance_criteria,omitempty"`
+	Verification       string         `json:"verification,omitempty"`
+	Evidence           []TodoEvidence `json:"evidence,omitempty"`
+}
+
+// TodoEvidence carries reported verification evidence across client boundaries.
+type TodoEvidence struct {
+	Kind   string `json:"kind"`
+	Detail string `json:"detail"`
 }

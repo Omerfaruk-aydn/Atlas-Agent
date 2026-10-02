@@ -1018,6 +1018,7 @@ func TestClientWorkspaceListSubagents(t *testing.T) {
 
 func TestClientWorkspaceSaveSubagent(t *testing.T) {
 	t.Parallel()
+	contract := subagents.Builtin()[0].Contract
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodPost, r.Method)
@@ -1026,6 +1027,8 @@ func TestClientWorkspaceSaveSubagent(t *testing.T) {
 		var req proto.SaveSubagentRequest
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
 		require.Equal(t, "research", req.Subagent.Name)
+		require.Equal(t, contract, req.Subagent.Contract)
+		require.True(t, req.Subagent.AllowCommands)
 		require.True(t, req.UserScope)
 
 		req.Subagent.Path = "/agents/research.md"
@@ -1041,6 +1044,7 @@ func TestClientWorkspaceSaveSubagent(t *testing.T) {
 
 	path, err := workspace.SaveSubagent(t.Context(), subagents.Subagent{
 		Name: "research", Description: "Deep research.", Instructions: "Dig deep.",
+		Contract: contract, ReadOnly: true, AllowCommands: true,
 	}, true)
 	require.NoError(t, err)
 	require.Equal(t, "/agents/research.md", path)

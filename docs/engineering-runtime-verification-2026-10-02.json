@@ -1,0 +1,72 @@
+{
+  "date": "2026-10-02",
+  "platform": "windows/amd64",
+  "features": [
+    "dependency_scheduler",
+    "enforced_specialist_roles",
+    "observed_verification",
+    "failure_circuit",
+    "persistent_project_map",
+    "managed_worktrees",
+    "ui_evidence",
+    "session_task_budgets",
+    "interruption_recovery",
+    "live_model_evaluation"
+  ],
+  "environment": {
+    "GOMAXPROCS": "2",
+    "GOMEMLIMIT": "1GiB",
+    "CGO_ENABLED": "0",
+    "GOEXPERIMENT": "greenteagc"
+  },
+  "full_suite": {
+    "command": "go test -count=1 -p 1 -ldflags='-w -s' -timeout 3m ./...",
+    "exit_code": 0,
+    "passed_packages": 98,
+    "log_file": "C:\\Users\\MER&CE~1\\AppData\\Local\\Temp/atlas-engineering-verified-20261002.log"
+  },
+  "final_changed_package_tests": [
+    {
+      "exit_code": 0,
+      "packages": [
+        "internal/cmd",
+        "internal/evaluation"
+      ],
+      "log_file": "C:\\Users\\MER&CE~1\\AppData\\Local\\Temp/atlas-engineering-cli-final-20261002.log"
+    },
+    {
+      "exit_code": 0,
+      "packages": [
+        "internal/agent"
+      ],
+      "log_file": "C:\\Users\\MER&CE~1\\AppData\\Local\\Temp/atlas-engineering-recovery-final-20261002.log"
+    }
+  ],
+  "git_fixture_regression": {
+    "note": "One initial transient repository-detection failure did not reproduce in 20 isolated repeats; subsequent full-suite Git tests passed.",
+    "exit_code": 0,
+    "test": "TestLogLeavesStatsEmptyByDefault",
+    "repetitions": 20
+  },
+  "build": {
+    "command": "go build -p 1 -ldflags='-w -s' -o TEMP/atlas-engineering-20261002.exe .",
+    "exit_code": 0,
+    "sha256": "9e26335b2f22dd09e31b2293a5f9c197ecf23e7f1363b8d3452a03ecde7323f4",
+    "binary": "C:\\Users\\MER&CE~1\\AppData\\Local\\Temp/atlas-engineering-20261002.exe"
+  },
+  "cli_smoke": {
+    "final_binary_rechecked": true,
+    "unattended_run_flag": true,
+    "false_completion_gate": 1,
+    "budget_persistence": true,
+    "scenarios": 9,
+    "comparison_groups": 2,
+    "execution_failure_gate": 1,
+    "recovery_without_replay": true
+  },
+  "formatting": "gofumpt -l: no output",
+  "diff_check": "git diff --check: exit 0",
+  "live_provider_benchmark": "Not run; no actual provider-performance improvement measured or claimed.",
+  "real_browser": "Real-browser orchestration, assertions and screenshot persistence tested through a controlled tool seam; no real browser or application aesthetics inspected.",
+  "external_command_execution": "Actual subprocess exit codes and environment isolation tested; live model invocation uses a controlled runner fixture."
+}

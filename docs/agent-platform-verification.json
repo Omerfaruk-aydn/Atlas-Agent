@@ -1,0 +1,99 @@
+{
+  "verified_at": "2026-10-02T20:26:55.2400204Z",
+  "workspace": "D:/Atlas",
+  "host_os": "windows",
+  "go_environment": {
+    "CGO_ENABLED": "0",
+    "GOMAXPROCS": "2",
+    "GOEXPERIMENT": "greenteagc"
+  },
+  "full_suite": {
+    "passed_packages": 105,
+    "command": "go test -count=1 -p 1 -ldflags=\"-w -s\" -timeout 3m ./...",
+    "exit_code": 0,
+    "failed_packages": 0,
+    "log_sha256": "2edfc22d91b7d20d8c30473b7557a7aaf2ba05ba91a66764392e54a0f7625295",
+    "previous_failure": "Existing app mock lacked CompareAndSwapTodos; fixed before the complete green rerun"
+  },
+  "build": {
+    "exit_code": 0,
+    "command": "go build -ldflags=\"-w -s\" -o .atlas/atlas-platform-check.exe ."
+  },
+  "cli_smoke": {
+    "fixture_runtime_directory_ignored": true,
+    "cases": [
+      {
+        "exit_code": 0,
+        "command": "workflow environment inspect"
+      },
+      {
+        "exit_code": 0,
+        "command": "workflow validate feature-delivery"
+      },
+      {
+        "exit_code": 0,
+        "command": "workflow run feature-delivery --param feature=\"Fixture feature\" --plan-only"
+      },
+      {
+        "exit_code": 0,
+        "command": "workflow checkpoint d7069dc8-00af-437c-91a7-0aca937445b3"
+      },
+      {
+        "exit_code": 0,
+        "command": "workflow snapshot d7069dc8-00af-437c-91a7-0aca937445b3"
+      },
+      {
+        "exit_code": 0,
+        "command": "workflow status d7069dc8-00af-437c-91a7-0aca937445b3"
+      },
+      {
+        "exit_code": 0,
+        "command": "workflow resume-plan"
+      }
+    ],
+    "source_changed": false,
+    "executable_project_config_ran": false
+  },
+  "graph_smoke": {
+    "main_cli_graph_command_exists": false,
+    "actions": [
+      "refresh_graph",
+      "symbols"
+    ],
+    "exit_code": 0,
+    "entry_point": "Production project_map tool from compiled model-free fixture"
+  },
+  "post_format_tests": {
+    "exit_code": 0,
+    "packages": [
+      "internal/backend",
+      "internal/server",
+      "internal/agent",
+      "internal/agent/prompt"
+    ]
+  },
+  "platform_acceptance": {
+    "windows_panel_pty": "observed pass",
+    "windows_conpty": "observed pass",
+    "chrome_restart": "observed pass",
+    "oci": "unavailable: explicit runtime/digest fixture not configured; TestOCIRealIsolation skipped",
+    "linux_pty": "cross-compile passed; runtime unavailable"
+  },
+  "independent_review": {
+    "resolved": [
+      "Durable proof retention after rolling history eviction",
+      "Repair observation hydration after restart/eviction",
+      "Pause admission restoration and explicit CAS exhaustion",
+      "Strict outer JSON duplicate/case/trailing rejection"
+    ],
+    "blocking_findings_remaining": 0
+  },
+  "paid_provider_requests": 0,
+  "live_model_quality_verified": false,
+  "baseline_integration": "Prior approved role/prompt/design/runtime changes preserved and explicitly integrated",
+  "limitations": [
+    "Safe VT interpretation is partial; raw terminal bytes retained",
+    "Per-file edit journal is not a multi-file OS transaction",
+    "Linux runtime and real container isolation not verified on this host"
+  ]
+}

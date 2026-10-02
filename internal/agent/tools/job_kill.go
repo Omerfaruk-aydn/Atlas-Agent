@@ -34,6 +34,16 @@ func NewJobKillTool() fantasy.AgentTool {
 			if params.ShellID == "" {
 				return fantasy.NewTextErrorResponse("missing shell_id"), nil
 			}
+			if isIsolatedJob(params.ShellID) {
+				_, runner, err := isolatedRunner(ctx)
+				if err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+				if err := runner.Cancel(ctx, params.ShellID); err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+				return fantasy.NewTextResponse("Cancellation requested for isolated job " + params.ShellID + ". Observe job_output for its final state."), nil
+			}
 
 			bgManager := shell.GetBackgroundShellManager()
 

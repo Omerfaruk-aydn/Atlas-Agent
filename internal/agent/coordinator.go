@@ -28,6 +28,8 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/catwalk"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/discover"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/execution"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/factstore"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/filetracker"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/history"
@@ -120,6 +122,8 @@ func opencodeModelType(providerID, modelID string) catwalk.Type {
 }
 
 type Coordinator interface {
+	WorkflowSnapshot(context.Context, string) (engineering.WorkflowSnapshot, error)
+	WorkflowControl(context.Context, string, engineering.WorkflowControl) error
 	// INFO: (kujtim) this is not used yet we will use this when we have multiple agents
 	// SetMainAgent(string)
 	Run(ctx context.Context, sessionID, prompt string, attachments ...message.Attachment) (*fantasy.AgentResult, error)
@@ -155,8 +159,9 @@ type Coordinator interface {
 }
 
 type coordinator struct {
-	cfg      *config.ConfigStore
-	sessions session.Service
+	engineering *engineering.Store
+	cfg         *config.ConfigStore
+	sessions    session.Service
 	// goalRuns holds the autonomous run for each session working
 	// towards a goal (see goal.go). Absent means the session is
 	// taking turns the ordinary way, one per prompt.
@@ -257,6 +262,7 @@ func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, 
 		facts:        factsStore(opts.Config),
 		interactive:  opts.Interactive,
 		credentials:  credentials.Load(filepath.Join(opts.Config.Config().Options.DataDirectory, credentials.StateFileName)),
+		engineering:  engineering.NewStore(opts.Config.Config().Options.DataDirectory),
 		teams:        teams.NewRegistry(),
 		goalRuns:     csync.NewMap[string, *goalRun](),
 		goalJudge:    csync.NewValue(ptrBox[Model]{}),
@@ -795,6 +801,9 @@ func (c *coordinator) buildAgent(ctx context.Context, prompt *prompt.Prompt, age
 
 	largeProviderCfg, _ := c.cfg.Config().Providers.Get(large.ModelCfg.Provider)
 	result := NewSessionAgent(SessionAgentOptions{
+		WorkingDir:             c.cfg.WorkingDir(),
+		Engineering:            c.engineering,
+		TaskContextConfig:      c.cfg,
 		LargeModel:             large,
 		LargeModelFallbacks:    largeFallbacks,
 		FallbackCooldown:       time.Duration(c.cfg.Config().Options.FallbackCooldown) * time.Second,
@@ -885,7 +894,18 @@ func (c *coordinator) hookRunner(event string) *hooks.Runner {
 	if len(configured) == 0 {
 		return nil
 	}
-	return hooks.NewRunner(configured, c.cfg.WorkingDir(), c.cfg.WorkingDir())
+	runner := hooks.NewRunner(configured, c.cfg.WorkingDir(), c.cfg.WorkingDir())
+	policy := tools.ExecutionPolicy(c.cfg.Config())
+	if policy.Mode != "" && policy.Mode != "legacy" {
+		runner = runner.WithExecution(execution.Binding{Root: c.cfg.WorkingDir(), Store: c.engineering, Factory: func(ctx context.Context) (execution.Runner, error) {
+			current := policy
+			if execution.IsReadOnly(ctx) {
+				current.ReadOnly = true
+			}
+			return execution.NewRunner(ctx, current, c.engineering)
+		}})
+	}
+	return runner
 }
 
 // assembleTools builds every tool this workspace can offer, before the
@@ -895,7 +915,15 @@ func (c *coordinator) hookRunner(event string) *hooks.Runner {
 func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isSubAgent bool) ([]fantasy.AgentTool, error) {
 	var allTools []fantasy.AgentTool
 	if slices.Contains(agent.AllowedTools, AgentToolName) {
-		agentTool, err := c.agentTool(ctx)
+		agentTool, err := c.agentTool(ctx, func() []string {
+			names := []string{}
+			for _, tool := range allTools {
+				if slices.Contains(agent.AllowedTools, tool.Info().Name) {
+					names = append(names, tool.Info().Name)
+				}
+			}
+			return names
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -989,9 +1017,10 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		tools.NewInspectFileTool(c.cfg.WorkingDir()),
 		tools.NewSessionSearchTool(c.messages),
 		tools.NewSkillManageTool(skillDirs(c.cfg), c.allSkills, c.permissions),
-		tools.NewUsageTool(c.sessions, c.cfg.Config().Options.MaxSessionCost),
+		tools.NewUsageTool(c.sessions, c.cfg.Config().Options.MaxSessionCost, c.engineering),
 		tools.NewSourcegraphTool(nil),
 		tools.NewTodosTool(c.sessions),
+		tools.NewDesignSearchTool(),
 		tools.NewViewTool(c.lspManager, c.permissions, c.filetracker, c.skillTracker, c.cfg.WorkingDir(), tools.NewViewLimits(c.cfg.Config()), c.cfg.Config().Options.SkillsPaths...),
 		tools.NewWriteTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy),
 	)
@@ -1114,10 +1143,14 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 			tools.NewSymbolsTool(c.lspManager),
 			tools.NewDefinitionTool(c.lspManager),
 			tools.NewCallHierarchyTool(c.lspManager),
-			tools.NewRenameTool(c.lspManager, c.permissions, c.history, c.filetracker),
-			tools.NewLspRenameFileTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir()),
-			tools.NewReplaceSymbolTool(c.lspManager, c.permissions, c.history, c.filetracker),
+			tools.NewRenameTool(c.lspManager, c.permissions, c.history, c.filetracker, tools.SemanticEditServices{Root: c.cfg.WorkingDir(), Store: c.engineering}),
+			tools.NewLspRenameFileTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), tools.SemanticEditServices{Root: c.cfg.WorkingDir(), Store: c.engineering}),
+			tools.NewReplaceSymbolTool(c.lspManager, c.permissions, c.history, c.filetracker, tools.SemanticEditServices{Root: c.cfg.WorkingDir(), Store: c.engineering}),
 		)
+	}
+	// Journal recovery does not require an enabled or running language server.
+	if c.engineering != nil {
+		allTools = append(allTools, tools.NewLSPEditPlanTool(tools.SemanticEditServices{Root: c.cfg.WorkingDir(), Store: c.engineering, Permissions: c.permissions, History: c.history, Tracker: c.filetracker, Manager: c.lspManager}))
 	}
 
 	if len(c.cfg.Config().MCP) > 0 {
@@ -1128,10 +1161,43 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		)
 	}
 
+	if c.engineering != nil {
+		invoke := func(callCtx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			// Internal orchestration still uses the agent's allowed tools,
+			// hook interception, ordinary permissions and execution accounting.
+			for _, target := range c.filterTools(allTools, agent, c.hookRunner(hooks.EventPreToolUse), c.hookRunner(hooks.EventPostToolUse), isSubAgent) {
+				if target.Info().Name == call.Name {
+					return (&guardedTool{AgentTool: target, store: c.engineering}).Run(callCtx, call)
+				}
+			}
+			return fantasy.NewTextErrorResponse("required tool is disabled or unavailable: " + call.Name), nil
+		}
+		var verificationTools []string
+		for _, tool := range allTools {
+			if slices.Contains(agent.AllowedTools, tool.Info().Name) {
+				verificationTools = append(verificationTools, tool.Info().Name)
+			}
+		}
+		var graphProviders []tools.LSPGraphProvider
+		if c.lspManager != nil && (len(c.cfg.Config().LSP) > 0 || c.cfg.Config().Options.AutoLSP == nil || *c.cfg.Config().Options.AutoLSP) && !isSubAgent {
+			graphProviders = append(graphProviders, tools.NewLSPGraphProvider(c.cfg.WorkingDir(), c.lspManager))
+		}
+		allTools = append(allTools, tools.NewProjectMapTool(c.cfg.WorkingDir(), c.engineering, graphProviders...),
+			tools.NewVerifyTool(c.cfg.WorkingDir(), c.engineering, invoke, verificationTools),
+			tools.NewWorktreeTool(c.cfg.WorkingDir(), c.engineering, c.permissions),
+			tools.NewUIVerifyTool(c.engineering, invoke, c.cfg.WorkingDir()),
+			tools.NewScenarioTool(c.cfg.WorkingDir(), c.engineering, c.permissions, invoke, tools.NewCommandPolicy(c.cfg.Config())), c.workflowTool(invoke))
+	}
 	return allTools, nil
 }
 
 func (c *coordinator) filterTools(allTools []fantasy.AgentTool, agent config.Agent, preRunner, postRunner *hooks.Runner, isSubAgent bool) []fantasy.AgentTool {
+	if !isSubAgent {
+		if mode, ok := c.sessionMode(); ok && mode.ReadOnly {
+			agent.AllowedTools = subagentAllowedTools(mode, agent.AllowedTools)
+			agent.AllowedMCP = map[string][]string{}
+		}
+	}
 	var filteredTools []fantasy.AgentTool
 	for _, tool := range allTools {
 		if slices.Contains(agent.AllowedTools, tool.Info().Name) {
@@ -1172,6 +1238,9 @@ func (c *coordinator) filterTools(allTools []fantasy.AgentTool, agent config.Age
 	// per delegated turn. The top-level invocation of the sub-agent tool
 	// itself is still wrapped from the coder's side.
 	filteredTools = wrapToolsWithHooks(filteredTools, preRunner, postRunner, isSubAgent)
+	for i, tool := range filteredTools {
+		filteredTools[i] = tools.WithExecution(tool, c.cfg, c.engineering)
+	}
 
 	// Outside the hook wrapper: a hook that hangs is as much a stall as a
 	// tool that hangs, and the timeout should cover both.
@@ -1286,7 +1355,15 @@ func (c *coordinator) buildAgentModels(ctx context.Context, isSubAgent bool) (Mo
 	// buildSubagentSessionAgent -- fallbacks are keyed by large/small,
 	// so there is nothing configured to back a role up with.
 	if !isSubAgent {
-		if modeModel, ok := c.sessionModeModel(ctx); ok {
+		// Explicit per-run role/model choices must not benchmark a fallback.
+		if c.cfg.Overrides().PreserveSelectedModel {
+			largeFallbacks = nil
+		}
+		modeModel, ok, err := c.sessionModeModel(ctx)
+		if err != nil {
+			return Model{}, Model{}, nil, nil, fmt.Errorf("session mode measured model selection: %w", err)
+		}
+		if ok {
 			large = modeModel
 			largeFallbacks = nil
 		}
@@ -2343,6 +2420,12 @@ func (c *coordinator) runSubAgent(ctx context.Context, params subAgentParams) (f
 	}
 
 	// Run the agent
+	scope := engineering.GetScope(ctx, params.SessionID)
+	taskID := scope.TaskID
+	if taskID == "" {
+		taskID = "agent:" + params.SessionTitle
+	}
+	ctx = engineering.WithScope(ctx, scope.SessionID, taskID)
 	run := func() (*fantasy.AgentResult, error) {
 		return params.Agent.Run(ctx, SessionAgentCall{
 			SessionID:        session.ID,

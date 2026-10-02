@@ -57,10 +57,16 @@ func discoverConfiguredSubagents(cfg *config.ConfigStore) []*subagents.Subagent 
 
 // jsonSubagent is one subagent's wire form for --json.
 type jsonSubagent struct {
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	Model         string `json:"model,omitempty"`
-	ModelResolves bool   `json:"model_resolves"`
+	MeasuredSelection bool                    `json:"measured_selection,omitempty"`
+	SelectionError    string                  `json:"selection_error,omitempty"`
+	ResolvedModel     string                  `json:"resolved_model,omitempty"`
+	Contract          *subagents.RoleContract `json:"contract,omitempty"`
+	ReadOnly          bool                    `json:"read_only,omitempty"`
+	AllowCommands     bool                    `json:"allow_commands,omitempty"`
+	Name              string                  `json:"name"`
+	Description       string                  `json:"description"`
+	Model             string                  `json:"model,omitempty"`
+	ModelResolves     bool                    `json:"model_resolves"`
 }
 
 func runAgentList(cmd *cobra.Command, _ []string) error {
@@ -92,7 +98,19 @@ func listSubagents(cmd *cobra.Command, cfg *config.ConfigStore) error {
 		listed := make([]jsonSubagent, 0, len(all))
 		for _, s := range all {
 			_, resolves := cfg.Config().ResolveRole(s.Model)
+			measured, enabled, selectionErr := cfg.ResolveMeasuredRole(s.Model)
+			var selectionError, resolvedModel string
+			if enabled {
+				resolves = selectionErr == nil
+				if selectionErr != nil {
+					selectionError = selectionErr.Error()
+				} else {
+					resolvedModel = measured.Provider + "/" + measured.Model
+				}
+			}
 			listed = append(listed, jsonSubagent{
+				MeasuredSelection: enabled, SelectionError: selectionError, ResolvedModel: resolvedModel,
+				Contract: s.Contract, ReadOnly: s.ReadOnly, AllowCommands: s.AllowCommands,
 				Name:          s.Name,
 				Description:   s.Description,
 				Model:         s.Model,
@@ -113,7 +131,14 @@ func listSubagents(cmd *cobra.Command, cfg *config.ConfigStore) error {
 		model := "(session's primary model)"
 		if s.Model != "" {
 			model = s.Model
-			if _, ok := cfg.Config().ResolveRole(s.Model); !ok {
+			measured, enabled, selectionErr := cfg.ResolveMeasuredRole(s.Model)
+			if enabled {
+				if selectionErr != nil {
+					model += " (measurement unavailable: " + selectionErr.Error() + ")"
+				} else {
+					model += " -> " + measured.Provider + "/" + measured.Model + " (measured)"
+				}
+			} else if _, ok := cfg.Config().ResolveRole(s.Model); !ok {
 				model += " (unresolved)"
 			}
 		}

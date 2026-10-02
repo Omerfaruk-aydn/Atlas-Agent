@@ -6,12 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/credentials"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/evaluation"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/subagents"
 	"github.com/stretchr/testify/require"
 )
@@ -207,6 +210,65 @@ func TestBuildSubagentSessionAgentUnknownRoleErrors(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `needs the "@frontend" model role assigned`)
 	require.Contains(t, err.Error(), `role "frontend"`, "the suggested set_role call must strip the @ -- set_role's own role param does not take one")
+}
+
+func TestMeasuredRoleSelectionBuildsChosenModelAndRejectsInsufficientEvidence(t *testing.T) {
+	coord := hermeticSubagentCoordinator(t)
+	scenarios, err := evaluation.Scenarios()
+	require.NoError(t, err)
+	policy := evaluation.SelectionPolicy{Role: "backend", Scenarios: []string{scenarios[0].ID}, Candidates: []string{"role-provider/role-model"}, PromptVersion: "v1", MinSamples: 1}
+	r := evaluation.LiveRecord{Run: evaluation.Run{Role: "backend", Scenario: scenarios[0].ID, Model: "role-provider/role-model", PromptVersion: "v1"}, RecordedAt: time.Now().Unix(), MetricsSource: "cumulative_runtime_ledger", SessionID: "fixture", Workspace: "isolated"}
+	r.Baseline = "fixture-commit"
+	r.FixtureHash = "fixture-hash"
+	for _, criterion := range scenarios[0].Criteria {
+		r.Checks = append(r.Checks, evaluation.Check{Criterion: criterion, Passed: true, Evidence: "checker exit 0"})
+	}
+	file := filepath.Join(t.TempDir(), "measurements.json")
+	data, err := json.Marshal([]evaluation.LiveRecord{r})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(file, data, 0o600))
+	coord.cfg.Config().Options.RoleModelSelection = map[string]config.RoleModelSelection{"backend": {ResultsFile: file, Policy: policy}}
+	sub, _ := subagents.Find(subagents.Builtin(), "backend")
+	a, err := coord.buildSubagentSessionAgent(t.Context(), coord.cfg.Config().Agents[config.AgentTask], sub)
+	require.NoError(t, err)
+	require.Equal(t, "role-provider", a.Model().ModelCfg.Provider)
+	require.Contains(t, a.(*sessionAgent).systemPrompt.Get(), "role_contract")
+	policy.MinSamples = 3
+	coord.cfg.Config().Options.RoleModelSelection["backend"] = config.RoleModelSelection{ResultsFile: file, Policy: policy}
+	_, err = coord.buildSubagentSessionAgent(t.Context(), coord.cfg.Config().Agents[config.AgentTask], sub)
+	require.ErrorContains(t, err, "insufficient")
+}
+
+func TestQualitySpecialistBuildRetainsCommandsAndExcludesMutationTools(t *testing.T) {
+	coord := hermeticSubagentCoordinator(t)
+	enabled := true
+	coord.cfg.Config().Tools.Quality.Enabled = &enabled
+	coord.engineering = engineering.NewStore(t.TempDir())
+	sub, _ := subagents.Find(subagents.Builtin(), "test")
+	sub.Model = ""
+	sub.ReadOnly = true
+	sub.AllowCommands = true
+	a, err := coord.buildSubagentSessionAgent(t.Context(), coord.cfg.Config().Agents[config.AgentTask], sub)
+	require.NoError(t, err)
+	names := toolNames(a.(*sessionAgent).tools.Copy())
+	for _, name := range []string{"bash", "test_run", "lint_run", "verify"} {
+		require.Contains(t, names, name)
+	}
+	for _, name := range []string{"write", "edit", "agent", "workflow", "worktree"} {
+		require.NotContains(t, names, name)
+	}
+}
+
+func TestExplicitBenchmarkRoleKeepsTheCandidateAndDisablesPrimaryFallback(t *testing.T) {
+	coord := hermeticSubagentCoordinator(t)
+	coord.cfg.Config().Options.ModelRoles = map[string]config.SelectedModel{"frontend": {Provider: "role-provider", Model: "role-model"}}
+	coord.cfg.Config().Options.ModelFallbacks = map[config.SelectedModelType][]config.SelectedModel{config.SelectedModelTypeLarge: {{Provider: "role-provider", Model: "role-model"}}}
+	coord.cfg.OverrideSessionMode("frontend", true)
+	large, _, fallbacks, _, err := coord.buildAgentModels(t.Context(), false)
+	require.NoError(t, err)
+	require.Equal(t, "mock-model", large.ModelCfg.Model)
+	require.Empty(t, fallbacks)
+	require.Contains(t, coord.withSessionMode("base"), "role_contract")
 }
 
 // A configured subagent must actually be able to do the work it was

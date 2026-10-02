@@ -59,6 +59,8 @@ type fileSnapshot struct {
 // disk. They are applied on top of the loaded Config and survive only for
 // the lifetime of the process (or workspace).
 type RuntimeOverrides struct {
+	SessionMode            *string
+	PreserveSelectedModel  bool
 	SkipPermissionRequests bool
 	// EnabledChannels lists the MCP servers opted in as channels for this
 	// session (via the --channels flag). A server present in MCP config only
@@ -156,6 +158,23 @@ func (s *ConfigStore) setConfig(cfg *Config) {
 // WorkingDir returns the current working directory.
 func (s *ConfigStore) WorkingDir() string {
 	return s.workingDir
+}
+
+// Scoped creates an independent config view for a managed agent workspace.
+// Published config values are immutable; subsequent mutations use copy-on-write.
+func (s *ConfigStore) Scoped(dir string) *ConfigStore {
+	s.writeMu.RLock()
+	defer s.writeMu.RUnlock()
+	return &ConfigStore{
+		config: s.Config(), workingDir: dir, resolver: s.resolver,
+		globalDataPath: s.globalDataPath, workspacePath: filepath.Join(dir, ".atlas", "atlas.json"),
+		knownProviders: slices.Clone(s.knownProviders), loadedPaths: slices.Clone(s.loadedPaths),
+		overrides: RuntimeOverrides{
+			SessionMode: s.overrides.SessionMode, PreserveSelectedModel: s.overrides.PreserveSelectedModel,
+			SkipPermissionRequests: s.overrides.SkipPermissionRequests,
+			EnabledChannels:        slices.Clone(s.overrides.EnabledChannels), Models: maps.Clone(s.overrides.Models),
+		},
+	}
 }
 
 // Resolver returns the variable resolver.
@@ -313,6 +332,24 @@ func (s *ConfigStore) SetConfigField(scope Scope, key string, value any) error {
 // The write is protected by an in-process mutex and a cross-process flock
 // to prevent races between concurrent writers in different processes.
 func (s *ConfigStore) SetConfigFields(scope Scope, kv map[string]any) error {
+	candidateBytes, err := json.Marshal(s.Config())
+	if err != nil {
+		return err
+	}
+	for _, key := range slices.Sorted(maps.Keys(kv)) {
+		value := kv[key]
+		candidateBytes, err = sjson.SetBytes(candidateBytes, key, value)
+		if err != nil {
+			return err
+		}
+	}
+	var candidate Config
+	if err := json.Unmarshal(candidateBytes, &candidate); err != nil {
+		return err
+	}
+	if err := candidate.ValidateExecution(); err != nil {
+		return err
+	}
 	if err := s.writeConfigFields(scope, kv); err != nil {
 		return err
 	}
@@ -409,6 +446,18 @@ func (s *ConfigStore) OverridePreferredModel(modelType SelectedModelType, model 
 		}
 		c.Models[modelType] = model
 		s.pinPreferredModelLocked(modelType, model)
+	})
+}
+
+// OverrideSessionMode applies a per-run role without modifying config files.
+func (s *ConfigStore) OverrideSessionMode(name string, preserveSelectedModel bool) {
+	s.mutateInMemory(func(c *Config) {
+		if c.Options == nil {
+			c.Options = &Options{}
+		}
+		c.Options.SessionMode = name
+		s.overrides.SessionMode = &name
+		s.overrides.PreserveSelectedModel = preserveSelectedModel
 	})
 }
 
@@ -1206,6 +1255,9 @@ func (s *ConfigStore) reloadFromDiskLocked(ctx context.Context) error {
 	if err := cfg.ValidateHooks(); err != nil {
 		return fmt.Errorf("invalid hook configuration on reload: %w", err)
 	}
+	if err := cfg.ValidateExecution(); err != nil {
+		return fmt.Errorf("invalid execution configuration on reload: %w", err)
+	}
 
 	// Save current state for potential rollback BEFORE configureProviders,
 	// which may write to disk via RemoveConfigField (e.g. removing stale
@@ -1227,6 +1279,9 @@ func (s *ConfigStore) reloadFromDiskLocked(ctx context.Context) error {
 	// mid-session. An external edit to the config still takes effect for any
 	// model type this instance never chose.
 	maps.Copy(cfg.Models, overrides.Models)
+	if overrides.SessionMode != nil {
+		cfg.Options.SessionMode = *overrides.SessionMode
+	}
 
 	// Reconfigure providers
 	env := env.New()

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/execution"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell"
 )
 
@@ -37,11 +38,13 @@ type JobOutputParams struct {
 }
 
 type JobOutputResponseMetadata struct {
-	ShellID          string `json:"shell_id"`
-	Command          string `json:"command"`
-	Description      string `json:"description"`
-	Done             bool   `json:"done"`
-	WorkingDirectory string `json:"working_directory"`
+	Execution        *execution.Result `json:"execution,omitempty"`
+	ExitCode         *int              `json:"exit_code,omitempty"`
+	ShellID          string            `json:"shell_id"`
+	Command          string            `json:"command"`
+	Description      string            `json:"description"`
+	Done             bool              `json:"done"`
+	WorkingDirectory string            `json:"working_directory"`
 	// WaitTimedOut is true when wait was requested and the wait window
 	// elapsed with the job still running.
 	WaitTimedOut bool `json:"wait_timed_out,omitempty"`
@@ -68,6 +71,9 @@ func NewJobOutputTool() fantasy.AgentTool {
 		func(ctx context.Context, params JobOutputParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			if params.ShellID == "" {
 				return fantasy.NewTextErrorResponse("missing shell_id"), nil
+			}
+			if isIsolatedJob(params.ShellID) {
+				return isolatedJobOutput(ctx, params)
 			}
 
 			bgManager := shell.GetBackgroundShellManager()
@@ -128,6 +134,10 @@ func NewJobOutputTool() fantasy.AgentTool {
 				WorkingDirectory: bgShell.WorkingDir,
 				WaitTimedOut:     timedOut,
 				WaitedSeconds:    waitedSeconds,
+			}
+			if done {
+				code := shell.ExitCode(err)
+				metadata.ExitCode = &code
 			}
 
 			if output == "" {

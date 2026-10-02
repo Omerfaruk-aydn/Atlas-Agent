@@ -48,7 +48,7 @@ func (c *coordinator) withSessionMode(systemPrompt string) string {
 	if !ok || strings.TrimSpace(mode.Instructions) == "" {
 		return systemPrompt
 	}
-	return systemPrompt + "\n\n<mode name=\"" + mode.Name + "\">\n" + mode.Instructions + "\n</mode>"
+	return systemPrompt + "\n\n<mode name=\"" + mode.Name + "\">\n" + mode.Instructions + "\n</mode>" + mode.RolePrompt()
 }
 
 // sessionModeModel resolves the model an active session mode should run
@@ -58,20 +58,37 @@ func (c *coordinator) withSessionMode(systemPrompt string) string {
 // assigned still contributes its prompt, just on the session's own model
 // -- or when that role fails to build, which is logged rather than
 // failing the session outright.
-func (c *coordinator) sessionModeModel(ctx context.Context) (Model, bool) {
+func (c *coordinator) sessionModeModel(ctx context.Context) (Model, bool, error) {
+	if c.cfg.Overrides().PreserveSelectedModel {
+		return Model{}, false, nil
+	}
 	mode, ok := c.sessionMode()
 	if !ok {
-		return Model{}, false
+		return Model{}, false, nil
 	}
-	roleCfg, ok := c.cfg.Config().ResolveRole(mode.Name)
+	role := mode.Name
+	if mode.Model != "" {
+		role = mode.Model
+	}
+	roleCfg, ok := c.cfg.Config().ResolveRole(role)
+	measured, enabled, err := c.cfg.ResolveMeasuredRole(role)
+	if err != nil {
+		return Model{}, false, err
+	}
+	if enabled {
+		roleCfg, ok = measured, true
+	}
 	if !ok {
-		return Model{}, false
+		return Model{}, false, nil
 	}
 	model, err := c.resolveModel(ctx, roleCfg, false)
 	if err != nil {
+		if enabled {
+			return Model{}, false, err
+		}
 		slog.Warn("Session mode's model role failed to build; staying on the session's own model",
 			"mode", mode.Name, "provider", roleCfg.Provider, "model", roleCfg.Model, "error", err)
-		return Model{}, false
+		return Model{}, false, nil
 	}
-	return model, true
+	return model, true, nil
 }

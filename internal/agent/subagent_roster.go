@@ -29,6 +29,9 @@ func describeConfiguredSubagents(discovered []*subagents.Subagent) string {
 			continue
 		}
 		fmt.Fprintf(&b, "- %s: %s\n", s.Name, desc)
+		if s.Contract != nil {
+			fmt.Fprintf(&b, "  task_types=%v outputs=%v required_tools=%v independent_review=%t\n", s.Contract.TaskTypes, s.Contract.Outputs, s.Contract.RequiredTools, s.Contract.IndependentReview)
+		}
 	}
 	return b.String()
 }

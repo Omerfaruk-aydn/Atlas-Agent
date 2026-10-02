@@ -131,8 +131,7 @@ func TestAtlasLogs_EmptyFile(t *testing.T) {
 	t.Parallel()
 	tempDir := t.TempDir()
 	logFile := filepath.Join(tempDir, "atlas.log")
-	_, err := os.Create(logFile)
-	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(logFile, nil, 0o644))
 
 	result := runAtlasLogs(logFile, AtlasLogsParams{Lines: 50})
 	require.Contains(t, result, "Log file is empty")

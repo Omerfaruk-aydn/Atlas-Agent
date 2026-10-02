@@ -112,6 +112,9 @@ cat README.md | %[1]s run "make this more glamorous" > GLAMOROUS_README.md
 %[1]s --continue
   `, version.BinaryName()),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := selectSessionWorkspace(cmd); err != nil {
+			return err
+		}
 		sessionID, _ := cmd.Flags().GetString("session")
 		continueLast, _ := cmd.Flags().GetBool("continue")
 
@@ -285,6 +288,9 @@ func setupLocalWorkspace(cmd *cobra.Command) (workspace.Workspace, func(), error
 
 	store, err := config.Init(cwd, dataDir, debug)
 	if err != nil {
+		return nil, nil, err
+	}
+	if err := applyRunRoleOverride(cmd, store); err != nil {
 		return nil, nil, err
 	}
 

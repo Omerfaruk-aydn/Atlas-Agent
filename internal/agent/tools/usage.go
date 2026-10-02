@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 )
 
@@ -19,9 +20,11 @@ const UsageToolName = "usage"
 type UsageParams struct{}
 
 type UsageResponseMetadata struct {
-	PromptTokens     int64   `json:"prompt_tokens"`
-	CompletionTokens int64   `json:"completion_tokens"`
-	Cost             float64 `json:"cost"`
+	RuntimeUsage     *engineering.Usage  `json:"runtime_usage,omitempty"`
+	RuntimeLimits    *engineering.Limits `json:"runtime_limits,omitempty"`
+	PromptTokens     int64               `json:"prompt_tokens"`
+	CompletionTokens int64               `json:"completion_tokens"`
+	Cost             float64             `json:"cost"`
 	// MaxSessionCost and Remaining are zero when no budget is configured.
 	MaxSessionCost float64 `json:"max_session_cost,omitempty"`
 	Remaining      float64 `json:"remaining,omitempty"`
@@ -35,7 +38,7 @@ type UsageResponseMetadata struct {
 // enforces (0 means none configured) -- reported here so the model can see
 // a hard stop coming instead of only discovering it when a prompt is
 // refused.
-func NewUsageTool(sessions session.Service, maxSessionCost float64) fantasy.AgentTool {
+func NewUsageTool(sessions session.Service, maxSessionCost float64, runtime ...*engineering.Store) fantasy.AgentTool {
 	return fantasy.NewAgentTool(
 		UsageToolName,
 		usageDescription,
@@ -70,6 +73,15 @@ func NewUsageTool(sessions session.Service, maxSessionCost float64) fantasy.Agen
 				}
 			}
 
+			if len(runtime) > 0 && runtime[0] != nil {
+				scope := engineering.GetScope(ctx, sessionID)
+				state, err := runtime[0].Read(ctx, scope.SessionID)
+				if err != nil {
+					return fantasy.ToolResponse{}, err
+				}
+				meta.RuntimeUsage, meta.RuntimeLimits = &state.Usage, &state.Limits
+				fmt.Fprintf(&b, "Cumulative runtime: %d tokens, %d tool calls, %d active ms, $%.4f (includes delegated and auxiliary calls). Inspect workflow status for task budgets.\n", state.Usage.Tokens, state.Usage.ToolCalls, state.Usage.DurationMS, state.Usage.Cost)
+			}
 			return fantasy.WithResponseMetadata(fantasy.NewTextResponse(b.String()), meta), nil
 		},
 	)

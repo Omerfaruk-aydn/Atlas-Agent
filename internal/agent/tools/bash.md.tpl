@@ -171,3 +171,7 @@ Important:
 Good: pytest /foo/bar/tests
 Bad: cd /foo/bar && pytest tests
 </examples>
+Structured checks may supply `argv` instead of `command`. Each element is a
+literal argument: no variable expansion, command substitution or shell chaining.
+Use exactly one of these fields. `argv` executes in the foreground and retains
+ordinary permissions, command policy, budgets and configured isolation.

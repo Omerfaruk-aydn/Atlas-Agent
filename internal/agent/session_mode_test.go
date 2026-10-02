@@ -69,7 +69,8 @@ func TestUnknownSessionModeFallsBackToTheOrdinaryPrompt(t *testing.T) {
 func TestSessionModeModelIsAbsentWithoutAMatchingRole(t *testing.T) {
 	c := newSessionModeCoordinator(t, "review")
 
-	_, ok := c.sessionModeModel(t.Context())
+	_, ok, err := c.sessionModeModel(t.Context())
+	require.NoError(t, err)
 	require.False(t, ok)
 	require.Contains(t, c.withSessionMode("base prompt"), `<mode name="review">`)
 }

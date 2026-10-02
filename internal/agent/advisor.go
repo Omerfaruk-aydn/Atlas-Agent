@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/notify"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
 )
 
@@ -118,17 +120,26 @@ func (a *sessionAgent) runAdvisorPass(ctx context.Context, sessionID, userPrompt
 	defer cancel()
 
 	advisorModel := a.advisorModel.Get().v
+	scope := engineering.GetScope(ctx, sessionID)
+	ctx = engineering.WithScope(ctx, scope.SessionID, scope.TaskID)
+	ctx = context.WithValue(ctx, tools.SessionIDContextKey, sessionID)
+	ctx, finish, budgetErr := a.engineeringContext(ctx, sessionID)
+	if budgetErr != nil {
+		slog.Info("Advisor skipped because execution budget is exhausted", "session_id", sessionID)
+		return
+	}
+	defer finish()
 	agent := fantasy.NewAgent(
 		advisorModel.Model,
 		fantasy.WithSystemPrompt(advisorSystemPrompt),
-		fantasy.WithTools(a.advisorTools.Copy()...),
+		fantasy.WithTools(guardTools(a.advisorTools.Copy(), a.engineering)...),
 		fantasy.WithUserAgent(userAgent),
 	)
 
 	review := "User asked:\n" + truncateForAdvisor(userPrompt) +
 		"\n\nAgent responded:\n" + truncateForAdvisor(assistantText)
 
-	result, err := agent.Stream(ctx, fantasy.AgentStreamCall{Prompt: review})
+	result, err := agent.Stream(ctx, a.engineeringReviewCall(ctx, sessionID, *advisorModel, review))
 	if err != nil {
 		slog.Warn("Advisor pass failed", "session_id", sessionID, "error", err)
 		return
@@ -205,7 +216,7 @@ func (a *sessionAgent) runEscalationPass(ctx context.Context, sessionID, userPro
 	agent := fantasy.NewAgent(
 		escalateModel.Model,
 		fantasy.WithSystemPrompt(escalateSystemPrompt),
-		fantasy.WithTools(a.escalateTools.Copy()...),
+		fantasy.WithTools(guardTools(a.escalateTools.Copy(), a.engineering)...),
 		fantasy.WithUserAgent(userAgent),
 	)
 
@@ -213,7 +224,7 @@ func (a *sessionAgent) runEscalationPass(ctx context.Context, sessionID, userPro
 		"\n\nAgent responded:\n" + truncateForAdvisor(assistantText) +
 		"\n\nFirst reviewer (" + strings.ToLower(severity) + "): " + advisorNote
 
-	result, err := agent.Stream(ctx, fantasy.AgentStreamCall{Prompt: review})
+	result, err := agent.Stream(ctx, a.engineeringReviewCall(ctx, sessionID, *escalateModel, review))
 	if err != nil {
 		slog.Warn("Escalation pass failed", "session_id", sessionID, "error", err)
 		return "", false

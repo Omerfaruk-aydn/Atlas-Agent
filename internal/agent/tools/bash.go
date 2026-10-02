@@ -16,35 +16,40 @@ import (
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/execution"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/fsext"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell"
 )
 
 type BashParams struct {
-	Description         string `json:"description" description:"A brief description of what the command does, try to keep it under 30 characters or so"`
-	Command             string `json:"command" description:"The command to execute"`
-	WorkingDir          string `json:"working_dir,omitempty" description:"The working directory to execute the command in (defaults to current directory)"`
-	RunInBackground     bool   `json:"run_in_background,omitempty" description:"Set to true (boolean) to run this command in the background. Use job_output to read the output later."`
-	AutoBackgroundAfter int    `json:"auto_background_after,omitempty" description:"Seconds to wait before automatically moving the command to a background job (default: 60)"`
+	Description         string   `json:"description" description:"A brief description of what the command does, try to keep it under 30 characters or so"`
+	Command             string   `json:"command,omitempty" description:"Shell source to execute; mutually exclusive with argv"`
+	Argv                []string `json:"argv,omitempty" description:"Literal executable and arguments, without shell expansion; mutually exclusive with command; foreground only"`
+	WorkingDir          string   `json:"working_dir,omitempty" description:"The working directory to execute the command in (defaults to current directory)"`
+	RunInBackground     bool     `json:"run_in_background,omitempty" description:"Set to true (boolean) to run this command in the background. Use job_output to read the output later."`
+	AutoBackgroundAfter int      `json:"auto_background_after,omitempty" description:"Seconds to wait before automatically moving the command to a background job (default: 60)"`
 }
 
 type BashPermissionsParams struct {
-	Description         string `json:"description"`
-	Command             string `json:"command"`
-	WorkingDir          string `json:"working_dir"`
-	RunInBackground     bool   `json:"run_in_background"`
-	AutoBackgroundAfter int    `json:"auto_background_after"`
+	Description         string   `json:"description"`
+	Command             string   `json:"command"`
+	Argv                []string `json:"argv"`
+	WorkingDir          string   `json:"working_dir"`
+	RunInBackground     bool     `json:"run_in_background"`
+	AutoBackgroundAfter int      `json:"auto_background_after"`
 }
 
 type BashResponseMetadata struct {
-	StartTime        int64  `json:"start_time"`
-	EndTime          int64  `json:"end_time"`
-	Output           string `json:"output"`
-	Description      string `json:"description"`
-	WorkingDirectory string `json:"working_directory"`
-	Background       bool   `json:"background,omitempty"`
-	ShellID          string `json:"shell_id,omitempty"`
+	Execution        *execution.Result `json:"execution,omitempty"`
+	ExitCode         *int              `json:"exit_code,omitempty"`
+	StartTime        int64             `json:"start_time"`
+	EndTime          int64             `json:"end_time"`
+	Output           string            `json:"output"`
+	Description      string            `json:"description"`
+	WorkingDirectory string            `json:"working_directory"`
+	Background       bool              `json:"background,omitempty"`
+	ShellID          string            `json:"shell_id,omitempty"`
 }
 
 const (
@@ -168,12 +173,18 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 		BashToolName,
 		string(bashDescription(attribution, modelID, policy, limits)),
 		func(ctx context.Context, params BashParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
-			if params.Command == "" {
-				return fantasy.NewTextErrorResponse("missing command"), nil
+			if (params.Command == "") == (len(params.Argv) == 0) {
+				return fantasy.NewTextErrorResponse("supply exactly one of command or argv"), nil
+			}
+			if len(params.Argv) > 0 && params.RunInBackground {
+				return fantasy.NewTextErrorResponse("literal argv checks require foreground execution"), nil
 			}
 
 			// Determine working directory
 			execWorkingDir := cmp.Or(params.WorkingDir, workingDir)
+			if len(params.Argv) > 0 && !filepath.IsAbs(execWorkingDir) {
+				execWorkingDir = filepath.Join(workingDir, execWorkingDir)
+			}
 
 			isSafeReadOnly := false
 			cmdLower := strings.ToLower(params.Command)
@@ -205,7 +216,7 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 					ToolCallID:  call.ID,
 					ToolName:    BashToolName,
 					Action:      "execute",
-					Description: fmt.Sprintf("Execute command: %s", params.Command),
+					Description: fmt.Sprintf("Execute command: %s", cmp.Or(params.Command, fmt.Sprint(params.Argv))),
 					Params:      BashPermissionsParams(params),
 					Safe:        isSafeReadOnly,
 				},
@@ -216,6 +227,21 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 			if !p {
 				return NewPermissionDeniedResponse(permissions), nil
 			}
+			if execution.HasBinding(ctx) {
+				return runIsolatedBash(ctx, params, call, execWorkingDir, blocks, limits)
+			}
+			if len(params.Argv) > 0 {
+				start := time.Now()
+				sh := shell.NewShell(&shell.Options{WorkingDir: execWorkingDir, BlockFuncs: blocks})
+				stdout, stderr, err := sh.ExecArgv(ctx, params.Argv)
+				if !shell.ObservedExit(err) {
+					return fantasy.ToolResponse{}, err
+				}
+				exit := shell.ExitCode(err)
+				output := formatOutput(stdout, stderr, err, limits.MaxOutputLength)
+				metadata := BashResponseMetadata{ExitCode: &exit, StartTime: start.UnixMilli(), EndTime: time.Now().UnixMilli(), Output: output, Description: params.Description, WorkingDirectory: execWorkingDir}
+				return fantasy.WithResponseMetadata(fantasy.NewTextResponse(cmp.Or(output, BashNoOutput)), metadata), nil
+			}
 
 			// If explicitly requested as background, start immediately with detached context
 			if params.RunInBackground {
@@ -223,7 +249,7 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 				bgManager := shell.GetBackgroundShellManager()
 				bgManager.Cleanup()
 				// Use background context so it continues after tool returns
-				bgShell, err := bgManager.Start(context.Background(), execWorkingDir, blocks, params.Command, params.Description)
+				bgShell, err := bgManager.Start(context.WithoutCancel(ctx), execWorkingDir, blocks, params.Command, params.Description)
 				if err != nil {
 					return fantasy.ToolResponse{}, fmt.Errorf("error starting background shell: %w", err)
 				}
@@ -245,6 +271,7 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 					stdout = formatOutput(stdout, stderr, execErr, limits.MaxOutputLength)
 
 					metadata := BashResponseMetadata{
+						ExitCode:         &exitCode,
 						StartTime:        startTime.UnixMilli(),
 						EndTime:          time.Now().UnixMilli(),
 						Output:           stdout,
@@ -278,7 +305,7 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 			// Start with detached context so it can survive if moved to background
 			bgManager := shell.GetBackgroundShellManager()
 			bgManager.Cleanup()
-			bgShell, err := bgManager.Start(context.Background(), execWorkingDir, blocks, params.Command, params.Description)
+			bgShell, err := bgManager.Start(context.WithoutCancel(ctx), execWorkingDir, blocks, params.Command, params.Description)
 			if err != nil {
 				return fantasy.ToolResponse{}, fmt.Errorf("error starting shell: %w", err)
 			}
@@ -329,6 +356,7 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 				stdout = formatOutput(stdout, stderr, execErr, limits.MaxOutputLength)
 
 				metadata := BashResponseMetadata{
+					ExitCode:         &exitCode,
 					StartTime:        startTime.UnixMilli(),
 					EndTime:          time.Now().UnixMilli(),
 					Output:           stdout,

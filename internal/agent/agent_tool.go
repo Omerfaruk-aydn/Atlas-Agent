@@ -12,9 +12,12 @@ import (
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/prompt"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/codegraph"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/hooks"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/subagents"
 )
 
@@ -26,7 +29,7 @@ import (
 // without limit. A subagent that explicitly lists these in its own "tools"
 // front matter still gets them: this default only applies when Tools is
 // empty.
-var subagentSpawningTools = []string{AgentToolName, DelegateToolName, OrchestrateToolName, DebateToolName}
+var subagentSpawningTools = []string{AgentToolName, DelegateToolName, OrchestrateToolName, DebateToolName, "workflow", "worktree"}
 
 // subagentAllowedTools decides which tools a named subagent gets built
 // with. A subagent that lists its own "tools" gets exactly that list --
@@ -37,6 +40,23 @@ var subagentSpawningTools = []string{AgentToolName, DelegateToolName, Orchestrat
 // session has -- not just the small read-only search set the generic,
 // unnamed task agent uses.
 func subagentAllowedTools(sub *subagents.Subagent, coderTools []string) []string {
+	if sub.ReadOnly {
+		allowed := slices.Clone(subagents.ReadTools)
+		requested := coderTools
+		if sub.AllowCommands {
+			allowed = append(allowed, subagents.CommandTools...)
+		}
+		if len(sub.Tools) > 0 {
+			requested = sub.Tools
+		}
+		out := []string{}
+		for _, name := range requested {
+			if slices.Contains(allowed, name) && slices.Contains(coderTools, name) {
+				out = append(out, name)
+			}
+		}
+		return out
+	}
 	if len(sub.Tools) > 0 {
 		return sub.Tools
 	}
@@ -54,7 +74,12 @@ func subagentAllowedTools(sub *subagents.Subagent, coderTools []string) []string
 var agentToolDescription string
 
 type AgentParams struct {
-	Prompt string `json:"prompt" description:"The task for the agent to perform"`
+	TaskType       string   `json:"task_type,omitempty" description:"Structured task type for automatic routing: frontend, backend, test, review, debug, security, architecture, planning, research, docs or refactor."`
+	RequiredTools  []string `json:"required_tools,omitempty" description:"Tool capabilities the selected specialist must support."`
+	ExpectedOutput string   `json:"expected_output,omitempty" description:"Required role output, e.g. implementation, findings, test-results or plan."`
+	QualityOnly    bool     `json:"quality_only,omitempty" description:"Run the named specialist with direct edits, MCP and delegation disabled for independent validation."`
+	WorkspaceID    string   `json:"workspace_id,omitempty" description:"Registered isolated workspace ID; tools are rebuilt with this workspace as their root."`
+	Prompt         string   `json:"prompt" description:"The task for the agent to perform"`
 	// AgentName optionally names a configured subagent (see
 	// internal/subagents and `atlas agent list`) to run the task with,
 	// instead of the default agent.
@@ -70,6 +95,7 @@ type AgentParams struct {
 // caller already knows, but an auto-routed call only becomes
 // transparent if the response says which subagent it landed on.
 type AgentResponseMetadata struct {
+	RoutingReason string `json:"routing_reason,omitempty"`
 	// RoutedTo is the auto-selected subagent's name, or empty when auto
 	// routing was not requested, found no match, or agent_name was set
 	// explicitly instead.
@@ -80,7 +106,7 @@ const (
 	AgentToolName = "agent"
 )
 
-func (c *coordinator) agentTool(ctx context.Context) (fantasy.AgentTool, error) {
+func (c *coordinator) agentTool(ctx context.Context, available ...func() []string) (fantasy.AgentTool, error) {
 	agentCfg, ok := c.cfg.Config().Agents[config.AgentTask]
 	if !ok {
 		return nil, errors.New("task agent not configured")
@@ -131,6 +157,15 @@ func (c *coordinator) agentTool(ctx context.Context) (fantasy.AgentTool, error) 
 			}
 
 			return c.runAgentToolCall(ctx, agentToolCallParams{
+				availableTools: func() []string {
+					if len(available) > 0 {
+						return available[0]()
+					}
+					return nil
+				}(),
+				route:             subagents.RouteRequest{Prompt: params.Prompt, TaskType: params.TaskType, RequiredTools: params.RequiredTools, Output: params.ExpectedOutput},
+				qualityOnly:       params.QualityOnly,
+				workspaceID:       params.WorkspaceID,
 				agentCfg:          agentCfg,
 				discovered:        discovered,
 				subagentInstances: subagentInstances,
@@ -155,6 +190,10 @@ func (c *coordinator) agentTool(ctx context.Context) (fantasy.AgentTool, error) 
 // making a network call -- the same trick TestRunOrchestratedAgentHappyPath
 // uses for orchestrate.
 type agentToolCallParams struct {
+	availableTools    []string
+	route             subagents.RouteRequest
+	qualityOnly       bool
+	workspaceID       string
 	agentCfg          config.Agent
 	discovered        []*subagents.Subagent
 	subagentInstances *csync.Map[string, SessionAgent]
@@ -169,9 +208,87 @@ type agentToolCallParams struct {
 }
 
 func (c *coordinator) runAgentToolCall(ctx context.Context, p agentToolCallParams) (fantasy.ToolResponse, error) {
+	var routingReason string
+	var routedTo string
+	if p.auto && p.agentName == "" {
+		p.route.Prompt = p.prompt
+		available := p.availableTools
+		if coder, ok := c.cfg.Config().Agents[config.AgentCoder]; ok && available == nil {
+			available = coder.AllowedTools
+		}
+		if matched, ok := subagents.Route(p.discovered, p.route, available); ok {
+			p.agentName, routingReason = matched.Name, matched.Reason
+			routedTo = matched.Name
+		} else if p.route.TaskType != "" || len(p.route.RequiredTools) > 0 || p.route.Output != "" {
+			return fantasy.NewTextErrorResponse("no specialist satisfies the requested task type, tools and output"), nil
+		}
+		p.auto = false
+	}
+	if p.agentName != "" {
+		sub, ok := subagents.Find(p.discovered, p.agentName)
+		if !ok {
+			return fantasy.NewTextErrorResponse("unknown specialist " + p.agentName), nil
+		}
+		for _, tool := range p.route.RequiredTools {
+			coder := c.cfg.Config().Agents[config.AgentCoder]
+			allowed := coder.AllowedTools
+			if p.availableTools != nil {
+				allowed = p.availableTools
+			}
+			if !sub.SupportsTool(tool) || !slices.Contains(allowed, tool) {
+				return fantasy.NewTextErrorResponse("specialist cannot use required tool " + tool), nil
+			}
+		}
+	}
+	if p.qualityOnly {
+		sub, ok := subagents.Find(p.discovered, p.agentName)
+		if !ok {
+			return fantasy.NewTextErrorResponse("quality checks require a named specialist"), nil
+		}
+		copy := *sub
+		copy.ReadOnly, copy.AllowCommands = true, true
+		copy.Instructions += "\n\nThis invocation is an independent quality check. Inspect the actual implementation and run existing checks. Do not create tests, implement repairs, or execute changes requested by a prior handoff. Missing coverage or concrete defects require changes_required; unavailable checks require blocked. Return the requested JSON report with observed evidence."
+		if sub.Contract != nil {
+			contract := *sub.Contract
+			contract.Responsibilities = []string{"Independently inspect the implementation and execute existing checks without implementing changes."}
+			contract.Outputs = []string{"quality-report"}
+			contract.Completion = []string{"Acceptance criteria inspected, check results observed and no unresolved defects."}
+			contract.IndependentReview = false
+			copy.Contract = &contract
+		}
+		if p.workspaceID == "" {
+			built, err := c.buildSubagentSessionAgent(ctx, p.agentCfg, &copy)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			p.defaultAgent, p.agentName = built, ""
+		} else {
+			p.discovered = []*subagents.Subagent{&copy}
+		}
+	}
+	if p.workspaceID != "" {
+		scope := engineering.GetScope(ctx, p.sessionID)
+		workspace, err := c.engineering.Workspace(ctx, scope.SessionID, p.workspaceID)
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		ctx = engineering.WithScope(ctx, scope.SessionID, scope.TaskID)
+		ctx = engineering.WithOwnership(ctx, workspace.Path, scope.OwnedPaths)
+		sub, ok := subagents.Find(p.discovered, p.agentName)
+		if !ok {
+			return fantasy.NewTextErrorResponse("isolated agent calls require a named specialist"), nil
+		}
+		scoped := c.scopedCoordinator(workspace.Path)
+		built, err := scoped.buildSubagentSessionAgent(ctx, p.agentCfg, sub)
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		p.defaultAgent = built
+		p.agentName = ""
+		p.auto = false
+	}
 	runAgent := p.defaultAgent
 	sessionTitle := "New Agent Session"
-	routedTo := ""
 
 	switch {
 	case p.agentName != "":
@@ -181,24 +298,32 @@ func (c *coordinator) runAgentToolCall(ctx context.Context, p agentToolCallParam
 		}
 		runAgent = resolved
 		sessionTitle = p.agentName + " agent session"
-	case p.auto:
-		if matched, ok := subagents.Match(p.discovered, p.prompt); ok {
-			resolved, err := c.resolveSubagent(ctx, p.agentCfg, p.discovered, p.subagentInstances, matched.Name)
-			if err != nil {
-				return fantasy.NewTextErrorResponse(err.Error()), nil
-			}
-			runAgent = resolved
-			sessionTitle = matched.Name + " agent session (auto-routed)"
-			routedTo = matched.Name
-		}
-		// No match: silently falls back to the default agent, same as
-		// an empty agent_name would.
 	}
 
 	if err := p.limiter.acquire(ctx); err != nil {
 		return fantasy.ToolResponse{}, err
 	}
 	defer p.limiter.release()
+	if c.engineering != nil && engineering.GetScope(ctx, p.sessionID).TaskID == "" {
+		cfg := c.cfg
+		scope := engineering.GetScope(ctx, p.sessionID)
+		if scope.WriteRoot != "" {
+			cfg = cfg.Scoped(scope.WriteRoot)
+		}
+		paths := scope.OwnedPaths
+		if len(paths) == 0 {
+			paths = []string{"."}
+		}
+		packet, err := prepareTaskContext(ctx, cfg, c.engineering, session.Todo{Content: p.prompt, OwnedPaths: paths}, codegraph.CodeGraph{})
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		contextText, err := renderTaskContext(ctx, packet)
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		p.prompt += contextText
+	}
 
 	resp, err := c.runSubAgent(ctx, subAgentParams{
 		Agent:          runAgent,
@@ -211,7 +336,7 @@ func (c *coordinator) runAgentToolCall(ctx context.Context, p agentToolCallParam
 	if err != nil || routedTo == "" {
 		return resp, err
 	}
-	return fantasy.WithResponseMetadata(resp, AgentResponseMetadata{RoutedTo: routedTo}), nil
+	return fantasy.WithResponseMetadata(resp, AgentResponseMetadata{RoutedTo: routedTo, RoutingReason: routingReason}), nil
 }
 
 // resolveSubagent returns the cached SessionAgent for a named subagent,
@@ -257,6 +382,13 @@ func (c *coordinator) buildSubagentSessionAgent(ctx context.Context, taskCfg con
 
 	if sub.Model != "" {
 		modelCfg, ok := c.cfg.Config().ResolveRole(sub.Model)
+		measured, enabled, selectionErr := c.cfg.ResolveMeasuredRole(sub.Model)
+		if selectionErr != nil {
+			return nil, fmt.Errorf("subagent %q measured model selection: %w", sub.Name, selectionErr)
+		}
+		if enabled {
+			modelCfg, ok = measured, true
+		}
 		if !ok {
 			return nil, fmt.Errorf(
 				"subagent %q needs the %q model role assigned before it can run; call atlas_config with action \"set_role\" and role %q to assign it a provider and model",
@@ -283,6 +415,7 @@ func (c *coordinator) buildSubagentSessionAgent(ctx context.Context, taskCfg con
 	if sub.Instructions != "" {
 		systemPrompt += "\n\n<subagent name=\"" + sub.Name + "\">\n" + sub.Instructions + "\n</subagent>"
 	}
+	systemPrompt += sub.RolePrompt()
 
 	subCfg := taskCfg
 	if coderCfg, ok := c.cfg.Config().Agents[config.AgentCoder]; ok {
@@ -293,6 +426,9 @@ func (c *coordinator) buildSubagentSessionAgent(ctx context.Context, taskCfg con
 	// means none) -- a subagent is meant to actually do the work it was
 	// defined for, not just search.
 	subCfg.AllowedMCP = nil
+	if sub.ReadOnly {
+		subCfg.AllowedMCP = map[string][]string{}
+	}
 	agentTools, err := c.buildTools(ctx, subCfg, true)
 	if err != nil {
 		return nil, err
@@ -300,6 +436,10 @@ func (c *coordinator) buildSubagentSessionAgent(ctx context.Context, taskCfg con
 
 	largeProviderCfg, _ := c.cfg.Config().Providers.Get(large.ModelCfg.Provider)
 	return NewSessionAgent(SessionAgentOptions{
+		WorkingDir:           c.cfg.WorkingDir(),
+		Engineering:          c.engineering,
+		TaskContextConfig:    c.cfg,
+		ReadOnlyExecution:    sub.ReadOnly,
 		LargeModel:           large,
 		LargeModelFallbacks:  largeFallbacks,
 		FallbackCooldown:     time.Duration(c.cfg.Config().Options.FallbackCooldown) * time.Second,

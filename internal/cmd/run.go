@@ -22,6 +22,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/proto"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/subagents"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/anim"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/styles"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workspace"
@@ -62,6 +63,9 @@ atlas run --continue "Follow up on your last response"
 
   `,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := selectSessionWorkspace(cmd); err != nil {
+			return err
+		}
 		var (
 			quiet, _      = cmd.Flags().GetBool("quiet")
 			verbose, _    = cmd.Flags().GetBool("verbose")
@@ -100,6 +104,9 @@ atlas run --continue "Follow up on your last response"
 
 		if jsonOut && useClientServer() {
 			return errors.New("--json is not supported in client/server mode")
+		}
+		if cmd.Flags().Changed("role") && useClientServer() {
+			return errors.New("--role is a local per-run override; disable client/server mode for this run")
 		}
 
 		if useClientServer() {
@@ -180,6 +187,8 @@ atlas run --continue "Follow up on your last response"
 }
 
 func init() {
+	runCmd.Flags().String("role", "", "Run with a specialist role contract; none disables the configured mode. An explicit --model keeps its model choice")
+	runCmd.Flags().BoolP("yolo", "y", false, "Automatically accept tool permissions for this non-interactive run")
 	runCmd.Flags().BoolP("quiet", "q", false, "Hide spinner")
 	runCmd.Flags().BoolP("verbose", "v", false, "Show logs")
 	runCmd.Flags().StringP("model", "m", "", "Model to use. Accepts 'model' or 'provider/model' to disambiguate models with the same name across providers")
@@ -190,6 +199,21 @@ func init() {
 	runCmd.Flags().StringP("agent", "a", "",
 		"Hand the prompt to a configured subagent (see `atlas agent list`) via the agent tool, instead of running it directly")
 	runCmd.MarkFlagsMutuallyExclusive("session", "continue")
+}
+
+func applyRunRoleOverride(cmd *cobra.Command, store *config.ConfigStore) error {
+	if cmd.Flags().Lookup("role") == nil || !cmd.Flags().Changed("role") {
+		return nil
+	}
+	role, _ := cmd.Flags().GetString("role")
+	if role == "none" {
+		role = ""
+	} else if _, ok := subagents.Find(discoverConfiguredSubagents(store), role); !ok {
+		return fmt.Errorf("unknown role %q", role)
+	}
+	model, _ := cmd.Flags().GetString("model")
+	store.OverrideSessionMode(role, model != "")
+	return nil
 }
 
 // runNonInteractive executes the agent via the server and streams output

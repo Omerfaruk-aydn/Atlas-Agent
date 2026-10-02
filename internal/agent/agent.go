@@ -41,6 +41,8 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/vercel"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/catwalk"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-style/v2"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/execution"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/hooks"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
@@ -180,6 +182,10 @@ type activeCancel struct {
 type ptrBox[T any] struct{ v *T }
 
 type sessionAgent struct {
+	workingDir          string
+	engineering         *engineering.Store
+	taskContextConfig   *config.ConfigStore
+	readOnlyExecution   bool
 	largeModel          *csync.Value[Model]
 	largeModelFallbacks *csync.Slice[Model]
 	// fallbackCooldown is SessionAgentOptions.FallbackCooldown. *csync.Value,
@@ -340,7 +346,11 @@ type sessionAgent struct {
 }
 
 type SessionAgentOptions struct {
-	LargeModel Model
+	WorkingDir        string
+	Engineering       *engineering.Store
+	TaskContextConfig *config.ConfigStore
+	ReadOnlyExecution bool
+	LargeModel        Model
 	// LargeModelFallbacks are tried, in order, when LargeModel keeps
 	// answering with a rate-limit/quota error. See modelChain.
 	LargeModelFallbacks []Model
@@ -428,6 +438,10 @@ func NewSessionAgent(
 	opts SessionAgentOptions,
 ) SessionAgent {
 	return &sessionAgent{
+		workingDir:             opts.WorkingDir,
+		engineering:            opts.Engineering,
+		taskContextConfig:      opts.TaskContextConfig,
+		readOnlyExecution:      opts.ReadOnlyExecution,
 		largeModel:             csync.NewValue(opts.LargeModel),
 		largeModelFallbacks:    csync.NewSliceFrom(opts.LargeModelFallbacks),
 		fallbackCooldown:       csync.NewValue(opts.FallbackCooldown),
@@ -775,6 +789,9 @@ func ValidateCall(call SessionAgentCall) error {
 }
 
 func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *fantasy.AgentResult, retErr error) {
+	if a.readOnlyExecution {
+		ctx = execution.WithReadOnly(ctx)
+	}
 	if err := ValidateCall(call); err != nil {
 		return nil, err
 	}
@@ -885,7 +902,12 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	defer a.activeRequests.CompareAndDelete(call.SessionID, ac)
 
 	// Copy mutable fields under lock to avoid races with SetTools/SetModels.
-	agentTools := a.tools.Copy()
+	genCtx, finishEngineering, engineeringErr := a.engineeringContext(genCtx, call.SessionID)
+	if engineeringErr != nil {
+		return nil, engineeringErr
+	}
+	defer finishEngineering()
+	agentTools := guardTools(a.tools.Copy(), a.engineering)
 	largeModel := a.largeModel.Get()
 	// chain starts on largeModel -- or on a sticky fallback still within
 	// its cooldown, see stickyFallback -- and, on a 429, moves through
@@ -932,6 +954,29 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	// next turn instead of the next time the agent happens to be rebuilt.
 	if goal := strings.TrimSpace(currentSession.Goal); goal != "" {
 		systemPrompt += "\n\n<goal>\n" + goal + "\n</goal>"
+	}
+	systemPrompt += buildTaskLedger(currentSession.Todos)
+	if a.engineering != nil && a.workingDir != "" && !a.isSubAgent {
+		contextText, err := a.deliveryContext(ctx, call.SessionID, call.Prompt, currentSession.Todos)
+		if err != nil {
+			return nil, fmt.Errorf("prepare delivery context: %w", err)
+		}
+		systemPrompt += contextText
+	}
+	if a.engineering != nil {
+		scope := engineering.GetScope(ctx, call.SessionID)
+		st, err := a.engineering.Read(ctx, scope.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		var pending []engineering.Operation
+		for _, op := range st.Operations {
+			if op.Status == "running" {
+				pending = append(pending, op)
+			}
+		}
+		data, _ := json.Marshal(map[string]any{"usage": st.Usage, "limits": st.Limits, "unresolved_operations": pending})
+		systemPrompt += "\n\n<execution_status>\n" + string(data) + "\nOperations still marked running may be active background work or interrupted calls. Inspect their actual state; never replay a mutating operation merely because its completion record is absent. Use workflow status/recover.\n</execution_status>"
 	}
 
 	agent := fantasy.NewAgent(
@@ -1055,13 +1100,19 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		TopK:             call.TopK,
 		FrequencyPenalty: call.FrequencyPenalty,
 		PrepareStep: func(callContext context.Context, options fantasy.PrepareStepFunctionOptions) (_ context.Context, prepared fantasy.PrepareStepResult, err error) {
+			if a.engineering != nil {
+				scope := engineering.GetScope(callContext, call.SessionID)
+				if err := a.engineering.Check(callContext, scope.SessionID, scope.TaskID); err != nil {
+					return callContext, prepared, err
+				}
+			}
 			prepared.Messages = options.Messages
 			for i := range prepared.Messages {
 				prepared.Messages[i].ProviderOptions = nil
 			}
 
 			// Use latest tools (updated by SetTools when MCP tools change).
-			prepared.Tools = a.tools.Copy()
+			prepared.Tools = guardTools(a.tools.Copy(), a.engineering)
 
 			// Drain queued follow-up prompts for this step. Calls covered
 			// by a cancel recorded while they sat in the queue are dropped:
@@ -1295,7 +1346,14 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			// 429 failover chain.Current() differs from largeModel, and
 			// pricing the fallback's tokens at the primary's rate would
 			// misreport cost.
+			previousCost := updatedSession.Cost
 			a.updateSessionUsage(chain.Current(), &updatedSession, usage, a.openrouterCost(stepResult.ProviderMetadata), estimated)
+			if a.engineering != nil {
+				scope := engineering.GetScope(ctx, call.SessionID)
+				if err := a.engineering.Charge(context.WithoutCancel(ctx), scope.SessionID, scope.TaskID, engineeringTokens(usage), max(0, updatedSession.Cost-previousCost), 0); err != nil {
+					return err
+				}
+			}
 			_, sessionErr := a.sessions.Save(ctx, updatedSession)
 			if sessionErr != nil {
 				return sessionErr
@@ -1602,6 +1660,15 @@ func (a *sessionAgent) Summarize(ctx context.Context, sessionID string, opts fan
 	if a.IsSessionBusy(sessionID) {
 		return ErrSessionBusy
 	}
+	if engineering.GetScope(ctx, "").SessionID == "" {
+		var finish func()
+		var err error
+		ctx, finish, err = a.engineeringContext(ctx, sessionID)
+		if err != nil {
+			return err
+		}
+		defer finish()
+	}
 
 	// A configured "compact" model role overrides the session's own large
 	// model for this call only; see coordinator.buildCompactModel.
@@ -1682,6 +1749,9 @@ func (a *sessionAgent) summarizeAttempt(ctx context.Context, sessionID string, s
 		Headers:         sessionHeaders(sessionID),
 		ProviderOptions: opts,
 		OnAuthRefresh:   onAuthRefresh,
+		OnStepFinish: func(step fantasy.StepResult) error {
+			return a.chargeEngineeringStep(genCtx, sessionID, summaryModel, step)
+		},
 		ModelProvider: func() fantasy.LanguageModel {
 			// A compact-role model has no fallback/rotation chain of its
 			// own, so it stays fixed for the whole call; the session's own
@@ -1694,6 +1764,9 @@ func (a *sessionAgent) summarizeAttempt(ctx context.Context, sessionID string, s
 		},
 		PrepareStep: func(callContext context.Context, options fantasy.PrepareStepFunctionOptions) (_ context.Context, prepared fantasy.PrepareStepResult, err error) {
 			prepared.Messages = options.Messages
+			if err := a.checkEngineering(callContext, sessionID); err != nil {
+				return callContext, prepared, err
+			}
 			if systemPromptPrefix != "" {
 				prepared.Messages = append([]fantasy.Message{fantasy.NewSystemMessage(systemPromptPrefix)}, prepared.Messages...)
 			}
@@ -2058,6 +2131,13 @@ func (a *sessionAgent) GenerateTitle(ctx context.Context, sessionID string, user
 		}
 	}()
 
+	ctx, finish, budgetErr := a.engineeringContext(ctx, sessionID)
+	if budgetErr != nil {
+		slog.Info("Title generation skipped because execution budget is exhausted", "session_id", sessionID)
+		return
+	}
+	defer finish()
+
 	smallModel := a.smallModel.Get()
 	largeModel := a.largeModel.Get()
 	systemPromptPrefix := a.systemPromptPrefix.Get()
@@ -2076,6 +2156,9 @@ func (a *sessionAgent) GenerateTitle(ctx context.Context, sessionID string, user
 		Headers: sessionHeaders(sessionID),
 		PrepareStep: func(callCtx context.Context, opts fantasy.PrepareStepFunctionOptions) (_ context.Context, prepared fantasy.PrepareStepResult, err error) {
 			prepared.Messages = opts.Messages
+			if err := a.checkEngineering(callCtx, sessionID); err != nil {
+				return callCtx, prepared, err
+			}
 			if systemPromptPrefix != "" {
 				prepared.Messages = append([]fantasy.Message{
 					fantasy.NewSystemMessage(systemPromptPrefix),
@@ -2105,6 +2188,9 @@ func (a *sessionAgent) GenerateTitle(ctx context.Context, sessionID string, user
 			tok = attempt.model.CatwalkCfg.DefaultMaxTokens
 		}
 		agent := newAgent(attempt.model.Model, titlePrompt, tok)
+		streamCall.OnStepFinish = func(step fantasy.StepResult) error {
+			return a.chargeEngineeringStep(ctx, sessionID, attempt.model, step)
+		}
 		resp, err = agent.Stream(ctx, streamCall)
 		if err == nil && resp.Response.FinishReason != fantasy.FinishReasonLength {
 			model = attempt.model
@@ -2603,15 +2689,13 @@ func (a *sessionAgent) workaroundProviderMediaLimitations(messages []fantasy.Mes
 // buildSummaryPrompt constructs the prompt text for session summarization.
 func buildSummaryPrompt(todos []session.Todo) string {
 	var sb strings.Builder
-	sb.WriteString("Provide a detailed summary of our conversation above.")
+	sb.WriteString("Provide a concise continuation summary of our conversation above, preserving the latest user steering, authorization and actual verification evidence.")
 	if len(todos) > 0 {
 		sb.WriteString("\n\n## Current Todo List\n\n")
-		for _, t := range todos {
-			fmt.Fprintf(&sb, "- [%s] %s\n", t.Status, t.Content)
-		}
 		sb.WriteString("\nInclude these tasks and their statuses in your summary. ")
 		sb.WriteString("Instruct the resuming assistant to use the `todos` tool to continue tracking progress on these tasks.")
 	}
+	sb.WriteString(buildTaskLedger(todos))
 	return sb.String()
 }
 

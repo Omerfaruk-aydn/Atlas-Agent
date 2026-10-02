@@ -32,9 +32,16 @@ func HashID(id string) string {
 }
 
 type Todo struct {
-	Content    string     `json:"content"`
-	Status     TodoStatus `json:"status"`
-	ActiveForm string     `json:"active_form"`
+	ID                 string         `json:"id,omitempty"`
+	DependsOn          []string       `json:"depends_on,omitempty"`
+	Agent              string         `json:"agent,omitempty"`
+	OwnedPaths         []string       `json:"owned_paths,omitempty"`
+	Content            string         `json:"content"`
+	Status             TodoStatus     `json:"status"`
+	ActiveForm         string         `json:"active_form"`
+	AcceptanceCriteria []string       `json:"acceptance_criteria,omitempty"`
+	Verification       string         `json:"verification,omitempty"`
+	Evidence           []TodoEvidence `json:"evidence,omitempty"`
 }
 
 // HasIncompleteTodos returns true if there are any non-completed todos.
@@ -48,6 +55,8 @@ func HasIncompleteTodos(todos []Todo) bool {
 }
 
 type Session struct {
+	// TodosFingerprint retains the observed graph separately from usage saves.
+	todosFingerprint string
 	ID               string
 	ParentSessionID  string
 	Title            string
@@ -87,6 +96,7 @@ type Service interface {
 	GetLast(ctx context.Context) (Session, error)
 	List(ctx context.Context) ([]Session, error)
 	Save(ctx context.Context, session Session) (Session, error)
+	CompareAndSwapTodos(ctx context.Context, id, expectedFingerprint string, todos []Todo) (Session, error)
 	UpdateTitleAndUsage(ctx context.Context, sessionID, title string, promptTokens, completionTokens int64, cost float64) error
 	Rename(ctx context.Context, id string, title string) error
 	// SetGoal records what the session is for, replacing any goal already
@@ -105,6 +115,7 @@ type Service interface {
 }
 
 type service struct {
+	completionGate CompletionGate
 	*pubsub.Broker[Session]
 	db *sql.DB
 	q  *db.Queries
@@ -239,12 +250,37 @@ func (s *service) GetLast(ctx context.Context) (Session, error) {
 }
 
 func (s *service) Save(ctx context.Context, session Session) (Session, error) {
+	raw, err := s.q.GetSessionByID(ctx, session.ID)
+	if err != nil {
+		return Session{}, err
+	}
+	previous := s.fromDBItem(raw)
+	graphConflict := false
+	if session.todosFingerprint != "" {
+		if TodosFingerprint(session.Todos) == session.todosFingerprint {
+			session.Todos = previous.Todos
+		} else if TodosFingerprint(previous.Todos) != session.todosFingerprint && !sameTaskSpecifications(previous.Todos, session.Todos) {
+			graphConflict = true
+		}
+	}
+	if s.completionGate != nil {
+		if err := s.completionGate(ctx, previous, session); err != nil {
+			return Session{}, err
+		}
+	}
+	if graphConflict {
+		return Session{}, fmt.Errorf("task graph revision conflict")
+	}
+	if err := ValidateTaskGraph(session.Todos); err != nil {
+		return Session{}, err
+	}
 	todosJSON, err := marshalTodos(session.Todos)
 	if err != nil {
 		return Session{}, err
 	}
 
 	dbSession, err := s.q.UpdateSession(ctx, db.UpdateSessionParams{
+		ExpectedTodos:    raw.Todos,
 		ID:               session.ID,
 		Title:            session.Title,
 		PromptTokens:     session.PromptTokens,
@@ -268,6 +304,20 @@ func (s *service) Save(ctx context.Context, session Session) (Session, error) {
 	session.EstimatedUsage = estimatedUsage
 	s.Publish(pubsub.UpdatedEvent, session)
 	return session, nil
+}
+
+// Same assignments retain the legacy status/evidence save behavior, while
+// structural changes require a fresh graph snapshot.
+func sameTaskSpecifications(a, b []Todo) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if TaskFingerprint(a[i]) != TaskFingerprint(b[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // UpdateTitleAndUsage updates only the title and usage fields atomically.
@@ -387,6 +437,7 @@ func (s *service) fromDBItem(item db.Session) Session {
 		slog.Error("Failed to unmarshal tags", "session_id", item.ID, "error", err)
 	}
 	return Session{
+		todosFingerprint: TodosFingerprint(todos),
 		ID:               item.ID,
 		ParentSessionID:  item.ParentSessionID.String,
 		Title:            item.Title,
@@ -447,14 +498,18 @@ func unmarshalTags(data string) ([]string, error) {
 	return tags, nil
 }
 
-func NewService(q *db.Queries, conn *sql.DB) Service {
+func NewService(q *db.Queries, conn *sql.DB, gates ...CompletionGate) Service {
 	broker := pubsub.NewBroker[Session]()
-	return &service{
+	s := &service{
 		Broker:         broker,
 		db:             conn,
 		q:              q,
 		estimatedUsage: make(map[string]bool),
 	}
+	if len(gates) > 0 {
+		s.completionGate = gates[0]
+	}
+	return s
 }
 
 // CreateAgentToolSessionID creates a session ID for agent tool sessions using the format "messageID$$toolCallID"

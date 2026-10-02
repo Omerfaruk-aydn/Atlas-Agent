@@ -55,7 +55,7 @@ SET
     summary_message_id = ?,
     cost = ?,
     todos = ?
-WHERE id = ?
+WHERE id = ? AND todos IS sqlc.narg(expected_todos)
 RETURNING *;
 
 -- name: UpdateSessionTitleAndUsage :exec
@@ -90,3 +90,8 @@ WHERE id = ?;
 -- name: DeleteSession :exec
 DELETE FROM sessions
 WHERE id = ?;
+
+-- name: CompareAndSwapSessionTodos :execrows
+UPDATE sessions
+SET todos = sqlc.arg(new_todos)
+WHERE id = sqlc.arg(id) AND todos IS sqlc.narg(expected_todos);

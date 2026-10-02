@@ -10,6 +10,7 @@ import (
 )
 
 type Querier interface {
+	CompareAndSwapSessionTodos(ctx context.Context, arg CompareAndSwapSessionTodosParams) (int64, error)
 	CreateFile(ctx context.Context, arg CreateFileParams) (File, error)
 	CreateMessage(ctx context.Context, arg CreateMessageParams) (Message, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)

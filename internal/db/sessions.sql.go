@@ -10,6 +10,26 @@ import (
 	"database/sql"
 )
 
+const compareAndSwapSessionTodos = `-- name: CompareAndSwapSessionTodos :execrows
+UPDATE sessions
+SET todos = ?1
+WHERE id = ?2 AND todos IS ?3
+`
+
+type CompareAndSwapSessionTodosParams struct {
+	NewTodos      sql.NullString `json:"new_todos"`
+	ID            string         `json:"id"`
+	ExpectedTodos sql.NullString `json:"expected_todos"`
+}
+
+func (q *Queries) CompareAndSwapSessionTodos(ctx context.Context, arg CompareAndSwapSessionTodosParams) (int64, error) {
+	result, err := q.exec(ctx, q.compareAndSwapSessionTodosStmt, compareAndSwapSessionTodos, arg.NewTodos, arg.ID, arg.ExpectedTodos)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (
     id,
@@ -288,7 +308,7 @@ SET
     summary_message_id = ?,
     cost = ?,
     todos = ?
-WHERE id = ?
+WHERE id = ? AND todos IS ?8
 RETURNING id, parent_session_id, title, message_count, prompt_tokens, completion_tokens, cost, updated_at, created_at, summary_message_id, todos, tags, goal
 `
 
@@ -300,6 +320,7 @@ type UpdateSessionParams struct {
 	Cost             float64        `json:"cost"`
 	Todos            sql.NullString `json:"todos"`
 	ID               string         `json:"id"`
+	ExpectedTodos    sql.NullString `json:"expected_todos"`
 }
 
 func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (Session, error) {
@@ -311,6 +332,7 @@ func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) (S
 		arg.Cost,
 		arg.Todos,
 		arg.ID,
+		arg.ExpectedTodos,
 	)
 	var i Session
 	err := row.Scan(

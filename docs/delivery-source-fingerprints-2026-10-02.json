@@ -1,0 +1,70 @@
+[
+  {
+    "path": "D:\\Atlas\\internal\\engineering\\delivery.go",
+    "sha256": "94FCC7749E84BEE92B9F282C27C3FE9F3999A47069386A1DDEF9CA7C88A5D398"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\engineering\\knowledge.go",
+    "sha256": "1FE6868A84952037B18995853D2DBCA22192D3B371822C8AFAF3518F625BF78A"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\engineering\\ui_evidence.go",
+    "sha256": "7FD03DF49DBF29FC166587C149A5BDA138BC1E2C4E8A4B8CC4A3BFFB28C6A3C7"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\engineering\\project.go",
+    "sha256": "9A2B1B8D7ECDD820BD34F9704B8082A29F79ED5165B4E0CD358DF8EFFAAF4D49"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\engineering\\runtime.go",
+    "sha256": "4DF84E2692C72A1D4CE769B6777D7727AECC1B938BF10EE01AB2147EEAD3FEE1"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\delivery_workflow.go",
+    "sha256": "2FF685E4333B7018B5C064BFDB43913A30CC2D2F57266183A854C1274C0CEAFB"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\delivery_stage.go",
+    "sha256": "9E32D69D99A100328488AE35D58293F450263A6A35C934A7FAAD1803A6C20548"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\delivery_context.go",
+    "sha256": "96379BA50077D37C3CF96B61878383451A16D288CBC08BE338834A0EE3B2900C"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\agent.go",
+    "sha256": "3E4A38E044701502A5827CB45ADDF4B49EA6DFC5DFF136320ECDCFC93F23E39A"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\agent_tool.go",
+    "sha256": "1B155D02AADCDF4BC916A29AB15E378A3B0D68F9F3AA4896DA6F8058252B2C86"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\coordinator.go",
+    "sha256": "FDADD1679D925CE066384F5A69CCDA1B31F063241DFA5E4CAE1E771378EEE765"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\workflow_tool.go",
+    "sha256": "241BA88BBE040BCE67D852D1157505E7AA0306997E09D783F27AFF4225423FFD"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\tools\\ui_verify.go",
+    "sha256": "86235239C26D337D0499F456F4A9FB847BA8E549E4CAA6F2C5C209F439D88BAB"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\session\\quality_gate.go",
+    "sha256": "7AA6149D7A2B71124E221BBEF0B05C5B42EE7F99F5AA3BF86DF268C579CAEFF7"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\cmd\\workflow.go",
+    "sha256": "AC502A3CB57FF612C26538EA088E056B88FF65259EBBE53014F60572DA2DE30D"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\templates\\coder.md.tpl",
+    "sha256": "38BD8071739C8AB935864BDECDA0E4BD22B929011A550241235450D529640817"
+  },
+  {
+    "path": "D:\\Atlas\\internal\\agent\\templates\\task.md.tpl",
+    "sha256": "A925292605DA4061BAD70607AE57720F8D2EFEAF1EA598D80D20871636B453AA"
+  }
+]

@@ -1,0 +1,20 @@
+{
+  "profile_count": 5,
+  "root": "D:\\Atlas",
+  "detected_manifest_stacks": [
+    "go",
+    "node"
+  ],
+  "entry_points": 4,
+  "boundary_categories": [
+    "authorization",
+    "configuration",
+    "persistence",
+    "presentation",
+    "transport"
+  ],
+  "map_truncated": true,
+  "knowledge_persisted": true,
+  "smoke_data_dir": "C:\\Users\\Ömer&Ceylin\\AppData\\Local\\Temp\\atlas-delivery-smoke-cc17615a49dd4987a6aebc4a2e0801b4",
+  "binary_sha256": "952BA896CA42C2CEEF29DFE2EA3C4DD35889BC95D21F4B33685D7FA57E61BCA6"
+}

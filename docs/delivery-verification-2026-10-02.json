@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-02",
+  "scope": "Seven delivery improvements; benchmark item excluded",
+  "prompt_revision": "atlas-prompts-v3",
+  "implemented": [
+    "proportional work profiles",
+    "automatic bounded project orientation",
+    "versioned architecture decisions",
+    "verified integration-stage advancement",
+    "requirement-task-evidence trace",
+    "design/artifact/critique loop",
+    "source-grounded repair lessons"
+  ],
+  "full_suite": {
+    "command": "go test -count=1 -p 1 -ldflags='-w -s' -timeout 3m ./...",
+    "passed_packages": 98,
+    "log": "C:\\Users\\Ömer&Ceylin\\AppData\\Local\\Temp\\atlas-delivery-full-final-20261002.log",
+    "exit_code": 0
+  },
+  "final_agent_checks": {
+    "command": "go test -count=1 -p 1 -ldflags='-w -s' -timeout 3m ./internal/agent",
+    "purpose": "Final context-bound and stale-review trace regressions after full suite",
+    "duration_seconds": 10.778,
+    "exit_code": 0
+  },
+  "build": {
+    "binary": "C:\\Users\\Ömer&Ceylin\\AppData\\Local\\Temp\\atlas-delivery-20261002.exe",
+    "sha256": "952BA896CA42C2CEEF29DFE2EA3C4DD35889BC95D21F4B33685D7FA57E61BCA6",
+    "exit_code": 0
+  },
+  "cli_smoke": "docs/delivery-cli-smoke-2026-10-02.json",
+  "corrected_regression": "Workflow CLI path resolution no longer changes process cwd; Windows TempDir cleanup regression test passed",
+  "formatting": "gofumpt clean for changed Go files; git diff --check passed",
+  "limitations": [
+    "Stage gates require registered plans and bounded Git snapshots",
+    "Visual critiques are reported judgments linked to real files; tests used fixtures, not a live UI",
+    "Briefs are navigation hints, not complete architecture certification; map truncation is disclosed",
+    "Knowledge explanations remain reported claims; source freshness and observed repair checks are recorded"
+  ],
+  "model_benchmark_run": false,
+  "live_visual_inspection": false,
+  "published": false
+}

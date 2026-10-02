@@ -13,6 +13,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/home"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/skills"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workflows"
 )
 
 var namedArgPattern = regexp.MustCompile(`\$([A-Z][A-Z0-9_]*)`)
@@ -42,6 +43,7 @@ type MCPPrompt struct {
 
 // CustomCommand represents a user-defined custom command loaded from markdown files.
 type CustomCommand struct {
+	Recipe    *workflows.Recipe
 	ID        string
 	Name      string
 	Content   string

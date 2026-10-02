@@ -1,0 +1,10 @@
+{
+  "id": "release-check",
+  "version": 1,
+  "parameters": [{"name":"version","type":"string","required":true}],
+  "steps": [
+    {"id":"validate","role":"test","prompt":"Inspect release ${version} and run the project's declared build and regression checks. Do not publish or mutate credentials.","owned_paths":["."],"criteria":["Build and regression evidence matches the current source"]},
+    {"id":"review","role":"review","prompt":"Independently inspect readiness for ${version}, compatibility and known failures. Report readiness only; publication requires a separate explicit user request.","depends_on":["validate"],"owned_paths":["."],"criteria":["Blocking release defects are resolved or explicitly reported"]}
+  ],
+  "requirements": [{"id":"readiness","description":"Verify readiness of ${version}; no publication","step_ids":["validate","review"]}]
+}

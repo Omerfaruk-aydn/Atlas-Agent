@@ -1,0 +1,11 @@
+{
+  "id": "migration-review",
+  "version": 1,
+  "parameters": [{"name":"migration","type":"string","required":true}],
+  "steps": [
+    {"id":"design","role":"architect","prompt":"Inspect ${migration}, compatibility, recovery and resumable phases.","owned_paths":["."],"criteria":["Compatibility and recovery limits are explicit"]},
+    {"id":"migrate","role":"refactor","prompt":"Implement ${migration} through the accepted resumable phases.","depends_on":["design"],"owned_paths":["."],"criteria":["Migration preserves declared compatibility and recovery behavior"]},
+    {"id":"review","role":"review","prompt":"Independently verify ${migration}, including interruption and existing-data cases.","depends_on":["migrate"],"owned_paths":["."],"criteria":["Fresh checks cover compatibility and recovery"]}
+  ],
+  "requirements": [{"id":"migration","description":"Verified ${migration}","step_ids":["design","migrate","review"]}]
+}

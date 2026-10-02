@@ -1,0 +1,12 @@
+{
+  "id": "feature-delivery",
+  "version": 1,
+  "parameters": [{"name":"feature","type":"string","required":true}],
+  "steps": [
+    {"id":"plan","role":"planner","prompt":"Plan ${feature}; preserve user scope and record testable criteria.","owned_paths":["."],"criteria":["Dependencies and acceptance criteria are explicit"]},
+    {"id":"implement","role":"backend","prompt":"Implement ${feature} in an integrated vertical slice following the accepted plan.","depends_on":["plan"],"owned_paths":["."],"criteria":["The requested behavior is implemented with relevant regression evidence"]},
+    {"id":"validate","role":"test","prompt":"Validate ${feature} against actual behavior and regression checks.","depends_on":["implement"],"owned_paths":["."],"criteria":["Relevant checks execute and unresolved failures are reported"]},
+    {"id":"review","role":"review","prompt":"Independently inspect ${feature}, report actual defects and verify acceptance evidence.","depends_on":["validate"],"owned_paths":["."],"criteria":["Independent inspection resolves blocking findings"]}
+  ],
+  "requirements": [{"id":"feature","description":"Deliver ${feature} with verified integrated behavior","step_ids":["plan","implement","validate","review"]}]
+}

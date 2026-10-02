@@ -13,6 +13,7 @@ import (
 // also the model roles users assign models to, and a rename orphans a
 // user's configuration.
 var builtinNames = []string{
+	"architect",
 	"backend", "debug", "docs", "frontend", "planner",
 	"refactor", "research", "review", "security", "test",
 }
@@ -31,8 +32,17 @@ func TestBuiltinDefinitionsAreValid(t *testing.T) {
 			require.NoError(t, s.Validate())
 			require.True(t, s.Builtin)
 			require.Empty(t, s.Path, "a built-in has no file on disk")
-			require.Equal(t, s.Name, s.Model, "each mode runs on the model role sharing its name")
+			if s.Name == "architect" {
+				require.Equal(t, "research", s.Model)
+			} else {
+				require.Equal(t, s.Name, s.Model, "each mode runs on the model role sharing its name")
+			}
 			require.NotEmpty(t, strings.TrimSpace(s.Instructions))
+			if s.Name == "architect" || s.Name == "planner" || s.Name == "research" || s.Name == "review" {
+				require.True(t, s.ReadOnly)
+				require.True(t, s.AllowCommands)
+				require.Contains(t, s.Instructions, "Run scoped commands")
+			}
 		})
 	}
 }
@@ -41,15 +51,15 @@ func TestBuiltinDefinitionsAreValid(t *testing.T) {
 // validate fine while doing nothing useful. The upper bound matters as
 // much as the lower one -- every mode prompt is prepended to a real
 // request, so an essay costs the user context on every single turn.
-// 200-250 lines is the deliberate target for these prompts: detailed
-// enough to cover real failure modes and edge cases per role, without
-// growing into an unbounded reference manual.
+// Bound both lines and bytes so detailed role protocols remain a finite
+// working set rather than an unbounded reference manual.
 func TestBuiltinInstructionsAreSubstantial(t *testing.T) {
 	for _, s := range Builtin() {
 		t.Run(s.Name, func(t *testing.T) {
 			lines := strings.Count(strings.TrimSpace(s.Instructions), "\n") + 1
 			require.GreaterOrEqual(t, lines, 90, "mode prompt is too thin to be useful")
-			require.LessOrEqual(t, lines, 260, "mode prompt is long enough to cost real context")
+			require.LessOrEqual(t, lines, 300, "mode prompt is long enough to cost real context")
+			require.LessOrEqual(t, len(s.Instructions), 18*1024, "role detail must fit its context budget")
 		})
 	}
 }

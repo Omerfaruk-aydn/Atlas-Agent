@@ -9,7 +9,7 @@ import (
 )
 
 func TestRenderRoundTrips(t *testing.T) {
-	s := &Subagent{Name: "research", Description: "Deep research.", Model: "@research", Instructions: "Dig deep."}
+	s := &Subagent{Name: "research", Description: "Deep research.", Model: "@research", Instructions: "Dig deep.", ReadOnly: true, AllowCommands: true}
 
 	content, err := Render(s)
 	require.NoError(t, err)
@@ -19,6 +19,8 @@ func TestRenderRoundTrips(t *testing.T) {
 	require.Equal(t, s.Name, got.Name)
 	require.Equal(t, s.Description, got.Description)
 	require.Equal(t, s.Model, got.Model)
+	require.Equal(t, s.ReadOnly, got.ReadOnly)
+	require.Equal(t, s.AllowCommands, got.AllowCommands)
 	require.Equal(t, s.Instructions, got.Instructions)
 }
 

@@ -67,6 +67,17 @@ func Builtin() []*Subagent {
 	for i := range src {
 		s := src[i]
 		out[i] = &s
+		out[i].Tools = slices.Clone(s.Tools)
+		if s.Contract != nil {
+			contract := *s.Contract
+			contract.TaskTypes = slices.Clone(contract.TaskTypes)
+			contract.Responsibilities = slices.Clone(contract.Responsibilities)
+			contract.Inputs = slices.Clone(contract.Inputs)
+			contract.Outputs = slices.Clone(contract.Outputs)
+			contract.Completion = slices.Clone(contract.Completion)
+			contract.RequiredTools = slices.Clone(contract.RequiredTools)
+			out[i].Contract = &contract
+		}
 	}
 	return out
 }

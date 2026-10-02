@@ -1,0 +1,38 @@
+{
+  "scope": "Role contracts, capability routing, structured handoffs, independent quality gates and measured model selection",
+  "limitations": [
+    "No real model API benchmark was run. Recommendation/config smoke records are controlled fixtures.",
+    "Handoffs and local evaluation files are reported/trusted input, not cryptographically authenticated evidence.",
+    "Quality source snapshots require Git, cover tracked/non-ignored files, and are bounded to 10000 files/64 MiB."
+  ],
+  "published": false,
+  "date": "2026-10-02",
+  "regression_fix": "Project registration preserves recency under equal timestamps and clock rollback; deterministic regression test passed.",
+  "verification": {
+    "controlled_recommendation": true,
+    "json_schema_regenerated": true,
+    "cli_role_contracts": 11,
+    "repeated_run_scoring": true,
+    "diff_check": true,
+    "swagger_references_valid": true,
+    "insufficient_evidence_rejected": true,
+    "swagger_regenerated": true,
+    "formatted": true,
+    "measured_role_config_resolution": true
+  },
+  "final_agent_and_cmd_tests": {
+    "log": "C:\\Users\\MER&CE~1\\AppData\\Local\\Temp\\atlas-roles-last-check-20261002.log",
+    "exit_code": 0
+  },
+  "build": {
+    "sha256": "bb4c06754745464f8e569133a086234da7fd797ce883fb8e3dea0a6c2fc7a24e",
+    "binary": "C:\\Users\\MER&CE~1\\AppData\\Local\\Temp\\atlas-roles-20261002.exe",
+    "exit_code": 0
+  },
+  "full_suite": {
+    "log": "C:\\Users\\MER&CE~1\\AppData\\Local\\Temp\\atlas-roles-full-verified-20261002.log",
+    "command": "go test -count=1 -p 1 -ldflags='-w -s' -timeout 3m ./...",
+    "passed_packages": 98,
+    "exit_code": 0
+  }
+}

@@ -29,8 +29,12 @@ var namePattern = regexp.MustCompile(`^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$`)
 
 // Subagent represents a parsed subagent definition file.
 type Subagent struct {
-	Name        string `yaml:"name" json:"name"`
-	Description string `yaml:"description" json:"description"`
+	Contract *RoleContract `yaml:"contract,omitempty" json:"contract,omitempty"`
+	ReadOnly bool          `yaml:"read_only,omitempty" json:"read_only,omitempty"`
+	// AllowCommands permits execution tools while retaining direct edit restrictions.
+	AllowCommands bool   `yaml:"allow_commands,omitempty" json:"allow_commands,omitempty"`
+	Name          string `yaml:"name" json:"name"`
+	Description   string `yaml:"description" json:"description"`
 	// Model is a role reference ("research", "@research", "large") that
 	// Config.ResolveRole resolves to a concrete provider/model pair. Empty
 	// means the subagent runs on whatever model the parent session uses.
@@ -58,6 +62,9 @@ type Subagent struct {
 // from (when it came from one), and a non-empty description.
 func (s *Subagent) Validate() error {
 	var errs []error
+	if err := s.Contract.Validate(); err != nil {
+		errs = append(errs, err)
+	}
 
 	if s.Name == "" {
 		errs = append(errs, errors.New("name is required"))

@@ -169,6 +169,7 @@ type (
 
 	// sessionFilesUpdatesMsg is sent when the files for this session have been updated
 	sessionFilesUpdatesMsg struct {
+		sessionID    string
 		sessionFiles []SessionFile
 	}
 	// creditsUpdatedMsg was removed along with the Hyper provider.
@@ -878,6 +879,9 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 	case loadSessionMsg:
+		if m.workflow.open && (m.session == nil || m.session.ID != msg.session.ID) {
+			m.workflow = workflowPanel{epoch: m.workflow.epoch + 1}
+		}
 		if m.forceCompactMode {
 			m.isCompact = true
 		}
@@ -947,7 +951,11 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateLayoutAndSize()
 
 	case sessionFilesUpdatesMsg:
+		if msg.sessionID != "" && (m.session == nil || msg.sessionID != m.session.ID) {
+			break
+		}
 		m.sessionFiles = msg.sessionFiles
+		m.refreshWorkflowDiff()
 		var paths []string
 		for _, f := range msg.sessionFiles {
 			paths = append(paths, f.LatestVersion.Path)
@@ -2262,6 +2270,11 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 	case dialog.ActionOpenFileDiff:
 		m.dialog.CloseDialog(dialog.FilesID)
 		m.dialog.OpenDialog(dialog.NewFileDiff(m.com, msg.Entry.Path, msg.Entry.Before, msg.Entry.After, msg.Entry.Additions, msg.Entry.Deletions))
+	case dialog.ActionReviewLine:
+		m.dialog.CloseDialog(dialog.FileDiffID)
+		if cmd := m.beginWorkflowFeedback(msg.Path, msg.Line); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 
 	// Chat search dialog: run the query and jump to a match.
 	case dialog.ActionChatSearch:
@@ -3525,6 +3538,10 @@ func (m *UI) drawHeader(scr uv.Screen, area uv.Rectangle) {
 func (m *UI) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	if m.workflow.open {
 		m.drawWorkflowPanel(scr, area)
+		if m.dialog != nil && m.dialog.HasDialogs() {
+			dimScreen(scr, dialogDimTarget*m.dialog.OpenProgress())
+			return m.dialog.Draw(scr, scr.Bounds())
+		}
 		return nil
 	}
 	layout := m.generateLayout(area.Dx(), area.Dy())

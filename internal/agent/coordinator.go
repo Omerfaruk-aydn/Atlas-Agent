@@ -184,6 +184,7 @@ type coordinator struct {
 	interactive bool
 
 	currentAgent SessionAgent
+	lifetime     context.Context
 	agents       map[string]SessionAgent
 
 	// Skills discovery results (session-start snapshot).
@@ -244,6 +245,7 @@ func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, 
 	skillTracker := skills.NewTracker(activeSkills)
 
 	c := &coordinator{
+		lifetime:     ctx,
 		cfg:          opts.Config,
 		sessions:     opts.Sessions,
 		messages:     opts.Messages,
@@ -380,20 +382,21 @@ func (c *coordinator) run(ctx context.Context, accept *AcceptedRun, sessionID st
 	runID := RunIDFromContext(ctx)
 	run := func() (*fantasy.AgentResult, error) {
 		return c.currentAgent.Run(ctx, SessionAgentCall{
-			SessionID:        sessionID,
-			RunID:            runID,
-			Prompt:           prompt,
-			Attachments:      attachments,
-			MaxOutputTokens:  maxTokens,
-			ProviderOptions:  mergedOptions,
-			Temperature:      temp,
-			TopP:             topP,
-			TopK:             topK,
-			FrequencyPenalty: freqPenalty,
-			PresencePenalty:  presPenalty,
-			OnComplete:       onComplete,
-			Accepted:         accept,
-			OnAuthRefresh:    c.makeAuthRefreshCallback(providerCfg),
+			QueueContinuation: ctx.Value(queueContinuationKey{}) == true,
+			SessionID:         sessionID,
+			RunID:             runID,
+			Prompt:            prompt,
+			Attachments:       attachments,
+			MaxOutputTokens:   maxTokens,
+			ProviderOptions:   mergedOptions,
+			Temperature:       temp,
+			TopP:              topP,
+			TopK:              topK,
+			FrequencyPenalty:  freqPenalty,
+			PresencePenalty:   presPenalty,
+			OnComplete:        onComplete,
+			Accepted:          accept,
+			OnAuthRefresh:     c.makeAuthRefreshCallback(providerCfg),
 		})
 	}
 	beforeLoaded := c.skillTracker.LoadedNames()
@@ -1000,6 +1003,8 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		allTools,
 		tools.NewBashTool(c.permissions, c.cfg.WorkingDir(), c.cfg.Config().Options.Attribution, modelID, tools.NewCommandPolicy(c.cfg.Config()), tools.NewBashLimits(c.cfg.Config())),
 		tools.NewAtlasInfoTool(c.cfg, c.lspManager, c.allSkills, c.activeSkills, c.skillTracker),
+		tools.NewAPIProbeTool(c.cfg.WorkingDir(), c.permissions, urlPolicy(c.cfg)),
+		tools.NewMigrationRehearseTool(c.cfg.WorkingDir(), c.permissions),
 		tools.NewAtlasConfigTool(c.permissions, c.cfg, c.cfg.WorkingDir()),
 		tools.NewAtlasLogsTool(logFile),
 		tools.NewJobOutputTool(),
@@ -1183,11 +1188,25 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 			graphProviders = append(graphProviders, tools.NewLSPGraphProvider(c.cfg.WorkingDir(), c.lspManager))
 		}
 		allTools = append(allTools, tools.NewProjectMapTool(c.cfg.WorkingDir(), c.engineering, graphProviders...),
+			tools.NewCodeQueryTool(c.cfg.WorkingDir(), invoke),
 			tools.NewVerifyTool(c.cfg.WorkingDir(), c.engineering, invoke, verificationTools),
 			tools.NewWorktreeTool(c.cfg.WorkingDir(), c.engineering, c.permissions),
 			tools.NewUIVerifyTool(c.engineering, invoke, c.cfg.WorkingDir()),
 			tools.NewScenarioTool(c.cfg.WorkingDir(), c.engineering, c.permissions, invoke, tools.NewCommandPolicy(c.cfg.Config())), c.workflowTool(invoke))
+		allTools = append(allTools, tools.NewExperimentTools(c.cfg.WorkingDir(), c.engineering, invoke)...)
+		allTools = append(allTools, tools.NewUIAuditTools(c.engineering, invoke)...)
+		allTools = append(allTools, tools.NewSelectionTools(c.cfg.WorkingDir(), c.engineering)...)
+		allTools = append(allTools, c.requirementTraceTool())
+		allTools = append(allTools, tools.NewMutationTestTool(c.cfg.WorkingDir(), c.engineering, invoke))
 	}
+	allTools = append(allTools, tools.NewToolSearchTool(func(context.Context) []fantasy.AgentTool {
+		return c.filterTools(allTools, agent, nil, nil, isSubAgent)
+	}, func(ctx context.Context, infos []fantasy.ToolInfo) error {
+		if !c.cfg.Config().Options.DeferToolSchemas {
+			return nil
+		}
+		return tools.DiscoverTools(ctx, c.engineering, tools.GetSessionFromContext(ctx), infos)
+	}))
 	return allTools, nil
 }
 
@@ -2423,9 +2442,32 @@ func (c *coordinator) runSubAgent(ctx context.Context, params subAgentParams) (f
 	scope := engineering.GetScope(ctx, params.SessionID)
 	taskID := scope.TaskID
 	if taskID == "" {
-		taskID = "agent:" + params.SessionTitle
+		taskID = "agent-" + engineering.Hash(session.ID)[:32]
 	}
 	ctx = engineering.WithScope(ctx, scope.SessionID, taskID)
+	if c.engineering != nil {
+		childContext, cancel := context.WithCancel(ctx)
+		defer cancel()
+		unregister, err := c.engineering.RegisterRunnerLimit(childContext, scope.SessionID, engineering.LiveRunner{SessionID: session.ID, TaskID: taskID, Title: params.SessionTitle}, cancel, c.cfg.Config().Options.MaxConcurrentSubAgents)
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		defer unregister()
+		if err := c.engineering.Update(childContext, scope.SessionID, func(st *engineering.State) error {
+			run, exists := st.RoleExecutions[taskID]
+			if exists && !slices.Contains(run.SessionIDs, session.ID) {
+				run.SessionIDs = append(run.SessionIDs, session.ID)
+				if len(run.SessionIDs) > 8 {
+					run.SessionIDs = run.SessionIDs[len(run.SessionIDs)-8:]
+				}
+				st.RoleExecutions[taskID] = run
+			}
+			return nil
+		}); err != nil {
+			return fantasy.ToolResponse{}, err
+		}
+		ctx = childContext
+	}
 	run := func() (*fantasy.AgentResult, error) {
 		return params.Agent.Run(ctx, SessionAgentCall{
 			SessionID:        session.ID,

@@ -188,6 +188,7 @@ func (s *Server) installHandler() {
 	mux.HandleFunc("DELETE /v1/workspaces/{id}/agents/{name}", c.handleDeleteWorkspaceSubagent)
 	mux.HandleFunc("GET /v1/workspaces/{id}/jobs", c.handleGetWorkspaceJobs)
 	mux.HandleFunc("DELETE /v1/workspaces/{id}/jobs/{jid}", c.handleDeleteWorkspaceJob)
+	mux.HandleFunc("GET /v1/workspaces/{id}/jobs/{jid}/output", c.handleGetJobOutput)
 	mux.HandleFunc("GET /v1/workspaces/{id}/messages/user", c.handleGetWorkspaceAllUserMessages)
 	mux.HandleFunc("GET /v1/workspaces/{id}/sessions/{sid}/filetracker/files", c.handleGetWorkspaceSessionFileTrackerFiles)
 	mux.HandleFunc("POST /v1/workspaces/{id}/filetracker/read", c.handlePostWorkspaceFileTrackerRead)
@@ -240,7 +241,7 @@ func (s *Server) installHandler() {
 	mux.Handle("/v1/docs/", httpswagger.WrapHandler)
 	s.h = &http.Server{
 		Protocols: &p,
-		Handler:   s.recoverHandler(s.loggingHandler(mux)),
+		Handler:   s.recoverHandler(s.loggingHandler(TokenAuth(mux))),
 	}
 }
 

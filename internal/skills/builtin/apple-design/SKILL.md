@@ -19,6 +19,21 @@ Choose motion parameters by testing the implementation, not universal spring
 constants. Offer keyboard and assistive alternatives for gestures. Respect
 reduced motion and transparency and provide opaque material fallbacks.
 
+For direct manipulation, preserve the grab offset, capture/release the pointer
+and handle cancellation. Start retargeted motion from its actual presentation
+state and carry velocity only when the implementation supports it. Bound momentum
+to valid destinations; test reversing a moving sheet and cancelling a drag.
+Press feedback can start on pointer-down, but commit activation on the appropriate
+release/click/keyboard event so users can cancel. Never execute a destructive
+action simply because a pointer touched its control.
+
+Define type hierarchy with the actual font's metrics, content width and localized
+text. Use optical sizing/tracking where supported; avoid a universal letter-spacing
+rule. Depth must explain hierarchy: anchors, consistent enter/exit paths and clear
+modal versus non-modal behavior. Avoid stacking translucent surfaces that destroy
+contrast. Verify reduced-motion, opaque fallback, focus restoration and slow-device
+behavior instead of choosing spring numbers from a table and claiming native fidelity.
+
 Use translucency only when it communicates hierarchy and remains legible.
 Consider runtime performance and avoid pervasive blur. Add sound or haptics
 only when supported, appropriate and controllable. Verify controls, focus,

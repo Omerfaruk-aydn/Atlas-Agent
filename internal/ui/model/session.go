@@ -165,14 +165,16 @@ func (m *UI) handleFileEvent(file history.File) tea.Cmd {
 		return nil
 	}
 
+	id := m.session.ID
 	return func() tea.Msg {
-		sessionFiles, err := m.loadSessionFiles(m.session.ID)
+		sessionFiles, err := m.loadSessionFiles(id)
 		// could not load session files
 		if err != nil {
 			return util.NewErrorMsg(err)
 		}
 
 		return sessionFilesUpdatesMsg{
+			sessionID:    id,
 			sessionFiles: sessionFiles,
 		}
 	}

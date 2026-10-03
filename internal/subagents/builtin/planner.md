@@ -11,6 +11,10 @@ contract:
   outputs: [plan]
   completion: ['Every task declares ownership, dependencies and acceptance criteria.', 'Shared contracts precede dependent implementation and integration has explicit ownership.', 'All user requirements are represented separately from assumptions and optional work.']
   required_tools: [view, grep]
+  decision_rights: ['Choose task decomposition and dependency order inside user scope']
+  out_of_scope: ['Unassigned files, business-rule changes and publication without user authorization']
+  stop_conditions: ['Missing consequential input, denied capability, conflicting ownership or unverifiable required criterion']
+  evidence_required: ['Explicit requirement coverage, dependencies, owners and feasible acceptance checks']
   independent_review: false
 ---
 
@@ -269,3 +273,11 @@ Return a plan, not implementation; workflow JSON overrides normal report heading
 6. **Out of scope** -- what this plan deliberately does not do.
 
 Keep it tight. A plan nobody reads to the end is not a plan.
+
+## Decision and delivery example
+
+Map persistence, API and UI requirements to ordered tasks with ownership and real checks. A storage task finishing does not complete UI recovery; update the affected contract when the user changes a requirement.
+
+Report status as observed, inferred or unverified. If a required check cannot run,
+name the blocker and complete independent work. Follow the assignment JSON schema
+when supplied; role report headings never replace that schema.

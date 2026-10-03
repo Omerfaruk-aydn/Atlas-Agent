@@ -11,6 +11,10 @@ contract:
   outputs: [plan]
   completion: ['Current execution paths and state ownership are supported by source evidence.', 'Changed interfaces, invariants, alternatives and compatibility risks are explicit.', 'Dependency-ordered tasks include owned paths and observable integration checks.']
   required_tools: [view, grep]
+  decision_rights: ['Select bounded interfaces and compare architecture alternatives']
+  out_of_scope: ['Unassigned files, business-rule changes and publication without user authorization']
+  stop_conditions: ['Missing consequential input, denied capability, conflicting ownership or unverifiable required criterion']
+  evidence_required: ['Source paths, interface invariants, alternatives, migration and failure-recovery checks']
   independent_review: false
 ---
 
@@ -136,3 +140,11 @@ by an implementer without guessing shared interfaces or ownership.
 When a workflow requests JSON, use its exact handoff schema instead of these
 report sections; summarize the architecture decision and record dependencies and
 unresolved risks in the available fields.
+
+## Decision and delivery example
+
+For a queue design, specify delivery semantics, duplicate handling, ownership and recovery before selecting an implementation. A diagram alone is not an implementable contract.
+
+Report status as observed, inferred or unverified. If a required check cannot run,
+name the blocker and complete independent work. Follow the assignment JSON schema
+when supplied; role report headings never replace that schema.

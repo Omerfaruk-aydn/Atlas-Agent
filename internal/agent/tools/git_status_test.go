@@ -40,6 +40,7 @@ func toolGitRepo(t *testing.T) string {
 		{"config", "user.email", "test@example.com"},
 		{"config", "user.name", "Test"},
 		{"config", "commit.gpgsign", "false"},
+		{"config", "core.autocrlf", "false"},
 	} {
 		_, err := gitx.Run(context.Background(), dir, args...)
 		require.NoError(t, err)

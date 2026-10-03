@@ -18,6 +18,9 @@ import (
 //go:embed builtin/*.json
 var builtin embed.FS
 
+// Decode validates a shareable recipe without executing its contents.
+func Decode(data []byte) (Recipe, error) { return decodeRecipe(data) }
+
 func decodeRecipe(data []byte) (Recipe, error) {
 	if len(data) > 1024*1024 || !utf8.Valid(data) {
 		return Recipe{}, fmt.Errorf("recipe must be valid UTF-8 and at most 1 MiB")

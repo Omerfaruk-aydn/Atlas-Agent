@@ -16,6 +16,24 @@ import (
 )
 
 func (c *coordinator) deliveryReady(ctx context.Context, id string, todos []session.Todo, limit int) ([]session.Todo, error) {
+	_, board, err := c.engineering.ReadControlBoard(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 4
+	}
+	if board.MaxAgents > 0 {
+		available := board.MaxAgents - len(c.engineering.LiveRunners(id))
+		if available <= 0 {
+			return nil, nil
+		}
+		limit = min(limit, available)
+	}
+	held := map[string]bool{}
+	for _, task := range board.HeldTasks {
+		held[task] = true
+	}
 	st, err := c.engineering.Read(ctx, id)
 	if err != nil {
 		return nil, err
@@ -27,7 +45,7 @@ func (c *coordinator) deliveryReady(ctx context.Context, id string, todos []sess
 		return nil, err
 	}
 	if st.Delivery == nil {
-		return session.ReadyTaskWave(todos, limit)
+		return session.ReadyTaskWaveExcluding(todos, limit, held)
 	}
 	if filepath.Clean(st.Delivery.Root) != filepath.Clean(c.cfg.WorkingDir()) {
 		return nil, fmt.Errorf("delivery belongs to another project root; register a revised plan")
@@ -67,7 +85,7 @@ func (c *coordinator) deliveryReady(ctx context.Context, id string, todos []sess
 		}
 	}
 	// Select only eligible pending tasks while retaining dependency records.
-	wave, err := session.ReadyTaskWave(filtered, 16)
+	wave, err := session.ReadyTaskWaveExcluding(filtered, 16, held)
 	if err != nil {
 		return nil, err
 	}

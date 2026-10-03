@@ -446,7 +446,7 @@ func discoverProject(ctx context.Context, accessToken string, report func(string
 			consecutiveRateLimits++
 			if consecutiveRateLimits > maxConsecutiveRateLimits {
 				return "", "", fmt.Errorf(
-					"Antigravity's onboarding is rate-limiting this account after %d attempts in a row over %s; this can be a persistent quota/entitlement issue on Google's side rather than a transient one -- try again later, or with a different Google account (tier=%q)",
+					"antigravity's onboarding is rate-limiting this account after %d attempts in a row over %s; this can be a persistent quota/entitlement issue on Google's side rather than a transient one -- try again later, or with a different Google account (tier=%q)",
 					consecutiveRateLimits, time.Since(started).Round(time.Second), tierID)
 			}
 			report(fmt.Sprintf("Google rate-limited that request (%d/%d in a row); waiting %s before retrying...", consecutiveRateLimits, maxConsecutiveRateLimits, backoff.Round(time.Second)))

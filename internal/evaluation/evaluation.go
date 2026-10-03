@@ -20,6 +20,13 @@ type Scenario struct {
 	Criteria []string `json:"criteria"`
 }
 
+// QuestionReview is an explicit transcript assessment, never an inferred count.
+type QuestionReview struct {
+	Total       int64  `json:"total"`
+	Unnecessary int64  `json:"unnecessary"`
+	Evidence    string `json:"evidence"`
+}
+
 type Check struct {
 	Criterion string `json:"criterion"`
 	Passed    bool   `json:"passed"`
@@ -27,35 +34,39 @@ type Check struct {
 }
 
 type Run struct {
-	Role              string  `json:"role,omitempty"`
-	ExecutionError    string  `json:"execution_error,omitempty"`
-	Cost              float64 `json:"cost_usd,omitempty"`
-	ClaimObserved     *bool   `json:"claim_observed,omitempty"`
-	Scenario          string  `json:"scenario"`
-	Model             string  `json:"model,omitempty"`
-	PromptVersion     string  `json:"prompt_version,omitempty"`
-	ClaimedComplete   bool    `json:"claimed_complete"`
-	Checks            []Check `json:"checks"`
-	ToolCalls         int64   `json:"tool_calls"`
-	RepeatedToolCalls int64   `json:"repeated_tool_calls"`
-	Tokens            int64   `json:"tokens"`
-	DurationMS        int64   `json:"duration_ms"`
+	QuestionReview    *QuestionReview `json:"question_review,omitempty"`
+	Role              string          `json:"role,omitempty"`
+	ExecutionError    string          `json:"execution_error,omitempty"`
+	Cost              float64         `json:"cost_usd,omitempty"`
+	ClaimObserved     *bool           `json:"claim_observed,omitempty"`
+	Scenario          string          `json:"scenario"`
+	Model             string          `json:"model,omitempty"`
+	PromptVersion     string          `json:"prompt_version,omitempty"`
+	ClaimedComplete   bool            `json:"claimed_complete"`
+	Checks            []Check         `json:"checks"`
+	ToolCalls         int64           `json:"tool_calls"`
+	RepeatedToolCalls int64           `json:"repeated_tool_calls"`
+	Tokens            int64           `json:"tokens"`
+	DurationMS        int64           `json:"duration_ms"`
 }
 
 type Report struct {
-	ExecutionFailures int      `json:"execution_failures,omitempty"`
-	Cost              float64  `json:"cost_usd,omitempty"`
-	UnobservedClaims  int      `json:"unobserved_claims,omitempty"`
-	EvidenceBasis     string   `json:"evidence_basis"`
-	Scenarios         int      `json:"scenarios"`
-	Evaluated         int      `json:"evaluated"`
-	Successful        int      `json:"successful"`
-	FalseCompletions  int      `json:"false_completions"`
-	AcceptanceRate    float64  `json:"acceptance_rate"`
-	RepeatedCallRate  float64  `json:"repeated_call_rate"`
-	Tokens            int64    `json:"tokens"`
-	DurationMS        int64    `json:"duration_ms"`
-	MissingScenarios  []string `json:"missing_scenarios"`
+	QuestionReviewedSamples int      `json:"question_reviewed_samples,omitempty"`
+	Questions               int64    `json:"questions,omitempty"`
+	UnnecessaryQuestions    int64    `json:"unnecessary_questions,omitempty"`
+	ExecutionFailures       int      `json:"execution_failures,omitempty"`
+	Cost                    float64  `json:"cost_usd,omitempty"`
+	UnobservedClaims        int      `json:"unobserved_claims,omitempty"`
+	EvidenceBasis           string   `json:"evidence_basis"`
+	Scenarios               int      `json:"scenarios"`
+	Evaluated               int      `json:"evaluated"`
+	Successful              int      `json:"successful"`
+	FalseCompletions        int      `json:"false_completions"`
+	AcceptanceRate          float64  `json:"acceptance_rate"`
+	RepeatedCallRate        float64  `json:"repeated_call_rate"`
+	Tokens                  int64    `json:"tokens"`
+	DurationMS              int64    `json:"duration_ms"`
+	MissingScenarios        []string `json:"missing_scenarios"`
 }
 
 func Scenarios() ([]Scenario, error) {
@@ -117,6 +128,14 @@ func Score(scenarios []Scenario, runs []Run) (Report, error) {
 			}
 		}
 		report.Evaluated++
+		if q := run.QuestionReview; q != nil {
+			if q.Total < 0 || q.Total > 1000000 || q.Unnecessary < 0 || q.Unnecessary > q.Total || strings.TrimSpace(q.Evidence) == "" || len(q.Evidence) > 4096 {
+				return Report{}, fmt.Errorf("invalid question review for %q", run.Scenario)
+			}
+			report.QuestionReviewedSamples++
+			report.Questions += q.Total
+			report.UnnecessaryQuestions += q.Unnecessary
+		}
 		if passed {
 			report.Successful++
 		} else if run.ClaimedComplete {
@@ -208,6 +227,9 @@ func scoreSamples(scenarios []Scenario, runs []Run) (Report, error) {
 		}
 		seen[run.Scenario] = true
 		base.Evaluated += r.Evaluated
+		base.QuestionReviewedSamples += r.QuestionReviewedSamples
+		base.Questions += r.Questions
+		base.UnnecessaryQuestions += r.UnnecessaryQuestions
 		base.Successful += r.Successful
 		base.FalseCompletions += r.FalseCompletions
 		base.ExecutionFailures += r.ExecutionFailures

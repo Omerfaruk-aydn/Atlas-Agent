@@ -38,6 +38,7 @@ type (
 )
 
 type LiveRecord struct {
+	CaseHash    string `json:"case_hash,omitempty"`
 	Baseline    string `json:"baseline,omitempty"`
 	FixtureHash string `json:"fixture_hash,omitempty"`
 	RecordedAt  int64  `json:"recorded_at,omitempty"`
@@ -231,6 +232,7 @@ func RunLive(ctx context.Context, m LiveManifest, program, output string, allowT
 				record.Role = m.Role
 				record.Baseline = w.Base
 				fixture, _ := json.Marshal(c)
+				record.CaseHash = engineering.Hash(string(fixture))
 				if m.Role != "" {
 					role, _ := subagents.Find(subagents.Builtin(), m.Role)
 					fixture = append(fixture, []byte(role.Instructions+role.RolePrompt())...)

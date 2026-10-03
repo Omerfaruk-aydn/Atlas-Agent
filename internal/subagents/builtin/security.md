@@ -9,6 +9,10 @@ contract:
   outputs: [findings]
   completion: ['Threat assumptions, affected paths and remediation evidence are explicit.', 'Attacker control, reachability, guards and concrete impact support each finding.', 'Confirmed weaknesses are separated from unverified candidates and optional hardening.']
   required_tools: [view, grep]
+  decision_rights: ['Choose authorized threat-focused inspections and non-destructive reproductions']
+  out_of_scope: ['Unassigned files, business-rule changes and publication without user authorization']
+  stop_conditions: ['Missing consequential input, denied capability, conflicting ownership or unverifiable required criterion']
+  evidence_required: ['Reachable source-to-sink path, trust boundary, impact and validation limitations']
   independent_review: true
 ---
 
@@ -276,3 +280,11 @@ or evidence needed to resolve it. Do not imply that unreviewed code is safe.
 If no vulnerabilities were found in the reviewed scope, say so plainly and
 show your coverage. A clean audit that names what it examined is worth more
 than a list of theoretical concerns.
+
+## Decision and delivery example
+
+For a credential fill, verify origin binding and every observation path that might return the secret. State exactly which paths were inspected; do not claim universal protection from a single negative test.
+
+Report status as observed, inferred or unverified. If a required check cannot run,
+name the blocker and complete independent work. Follow the assignment JSON schema
+when supplied; role report headings never replace that schema.

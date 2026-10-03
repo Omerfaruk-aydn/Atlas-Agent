@@ -11,6 +11,10 @@ contract:
   outputs: [findings]
   completion: ['Each defect has a location, trigger and consequence; verdict follows evidence.', 'The integrated change and affected callers are inspected independently.', 'A clean verdict states scope and verification limits without universal guarantees.']
   required_tools: [view, grep]
+  decision_rights: ['Choose focused inspections and report verified defects']
+  out_of_scope: ['Unassigned files, business-rule changes and publication without user authorization']
+  stop_conditions: ['Missing consequential input, denied capability, conflicting ownership or unverifiable required criterion']
+  evidence_required: ['Changed-source location, concrete trigger, consequence and scoped verification']
   independent_review: false
 ---
 
@@ -278,3 +282,11 @@ with the listed fixes, or not yet reviewable (and why).
 If you find no real defects, say exactly that in one line. An empty review
 is a legitimate and useful result; inventing findings to look thorough is
 not.
+
+## Decision and delivery example
+
+For a stale-write bug, report the precise interleaving, affected source location and lost state. A stylistic preference is not a defect; a passing build does not disprove the concurrency issue.
+
+Report status as observed, inferred or unverified. If a required check cannot run,
+name the blocker and complete independent work. Follow the assignment JSON schema
+when supplied; role report headings never replace that schema.

@@ -36,10 +36,11 @@ func TestSessionAgentRun_QueueStripsOnComplete(t *testing.T) {
 	hook := func(notify.RunComplete) { called = true }
 
 	res, err := a.Run(t.Context(), SessionAgentCall{
-		SessionID:  sessionID,
-		RunID:      "run-xyz",
-		Prompt:     "queued prompt",
-		OnComplete: hook,
+		SessionID:    sessionID,
+		RunID:        "run-xyz",
+		Prompt:       "queued prompt",
+		SystemPrompt: "frozen task guidance",
+		OnComplete:   hook,
 	})
 	require.NoError(t, err)
 	require.Nil(t, res, "queued Run must return (nil, nil)")
@@ -49,6 +50,7 @@ func TestSessionAgentRun_QueueStripsOnComplete(t *testing.T) {
 	queued, ok := a.messageQueue.Get(sessionID)
 	require.True(t, ok)
 	require.Len(t, queued, 1)
+	require.Equal(t, "frozen task guidance", queued[0].SystemPrompt)
 	require.Nil(t, queued[0].OnComplete,
 		"queued SessionAgentCall must have OnComplete stripped so the drain falls back to the default broker publish")
 	require.Equal(t, "queued prompt", queued[0].Prompt,

@@ -76,6 +76,10 @@ var (
 )
 
 type SessionAgentCall struct {
+	// SystemPrompt freezes request guidance across queue waits and retries.
+	// Empty uses the agent's configured default, as for specialist calls.
+	SystemPrompt      string
+	IdleOnly          bool
 	QueueContinuation bool
 	SessionID         string
 	// RunID, when non-empty, is the caller-supplied correlator that
@@ -864,6 +868,10 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	}
 
 	if a.IsSessionBusy(call.SessionID) {
+		if call.IdleOnly {
+			sessMu.Unlock()
+			return nil, ErrAutomationBusy
+		}
 		// Busy: an earlier prompt is active. Queue this call so it is
 		// folded into (or sequenced after) the active turn, and release any
 		// accept reservation. A Cancel arriving after this point sees the
@@ -915,7 +923,13 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	// a.largeModelFallbacks for the rest of this turn. See modelChain.
 	chain := newModelChain(largeModel, a.largeModelFallbacks.Copy(),
 		a.fallbackSticky.Get().activeIndex(time.Now()))
-	systemPrompt := a.systemPrompt.Get()
+	systemPrompt := cmp.Or(call.SystemPrompt, a.systemPrompt.Get())
+	if a.taskContextConfig != nil {
+		cfg := a.taskContextConfig.Config()
+		if profile, ok := cfg.UsageProfiles()[cfg.Options.UsageProfile]; ok {
+			systemPrompt += "\n\n<usage-profile>\n" + profile.Instructions + "\n</usage-profile>"
+		}
+	}
 	promptPrefix := a.systemPromptPrefix.Get()
 	var instructions strings.Builder
 
@@ -1080,6 +1094,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	a.eventPromptSent(call.SessionID)
 
 	var stepMessages []fantasy.Message
+	var pinnedContext []string
 	var shouldSummarize bool
 	sanitizedToolCalls := make(map[string]bool)
 	// Don't send MaxOutputTokens if 0 — some providers (e.g. LM Studio) reject it
@@ -1171,6 +1186,10 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 
 			if promptPrefix != "" {
 				prepared.Messages = append([]fantasy.Message{fantasy.NewSystemMessage(promptPrefix)}, prepared.Messages...)
+			}
+			prepared.Messages, err = a.inspectContext(callContext, call.SessionID, largeModel.ModelCfg.Provider+"/"+largeModel.ModelCfg.Model, options.StepNumber, prepared.Messages, palette, &pinnedContext)
+			if err != nil {
+				return callContext, prepared, err
 			}
 
 			sessionLock.Lock()

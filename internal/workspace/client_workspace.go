@@ -572,6 +572,10 @@ func (w *ClientWorkspace) BackgroundJobKill(id string) error {
 	return w.client.KillJob(context.Background(), w.workspaceID(), id)
 }
 
+func (w *ClientWorkspace) BackgroundJobOutput(ctx context.Context, id string) (shell.BackgroundOutput, error) {
+	return w.client.BackgroundJobOutput(ctx, w.workspaceID(), id)
+}
+
 func (w *ClientWorkspace) SubAgentRunsList(ctx context.Context, sessionID string) []SubAgentRunInfo {
 	runs, err := w.client.GetSubAgentRuns(ctx, w.workspaceID(), sessionID)
 	if err != nil {

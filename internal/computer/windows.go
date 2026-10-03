@@ -125,6 +125,11 @@ type bitmapInfo struct {
 type windowsBackend struct{}
 
 func openPlatform() (Backend, error) {
+	// Use physical desktop pixels consistently on mixed-DPI displays.
+	dpi := modUser32.NewProc("SetProcessDpiAwarenessContext")
+	if dpi.Find() == nil {
+		_, _, _ = dpi.Call(^uintptr(3))
+	}
 	return &windowsBackend{}, nil
 }
 
@@ -265,7 +270,7 @@ func (b *windowsBackend) CursorPosition() (Point, error) {
 	if ok == 0 {
 		return Point{}, fmt.Errorf("computer-use: GetCursorPos failed")
 	}
-	return Point{X: int(pt.X), Y: int(pt.Y)}, nil
+	return Point{X: int(pt.X) - getSystemMetrics(smXVirtualScreen), Y: int(pt.Y) - getSystemMetrics(smYVirtualScreen)}, nil
 }
 
 func (b *windowsBackend) MoveTo(x, y int) error {
@@ -304,6 +309,8 @@ func (b *windowsBackend) MoveTo(x, y int) error {
 }
 
 func setCursorPos(x, y int) error {
+	x += getSystemMetrics(smXVirtualScreen)
+	y += getSystemMetrics(smYVirtualScreen)
 	ok, _, _ := procSetCursorPos.Call(uintptr(x), uintptr(y))
 	if ok == 0 {
 		return fmt.Errorf("computer-use: SetCursorPos(%d, %d) failed", x, y)
@@ -311,23 +318,28 @@ func setCursorPos(x, y int) error {
 	return nil
 }
 
-// sendInputs submits inputs through SendInput and reports how many
-// the system accepted. A partial acceptance is retried once: elevated
-// (UAC) windows and secure-desktop transitions can drop the first
-// batch while the input queue settles.
+// sendInputs retries only the unaccepted tail, avoiding duplicate keystrokes.
 func sendInputs(inputs []winInput) error {
+	return sendInputBatch(inputs, sendInputsOnce)
+}
+
+func sendInputBatch(inputs []winInput, submit func([]winInput) (int, error)) error {
 	if len(inputs) == 0 {
 		return nil
 	}
-	if err := sendInputsOnce(inputs); err != nil {
-		slog.Warn("SendInput partially accepted, retrying", "error", err)
+	if accepted, err := submit(inputs); err != nil {
+		if accepted < 0 || accepted >= len(inputs) {
+			return err
+		}
+		slog.Warn("SendInput partially accepted, retrying remaining input", "error", err)
 		time.Sleep(50 * time.Millisecond)
-		return sendInputsOnce(inputs)
+		_, err = submit(inputs[accepted:])
+		return err
 	}
 	return nil
 }
 
-func sendInputsOnce(inputs []winInput) error {
+func sendInputsOnce(inputs []winInput) (int, error) {
 	size := unsafe.Sizeof(winInput{})
 	n, _, err := procSendInput.Call(
 		uintptr(len(inputs)),
@@ -335,9 +347,9 @@ func sendInputsOnce(inputs []winInput) error {
 		size,
 	)
 	if int(n) != len(inputs) {
-		return fmt.Errorf("computer-use: SendInput accepted %d of %d inputs: %v", n, len(inputs), err)
+		return int(n), fmt.Errorf("computer-use: SendInput accepted %d of %d inputs: %v", n, len(inputs), err)
 	}
-	return nil
+	return int(n), nil
 }
 
 func mouseClick(button MouseButton) []winInput {

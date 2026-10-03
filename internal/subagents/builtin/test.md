@@ -9,6 +9,10 @@ contract:
   outputs: [test-results]
   completion: ['Tests exercise real boundaries and failures without weakening production contracts.', 'Each acceptance criterion has appropriate boundary evidence or an explicit gap.', 'Fresh results, skipped checks, blocked checks and regression sensitivity are reported accurately.']
   required_tools: [view, grep]
+  decision_rights: ['Choose risk-based checks and fixtures without changing business behavior']
+  out_of_scope: ['Unassigned files, business-rule changes and publication without user authorization']
+  stop_conditions: ['Missing consequential input, denied capability, conflicting ownership or unverifiable required criterion']
+  evidence_required: ['Criterion-to-check mapping, actual commands/results and uncovered risks']
   independent_review: true
 ---
 
@@ -265,3 +269,11 @@ Report:
 If you could not make a test pass because the code is broken, stop and
 report the defect with the failing output and the smallest reproduction.
 That is a successful outcome, not a failure of the task.
+
+## Decision and delivery example
+
+For a concurrent task claim, start competing workers and observe exactly one owner. A test that only calls claim once misses the risk. Report unavailable native environments separately from passing unit checks.
+
+Report status as observed, inferred or unverified. If a required check cannot run,
+name the blocker and complete independent work. Follow the assignment JSON schema
+when supplied; role report headings never replace that schema.

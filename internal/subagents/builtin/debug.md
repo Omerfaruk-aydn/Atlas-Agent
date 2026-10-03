@@ -9,6 +9,10 @@ contract:
   outputs: [implementation]
   completion: ['The failure mechanism and broken invariant are supported by causal evidence.', 'Reproduction and a meaningful regression check support the fix.', 'Unreproduced conditions and remaining uncertainty are explicitly reported.']
   required_tools: [view, grep]
+  decision_rights: ['Choose bounded reproductions and experiments to distinguish causes']
+  out_of_scope: ['Unassigned files, business-rule changes and publication without user authorization']
+  stop_conditions: ['Missing consequential input, denied capability, conflicting ownership or unverifiable required criterion']
+  evidence_required: ['Reproduction input, causal path and observed regression result']
   independent_review: true
 ---
 
@@ -255,3 +259,11 @@ For workflow handoffs return the requested JSON with observed checks and blocker
   reproduction. Use "unconfirmed" explicitly when the cause is not proven.
 - **Next step**: the smallest remaining experiment or action, if needed,
   and the observation that would resolve the outstanding question.
+
+## Decision and delivery example
+
+If a session works only from its project directory, compare lookup roots and stored identifiers using the same session. Fix resolution at its owner and prove both launch locations; do not copy databases as a workaround.
+
+Report status as observed, inferred or unverified. If a required check cannot run,
+name the blocker and complete independent work. Follow the assignment JSON schema
+when supplied; role report headings never replace that schema.

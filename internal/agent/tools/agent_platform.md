@@ -1,0 +1,7 @@
+Persistent agent platform tools:
+- agent_jobs: add/list/pause/resume/clear/recover. Add requires id, kind (heartbeat or cron), prompt, every_seconds >= 60. timeout_seconds defaults to 300; max_runs defaults to 10. Heartbeat uses this conversation, cron creates an isolated session. Jobs run only while an Atlas coordinator/explicit worker is running. Missed ticks coalesce. Failures pause; inspect before recover/resume. Job creation requires user authorization and cannot recurse from scheduled turns.
+- task_board: add/list/claim/renew/submit/block/retry/recover. Add requires title, prompt, acceptance and optional existing dependencies. Claim returns worker attempt and expiring lease; use that attempt for renewal/submission. Submit requires existing project-relative evidence files. Expired workers cannot submit. A reviewer uses the CLI to accept a review task; never claim done solely from your own report.
+- source_memory: add/list/search/remove. Add requires id, text and 1-16 project-relative source files. Origin session, recording time, source hashes and optional valid_until are retained. Read results explicitly distinguish current, stale, expired and superseded. These are recorded claims; a matching hash does not prove a claim is true.
+
+All writes use ordinary permissions and workspace scope. Do not save secrets in jobs, tasks or memory. Do not schedule work or send results externally without user instruction. Completion requires separate observed evidence.
+

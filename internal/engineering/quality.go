@@ -23,6 +23,7 @@ type QualityRun struct {
 }
 
 type RoleExecution struct {
+	SessionIDs        []string           `json:"session_ids,omitempty"`
 	ExecutionID       string             `json:"execution_id,omitempty"`
 	MachineChecks     []Check            `json:"machine_checks,omitempty"`
 	TaskID            string             `json:"task_id"`

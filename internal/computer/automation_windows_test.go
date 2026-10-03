@@ -1,0 +1,109 @@
+//go:build windows
+
+package computer
+
+import (
+	"context"
+	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/math/fixed"
+)
+
+func TestWindowsAutomationReadAndFixtureOCR(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Windows runtime fixture excluded by short mode")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	backend := &windowsBackend{}
+	data, err := backend.Automation(ctx, AutomationRequest{Action: "monitors"})
+	require.NoError(t, err)
+	var monitors []map[string]any
+	require.NoError(t, json.Unmarshal(data, &monitors))
+	require.NotEmpty(t, monitors)
+	data, err = backend.Automation(ctx, AutomationRequest{Action: "windows"})
+	require.NoError(t, err)
+	var windows []map[string]any
+	require.NoError(t, json.Unmarshal(data, &windows))
+	large := image.NewRGBA(image.Rect(0, 0, 720, 160))
+	for y := range 160 {
+		for x := range 720 {
+			large.Set(x, y, color.White)
+		}
+	}
+	parsed, err := opentype.Parse(goregular.TTF)
+	require.NoError(t, err)
+	face, err := opentype.NewFace(parsed, &opentype.FaceOptions{Size: 48, DPI: 96, Hinting: font.HintingFull})
+	require.NoError(t, err)
+	defer face.Close()
+	drawer := font.Drawer{Dst: large, Src: image.NewUniform(color.Black), Face: face, Dot: fixed.P(20, 90)}
+	drawer.DrawString("ATLAS 12345")
+	path := filepath.Join(t.TempDir(), "ocr-fixture.png")
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	require.NoError(t, png.Encode(f, large))
+	require.NoError(t, f.Close())
+	data, err = backend.Automation(ctx, AutomationRequest{Action: "ocr", ImagePath: path})
+	require.NoError(t, err)
+	var result struct {
+		Text string `json:"text"`
+	}
+	require.NoError(t, json.Unmarshal(data, &result))
+	require.Contains(t, strings.ToUpper(result.Text), "ATLAS")
+	require.Contains(t, result.Text, "12345")
+}
+
+func TestWindowsAutomationOwnForm(t *testing.T) {
+	if os.Getenv("ATLAS_DESKTOP_FIXTURE") != "1" {
+		t.Skip("Set ATLAS_DESKTOP_FIXTURE=1 to test an ephemeral GUI fixture")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	ready := filepath.Join(t.TempDir(), "ready.txt")
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-STA", "-NoProfile", "-NonInteractive", "-Command", `Add-Type -AssemblyName PresentationFramework; $form=New-Object System.Windows.Window; $form.Title='Atlas automation fixture'; $form.ShowInTaskbar=$false; $form.Width=300; $form.Height=160; $form.Left=20; $form.Top=20; $panel=New-Object System.Windows.Controls.StackPanel; $input=New-Object System.Windows.Controls.TextBox; [System.Windows.Automation.AutomationProperties]::SetName($input,'Fixture input'); $button=New-Object System.Windows.Controls.Button; $button.Content='Fixture save'; $label=New-Object System.Windows.Controls.TextBlock; $label.Text='Waiting'; $button.Add_Click({$label.Text='Saved'}); $null=$panel.Children.Add($input); $null=$panel.Children.Add($button); $null=$panel.Children.Add($label); $form.Content=$panel; $form.Add_ContentRendered({$helper=New-Object System.Windows.Interop.WindowInteropHelper($form); [System.IO.File]::WriteAllText($env:ATLAS_FIXTURE_READY,[string]$helper.Handle.ToInt64())}); $app=New-Object System.Windows.Application; $null=$app.Run($form)`)
+	cmd.Env = append(os.Environ(), "ATLAS_FIXTURE_READY="+ready)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	require.NoError(t, cmd.Start())
+	defer func() { cancel(); _ = cmd.Wait() }()
+	var hwnd string
+	for {
+		data, err := os.ReadFile(ready)
+		if err == nil && len(data) > 0 {
+			hwnd = string(data)
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("Fixture form did not open")
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	driver := &windowsBackend{}
+	run := func(p AutomationRequest) string {
+		t.Helper()
+		p.WindowID = hwnd
+		data, err := driver.Automation(ctx, p)
+		require.NoError(t, err)
+		return string(data)
+	}
+	require.Contains(t, run(AutomationRequest{Action: "inspect"}), "Fixture input")
+	require.Contains(t, run(AutomationRequest{Action: "find", Name: "Fixture input"}), `"count":1`)
+	run(AutomationRequest{Action: "set_value", Name: "Fixture input", Text: "Örnek 123"})
+	require.Contains(t, run(AutomationRequest{Action: "assert", Name: "Fixture input", Condition: "value", Expected: "Örnek 123"}), `"passed":true`)
+	run(AutomationRequest{Action: "invoke", Name: "Fixture save", Role: "ControlType.Button"})
+	require.Contains(t, run(AutomationRequest{Action: "assert", Name: "Saved", Condition: "visible"}), `"passed":true`)
+}

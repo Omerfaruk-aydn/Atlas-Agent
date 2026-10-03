@@ -2,7 +2,11 @@ package dialog
 
 import (
 	"fmt"
+	"strings"
 	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ansiext"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ansi"
 
 	tea "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ui/v2"
 	uv "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ultraviolet"
@@ -90,9 +94,12 @@ func (e *jobEntry) Render(width int) string {
 // Jobs lists currently-running background shell jobs and sub-agent runs
 // for the current session, with a key to cancel the selected one.
 type Jobs struct {
-	com  *common.Common
-	help help.Model
-	list *list.FilterableList
+	com          *common.Common
+	help         help.Model
+	list         *list.FilterableList
+	outputID     string
+	output       []string
+	outputOffset int
 
 	keyMap struct {
 		Next     key.Binding
@@ -113,9 +120,6 @@ func NewJobs(com *common.Common, jobs []shell.BackgroundShellInfo, subAgents []w
 
 	var items []list.FilterableItem
 	for i := range jobs {
-		if jobs[i].Done {
-			continue
-		}
 		items = append(items, &jobEntry{Versioned: list.NewVersioned(), Job: &jobs[i], t: com})
 	}
 	for i := range subAgents {
@@ -132,7 +136,7 @@ func NewJobs(com *common.Common, jobs []shell.BackgroundShellInfo, subAgents []w
 	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", "next"))
 	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", "previous"))
 	d.keyMap.Kill = key.NewBinding(key.WithKeys("x", "ctrl+x"), key.WithHelp("x", "cancel"))
-	d.keyMap.View = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "view session"))
+	d.keyMap.View = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "output/session"))
 	d.keyMap.Close = CloseKey
 
 	return d
@@ -166,7 +170,40 @@ func (d *Jobs) killCmd(entry *jobEntry) tea.Cmd {
 // HandleMsg implements Dialog.
 func (d *Jobs) HandleMsg(msg tea.Msg) Action {
 	switch msg := msg.(type) {
+	case jobOutputMsg:
+		if msg.id != d.outputID {
+			return nil
+		}
+		d.output = msg.lines
+		if msg.done {
+			return nil
+		}
+		id := msg.id
+		return ActionCmd{tea.Tick(time.Second, func(time.Time) tea.Msg { return jobOutputTick{id: id} })}
+	case jobOutputTick:
+		if msg.id == d.outputID {
+			return ActionCmd{d.outputCmd(msg.id)}
+		}
 	case tea.KeyPressMsg:
+		if d.outputID != "" {
+			switch msg.String() {
+			case "esc", "enter":
+				d.outputID, d.output, d.outputOffset = "", nil, 0
+			case "up", "k":
+				d.outputOffset = max(0, d.outputOffset-1)
+			case "down", "j":
+				d.outputOffset++
+			case "pgup":
+				d.outputOffset = max(0, d.outputOffset-10)
+			case "pgdown":
+				d.outputOffset += 10
+			case "x":
+				if item, ok := d.list.SelectedItem().(*jobEntry); ok {
+					return ActionCmd{d.killCmd(item)}
+				}
+			}
+			return nil
+		}
 		switch {
 		case key.Matches(msg, d.keyMap.Close):
 			return ActionClose{}
@@ -200,9 +237,12 @@ func (d *Jobs) HandleMsg(msg tea.Msg) Action {
 				return nil
 			}
 			entry, ok := item.(*jobEntry)
-			if !ok || entry.SubAgent == nil {
-				// Background shell jobs have no session to view.
+			if !ok {
 				return nil
+			}
+			if entry.Job != nil {
+				d.outputID, d.output = entry.Job.ID, []string{"Loading actual process output…"}
+				return ActionCmd{d.outputCmd(entry.Job.ID)}
 			}
 			return ActionViewSession{SessionID: entry.SubAgent.SessionID}
 		}
@@ -211,6 +251,9 @@ func (d *Jobs) HandleMsg(msg tea.Msg) Action {
 			return ActionCmd{util.ReportError(fmt.Errorf("failed to cancel: %w", msg.err))}
 		}
 		d.removeByKillID(msg.id)
+		if d.outputID == msg.id {
+			d.outputID, d.output = "", nil
+		}
 	}
 	return nil
 }
@@ -250,7 +293,17 @@ func (d *Jobs) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	rc := NewRenderContext(t, width)
 	rc.Title = "Jobs"
 
-	if len(d.list.FilteredItems()) == 0 {
+	if d.outputID != "" {
+		rc.Title = "Process output | " + d.outputID
+		available := max(0, height-t.Dialog.View.GetVerticalFrameSize()-4)
+		offset := min(max(0, d.outputOffset), max(0, len(d.output)-available))
+		lines := append([]string(nil), d.output[offset:min(len(d.output), offset+available)]...)
+		for i, line := range lines {
+			lines[i] = ansi.Truncate(ansiext.Escape(strings.ReplaceAll(line, "\r", " ")), max(0, innerWidth), "")
+		}
+		rc.AddPart(strings.Join(lines, "\n"))
+		rc.AddPart("Esc back | arrows/PgUp/PgDown scroll | x cancel")
+	} else if len(d.list.FilteredItems()) == 0 {
 		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render("Nothing running."))
 	} else {
 		listHeight, listTotalHeight, _ := sizeDialogList(t, d.list, innerWidth, height)

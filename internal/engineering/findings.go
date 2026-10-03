@@ -227,11 +227,12 @@ func (s *Store) saveFinding(ctx context.Context, namespace string, f Finding, ex
 			}
 		}
 	}
+	preservesStaleWaiver := f.Status == "stale" && f.WaiverProvenance == old.WaiverProvenance && f.WaiverReason == old.WaiverReason && f.WaiverSourceFingerprint == old.WaiverSourceFingerprint
 	if f.Status == "waived" {
 		if !human || f.WaiverProvenance != "interactive-user" || !boundedText(f.WaiverReason, 2048) || f.WaiverSourceFingerprint == "" {
 			return Record{}, fmt.Errorf("waiver requires an explicit interactive user decision and reason")
 		}
-	} else if (f.WaiverProvenance != "" || f.WaiverReason != "" || f.WaiverSourceFingerprint != "") && !(f.Status == "stale" && f.WaiverProvenance == old.WaiverProvenance && f.WaiverReason == old.WaiverReason && f.WaiverSourceFingerprint == old.WaiverSourceFingerprint) {
+	} else if (f.WaiverProvenance != "" || f.WaiverReason != "" || f.WaiverSourceFingerprint != "") && !preservesStaleWaiver {
 		return Record{}, fmt.Errorf("waiver provenance is runtime-managed")
 	}
 	if f.Status == "verified" {

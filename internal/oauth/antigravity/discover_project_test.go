@@ -139,11 +139,11 @@ func TestDiscoverProjectResetsConsecutiveCountOnACleanResponse(t *testing.T) {
 			// as many consecutive 429s total (4) as any single run (2)
 			// ever reaches, which would trip maxConsecutiveRateLimits
 			// (6) if the count were not reset between runs.
-			switch {
-			case n == 1 || n == 2 || n == 4 || n == 5:
+			switch n {
+			case 1, 2, 4, 5:
 				w.WriteHeader(http.StatusTooManyRequests)
 				_, _ = w.Write([]byte(`{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}`))
-			case n == 7:
+			case 7:
 				resp := onboardUserResponse{Done: true}
 				resp.Response.CloudaicompanionProject.ID = "proj-456"
 				writeJSON(w, resp)

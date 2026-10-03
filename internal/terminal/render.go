@@ -84,7 +84,7 @@ func RenderTranscript(ctx context.Context, data []byte, size execution.TerminalS
 				continue
 			}
 			start := index
-			for index < len(data) && !(data[index] >= 0x40 && data[index] <= 0x7e) {
+			for index < len(data) && (data[index] < 0x40 || data[index] > 0x7e) {
 				if err := ctx.Err(); err != nil {
 					return result, err
 				}

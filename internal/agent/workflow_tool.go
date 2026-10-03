@@ -94,7 +94,15 @@ func (c *coordinator) workflowTool(invoke tools.ToolInvoker) fantasy.AgentTool {
 			if err != nil {
 				return fantasy.ToolResponse{}, err
 			}
-			return respond(st)
+			_, controls, err := c.engineering.ReadControlBoard(ctx, scope.SessionID)
+			if err != nil {
+				return fantasy.ToolResponse{}, err
+			}
+			return respond(struct {
+				engineering.State
+				Controls engineering.ControlBoard `json:"user_controls"`
+				Runners  []engineering.LiveRunner `json:"live_runners"`
+			}{State: st, Controls: controls, Runners: c.engineering.LiveRunners(scope.SessionID)})
 		case "ready":
 			wave, err := c.deliveryReady(ctx, scope.SessionID, sess.Todos, p.Limit)
 			if err != nil {

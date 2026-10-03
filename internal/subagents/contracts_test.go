@@ -13,6 +13,10 @@ func TestContractsRouteByRequirementsAndPreserveIndependentCopies(t *testing.T) 
 		require.NotNil(t, s.Contract)
 		require.NoError(t, s.Validate())
 		require.Contains(t, s.RolePrompt(), "role_contract")
+		require.NotEmpty(t, s.Contract.DecisionRights)
+		require.NotEmpty(t, s.Contract.OutOfScope)
+		require.NotEmpty(t, s.Contract.StopConditions)
+		require.NotEmpty(t, s.Contract.EvidenceRequired)
 	}
 	for _, tc := range []struct {
 		req  RouteRequest
@@ -33,6 +37,8 @@ func TestContractsRouteByRequirementsAndPreserveIndependentCopies(t *testing.T) 
 	require.False(t, ok)
 	all[0].Contract.TaskTypes[0] = "corrupted"
 	require.NotEqual(t, "corrupted", Builtin()[0].Contract.TaskTypes[0])
+	all[0].Contract.DecisionRights[0] = "corrupted"
+	require.NotEqual(t, "corrupted", Builtin()[0].Contract.DecisionRights[0])
 	content, err := Render(all[1])
 	require.NoError(t, err)
 	parsed, err := ParseContent(content)

@@ -14,6 +14,10 @@ type RoleContract struct {
 	Inputs            []string `yaml:"inputs" json:"inputs"`
 	Outputs           []string `yaml:"outputs" json:"outputs"`
 	Completion        []string `yaml:"completion" json:"completion"`
+	DecisionRights    []string `yaml:"decision_rights,omitempty" json:"decision_rights,omitempty"`
+	OutOfScope        []string `yaml:"out_of_scope,omitempty" json:"out_of_scope,omitempty"`
+	StopConditions    []string `yaml:"stop_conditions,omitempty" json:"stop_conditions,omitempty"`
+	EvidenceRequired  []string `yaml:"evidence_required,omitempty" json:"evidence_required,omitempty"`
 	RequiredTools     []string `yaml:"required_tools,omitempty" json:"required_tools,omitempty"`
 	IndependentReview bool     `yaml:"independent_review,omitempty" json:"independent_review,omitempty"`
 }
@@ -35,6 +39,16 @@ func (r *RoleContract) Validate() error {
 	if len(r.RequiredTools) > 32 {
 		return fmt.Errorf("too many required tools")
 	}
+	for _, list := range [][]string{r.DecisionRights, r.OutOfScope, r.StopConditions, r.EvidenceRequired} {
+		if len(list) > 16 {
+			return fmt.Errorf("role policy lists require at most 16 entries")
+		}
+		for _, entry := range list {
+			if strings.TrimSpace(entry) == "" || len(entry) > 512 {
+				return fmt.Errorf("invalid role policy entry")
+			}
+		}
+	}
 	for _, tool := range r.RequiredTools {
 		if !namePattern.MatchString(strings.ReplaceAll(tool, "_", "-")) {
 			return fmt.Errorf("invalid required tool %q", tool)
@@ -50,6 +64,7 @@ func (s *Subagent) RolePrompt() string {
 	data, _ := json.Marshal(s.Contract)
 	return "\n\n<role_contract>\n" + string(data) + "\nUse the assignment's owned paths and acceptance criteria as the task boundary. " +
 		"Missing inputs must be investigated or reported as blocked. Report actual checks and unresolved risks; do not infer successful execution. " +
+		"Decision rights describe routine choices inside the assignment; they do not grant new tool permissions or publication authority. Stop only the affected dependency and continue independent authorized work. " +
 		"For workflow assignments return only the requested JSON handoff. The coordinator independently integrates and verifies completion.\n</role_contract>"
 }
 

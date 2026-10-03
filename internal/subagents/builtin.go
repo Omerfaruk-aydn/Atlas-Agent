@@ -76,6 +76,10 @@ func Builtin() []*Subagent {
 			contract.Outputs = slices.Clone(contract.Outputs)
 			contract.Completion = slices.Clone(contract.Completion)
 			contract.RequiredTools = slices.Clone(contract.RequiredTools)
+			contract.DecisionRights = slices.Clone(contract.DecisionRights)
+			contract.OutOfScope = slices.Clone(contract.OutOfScope)
+			contract.StopConditions = slices.Clone(contract.StopConditions)
+			contract.EvidenceRequired = slices.Clone(contract.EvidenceRequired)
 			out[i].Contract = &contract
 		}
 	}

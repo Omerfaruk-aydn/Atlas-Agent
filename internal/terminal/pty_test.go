@@ -60,6 +60,7 @@ func TestPTYOutputLimitAndDeadlineStopOwnedTerminal(t *testing.T) {
 	require.NoError(t, err)
 	for _, mode := range []string{"overflow", "deadline"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
 			req := execution.Request{Root: t.TempDir(), Argv: []string{exe, "-test.run=^TestPTYChildFixture$"}, Env: append(os.Environ(), "ATLAS_PTY_TEST_CHILD=1", "ATLAS_PTY_TEST_CASE="+mode)}

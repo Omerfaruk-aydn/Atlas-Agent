@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agentstate"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/lock"
 )
 
@@ -26,23 +28,30 @@ type WorkflowTask struct {
 }
 
 type WorkflowSnapshot struct {
-	AgentLimit   int               `json:"agent_limit"`
-	Board        ControlBoard      `json:"board"`
-	Runners      []LiveRunner      `json:"runners,omitempty"`
-	SessionID    string            `json:"session_id"`
-	Revision     string            `json:"revision"`
-	Tasks        []WorkflowTask    `json:"tasks"`
-	Usage        Usage             `json:"usage"`
-	Limits       Limits            `json:"limits"`
-	Stage        int               `json:"stage"`
-	Paused       bool              `json:"paused"`
-	Busy         bool              `json:"busy"`
-	Findings     []Finding         `json:"findings"`
-	Checks       []Check           `json:"checks"`
-	Executions   []RoleExecution   `json:"executions"`
-	Checkpoints  []Checkpoint      `json:"checkpoints"`
-	Operations   []Operation       `json:"operations"`
-	Capabilities map[string]string `json:"capabilities"`
+	PlatformJobs       []agentstate.Job    `json:"platform_jobs,omitempty"`
+	PlatformTasks      []agentstate.Task   `json:"platform_tasks,omitempty"`
+	SourceMemories     []agentstate.Memory `json:"source_memories,omitempty"`
+	Interactions       interaction.State   `json:"interactions"`
+	Batches            []AgentBatchReport  `json:"batches,omitempty"`
+	Context            ContextManifest     `json:"context"`
+	ContextPreferences ContextPreferences  `json:"context_preferences"`
+	AgentLimit         int                 `json:"agent_limit"`
+	Board              ControlBoard        `json:"board"`
+	Runners            []LiveRunner        `json:"runners,omitempty"`
+	SessionID          string              `json:"session_id"`
+	Revision           string              `json:"revision"`
+	Tasks              []WorkflowTask      `json:"tasks"`
+	Usage              Usage               `json:"usage"`
+	Limits             Limits              `json:"limits"`
+	Stage              int                 `json:"stage"`
+	Paused             bool                `json:"paused"`
+	Busy               bool                `json:"busy"`
+	Findings           []Finding           `json:"findings"`
+	Checks             []Check             `json:"checks"`
+	Executions         []RoleExecution     `json:"executions"`
+	Checkpoints        []Checkpoint        `json:"checkpoints"`
+	Operations         []Operation         `json:"operations"`
+	Capabilities       map[string]string   `json:"capabilities"`
 }
 
 type WorkflowControl struct {

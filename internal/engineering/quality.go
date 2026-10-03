@@ -42,7 +42,7 @@ type RoleExecution struct {
 // SourceFingerprint covers tracked and non-ignored files, including deletions.
 // Incomplete snapshots fail closed instead of certifying an unseen source tree.
 func SourceFingerprint(ctx context.Context, root string, excluded ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--exclude=.atlas-env/", "--exclude=.venv/")
+	cmd := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--exclude=.atlas-env/", "--exclude=.venv/", "--exclude=.atlas/interactions/")
 	for _, entry := range os.Environ() {
 		if !strings.HasPrefix(entry, "GIT_") {
 			cmd.Env = append(cmd.Env, entry)

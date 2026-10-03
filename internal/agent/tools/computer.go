@@ -3,7 +3,9 @@ package tools
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -11,6 +13,8 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 )
 
@@ -24,10 +28,14 @@ var computerActions = []string{
 	"screenshot", "screen_size", "cursor_position", "move",
 	"click", "double_click", "right_click", "drag",
 	"scroll", "type", "key", "hotkey",
+	"windows", "focus", "inspect", "find", "invoke", "set_value", "assert", "monitors", "ocr", "capture_region", "capture_window", "handoff", "status", "trace", "trace_start", "trace_stop",
 }
 
 type ComputerParams struct {
-	Action string `json:"action" description:"One of: screenshot, screen_size, cursor_position, move, click, double_click, right_click, drag, scroll, type, key, hotkey. See the tool description for what each needs."`
+	Automation computer.AutomationRequest `json:"automation,omitempty" description:"Parameters for accessibility actions: window_id required except windows/monitors/ocr. Name, role or element_id select a fresh element."`
+	Width      int                        `json:"width,omitempty" description:"Native pixel width for capture_region."`
+	Height     int                        `json:"height,omitempty" description:"Native pixel height for capture_region."`
+	Action     string                     `json:"action" description:"Desktop action: screenshot/screen_size/cursor_position/move/click/double_click/right_click/drag/scroll/type/key/hotkey; windows/focus/inspect/find/invoke/set_value/assert/monitors/ocr/capture_region/capture_window; handoff/status/trace/trace_start/trace_stop. See tool description."`
 	// X and Y are screen coordinates in physical pixels, matching the
 	// screenshot image 1:1. Required for move, click, double_click,
 	// right_click, and drag (start point).
@@ -117,6 +125,10 @@ func newComputerTool(
 			}
 
 			sessionID := GetSessionFromContext(ctx)
+			controlID := engineering.GetScope(ctx, sessionID).SessionID
+			if err := interaction.Default.Load(workingDir, controlID); err != nil {
+				return fantasy.NewTextErrorResponse("Cannot load interaction state: " + err.Error()), nil
+			}
 
 			// Every computer action runs Safe. Enabling /computer-use is
 			// the consent gate — flipping it on means the user accepts
@@ -144,6 +156,26 @@ func newComputerTool(
 				return NewPermissionDeniedResponse(state.permissions), nil
 			}
 
+			if action == "handoff" {
+				interaction.Default.Pause(controlID, "Desktop user intervention required")
+				if err := interaction.Default.Record(workingDir, controlID, interaction.Entry{Time: time.Now(), Resource: "desktop", Action: action, Status: "paused"}); err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+				response := fantasy.NewTextResponse("Automation paused. Complete the required step, then resume from /interactions.")
+				response.StopTurn = true
+				return response, nil
+			}
+			if action == "status" || action == "trace" {
+				data, _ := json.Marshal(interaction.Default.ToolSnapshot(controlID, action == "trace"))
+				return fantasy.NewTextResponse(string(data)), nil
+			}
+			if action == "trace_start" || action == "trace_stop" {
+				interaction.Default.SetImageRecording(controlID, action == "trace_start")
+				if err := interaction.Default.Record(workingDir, controlID, interaction.Entry{Time: time.Now(), Resource: "desktop", OwnerID: sessionID, Action: action, Status: "ready"}); err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+				return fantasy.NewTextResponse("Before/after image recording updated. Text-entry actions are omitted from image recording."), nil
+			}
 			return state.runWithTimeout(ctx, action, params)
 		},
 	)
@@ -169,7 +201,31 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 	}
 	done := make(chan result, 1)
 	go func() {
+		controlID := engineering.GetScope(ctx, GetSessionFromContext(ctx)).SessionID
+		release, err := interaction.Default.Acquire(ctx, controlID, "desktop")
+		if err != nil {
+			done <- result{resp: fantasy.NewTextErrorResponse(err.Error())}
+			return
+		}
+		defer release()
+		started := time.Now()
+		before, after := "", ""
+		recordImages := interaction.Default.Snapshot(controlID).RecordImages && recordableComputerAction(action)
+		if recordImages {
+			before = captureComputerTrace(s.backend, s.workingDir, controlID)
+		}
 		resp, err := s.runComputerAction(ctx, action, params)
+		resp = withInteractionFailure(resp)
+		if recordImages {
+			after = captureComputerTrace(s.backend, s.workingDir, controlID)
+		}
+		status := "succeeded"
+		if err != nil || resp.IsError {
+			status = "failed"
+		}
+		if traceErr := interaction.Default.Record(s.workingDir, controlID, interaction.Entry{Time: started, Resource: "desktop", OwnerID: GetSessionFromContext(ctx), Before: before, After: after, Target: params.Automation.WindowID, Action: action, Status: status, DurationMS: time.Since(started).Milliseconds()}); traceErr != nil {
+			slog.Warn("Failed to persist interaction trace", "error", traceErr)
+		}
 		done <- result{resp: resp, err: err}
 	}()
 
@@ -240,8 +296,31 @@ func computerActionDescription(action string, params ComputerParams) string {
 	}
 }
 
-func (s *computerToolState) runComputerAction(_ context.Context, action string, params ComputerParams) (fantasy.ToolResponse, error) {
+func (s *computerToolState) runComputerAction(ctx context.Context, action string, params ComputerParams) (fantasy.ToolResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return fantasy.ToolResponse{}, err
+	}
 	backend := s.backend
+	if isComputerAutomationAction(action) {
+		return s.runAutomation(ctx, action, params)
+	}
+	if action == "capture_region" {
+		data, err := backend.Screenshot()
+		if err == nil {
+			data, err = computer.CropScreenshot(data, params.X, params.Y, params.Width, params.Height)
+		}
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		resp := fantasy.NewImageResponse(data, "image/png")
+		resp.Content = fmt.Sprintf("Native pixel crop: screen origin (%d,%d); screen coordinate = image coordinate + origin.", params.X, params.Y)
+		return resp, nil
+	}
+	if params.Automation.WindowID != "" {
+		if driver, ok := backend.(interface{ ForegroundWindow() string }); ok && driver.ForegroundWindow() != params.Automation.WindowID {
+			return fantasy.NewTextErrorResponse("wrong_window: focus the intended window and inspect again before input"), nil
+		}
+	}
 	switch action {
 	case "screenshot":
 		return s.screenshot(params)

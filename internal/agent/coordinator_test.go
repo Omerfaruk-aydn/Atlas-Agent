@@ -43,15 +43,19 @@ func (m *mockSessionAgent) SetTools(tools []fantasy.AgentTool)  {}
 func (m *mockSessionAgent) SetSystemPrompt(systemPrompt string) {}
 func (m *mockSessionAgent) SetLimits(maxProviderRetries *int, maxSessionCost float64, maxStepsPerTurn int) {
 }
+
 func (m *mockSessionAgent) SetHooks(promptHooks, sessionStartHooks, preCompactHooks *hooks.Runner) {
 }
+
 func (m *mockSessionAgent) SetAdvisorOptions(advisorModel *Model, advisorTools []fantasy.AgentTool, everyNTurns int, notifyThreshold string) {
 }
+
 func (m *mockSessionAgent) SetEscalateOptions(escalateModel *Model, escalateTools []fantasy.AgentTool, threshold string) {
 }
 func (m *mockSessionAgent) SetFallbackCooldown(d time.Duration) {}
 func (m *mockSessionAgent) SetSummarizeOptions(autoSummarizeAt float64, disableAutoSummarize bool, compactModel *Model) {
 }
+
 func (m *mockSessionAgent) Cancel(sessionID string) {
 	m.cancelled = append(m.cancelled, sessionID)
 }

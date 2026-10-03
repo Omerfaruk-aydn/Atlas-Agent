@@ -351,6 +351,10 @@ func (s *permissionService) Request(ctx context.Context, opts CreatePermissionRe
 	}
 
 	s.activeRequestMu.Lock()
+	if ctx.Value(headlessKey{}) == true {
+		s.activeRequestMu.Unlock()
+		return false, ErrPromptUnavailable
+	}
 	s.activeRequest = &permission
 	s.activeRequestMu.Unlock()
 

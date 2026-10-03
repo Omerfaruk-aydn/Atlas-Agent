@@ -14,16 +14,21 @@ import (
 )
 
 type WorkflowTask struct {
-	ID              string   `json:"id"`
-	Content         string   `json:"content"`
-	Status          string   `json:"status"`
-	Agent           string   `json:"agent,omitempty"`
-	SpecFingerprint string   `json:"spec_fingerprint"`
-	DependsOn       []string `json:"depends_on,omitempty"`
-	OwnedPaths      []string `json:"owned_paths,omitempty"`
+	AcceptanceCriteria []string `json:"acceptance_criteria,omitempty"`
+	Verification       string   `json:"verification,omitempty"`
+	ID                 string   `json:"id"`
+	Content            string   `json:"content"`
+	Status             string   `json:"status"`
+	Agent              string   `json:"agent,omitempty"`
+	SpecFingerprint    string   `json:"spec_fingerprint"`
+	DependsOn          []string `json:"depends_on,omitempty"`
+	OwnedPaths         []string `json:"owned_paths,omitempty"`
 }
 
 type WorkflowSnapshot struct {
+	AgentLimit   int               `json:"agent_limit"`
+	Board        ControlBoard      `json:"board"`
+	Runners      []LiveRunner      `json:"runners,omitempty"`
 	SessionID    string            `json:"session_id"`
 	Revision     string            `json:"revision"`
 	Tasks        []WorkflowTask    `json:"tasks"`
@@ -41,10 +46,19 @@ type WorkflowSnapshot struct {
 }
 
 type WorkflowControl struct {
-	TaskID           string `json:"task_id,omitempty"`
-	Action           string `json:"action"`
-	Agent            string `json:"agent,omitempty"`
-	ExpectedRevision string `json:"expected_revision"`
+	OwnedPaths       []string `json:"owned_paths,omitempty"`
+	CheckpointID     string   `json:"checkpoint_id,omitempty"`
+	Text             string   `json:"text,omitempty"`
+	DirectiveID      string   `json:"directive_id,omitempty"`
+	DependsOn        []string `json:"depends_on,omitempty"`
+	File             string   `json:"file,omitempty"`
+	Line             int      `json:"line,omitempty"`
+	MaxAgents        int      `json:"max_agents,omitempty"`
+	Limits           *Limits  `json:"limits,omitempty"`
+	TaskID           string   `json:"task_id,omitempty"`
+	Action           string   `json:"action"`
+	Agent            string   `json:"agent,omitempty"`
+	ExpectedRevision string   `json:"expected_revision"`
 }
 
 func (s *Store) WorkflowLock(ctx context.Context, id string) (func(), error) {
@@ -175,14 +189,28 @@ func (s *Store) Snapshot(ctx context.Context, root, id string, tasks []WorkflowT
 			ids = append(ids, key)
 		}
 		sort.Strings(ids)
+		times := map[string]int64{}
+		for _, op := range st.Operations {
+			times[op.ID] = op.StartedAt
+		}
+		sort.SliceStable(ids, func(i, j int) bool {
+			return times[st.RoleExecutions[ids[i]].ExecutionID] < times[st.RoleExecutions[ids[j]].ExecutionID]
+		})
 		for _, key := range ids {
 			value := st.RoleExecutions[key]
-			value.Handoff = nil
-			value.Error = ""
-			value.Reviews = nil
+			value = ProjectExecution(value, len(out.Executions) >= max(0, len(ids)-32))
 			out.Executions = append(out.Executions, value)
 		}
-		data, _ := json.Marshal([]any{st.Revision, todoRevision, stamp, busy})
+		boardRecord, board, err := s.ReadControlBoard(ctx, id)
+		if err != nil {
+			return WorkflowSnapshot{}, err
+		}
+		out.Board, out.Runners = board, s.LiveRunners(id)
+		out.AgentLimit = 16
+		if board.MaxAgents > 0 {
+			out.AgentLimit = min(out.AgentLimit, board.MaxAgents)
+		}
+		data, _ := json.Marshal([]any{st.Revision, todoRevision, stamp, busy, boardRecord.Revision, out.Runners})
 		out.Revision = Hash(string(data))
 		return out, nil
 	}

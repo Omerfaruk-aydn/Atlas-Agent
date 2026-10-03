@@ -47,6 +47,32 @@ var profileContents = []string{
 	"Bookmarks",              //
 }
 
+// seedSessionProfile imports an existing configured profile once per chat.
+// An allowlist avoids copying caches or recursively copying session directories.
+func seedSessionProfile(source, dest string) error {
+	if _, err := os.Stat(filepath.Join(dest, ".atlas-profile-seeded")); err == nil {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Join(dest, "Default"), 0o700); err != nil {
+		return err
+	}
+	if _, err := os.Stat(filepath.Join(source, "Local State")); err == nil {
+		if err := copyPath(filepath.Join(source, "Local State"), filepath.Join(dest, "Local State")); err != nil {
+			return fmt.Errorf("import configured profile: %w", err)
+		}
+	}
+	for _, name := range profileContents {
+		sourcePath := filepath.Join(source, "Default", name)
+		if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
+			continue
+		}
+		if err := copyPath(sourcePath, filepath.Join(dest, "Default", name)); err != nil {
+			return fmt.Errorf("import configured profile %s: %w", name, err)
+		}
+	}
+	return os.WriteFile(filepath.Join(dest, ".atlas-profile-seeded"), []byte("1\n"), 0o600)
+}
+
 // Extensions are deliberately absent. They are the bulk of a profile by
 // a wide margin -- 616 MB of an 825 MB copy on the machine this was
 // written against -- and none of it serves the point of the snapshot,

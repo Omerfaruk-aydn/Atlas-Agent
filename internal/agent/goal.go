@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/notify"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agentstate"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
 )
@@ -47,7 +49,8 @@ const goalDefaultBudget = 10
 
 // goalRun is one goal's progress through a session.
 type goalRun struct {
-	mu sync.Mutex
+	generation string
+	mu         sync.Mutex
 
 	goal    string
 	budget  int
@@ -88,20 +91,38 @@ func (c *coordinator) StartGoal(ctx context.Context, sessionID, goal string) err
 	if c.goalRuns == nil {
 		return errors.New("this coordinator cannot run goals")
 	}
+	if c.currentAgent != nil && c.IsSessionBusy(sessionID) {
+		return errors.New("stop the active turn before replacing its goal")
+	}
+	if err := c.resetGoal(ctx, sessionID, goal); err != nil {
+		return err
+	}
 	if err := c.sessions.SetGoal(ctx, sessionID, goal); err != nil {
 		return err
 	}
-	c.goalRuns.Set(sessionID, &goalRun{goal: goal, budget: goalDefaultBudget})
+	run := c.restoreGoal(ctx, sessionID, goal)
+	if run == nil {
+		return errors.New("new goal progress could not be loaded")
+	}
+	c.goalRuns.Set(sessionID, run)
 	return nil
 }
 
 // ClearGoal ends the run and forgets the goal. Safe to call when none is
 // set, which is what the stop path and the UI's "clear" both do.
 func (c *coordinator) ClearGoal(ctx context.Context, sessionID string) error {
+	if state := c.stateStore(); state != nil {
+		if err := agentstate.Update[agentstate.Goal](ctx, state, "goals", sessionID, func(g *agentstate.Goal) error { g.Stopped = true; return nil }); err != nil {
+			return err
+		}
+	}
 	if run, ok := c.goalRunFor(sessionID); ok {
 		run.mu.Lock()
 		run.stopped = true
 		run.mu.Unlock()
+		if err := c.persistGoal(ctx, sessionID, run, false); err != nil {
+			return err
+		}
 		c.goalRuns.Del(sessionID)
 	}
 	return c.sessions.SetGoal(ctx, sessionID, "")
@@ -124,6 +145,14 @@ func (c *coordinator) GoalStatus(sessionID string) (goal string, used, budget in
 // stopGoal ends the run, clears the stored goal so a later turn does not
 // find it in the system prompt, and tells the user why it stopped.
 func (c *coordinator) stopGoal(ctx context.Context, sessionID, reason string) {
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	ctx = cleanup
+	if run, ok := c.goalRunFor(sessionID); ok {
+		run.mu.Lock()
+		run.done = strings.HasPrefix(reason, "Goal reached:")
+		run.mu.Unlock()
+	}
 	if err := c.ClearGoal(ctx, sessionID); err != nil {
 		slog.Warn("Failed to clear the goal after the run ended", "session_id", sessionID, "error", err)
 	}
@@ -137,20 +166,8 @@ func (c *coordinator) stopGoal(ctx context.Context, sessionID, reason string) {
 }
 
 // resumeGoalRun returns the session's run, rebuilding it from the stored
-// goal when there is none in memory.
-//
-// The goal itself lives in the database and the run tracking it does
-// not, so restarting Atlas left a session whose goal was still on
-// record, still in the system prompt, and still reported by /goal --
-// with nothing left to drive it. Everything said a run was under way
-// and no turn ever came. Reading the goal back here means the run picks
-// up where it was rather than quietly not existing.
-//
-// What does not survive is the turn budget: a resumed run starts its
-// count again. Persisting that too would be more faithful, but a
-// restart is also the moment a user is most likely to have changed
-// their mind, and beginning again is the harmless direction to be wrong
-// in -- the ceiling and the cost cap still apply.
+// goal and its persisted turn accounting when there is none in memory.
+// A stopped or exhausted record cannot silently reset its budget.
 func (c *coordinator) resumeGoalRun(ctx context.Context, sessionID string) (*goalRun, bool) {
 	if run, ok := c.goalRunFor(sessionID); ok {
 		return run, true
@@ -169,7 +186,10 @@ func (c *coordinator) resumeGoalRun(ctx context.Context, sessionID string) (*goa
 	}
 
 	slog.Info("Resuming a goal run from the stored goal", "session_id", sessionID)
-	run := &goalRun{goal: goal, budget: goalDefaultBudget}
+	run := c.restoreGoal(ctx, sessionID, goal)
+	if run == nil {
+		return nil, false
+	}
 	c.goalRuns.Set(sessionID, run)
 	return run, true
 }
@@ -211,6 +231,10 @@ func (c *coordinator) advanceGoal(ctx context.Context, sessionID string, runErr 
 	run.used++
 	goal, budget, used, claimed := run.goal, run.budget, run.used, run.claimed
 	run.mu.Unlock()
+	if err := c.persistGoal(ctx, sessionID, run, false); err != nil {
+		c.stopGoal(ctx, sessionID, "Goal paused: progress could not be persisted.")
+		return
+	}
 
 	if claimed {
 		// The agent says it is finished. Check the claim before taking
@@ -224,6 +248,10 @@ func (c *coordinator) advanceGoal(ctx context.Context, sessionID string, runErr 
 		run.mu.Lock()
 		run.claimed = false
 		run.mu.Unlock()
+		if err := c.persistGoal(ctx, sessionID, run, false); err != nil {
+			c.stopGoal(ctx, sessionID, "Goal paused: completion review could not be persisted.")
+			return
+		}
 		c.nextGoalTurn(ctx, sessionID,
 			"You called goal(action:\"done\"), but the goal is not met yet.\n\n"+
 				reason+"\n\nKeep working on it.")
@@ -356,6 +384,9 @@ func (c *coordinator) goalTool() fantasy.AgentTool {
 				run.budget = turns
 				used := run.used
 				run.mu.Unlock()
+				if err := c.persistGoal(ctx, sessionID, run, false); err != nil {
+					return fantasy.ToolResponse{}, err
+				}
 				if turns < params.Turns {
 					return fantasy.NewTextResponse(fmt.Sprintf(
 						"Budget set to %d turns (%d used). Asked for %d, capped at the ceiling.",
@@ -368,6 +399,9 @@ func (c *coordinator) goalTool() fantasy.AgentTool {
 				run.mu.Lock()
 				run.claimed = true
 				run.mu.Unlock()
+				if err := c.persistGoal(ctx, sessionID, run, false); err != nil {
+					return fantasy.ToolResponse{}, err
+				}
 				return fantasy.NewTextResponse(
 					"Noted. The claim is checked against the goal when this turn ends; " +
 						"if anything is missing you will be told what."), nil

@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	stdpath "path"
 	"path/filepath"
 	"time"
@@ -266,6 +267,9 @@ func (c *Client) buildReq(ctx context.Context, method, url string, body io.Reade
 
 	for k, v := range headers {
 		r.Header[http.CanonicalHeaderKey(k)] = v
+	}
+	if token := os.Getenv("ATLAS_SERVER_TOKEN"); token != "" {
+		r.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	r.URL.Scheme = "http"

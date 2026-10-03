@@ -30,6 +30,7 @@ type Prompt struct {
 }
 
 type PromptDat struct {
+	TaskProtocols      string
 	Provider           string
 	Model              string
 	Config             config.Config
@@ -141,6 +142,11 @@ func loadContextFiles(paths []string, store *config.ConfigStore) map[string][]Co
 }
 
 func (p *Prompt) promptData(ctx context.Context, provider, model string, store *config.ConfigStore) (PromptDat, error) {
+	ids, _ := ctx.Value(protocolKey{}).([]string)
+	guidance, err := RenderProtocols(ids)
+	if err != nil {
+		return PromptDat{}, err
+	}
 	workingDir := cmp.Or(p.workingDir, store.WorkingDir())
 	platform := cmp.Or(p.platform, runtime.GOOS)
 
@@ -185,6 +191,7 @@ func (p *Prompt) promptData(ctx context.Context, provider, model string, store *
 
 	isGit := isGitRepo(store.WorkingDir())
 	data := PromptDat{
+		TaskProtocols: guidance,
 		Provider:      provider,
 		Model:         model,
 		Config:        *cfg,

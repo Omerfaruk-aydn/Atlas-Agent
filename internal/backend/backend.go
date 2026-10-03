@@ -379,6 +379,10 @@ func (b *Backend) CreateWorkspace(args proto.Workspace) (*Workspace, proto.Works
 				return nil, proto.Workspace{}, ErrChannelOptInMismatch
 			}
 			logFirstWinsMismatch(ws, args)
+			if args.UsageProfile != "" && args.UsageProfile != ws.Cfg.Config().Options.UsageProfile {
+				b.mu.Unlock()
+				return nil, proto.Workspace{}, fmt.Errorf("requested usage profile differs from the running workspace; close its active clients before selecting another profile")
+			}
 			b.registerClient(ws, clientID)
 			b.mu.Unlock()
 			return ws, workspaceToProto(ws), nil
@@ -416,6 +420,11 @@ func (b *Backend) CreateWorkspace(args proto.Workspace) (*Workspace, proto.Works
 	cfg, err := config.Init(args.Path, args.DataDir, args.Debug)
 	if err != nil {
 		return nil, proto.Workspace{}, fmt.Errorf("failed to initialize config: %w", err)
+	}
+	if args.UsageProfile != "" {
+		if err := cfg.OverrideUsageProfile(args.UsageProfile); err != nil {
+			return nil, proto.Workspace{}, err
+		}
 	}
 
 	cfg.Overrides().SkipPermissionRequests = args.YOLO
@@ -486,6 +495,11 @@ func (b *Backend) CreateWorkspace(args proto.Workspace) (*Workspace, proto.Works
 				return nil, proto.Workspace{}, ErrChannelOptInMismatch
 			}
 			logFirstWinsMismatch(existing, args)
+			if args.UsageProfile != "" && args.UsageProfile != existing.Cfg.Config().Options.UsageProfile {
+				b.mu.Unlock()
+				ws.invokeShutdown()
+				return nil, proto.Workspace{}, fmt.Errorf("requested usage profile differs from the running workspace")
+			}
 			b.registerClient(existing, clientID)
 			b.mu.Unlock()
 			ws.invokeShutdown()
@@ -1071,15 +1085,16 @@ func validateClientID(id string) (string, error) {
 func workspaceToProto(ws *Workspace) proto.Workspace {
 	cfg := ws.Cfg.Config()
 	out := proto.Workspace{
-		ID:       ws.ID,
-		Path:     ws.Path,
-		YOLO:     ws.Cfg.Overrides().SkipPermissionRequests,
-		Channels: ws.Cfg.Overrides().EnabledChannels,
-		DataDir:  cfg.Options.DataDirectory,
-		Debug:    cfg.Options.Debug,
-		Config:   cfg,
-		Env:      ws.Env,
-		Version:  version.Version,
+		UsageProfile: cfg.Options.UsageProfile,
+		ID:           ws.ID,
+		Path:         ws.Path,
+		YOLO:         ws.Cfg.Overrides().SkipPermissionRequests,
+		Channels:     ws.Cfg.Overrides().EnabledChannels,
+		DataDir:      cfg.Options.DataDirectory,
+		Debug:        cfg.Options.Debug,
+		Config:       cfg,
+		Env:          ws.Env,
+		Version:      version.Version,
 	}
 	if ws.Skills != nil {
 		out.Skills = skillStatesToProto(ws.Skills.States())

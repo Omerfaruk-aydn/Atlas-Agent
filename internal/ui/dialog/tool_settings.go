@@ -31,7 +31,7 @@ var toolSettingsCatalog = []struct {
 	{"quality", "Quality Tools", "Secret scanning, coverage, and other code-quality checks."},
 	{"teams", "Teams (sub-agent broadcast)", "team_send/team_read so sub-agents spawned by the same task can message each other."},
 	{"debugger", "Debugger", "Drive a Go program under Delve (dlv dap): breakpoints, step, inspect variables. Requires dlv installed."},
-	{"browser", "Browser", "Drive a real Chrome/Chromium tab: navigate, click, type, screenshot, read console. Requires Chrome/Chromium installed."},
+	{"browser", "Browser", "Drive a real browser: navigate, click, type, screenshot, read console."},
 	{"computer", "Computer-Use", "See the screen and drive the real desktop: screenshot, click, drag, scroll, type, hotkeys. Windows only. Actions run without per-action approval while on."},
 	{"browser_visible", "Browser: Visible Window", "Show the Chrome window the Browser tool drives instead of running it headless (no window, no audio)."},
 }

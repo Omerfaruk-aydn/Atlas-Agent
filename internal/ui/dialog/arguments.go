@@ -246,6 +246,9 @@ func (a *Arguments) HandleMsg(msg tea.Msg) Action {
 				case ActionSaveAutoCompactThreshold:
 					action.Args = args
 					return action
+				case ActionSaveUsageProfile:
+					action.Args = args
+					return action
 				case ActionSaveSubagentMeta:
 					action.Args = args
 					return action

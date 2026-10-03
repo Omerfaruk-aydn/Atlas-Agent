@@ -165,6 +165,7 @@ type (
 	ActionSaveAutoCompactThreshold struct {
 		Args map[string]string
 	}
+	ActionSaveUsageProfile struct{ Args map[string]string }
 
 	// ActionOpenSubagentForm opens the add/edit form for a subagent's
 	// name, description, and model role. An empty ExistingName means

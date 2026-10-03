@@ -20,6 +20,14 @@ Record exact commands actually executed, important results, and failures still r
 ## Blockers and Exact Next Steps
 Identify each concrete blocker and the minimum input or external change required. State the next executable action in the right dependency order, including path/target and validation command when known. Finish with how remaining acceptance criteria will be verified and integrated. Preserve a running command or delegation handle only if one really exists and must be resumed.
 
+## Prompt and Specialist Continuity
+Preserve the active task protocols, role boundaries, design brief/token decisions,
+owned paths, relevant source freshness and criterion-to-evidence ledger. A role's
+previous report is context to inspect, not current proof. State which source/checks
+must be refreshed after edits. Persistent prompt recipes preserve guidance only;
+the summary must still preserve user intent and the exact next action. Do not copy
+the entire system prompt or skill manuals into the summary.
+
 Write as a factual handoff, not a response to the user. A blocked dependency does not make independent work complete. Compaction does not authorize starting over, repeating finished work, or abandoning the active goal.
 
 Preserve integration identity where it matters: current checkout versus isolated

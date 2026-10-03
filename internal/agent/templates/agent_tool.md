@@ -14,6 +14,27 @@ task hints and description overlap, with the generic agent as a fallback. The
 response reports the selected role and routing reason. Prefer an explicit named
 specialist when the assignment is already clear.
 
+Use session_key with a named specialist to retain its conversation for later
+assignments in the same parent session, including after restarting Atlas. Use a
+separate key for a different workstream. Role, model, tools or ownership changes
+invalidate reuse. Calls sharing a key are serialized; history is not a substitute
+for inspecting current files. Independent quality checks always use fresh sessions.
+
+For repeated independent assignments use mode="batch", batch_id and 1–128 items
+with unique id and input. Prompt must contain {{item}}, replaced with each input.
+Rows are persisted before and after execution and visible in the workflow Batches
+view (0). Writes execute in order. To retry only failed rows, repeat the identical
+definition with retry_failed=true. Successful rows are skipped. Interrupted rows
+remain running and must be inspected before starting a new batch; never replay
+uncertain edits automatically. A successful row means the invocation returned an
+output, not that independent verification passed.
+
+For design followed by scoped implementation use mode="architect_edit", different
+named architect and editor roles, and explicit owned_paths. The architect gets
+read-only tools and no command execution. Its plan is handed to the editor as
+proposals, under the stated ownership boundary. Models come from each role's model
+binding. Do not use this mode for independent quality certification.
+
 For sizeable implementation tasks use workflow dispatch with stable task IDs,
 owned paths and acceptance criteria. Specialists return a structured JSON handoff;
 the coordinator applies isolated patches and calls workflow review for the task.

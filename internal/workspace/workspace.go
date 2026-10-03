@@ -53,6 +53,11 @@ var (
 	ErrStreamClosed = errors.New("the event stream closed; reconnecting")
 )
 
+// BackgroundOutputReader is optional for workspaces without process support.
+type BackgroundOutputReader interface {
+	BackgroundJobOutput(context.Context, string) (shell.BackgroundOutput, error)
+}
+
 // ConnectionState describes the health of the client-server link as
 // reported by the [ClientWorkspace] subscription loop.
 type ConnectionState int

@@ -21,6 +21,18 @@ type workflowFixtureCoordinator struct {
 	value engineering.WorkflowSnapshot
 }
 
+func workflowTestRequest(t *testing.T, method, url string, body []byte) (*http.Response, error) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), method, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	if method == http.MethodPost {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	return http.DefaultClient.Do(req)
+}
+
 type workflowCoreCoordinator struct {
 	agent.Coordinator
 	agent.WorkflowController
@@ -53,7 +65,7 @@ func TestWorkflowServerUsesRealPersistentControllerAndStrictControls(t *testing.
 	url := h.httpSrv.URL + "/v1/workspaces/" + h.workspace.ID + "/sessions/" + sess.ID + "/workflow?client_id=" + cid
 	local, err := core.WorkflowSnapshot(t.Context(), sess.ID)
 	require.NoError(t, err)
-	rsp, err := http.Get(url)
+	rsp, err := workflowTestRequest(t, http.MethodGet, url, nil)
 	require.NoError(t, err)
 	var remote engineering.WorkflowSnapshot
 	require.NoError(t, json.NewDecoder(rsp.Body).Decode(&remote))
@@ -62,12 +74,12 @@ func TestWorkflowServerUsesRealPersistentControllerAndStrictControls(t *testing.
 	valid, err := json.Marshal(engineering.WorkflowControl{Action: "pause", ExpectedRevision: local.Revision})
 	require.NoError(t, err)
 	for _, input := range [][]byte{append(append([]byte{}, valid...), []byte(`{}`)...), []byte(`{"action":"pause","action":"resume"}`), []byte(`{"Action":"pause"}`)} {
-		rsp, err := http.Post(url, "application/json", bytes.NewReader(input))
+		rsp, err := workflowTestRequest(t, http.MethodPost, url, input)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusBadRequest, rsp.StatusCode)
 		rsp.Body.Close()
 	}
-	rsp, err = http.Post(url, "application/json", bytes.NewReader(valid))
+	rsp, err = workflowTestRequest(t, http.MethodPost, url, valid)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, rsp.StatusCode)
 	rsp.Body.Close()
@@ -75,7 +87,7 @@ func TestWorkflowServerUsesRealPersistentControllerAndStrictControls(t *testing.
 	require.NoError(t, err)
 	require.True(t, paused.Paused)
 	require.NotEqual(t, local.Revision, paused.Revision)
-	rsp, err = http.Post(url, "application/json", bytes.NewReader(valid))
+	rsp, err = workflowTestRequest(t, http.MethodPost, url, valid)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusConflict, rsp.StatusCode)
 	rsp.Body.Close()
@@ -95,13 +107,13 @@ func TestWorkflowSnapshotClientServerParityAndUnauthorizedDenied(t *testing.T) {
 	value := engineering.WorkflowSnapshot{SessionID: "session", Revision: engineering.Hash("revision"), Tasks: []engineering.WorkflowTask{{ID: "task", Status: "pending"}}, Capabilities: map[string]string{"controls": "available"}}
 	h.workspace.AgentCoordinator = &workflowFixtureCoordinator{value: value}
 	url := h.httpSrv.URL + "/v1/workspaces/" + h.workspace.ID + "/sessions/session/workflow?client_id=" + uuid.NewString()
-	rsp, err := http.Get(url)
+	rsp, err := workflowTestRequest(t, http.MethodGet, url, nil)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusForbidden, rsp.StatusCode)
 	rsp.Body.Close()
 	cid := uuid.NewString()
 	require.NoError(t, h.backend.AttachClient(h.workspace.ID, cid))
-	rsp, err = http.Get(h.httpSrv.URL + "/v1/workspaces/" + h.workspace.ID + "/sessions/session/workflow?client_id=" + cid)
+	rsp, err = workflowTestRequest(t, http.MethodGet, h.httpSrv.URL+"/v1/workspaces/"+h.workspace.ID+"/sessions/session/workflow?client_id="+cid, nil)
 	require.NoError(t, err)
 	defer rsp.Body.Close()
 	require.Equal(t, http.StatusOK, rsp.StatusCode)

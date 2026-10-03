@@ -16,9 +16,19 @@ import (
 
 type ToolInvoker func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error)
 
+// MeasuredCheckMetadata binds engineering checks to actual tool observations.
+type MeasuredCheckMetadata struct {
+	Observed bool `json:"observed"`
+	Passed   bool `json:"passed"`
+}
+
+func measuredCheckTool(name string) bool {
+	return slices.Contains([]string{"api_probe", "migration_rehearse", "visual_diff", "mutation_test"}, name)
+}
+
 type VerificationStep struct {
 	Name  string          `json:"name" description:"Observable check name."`
-	Tool  string          `json:"tool" description:"test_run, lint_run or bash. Commands retain ordinary tool permissions."`
+	Tool  string          `json:"tool" description:"bash, test_run, lint_run, api_probe, migration_rehearse, visual_diff or mutation_test. Ordinary permissions remain enforced."`
 	Input json.RawMessage `json:"input" description:"Arguments for the chosen tool; use foreground commands."`
 }
 
@@ -40,9 +50,13 @@ func ToolOutcomeObserved(tool string, resp fantasy.ToolResponse, err error) bool
 		Issues     *int  `json:"issues"`
 		ExitCode   *int  `json:"exit_code"`
 		Background bool  `json:"background"`
+		Observed   bool  `json:"observed"`
 	}
 	if json.Unmarshal([]byte(resp.Metadata), &meta) != nil {
 		return false
+	}
+	if measuredCheckTool(tool) {
+		return meta.Observed
 	}
 	switch tool {
 	case "bash":
@@ -83,8 +97,13 @@ func ToolSucceeded(tool string, resp fantasy.ToolResponse, err error) bool {
 		Issues     *int  `json:"issues"`
 		ExitCode   *int  `json:"exit_code"`
 		Background bool  `json:"background"`
+		Observed   bool  `json:"observed"`
+		Passed     bool  `json:"passed"`
 	}
 	_ = json.Unmarshal([]byte(resp.Metadata), &meta)
+	if measuredCheckTool(tool) {
+		return meta.Observed && meta.Passed
+	}
 	switch tool {
 	case "test_run":
 		return meta.OK != nil && *meta.OK
@@ -167,7 +186,7 @@ func NewVerifyTool(root string, store *engineering.Store, invoke ToolInvoker, av
 			return fantasy.NewTextErrorResponse("use plan or run; explicit checks are required for an unknown stack"), nil
 		}
 		for _, c := range checks {
-			if c.Name == "" || len(c.Name) > 128 || len(c.Input) > 16*1024 || !json.Valid(c.Input) || c.Tool != "bash" && c.Tool != "test_run" && c.Tool != "lint_run" {
+			if c.Name == "" || len(c.Name) > 128 || len(c.Input) > 16*1024 || !json.Valid(c.Input) || !engineering.IsVerificationTool(c.Tool) {
 				return fantasy.NewTextErrorResponse("invalid verification check"), nil
 			}
 		}

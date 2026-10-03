@@ -95,7 +95,7 @@ func TestContractStageRequiresCurrentCheck(t *testing.T) {
 		return invoke(ctx, call)
 	})
 	invoke = func(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
-		var tool fantasy.AgentTool = bash
+		tool := bash
 		if call.Name == "verify" {
 			tool = verify
 		}

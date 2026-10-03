@@ -29,7 +29,7 @@ func ReadWorkflowSnapshot(ctx context.Context, store *engineering.Store, session
 		}
 		tasks := make([]engineering.WorkflowTask, 0, len(sess.Todos))
 		for _, task := range sess.Todos {
-			tasks = append(tasks, engineering.WorkflowTask{ID: task.ID, Content: task.Content, Status: string(task.Status), Agent: task.Agent, SpecFingerprint: session.TaskFingerprint(task), DependsOn: task.DependsOn, OwnedPaths: task.OwnedPaths})
+			tasks = append(tasks, engineering.WorkflowTask{ID: task.ID, Content: task.Content, Status: string(task.Status), Agent: task.Agent, SpecFingerprint: session.TaskFingerprint(task), DependsOn: task.DependsOn, OwnedPaths: task.OwnedPaths, AcceptanceCriteria: task.AcceptanceCriteria, Verification: task.Verification})
 		}
 		out, err := store.Snapshot(ctx, root, id, tasks, session.TodosFingerprint(sess.Todos), busy)
 		if err != nil {
@@ -47,7 +47,18 @@ func ReadWorkflowSnapshot(ctx context.Context, store *engineering.Store, session
 }
 
 func (c *coordinator) WorkflowSnapshot(ctx context.Context, id string) (engineering.WorkflowSnapshot, error) {
-	return ReadWorkflowSnapshot(ctx, c.engineering, c.sessions, c.cfg.WorkingDir(), id, c.currentAgent != nil && c.IsSessionBusy(id))
+	out, err := ReadWorkflowSnapshot(ctx, c.engineering, c.sessions, c.cfg.WorkingDir(), id, c.currentAgent != nil && c.IsSessionBusy(id))
+	if err != nil {
+		return out, err
+	}
+	out.AgentLimit = 16
+	if configured := c.cfg.Config().Options.MaxConcurrentSubAgents; configured > 0 {
+		out.AgentLimit = min(out.AgentLimit, configured)
+	}
+	if out.Board.MaxAgents > 0 {
+		out.AgentLimit = min(out.AgentLimit, out.Board.MaxAgents)
+	}
+	return out, nil
 }
 
 func (c *coordinator) WorkflowControl(ctx context.Context, id string, action engineering.WorkflowControl) error {
@@ -67,6 +78,14 @@ func (c *coordinator) WorkflowControl(ctx context.Context, id string, action eng
 		return fmt.Errorf("workflow revision conflict; refresh snapshot")
 	}
 	switch action.Action {
+	case "start_queue":
+		return c.startControlQueue(ctx, id)
+	case "task_retry", "task_replan", "task_scope":
+		return c.reviseControlTask(ctx, id, snapshot, action)
+	case "inspect_checkpoint", "resume_checkpoint":
+		return c.controlCheckpoint(ctx, id, snapshot, action)
+	case "steer", "queue", "feedback", "task_pause", "task_resume", "cancel_task", "queue_cancel", "queue_retry", "queue_remove", "queue_up", "queue_down", "team_limit", "budget":
+		return c.controlBoardAction(ctx, id, snapshot, action)
 	case "pause", "resume":
 		return c.engineering.Update(ctx, id, func(st *engineering.State) error { st.Paused = action.Action == "pause"; return nil })
 	case "stop":
@@ -83,11 +102,11 @@ func (c *coordinator) WorkflowControl(ctx context.Context, id string, action eng
 		if action.TaskID == "" || action.Agent == "" {
 			return fmt.Errorf("reassignment requires task_id and agent")
 		}
-		if snapshot.Busy {
-			return fmt.Errorf("stop and reconcile active work before reassignment")
+		if taskHasRunner(snapshot, action.TaskID) {
+			return fmt.Errorf("stop and reconcile this task before reassignment")
 		}
 		for _, op := range snapshot.Operations {
-			if op.Status == "running" || op.Status == "background" {
+			if op.TaskID == action.TaskID && (op.Status == "running" || op.Status == "background") {
 				return fmt.Errorf("reconcile active operations before reassignment")
 			}
 		}
@@ -134,6 +153,6 @@ func (c *coordinator) WorkflowControl(ctx context.Context, id string, action eng
 		_, err = c.sessions.CompareAndSwapTodos(ctx, id, before, sess.Todos)
 		return err
 	default:
-		return fmt.Errorf("workflow control must be pause, resume, stop or reassign")
+		return fmt.Errorf("unknown workflow control %q", action.Action)
 	}
 }

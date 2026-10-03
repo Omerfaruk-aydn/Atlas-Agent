@@ -56,6 +56,7 @@ var clientHost string
 func init() {
 	rootCmd.PersistentFlags().StringP("cwd", "c", "", "Current working directory")
 	rootCmd.PersistentFlags().StringP("data-dir", "D", "", "Custom atlas data directory")
+	rootCmd.PersistentFlags().String("profile", "", "Usage profile: economical, research, implementation, review, ci or a configured profile")
 	rootCmd.PersistentFlags().BoolP("debug", "d", false, "Debug")
 	rootCmd.PersistentFlags().StringVarP(&clientHost, "host", "H", server.DefaultHost(), "Connect to a specific atlas server host (for advanced users)")
 	rootCmd.Flags().BoolP("help", "h", false, "Help")
@@ -290,6 +291,11 @@ func setupLocalWorkspace(cmd *cobra.Command) (workspace.Workspace, func(), error
 	if err != nil {
 		return nil, nil, err
 	}
+	if profile, _ := cmd.Flags().GetString("profile"); profile != "" {
+		if err := store.OverrideUsageProfile(profile); err != nil {
+			return nil, nil, err
+		}
+	}
 	if err := applyRunRoleOverride(cmd, store); err != nil {
 		return nil, nil, err
 	}
@@ -429,6 +435,7 @@ func connectToServer(cmd *cobra.Command) (*client.Client, *proto.Workspace, func
 		Version:  version.Version,
 		Env:      os.Environ(),
 	}
+	wsReq.UsageProfile, _ = cmd.Flags().GetString("profile")
 
 	ws, err := createWorkspaceOnLiveServer(cmd.Context(), c, wsReq, func() error {
 		return replaceExitingServer(cmd, hostURL)

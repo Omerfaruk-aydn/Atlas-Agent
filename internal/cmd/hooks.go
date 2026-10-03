@@ -65,10 +65,13 @@ func runHooksList(cmd *cobra.Command, _ []string) error {
 // answer, since it will never fire either.
 // jsonHook is one hook's wire form for --json.
 type jsonHook struct {
-	Event   string `json:"event"`
-	Name    string `json:"name"`
-	Matcher string `json:"matcher,omitempty"`
-	Command string `json:"command"`
+	Prompt   string `json:"prompt,omitempty"`
+	Agent    string `json:"agent,omitempty"`
+	MaxFires int    `json:"max_fires,omitempty"`
+	Event    string `json:"event"`
+	Name     string `json:"name"`
+	Matcher  string `json:"matcher,omitempty"`
+	Command  string `json:"command"`
 }
 
 func listHooks(cmd *cobra.Command, cfg *config.ConfigStore, toolName string) error {
@@ -92,6 +95,7 @@ func listHooks(cmd *cobra.Command, cfg *config.ConfigStore, toolName string) err
 			}
 			for _, h := range list {
 				jsonHooks = append(jsonHooks, jsonHook{
+					Prompt: h.Prompt, Agent: h.Agent, MaxFires: h.MaxFires,
 					Event:   event,
 					Name:    h.DisplayName(),
 					Matcher: h.Matcher,
@@ -122,7 +126,11 @@ func listHooks(cmd *cobra.Command, cfg *config.ConfigStore, toolName string) err
 			if matcher == "" {
 				matcher = "(all tools)"
 			}
-			fmt.Fprintf(out, "  %s [%s]\n    %s\n", h.DisplayName(), matcher, h.Command)
+			action := h.Command
+			if h.Prompt != "" {
+				action = "agent " + h.Agent + ": " + h.Prompt
+			}
+			fmt.Fprintf(out, "  %s [%s]\n    %s\n", h.DisplayName(), matcher, action)
 			shown++
 		}
 	}

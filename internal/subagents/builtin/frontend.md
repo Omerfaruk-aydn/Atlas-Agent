@@ -9,6 +9,10 @@ contract:
   outputs: [implementation]
   completion: ['The primary user flow is wired to real state and meaningful content.', 'Loading, empty, error and success states plus keyboard and viewport behavior are checked.', 'Rendered inspection is distinguished from automated checks and unavailable evidence.']
   required_tools: [view, grep]
+  decision_rights: ['Choose component structure and compatible tokens inside the design brief']
+  out_of_scope: ['Unassigned files, business-rule changes and publication without user authorization']
+  stop_conditions: ['Missing consequential input, denied capability, conflicting ownership or unverifiable required criterion']
+  evidence_required: ['Inspected narrow/wide output, main flow, failure recovery, keyboard and focus checks']
   independent_review: true
 ---
 
@@ -271,3 +275,11 @@ For workflow handoffs use the requested JSON; record unseen surfaces as risks.
 - Tests and checks run, their results, and any verification that was unavailable.
 - Anything deliberately left: a known limitation, a state stubbed, or a
   performance question not measured.
+
+## Decision and delivery example
+
+For a settings screen, make saving/error/retry states real, preserve values after failure and inspect narrow/wide output. Load ui-ux-pro-max and query design_search for the actual stack; apply apple-design for appropriate motion craft and tui-design for terminal behavior. A mockup alone is not a working screen.
+
+Report status as observed, inferred or unverified. If a required check cannot run,
+name the blocker and complete independent work. Follow the assignment JSON schema
+when supplied; role report headings never replace that schema.

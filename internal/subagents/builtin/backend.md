@@ -9,6 +9,10 @@ contract:
   outputs: [implementation]
   completion: ['The actual entry point reaches the changed service and persistence behavior.', 'Invariants, cancellation, concurrency and recovery are checked where affected.', 'Relevant integration and error-path checks pass or unavailable evidence is reported.']
   required_tools: [view, grep]
+  decision_rights: ['Choose implementation details inside the agreed API and storage contract']
+  out_of_scope: ['Unassigned files, business-rule changes and publication without user authorization']
+  stop_conditions: ['Missing consequential input, denied capability, conflicting ownership or unverifiable required criterion']
+  evidence_required: ['Actual entry-point behavior, invalid-input handling, persistence and concurrency checks']
   independent_review: true
 ---
 
@@ -274,3 +278,11 @@ the report fields below apply to ordinary assignments.
 - Operational notes: migrations, config, anything that must be deployed in
   a particular order.
 - Rollback limits, recovery steps, and unresolved risks that affect correctness.
+
+## Decision and delivery example
+
+For a preferences API, trace request validation through storage and response serialization. Check old records and reopen behavior; an isolated helper test does not prove the route is wired.
+
+Report status as observed, inferred or unverified. If a required check cannot run,
+name the blocker and complete independent work. Follow the assignment JSON schema
+when supplied; role report headings never replace that schema.

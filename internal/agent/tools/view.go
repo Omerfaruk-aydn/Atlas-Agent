@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/documents"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/filepathext"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/filetracker"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/lsp"
@@ -195,6 +196,28 @@ func NewViewTool(
 			}
 
 			// Set default limit if not provided (no limit for SKILL.md files)
+			if documents.Supported(filePath) {
+				result, err := documents.Extract(ctx, filePath)
+				if err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+				lines := strings.Split(result.Text(), "\n")
+				start := max(0, params.Offset)
+				if start >= len(lines) {
+					return fantasy.NewTextResponse("No more extracted lines"), nil
+				}
+				limit := params.Limit
+				if limit <= 0 {
+					limit = limits.readLimit()
+				}
+				limit = min(limit, 1000)
+				content := strings.Join(lines[start:min(start+limit, len(lines))], "\n")
+				if len(content) > MaxViewSize {
+					content = content[:MaxViewSize] + "\n[Output truncated]"
+				}
+				filetracker.RecordRead(ctx, sessionID, filePath)
+				return fantasy.WithResponseMetadata(fantasy.NewTextResponse(content), map[string]any{"file_path": filePath, "format": result.Format, "warnings": result.Warnings, "truncated": result.Truncated, "total_lines": len(lines), "offset": start, "has_more": start+limit < len(lines)}), nil
+			}
 			if params.Limit <= 0 {
 				if isSkillFile {
 					params.Limit = 1000000 // Effectively no limit for skill files

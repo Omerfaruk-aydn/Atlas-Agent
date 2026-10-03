@@ -372,6 +372,13 @@ func (w *AppWorkspace) BackgroundJobKill(id string) error {
 	return shell.GetBackgroundShellManager().Kill(id)
 }
 
+func (w *AppWorkspace) BackgroundJobOutput(ctx context.Context, id string) (shell.BackgroundOutput, error) {
+	if err := ctx.Err(); err != nil {
+		return shell.BackgroundOutput{}, err
+	}
+	return shell.GetBackgroundShellManager().OutputForRoot(w.store.WorkingDir(), id)
+}
+
 func (w *AppWorkspace) SubAgentRunsList(ctx context.Context, sessionID string) []SubAgentRunInfo {
 	children, err := w.app.Sessions.ListByParent(ctx, sessionID)
 	if err != nil {

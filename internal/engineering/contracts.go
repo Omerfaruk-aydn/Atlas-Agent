@@ -68,7 +68,7 @@ func (c ContractRevision) validate() error {
 	}
 	seen = map[string]bool{}
 	for _, check := range c.Checks {
-		if !boundedText(check.Name, 128) || seen[check.Name] || len(check.InputJSON) > 16*1024 || !json.Valid([]byte(check.InputJSON)) || check.Tool != "bash" && check.Tool != "test_run" && check.Tool != "lint_run" {
+		if !boundedText(check.Name, 128) || seen[check.Name] || len(check.InputJSON) > 16*1024 || !json.Valid([]byte(check.InputJSON)) || !IsVerificationTool(check.Tool) {
 			return fmt.Errorf("invalid or duplicate contract check")
 		}
 		seen[check.Name] = true

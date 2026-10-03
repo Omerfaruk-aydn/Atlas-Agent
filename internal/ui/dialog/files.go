@@ -114,6 +114,26 @@ func (d *Files) ID() string {
 	return FilesID
 }
 
+// Refresh keeps a live file list without replacing the surrounding overlay.
+func (d *Files) Refresh(entries []FileDiffEntry) {
+	selectedPath := ""
+	if selected, ok := d.list.SelectedItem().(*fileEntry); ok {
+		selectedPath = selected.entry.Path
+	}
+	items := make([]list.FilterableItem, 0, len(entries))
+	for _, entry := range entries {
+		items = append(items, &fileEntry{Versioned: list.NewVersioned(), entry: entry, t: d.com})
+	}
+	d.list.SetItems(items...)
+	for i, entry := range entries {
+		if entry.Path == selectedPath {
+			d.list.SetSelected(i)
+			d.list.ScrollToSelected()
+			break
+		}
+	}
+}
+
 // HandleMsg implements Dialog.
 func (d *Files) HandleMsg(msg tea.Msg) Action {
 	keyMsg, ok := msg.(tea.KeyPressMsg)

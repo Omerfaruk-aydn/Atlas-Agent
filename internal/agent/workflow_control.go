@@ -2,10 +2,13 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agentstate"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/subagents"
 )
@@ -40,6 +43,49 @@ func ReadWorkflowSnapshot(ctx context.Context, store *engineering.Store, session
 			return out, err
 		}
 		if session.TodosFingerprint(after.Todos) == session.TodosFingerprint(sess.Todos) {
+			out.Context, out.ContextPreferences, err = store.ReadContext(ctx, id)
+			if err != nil {
+				return out, err
+			}
+			out.Batches, err = store.AgentBatches(ctx, id)
+			if err != nil {
+				return out, err
+			}
+			contextRevision, _ := json.Marshal(out.ContextPreferences)
+			if err := interaction.Default.Load(root, id); err != nil {
+				return out, err
+			}
+			out.Interactions = interaction.Default.Snapshot(id)
+			out.Revision = engineering.Hash(fmt.Sprintf("%s:%d", out.Revision, out.Interactions.ControlRevision))
+			out.Revision = engineering.Hash(out.Revision + string(contextRevision))
+			if provider, ok := sessions.(interface{ AgentState() *agentstate.Store }); ok && provider.AgentState() != nil {
+				state := provider.AgentState()
+				scope := platformScopeForRoot(root)
+				out.PlatformJobs, err = agentstate.Jobs(ctx, state, scope+"/agent_jobs")
+				if err != nil {
+					return out, err
+				}
+				out.PlatformTasks, err = agentstate.Tasks(ctx, state, scope+"/task_board")
+				if err != nil {
+					return out, err
+				}
+				out.SourceMemories, err = agentstate.Memories(ctx, state, scope+"/source_memory", root, "")
+				if err != nil {
+					return out, err
+				}
+				if len(out.PlatformJobs) == 0 {
+					out.PlatformJobs = nil
+				}
+				if len(out.PlatformTasks) == 0 {
+					out.PlatformTasks = nil
+				}
+				if len(out.SourceMemories) == 0 {
+					out.SourceMemories = nil
+				}
+				encoded, _ := json.Marshal([]any{out.PlatformJobs, out.PlatformTasks, out.SourceMemories})
+				out.Revision = engineering.Hash(out.Revision + string(encoded))
+			}
+
 			return out, nil
 		}
 	}
@@ -50,6 +96,12 @@ func (c *coordinator) WorkflowSnapshot(ctx context.Context, id string) (engineer
 	out, err := ReadWorkflowSnapshot(ctx, c.engineering, c.sessions, c.cfg.WorkingDir(), id, c.currentAgent != nil && c.IsSessionBusy(id))
 	if err != nil {
 		return out, err
+	}
+	if out.Interactions.LivePreview && ctx.Value(interactionPreviewSuppressed{}) == nil {
+		if err := c.captureInteractionPreview(ctx, id); err != nil {
+			out.Capabilities["interaction_preview"] = err.Error()
+		}
+		out.Interactions = interaction.Default.Snapshot(id)
 	}
 	out.AgentLimit = 16
 	if configured := c.cfg.Config().Options.MaxConcurrentSubAgents; configured > 0 {
@@ -70,7 +122,7 @@ func (c *coordinator) WorkflowControl(ctx context.Context, id string, action eng
 		return err
 	}
 	defer release()
-	snapshot, err := c.WorkflowSnapshot(ctx, id)
+	snapshot, err := c.WorkflowSnapshot(context.WithValue(ctx, interactionPreviewSuppressed{}, true), id)
 	if err != nil {
 		return err
 	}
@@ -78,6 +130,56 @@ func (c *coordinator) WorkflowControl(ctx context.Context, id string, action eng
 		return fmt.Errorf("workflow revision conflict; refresh snapshot")
 	}
 	switch action.Action {
+	case "job_pause", "job_resume", "job_recover":
+		if c.stateStore() == nil {
+			return fmt.Errorf("automation unavailable")
+		}
+		return agentstate.ControlJob(ctx, c.stateStore(), c.platformScope()+"/agent_jobs", action.Text, map[string]string{"job_pause": "pause", "job_resume": "resume", "job_recover": "recover"}[action.Action])
+	case "board_accept", "board_retry", "board_recover":
+		if c.stateStore() == nil {
+			return fmt.Errorf("task board unavailable")
+		}
+		return agentstate.TransitionTask(ctx, c.stateStore(), c.platformScope()+"/task_board", action.Text, map[string]string{"board_accept": "accept", "board_retry": "retry", "board_recover": "recover"}[action.Action], "", nil, "")
+	case "interaction_capture":
+		return c.captureInteractionPreview(ctx, id)
+	case "interaction_preview":
+		interaction.Default.SetPreview(id, !snapshot.Interactions.LivePreview)
+		return interaction.Default.Record(c.cfg.WorkingDir(), id, interaction.Entry{Resource: "control", Action: "preview", Status: "ready"})
+	case "interaction_pause":
+		interaction.Default.Pause(id, "User took control from TUI")
+		return interaction.Default.Record(c.cfg.WorkingDir(), id, interaction.Entry{Resource: "control", Action: "pause", Status: "paused"})
+	case "interaction_resume":
+		interaction.Default.Resume(id)
+		return interaction.Default.Record(c.cfg.WorkingDir(), id, interaction.Entry{Resource: "control", Action: "resume", Status: "ready"})
+	case "batch_retry":
+		for _, batch := range snapshot.Batches {
+			if batch.ID != action.Text {
+				continue
+			}
+			var request AgentParams
+			if err := json.Unmarshal(batch.Request, &request); err != nil {
+				return err
+			}
+			request.RetryFailed = true
+			if err := validateAgentBatch(request); err != nil {
+				return err
+			}
+			hasFailed := false
+			for _, row := range batch.Rows {
+				hasFailed = hasFailed || row.Status == "failed"
+			}
+			if !hasFailed {
+				return fmt.Errorf("batch has no failed rows")
+			}
+			data, err := json.Marshal(AgentParams{Mode: "batch", BatchID: batch.ID, RetryFailed: true, Prompt: "Retry failed rows of the stored batch definition"})
+			if err != nil {
+				return err
+			}
+			return c.engineering.EnqueueDirective(ctx, id, engineering.UserDirective{Mode: "next", Text: "Retry only the failed rows by calling the agent tool with exactly these arguments. Do not rerun successful or interrupted rows.\n" + string(data)})
+		}
+		return fmt.Errorf("batch not found")
+	case "context_pin", "context_unpin", "context_exclude", "context_include":
+		return c.engineering.ContextControl(ctx, c.cfg.WorkingDir(), id, action.Action, action.Text)
 	case "start_queue":
 		return c.startControlQueue(ctx, id)
 	case "task_retry", "task_replan", "task_scope":

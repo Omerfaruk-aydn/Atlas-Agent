@@ -25,6 +25,7 @@ func TestTodoQualityValidation(t *testing.T) {
 		{"invalid evidence", Todo{Content: "Build", Status: TodoStatusPending, Evidence: []TodoEvidence{{Kind: "guess", Detail: "Probably fine"}}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := ValidateTodo(tc.todo)
 			if tc.valid {
 				require.NoError(t, err)

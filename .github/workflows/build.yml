@@ -30,4 +30,7 @@ jobs:
       - run: go mod tidy
       - run: git diff --exit-code
       - run: go build -race ./...
+      - name: Enable sandboxed Chrome user namespaces on Ubuntu runner
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: go test -race -failfast ./...

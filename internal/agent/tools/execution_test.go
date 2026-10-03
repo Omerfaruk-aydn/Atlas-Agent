@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"testing"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
@@ -37,7 +38,8 @@ func (r *fixtureExecutionRunner) Start(_ context.Context, request execution.Requ
 }
 
 func TestRecipesBashLiteralPolicyAndIsolation(t *testing.T) {
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	ctx := context.WithValue(t.Context(), SessionIDContextKey, "session")
 	literal := "$(touch escaped) ; echo injection ' $HOME"
 	tool := newBashToolForTest(root)
@@ -72,7 +74,8 @@ func (r *fixtureExecutionRunner) Observe(context.Context, string) (execution.Res
 func (r *fixtureExecutionRunner) Cancel(context.Context, string) error { return nil }
 
 func TestExecutionBashPermissionAndObservedExit(t *testing.T) {
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	store := engineering.NewStore(t.TempDir())
 	output, err := store.PutArtifact(t.Context(), "execution-output", []byte("verified output"))
 	require.NoError(t, err)

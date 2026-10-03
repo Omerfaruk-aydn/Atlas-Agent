@@ -138,7 +138,7 @@ var (
 )
 
 func inferTaskType(prompt string) string {
-	words := strings.FieldsFunc(strings.ToLower(prompt), func(r rune) bool { return !(r >= 'a' && r <= 'z') && !(r > 127) })
+	words := strings.FieldsFunc(strings.ToLower(prompt), func(r rune) bool { return (r < 'a' || r > 'z') && r <= 127 })
 	// Review and diagnosis take precedence over the subject being inspected.
 	for _, group := range []struct {
 		kind  string

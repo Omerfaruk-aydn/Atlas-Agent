@@ -29,6 +29,9 @@ for the verified models, regional endpoints, and key login commands.
 The [catalog verification report](docs/provider-catalog-fixes-2026-10-01.md)
 records the completed provider updates, source evidence, and test results.
 
+The [agent workspace guide](docs/agent-workspace.md) covers live task controls,
+persistent steering, dependency views, diffs, process output and checkpoint recovery.
+
 <!--
   Demo goes here: a short terminal recording (asciinema, or a GIF made with
   vhs/terminalizer) showing one real task end to end -- e.g. "fix the failing
@@ -362,6 +365,10 @@ in an `atlasrc` shell config (`mcp add ...`) rather than through a CLI subcomman
 | --- | --- |
 | `atlas-agent projects` | List known projects. |
 | `atlas-agent worktree` | Manage git worktree-backed sessions. |
+| `atlas-agent review [--commit REF\|--base REF]` | Review a bounded Git scope through the review role. |
+| `atlas-agent commands list\|import\|export\|validate\|run` | Share and admit validated project workflow recipes. |
+| `atlas-agent watch-comments --file PATH` | Queue lexer-detected `ATLAS:` comments; dispatch is opt-in. |
+| `atlas-agent schedule add\|list\|pause\|resume\|recover\|start\|stop` | Manage persistent, explicitly enabled maintenance commands. |
 | `atlas-agent memory show [project\|user]` | Show remembered project/user context. |
 | `atlas-agent memory search <query>` | Search what has been remembered. |
 | `atlas-agent memory clear <project\|user>` | Forget it. |
@@ -371,6 +378,9 @@ in an `atlasrc` shell config (`mcp add ...`) rather than through a CLI subcomman
 | `atlas-agent dirs` | Show config, data, and cache directories. |
 | `atlas-agent logs` | Tail the agent's own log file. |
 | `atlas-agent corners` | Preview which box-corner styles your terminal font supports. |
+
+See [engineering tools and workflows](docs/engineering-tools.md) for guarded
+experiment tools, deferred schemas, session timeline and server authentication.
 
 ---
 

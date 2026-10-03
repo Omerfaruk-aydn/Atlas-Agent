@@ -5,14 +5,19 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/browser"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
 )
 
 const BrowserToolName = "browser"
@@ -47,7 +52,9 @@ func browserDescription(realProfile bool) string {
 var browserActions = []string{
 	"navigate", "back", "forward", "click", "type", "key", "scroll", "eval",
 	"text", "html", "snapshot", "images", "console", "dialog", "cdp",
-	"screenshot", "url", "close",
+	"screenshot", "url", "close", "export_test", "trace_start", "trace_stop",
+	"vault_list", "vault_fill",
+	"find", "assert", "semantic_click", "semantic_type", "tabs", "tab_new", "tab_select", "tab_close", "frames", "network", "capture_region", "upload", "download_start", "download_wait", "handoff", "status", "trace", "auth_code",
 }
 
 // browserReadOnlyActions are the actions that only observe the current page
@@ -56,6 +63,7 @@ var browserActions = []string{
 // read-only command allowlist, so ModeAutoAcceptEdits doesn't stop to ask
 // about them while ModePlan still denies the tool outright.
 var browserReadOnlyActions = map[string]bool{
+	"vault_list": true,
 	"scroll":     true,
 	"text":       true,
 	"html":       true,
@@ -65,10 +73,14 @@ var browserReadOnlyActions = map[string]bool{
 	"screenshot": true,
 	"url":        true,
 	"close":      true,
+	"find":       true, "assert": true, "tabs": true, "frames": true, "network": true, "capture_region": true, "status": true, "trace": true, "handoff": true,
 }
 
 type BrowserParams struct {
-	Action string `json:"action" description:"One of: navigate, back, forward, click, type, key, scroll, eval, text, html, snapshot, images, console, dialog, cdp, screenshot, url, close. See the tool description for what each needs and returns."`
+	CredentialID string          `json:"credential_id,omitempty" description:"Saved vault handle for vault_fill. Never supply passwords in tool arguments."`
+	Advanced     browser.Request `json:"advanced,omitempty" description:"Parameters for find/assert/semantic input/tabs/frames/network/capture_region/upload/download actions. Action is taken from the outer action field."`
+	SecretEnv    string          `json:"secret_env,omitempty" description:"For auth_code: environment variable containing an authorized TOTP seed; never supply the seed itself."`
+	Action       string          `json:"action" description:"Browser action: navigate/back/forward/click/type/key/scroll/eval/text/html/snapshot/images/console/dialog/cdp/screenshot/url/close, find/assert/semantic_click/semantic_type, tabs/tab_new/tab_select/tab_close/frames/network/capture_region/upload/download_start/download_wait, handoff/status/trace/trace_start/trace_stop/export_test/auth_code/vault_list/vault_fill. See tool description."`
 	// URL is required for navigate.
 	URL string `json:"url,omitempty" description:"Destination for the navigate action. Must start with http:// or https://."`
 	// Selector is an alternative to Ref for click, type, text, and html.
@@ -98,21 +110,24 @@ type BrowserParams struct {
 }
 
 type BrowserPermissionsParams struct {
-	Action     string          `json:"action"`
-	URL        string          `json:"url,omitempty"`
-	Selector   string          `json:"selector,omitempty"`
-	Ref        string          `json:"ref,omitempty"`
-	Text       string          `json:"text,omitempty"`
-	Key        string          `json:"key,omitempty"`
-	Direction  string          `json:"direction,omitempty"`
-	Amount     int             `json:"amount,omitempty"`
-	Script     string          `json:"script,omitempty"`
-	Full       bool            `json:"full,omitempty"`
-	FullPage   bool            `json:"full_page,omitempty"`
-	Accept     bool            `json:"accept,omitempty"`
-	PromptText string          `json:"prompt_text,omitempty"`
-	CDPMethod  string          `json:"cdp_method,omitempty"`
-	CDPParams  json.RawMessage `json:"cdp_params,omitempty"`
+	CredentialID string          `json:"credential_id,omitempty"`
+	Advanced     browser.Request `json:"advanced,omitempty"`
+	SecretEnv    string          `json:"secret_env,omitempty"`
+	Action       string          `json:"action"`
+	URL          string          `json:"url,omitempty"`
+	Selector     string          `json:"selector,omitempty"`
+	Ref          string          `json:"ref,omitempty"`
+	Text         string          `json:"text,omitempty"`
+	Key          string          `json:"key,omitempty"`
+	Direction    string          `json:"direction,omitempty"`
+	Amount       int             `json:"amount,omitempty"`
+	Script       string          `json:"script,omitempty"`
+	Full         bool            `json:"full,omitempty"`
+	FullPage     bool            `json:"full_page,omitempty"`
+	Accept       bool            `json:"accept,omitempty"`
+	PromptText   string          `json:"prompt_text,omitempty"`
+	CDPMethod    string          `json:"cdp_method,omitempty"`
+	CDPParams    json.RawMessage `json:"cdp_params,omitempty"`
 }
 
 type BrowserResponseMetadata struct {
@@ -128,21 +143,26 @@ type browserSessions interface {
 	Close(id string)
 }
 
-func NewBrowserTool(permissions permission.Service, workingDir string, cfg config.ToolBrowser) fantasy.AgentTool {
+func NewBrowserTool(permissions permission.Service, workingDir string, cfg config.ToolBrowser, stores ...*vault.Store) fantasy.AgentTool {
 	manager := browser.GetManager(browser.Options{
-		ExecutablePath: cfg.ExecutablePath,
-		Headless:       cfg.IsHeadless(),
-		UserDataDir:    cfg.GetUserDataDir(),
-		UseRealProfile: cfg.UsesRealProfile(),
-		RealProfilePin: cfg.GetRealProfilePin(),
-		RemoteURL:      cfg.GetRemoteURL(),
-		ActionTimeout:  cfg.GetActionTimeout(),
-		IdleTimeout:    cfg.GetIdleTimeout(),
+		IsolateProfiles: true,
+		ExecutablePath:  cfg.ExecutablePath,
+		Headless:        cfg.IsHeadless(),
+		UserDataDir:     cfg.GetUserDataDir(),
+		UseRealProfile:  cfg.UsesRealProfile(),
+		RealProfilePin:  cfg.GetRealProfilePin(),
+		RemoteURL:       cfg.GetRemoteURL(),
+		ActionTimeout:   cfg.GetActionTimeout(),
+		IdleTimeout:     cfg.GetIdleTimeout(),
 	})
-	return newBrowserTool(permissions, workingDir, manager, browserDescription(cfg.UsesRealProfile()))
+	return newBrowserTool(permissions, workingDir, manager, browserDescription(cfg.UsesRealProfile()), stores...)
 }
 
-func newBrowserTool(permissions permission.Service, workingDir string, sessions browserSessions, description string) fantasy.AgentTool {
+func newBrowserTool(permissions permission.Service, workingDir string, sessions browserSessions, description string, stores ...*vault.Store) fantasy.AgentTool {
+	var credentialStore *vault.Store
+	if len(stores) > 0 {
+		credentialStore = stores[0]
+	}
 	return fantasy.NewAgentTool(
 		BrowserToolName,
 		description,
@@ -155,6 +175,10 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 			sessionID := GetSessionFromContext(ctx)
 			if sessionID == "" {
 				return fantasy.ToolResponse{}, fmt.Errorf("session ID is required for using the browser")
+			}
+			controlID := engineering.GetScope(ctx, sessionID).SessionID
+			if err := interaction.Default.Load(workingDir, controlID); err != nil {
+				return fantasy.NewTextErrorResponse("Cannot load interaction state: " + err.Error()), nil
 			}
 
 			p, err := permissions.Request(
@@ -176,18 +200,117 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 			if !p {
 				return NewPermissionDeniedResponse(permissions), nil
 			}
+			if action == "handoff" {
+				interaction.Default.Pause(controlID, "Browser authentication or user intervention required")
+				if err := interaction.Default.Record(workingDir, controlID, interaction.Entry{Time: time.Now(), Resource: "browser", Action: action, Status: "paused"}); err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+				response := fantasy.NewTextResponse("Automation paused. Complete CAPTCHA, passkey or authentication in the visible browser, then resume from /interactions.")
+				response.StopTurn = true
+				return response, nil
+			}
+			if action == "status" || action == "trace" {
+				data, _ := json.Marshal(interaction.Default.ToolSnapshot(controlID, action == "trace"))
+				return fantasy.NewTextResponse(string(data)), nil
+			}
+			if action == "trace_start" || action == "trace_stop" {
+				interaction.Default.SetImageRecording(controlID, action == "trace_start")
+				if err := interaction.Default.Record(workingDir, controlID, interaction.Entry{Time: time.Now(), Resource: "browser", OwnerID: sessionID, Action: action, Status: "ready"}); err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+				return fantasy.NewTextResponse("Before/after image recording updated. Secret-entry actions are omitted from image recording."), nil
+			}
+			if action == "vault_list" {
+				items, err := credentialStore.List(ctx)
+				if err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+				data, _ := json.Marshal(items)
+				return fantasy.NewTextResponse(string(data)), nil
+			}
+			if action == "export_test" {
+				return exportInteractionTest(workingDir, controlID, params.Advanced.Paths)
+			}
+			resource := "browser/" + sessionID
+			if manager, ok := sessions.(interface{ OwnershipResource(string) string }); ok {
+				resource = manager.OwnershipResource(sessionID)
+			}
+			release, err := interaction.Default.Acquire(ctx, controlID, resource)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			defer release()
+			if manager, ok := sessions.(interface{ UsesDesktop() bool }); ok && manager.UsesDesktop() {
+				releaseDesktop, err := interaction.Default.Acquire(ctx, controlID, "desktop")
+				if err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+				defer releaseDesktop()
+			}
+			started := time.Now()
+			before, after := "", ""
+			status := "failed"
+			defer func() {
+				entry := interaction.Entry{Time: started, Resource: "browser", OwnerID: sessionID, Before: before, After: after, Action: action, Status: status, DurationMS: time.Since(started).Milliseconds()}
+				if status == "succeeded" {
+					entry.Target = params.Advanced.Selector
+					if entry.Target == "" {
+						entry.Target = params.Selector
+					}
+					entry.Role = params.Advanced.Role
+					entry.Name = params.Advanced.Name
+					entry.Condition = params.Advanced.Condition
+					if action == "navigate" {
+						entry.URL = safeTraceURL(params.URL)
+					}
+				}
+				if err := interaction.Default.Record(workingDir, controlID, entry); err != nil {
+					slog.Warn("Failed to persist interaction trace", "error", err)
+				}
+			}()
 
 			if action == "close" {
 				sessions.Close(sessionID)
+				status = "succeeded"
 				return fantasy.NewTextResponse("Browser session closed."), nil
 			}
 
-			sess, err := sessions.Session(sessionID)
+			var sess browser.Session
+			if manager, ok := sessions.(interface {
+				SessionContext(context.Context, string) (browser.Session, error)
+			}); ok {
+				sess, err = manager.SessionContext(ctx, sessionID)
+			} else {
+				sess, err = sessions.Session(sessionID)
+			}
 			if err != nil {
 				return fantasy.NewTextErrorResponse("failed to start browser: " + err.Error()), nil
 			}
+			if driver, ok := sess.(interface{ BindContext(context.Context) func() }); ok {
+				defer driver.BindContext(ctx)()
+			}
+			recordImages := !vault.Sensitive("") && interaction.Default.Snapshot(controlID).RecordImages && recordableBrowserAction(action)
+			if recordImages {
+				before = captureBrowserTrace(ctx, sess, workingDir, controlID)
+			}
 
-			return runBrowserAction(sess, action, params)
+			var response fantasy.ToolResponse
+			if action == "vault_fill" {
+				response, err = fillBrowserVault(ctx, sess, credentialStore, params)
+			} else if action == "auth_code" {
+				response, err = runBrowserAuth(ctx, sess, params)
+			} else if isAdvancedBrowserAction(action) {
+				response, err = runAdvancedBrowser(ctx, sess, action, params, workingDir)
+			} else {
+				response, err = runBrowserAction(sess, action, params)
+			}
+			if err == nil && !response.IsError {
+				status = "succeeded"
+			}
+			if recordImages {
+				after = captureBrowserTrace(ctx, sess, workingDir, controlID)
+			}
+			return withInteractionFailure(response), err
 		},
 	)
 }
@@ -269,6 +392,10 @@ func resolveTargetSelector(action string, params BrowserParams) (string, error) 
 // click. Without a ref there is no box to aim at, so the backend error
 // (which already hints at staleness) stands as-is.
 func clickFallback(sess browser.Session, metadata BrowserResponseMetadata, params BrowserParams, selector string, clickErr error) (fantasy.ToolResponse, error) {
+	code, _ := interaction.Failure(clickErr.Error())
+	if code == "timeout" || code == "ambiguous_target" || code == "target_not_actionable" {
+		return fantasy.NewTextErrorResponse("click failed: " + clickErr.Error() + "; observe and verify before retrying input"), nil
+	}
 	if params.Ref == "" {
 		return fantasy.NewTextErrorResponse("click failed: " + clickErr.Error()), nil
 	}

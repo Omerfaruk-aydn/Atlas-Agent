@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -92,7 +93,7 @@ func ensureRemoteBrowser(opts Options) error {
 		args = append([]string{"--headless=new"}, args...)
 	}
 
-	cmd := exec.Command(exe, args...)
+	cmd := exec.CommandContext(context.Background(), exe, args...)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("launch browser for %s: %w", opts.RemoteURL, err)
 	}
@@ -119,7 +120,11 @@ func remoteAlive(raw string) bool {
 		return false
 	}
 	client := http.Client{Timeout: probeTimeout}
-	resp, err := client.Get(endpoint)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, endpoint, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return false
 	}

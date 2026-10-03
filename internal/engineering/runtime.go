@@ -12,6 +12,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/lock"
@@ -103,7 +104,10 @@ type State struct {
 	Workspaces       []Workspace                  `json:"workspaces,omitempty"`
 }
 
-type Store struct{ dir string }
+type Store struct {
+	dir     string
+	runners runnerRegistry
+}
 
 func NewStore(dir string) *Store { return &Store{dir: filepath.Join(dir, "engineering")} }
 
@@ -251,6 +255,15 @@ func (s *Store) Read(ctx context.Context, id string) (st State, err error) {
 }
 
 func (s *Store) Check(ctx context.Context, id, task string) error {
+	if task != "" {
+		_, board, err := s.ReadControlBoard(ctx, id)
+		if err != nil {
+			return err
+		}
+		if slices.Contains(board.HeldTasks, task) {
+			return fmt.Errorf("task paused by user")
+		}
+	}
 	return s.withState(ctx, id, false, func(st *State) error {
 		if err := st.Limits.Check(st.Usage); err != nil {
 			return err
@@ -281,6 +294,15 @@ func (s *Store) Begin(ctx context.Context, session, call, tool, input, task stri
 	}
 	defer release()
 	id = uuid.NewString()
+	if task != "" {
+		_, board, err := s.ReadControlBoard(ctx, session)
+		if err != nil {
+			return "", err
+		}
+		if slices.Contains(board.HeldTasks, task) {
+			return "", fmt.Errorf("task paused by user")
+		}
+	}
 	err = s.Update(ctx, session, func(st *State) error {
 		if st.Paused && (tool == "agent" || tool == "delegate" || tool == "orchestrate" || tool == "debate") {
 			return fmt.Errorf("workflow dispatch is paused")
@@ -296,7 +318,7 @@ func (s *Store) Begin(ctx context.Context, session, call, tool, input, task stri
 		}
 		fp := fingerprint(task+"\x00"+tool, input, st.Generation)
 		if st.Failures[fp] >= 3 {
-			return errors.New("Identical tool call failed three times without a successful change. Change the approach or inspect the cause; it will not be executed again")
+			return errors.New("identical tool call failed three times without a successful change. Change the approach or inspect the cause; it will not be executed again")
 		}
 		if len(st.Operations) >= 256 {
 			kept := make([]Operation, 0, 256)

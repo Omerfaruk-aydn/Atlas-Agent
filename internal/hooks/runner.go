@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -36,10 +37,24 @@ type compiledHook struct {
 
 // Runner executes hook commands and aggregates their results.
 type Runner struct {
+	agentAction      func(context.Context, config.HookConfig, string, []byte) HookResult
+	actionCounts     *agentActionCounts
 	hooks            []compiledHook
 	cwd              string
 	projectDir       string
 	executionBinding *execution.Binding
+}
+
+type agentActionCounts struct {
+	sync.Mutex
+	sessions map[string]map[string]int
+}
+
+// WithAgentAction injects the execution boundary without coupling hooks to agents.
+func (r *Runner) WithAgentAction(action func(context.Context, config.HookConfig, string, []byte) HookResult) *Runner {
+	copy := *r
+	copy.agentAction = action
+	return &copy
 }
 
 // WithExecution binds every hook event to the same command isolation policy.
@@ -77,9 +92,10 @@ func NewRunner(hooks []config.HookConfig, cwd, projectDir string) *Runner {
 		compiled = append(compiled, ch)
 	}
 	return &Runner{
-		hooks:      compiled,
-		cwd:        cwd,
-		projectDir: projectDir,
+		actionCounts: &agentActionCounts{sessions: map[string]map[string]int{}},
+		hooks:        compiled,
+		cwd:          cwd,
+		projectDir:   projectDir,
 	}
 }
 
@@ -171,10 +187,14 @@ func (r *Runner) run(ctx context.Context, in runInput) (AggregateResult, error) 
 	seen := make(map[string]bool, len(matching))
 	var deduped []config.HookConfig
 	for _, h := range matching {
-		if seen[h.Command] {
+		key := h.Command
+		if h.Prompt != "" {
+			key = "agent\x00" + h.Agent + "\x00" + h.Prompt
+		}
+		if seen[key] {
 			continue
 		}
-		seen[h.Command] = true
+		seen[key] = true
 		deduped = append(deduped, h)
 	}
 
@@ -191,7 +211,11 @@ func (r *Runner) run(ctx context.Context, in runInput) (AggregateResult, error) 
 	for i, h := range deduped {
 		go func(idx int, hook config.HookConfig) {
 			defer wg.Done()
-			results[idx] = r.runOne(ctx, hook, envVars, payload)
+			if hook.Prompt != "" {
+				results[idx] = r.runAgentAction(ctx, hook, sessionID, payload)
+			} else {
+				results[idx] = r.runOne(ctx, hook, envVars, payload)
+			}
 		}(i, h)
 	}
 	wg.Wait()
@@ -216,6 +240,45 @@ func (r *Runner) run(ctx context.Context, in runInput) (AggregateResult, error) 
 		"decision", agg.Decision.String(),
 	)
 	return agg, nil
+}
+
+func (r *Runner) runAgentAction(ctx context.Context, hook config.HookConfig, sessionID string, payload []byte) HookResult {
+	if r.agentAction == nil {
+		return HookResult{Reason: "Agent action executor unavailable"}
+	}
+	key := hook.Agent + "\x00" + hook.Prompt
+	r.actionCounts.Lock()
+	counts := r.actionCounts.sessions[sessionID]
+	if counts == nil {
+		if len(r.actionCounts.sessions) >= 256 {
+			r.actionCounts.Unlock()
+			return HookResult{Reason: "Agent hook session limit reached"}
+		}
+		counts = map[string]int{}
+		r.actionCounts.sessions[sessionID] = counts
+	}
+	limit := hook.MaxFires
+	if limit == 0 {
+		limit = 3
+	}
+	if limit < 1 || limit > 16 || counts[key] >= limit {
+		r.actionCounts.Unlock()
+		return HookResult{Reason: "Agent hook firing limit reached"}
+	}
+	counts[key]++
+	r.actionCounts.Unlock()
+	if len(payload) > 16384 {
+		return HookResult{Reason: "Agent hook event exceeds 16 KiB"}
+	}
+	timeout := min(hook.TimeoutDuration(), 120*time.Second)
+	child, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	result := r.agentAction(child, hook, sessionID, payload)
+	// Agent observations may add context, never permission or input rewrites.
+	if len(result.Context) > 16384 {
+		result.Context = result.Context[:16384] + "\n[Hook output truncated]"
+	}
+	return HookResult{Context: result.Context, Reason: fmt.Sprintf("Agent hook %s: %s", hook.Agent, result.Reason)}
 }
 
 // matchingHooks returns hooks whose matcher matches the tool name (or has

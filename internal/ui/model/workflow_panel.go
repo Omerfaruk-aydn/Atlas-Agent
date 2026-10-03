@@ -2,35 +2,44 @@ package model
 
 import (
 	"context"
-	"fmt"
-	"strings"
+	"slices"
 	"time"
 
-	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ansiext"
-	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ansi"
 	tea "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ui/v2"
 	uv "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ultraviolet"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/history"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/dialog"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workspace"
 )
 
 type (
 	workflowPanel struct {
-		open           bool
-		epoch, request uint64
-		selected       int
-		snapshot       engineering.WorkflowSnapshot
-		err            string
-		loading        bool
-		assigning      bool
-		role           string
+		open                   bool
+		epoch, request         uint64
+		selected               int
+		snapshot               engineering.WorkflowSnapshot
+		err                    string
+		loading                bool
+		timeline               bool
+		details                bool
+		tab                    int
+		views                  workflowViews
+		input                  workflowInput
+		outputID               string
+		output                 []string
+		outputRequest          uint64
+		detailOffset           int
+		controlInFlight        bool
+		diffLoading, diffDirty bool
 	}
 	workflowPanelLoaded struct {
 		epoch, request uint64
 		sessionID      string
 		snapshot       engineering.WorkflowSnapshot
 		err            error
+		views          workflowViews
 	}
 	workflowPanelTick struct{ epoch uint64 }
 )
@@ -40,7 +49,7 @@ func workflowFetch(ws workspace.Workspace, id string, epoch, request uint64) tea
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		snapshot, err := ws.WorkflowSnapshot(ctx, id)
-		return workflowPanelLoaded{epoch: epoch, request: request, sessionID: id, snapshot: snapshot, err: err}
+		return workflowPanelLoaded{epoch: epoch, request: request, sessionID: id, snapshot: snapshot, views: projectWorkflow(snapshot), err: err}
 	}
 }
 
@@ -54,6 +63,7 @@ func (m *UI) openWorkflowPanel() tea.Cmd {
 	}
 	m.workflow.open = true
 	m.workflow.epoch++
+	m.workflow.diffLoading, m.workflow.diffDirty = false, false
 	m.workflow.request++
 	m.workflow.loading = true
 	return tea.Batch(workflowFetch(m.com.Workspace, m.session.ID, m.workflow.epoch, m.workflow.request), workflowTick(m.workflow.epoch))
@@ -62,8 +72,58 @@ func (m *UI) openWorkflowPanel() tea.Cmd {
 func (m *UI) handleWorkflowPanel(msg tea.Msg) (bool, tea.Cmd) {
 	p := &m.workflow
 	switch value := msg.(type) {
+	case workflowFilesLoaded:
+		if !p.open || m.session == nil || value.sessionID != m.session.ID || value.epoch != p.epoch {
+			return true, nil
+		}
+		p.diffLoading = false
+		if value.err != nil {
+			p.err = "Diff: " + value.err.Error()
+		}
+		if d, ok := m.dialog.Dialog(dialog.FileDiffID).(*dialog.FileDiff); ok {
+			for _, entry := range value.entries {
+				d.Refresh(entry)
+			}
+		} else if d, ok := m.dialog.Dialog(dialog.FilesID).(*dialog.Files); ok {
+			d.Refresh(value.entries)
+		} else if value.openRequested {
+			m.dialog.OpenDialog(dialog.NewFiles(m.com, value.entries))
+		}
+		if p.diffDirty {
+			p.diffDirty = false
+			return true, m.workflowFilesCmd()
+		}
+		return true, nil
+	case pubsub.Event[history.File]:
+		if p.open && m.dialog != nil && (m.dialog.ContainsDialog(dialog.FilesID) || m.dialog.ContainsDialog(dialog.FileDiffID)) {
+			known := m.session != nil && value.Payload.SessionID == m.session.ID
+			for _, run := range p.snapshot.Runners {
+				known = known || run.SessionID == value.Payload.SessionID
+			}
+			for _, run := range p.snapshot.Executions {
+				known = known || slices.Contains(run.SessionIDs, value.Payload.SessionID)
+			}
+			if !known {
+				return false, nil
+			}
+			if p.diffLoading {
+				p.diffDirty = true
+				return false, nil
+			}
+			return false, m.workflowFilesCmd()
+		}
+	case workflowOutputLoaded:
+		row, selected := p.selectedRow()
+		if !p.open || m.session == nil || value.sessionID != m.session.ID || value.epoch != p.epoch || value.request != p.outputRequest || !selected || row.ID != value.operationID {
+			return true, nil
+		}
+		p.outputID, p.output = value.operationID, value.lines
+		return true, nil
 	case pubsub.Event[engineering.WorkflowChanged]:
 		if p.open && m.session != nil && value.Payload.SessionID == m.session.ID {
+			if p.controlInFlight {
+				return true, nil
+			}
 			p.request++
 			p.loading = true
 			return true, workflowFetch(m.com.Workspace, m.session.ID, p.epoch, p.request)
@@ -73,12 +133,30 @@ func (m *UI) handleWorkflowPanel(msg tea.Msg) (bool, tea.Cmd) {
 			return true, nil
 		}
 		p.loading = false
+		wasControl := p.controlInFlight
+		p.controlInFlight = false
 		if value.err != nil {
 			p.err = value.err.Error()
 		} else {
-			p.err = ""
+			if wasControl {
+				p.err = ""
+			}
+			oldRow, hadSelection := p.selectedRow()
 			p.snapshot = value.snapshot
-			p.selected = min(p.selected, max(0, len(p.snapshot.Tasks)-1))
+			p.views = value.views
+			count := len(p.rows())
+			if p.timeline {
+				count = len(workflowTimeline(p.snapshot))
+			}
+			p.selected = min(p.selected, max(0, count-1))
+			if hadSelection && !p.timeline {
+				for i, row := range p.rows() {
+					if row.ID == oldRow.ID {
+						p.selected = i
+						break
+					}
+				}
+			}
 		}
 		return true, nil
 	case workflowPanelTick:
@@ -90,49 +168,53 @@ func (m *UI) handleWorkflowPanel(msg tea.Msg) (bool, tea.Cmd) {
 		}
 		p.request++
 		p.loading = true
-		return true, tea.Batch(workflowFetch(m.com.Workspace, m.session.ID, p.epoch, p.request), workflowTick(p.epoch))
+		return true, tea.Batch(workflowFetch(m.com.Workspace, m.session.ID, p.epoch, p.request), workflowTick(p.epoch), m.workflowOutputCmd())
 	case workspace.ConnectionEvent:
 		if p.open && value.State == workspace.ConnectionRecovered {
 			return false, m.openWorkflowPanel()
 		}
 	case tea.KeyPressMsg:
-		if !p.open {
+		if !p.open || m.dialog != nil && m.dialog.HasDialogs() {
 			return false, nil
 		}
 		key := value.String()
-		if p.assigning {
-			switch key {
-			case "esc":
-				p.assigning = false
-			case "backspace":
-				runes := []rune(p.role)
-				p.role = string(runes[:max(0, len(runes)-1)])
-			case "enter":
-				if p.role != "" && p.selected < len(p.snapshot.Tasks) {
-					p.assigning = false
-					return true, m.workflowControlCmd(engineering.WorkflowControl{Action: "reassign", TaskID: p.snapshot.Tasks[p.selected].ID, Agent: p.role})
-				}
-			default:
-				if len([]rune(key)) == 1 && len(p.role) < 128 {
-					p.role += key
-				}
-			}
-			return true, nil
+		if p.input.mode != "" {
+			return true, m.handleWorkflowInput(value)
+		}
+		if handled, cmd := m.workflowWorkspaceKey(key); handled {
+			return true, cmd
 		}
 		switch key {
-		case "a", "enter":
-			if p.selected < len(p.snapshot.Tasks) && !p.loading {
-				p.assigning = true
-				p.role = p.snapshot.Tasks[p.selected].Agent
+		case "t":
+			p.timeline = !p.timeline
+			p.details = false
+			p.selected = 0
+		case "enter":
+			if p.timeline {
+				p.details = !p.details
+				return true, nil
 			}
+			p.details = !p.details
+			p.detailOffset = 0
+			return true, m.workflowOutputCmd()
+		case "pgup":
+			p.detailOffset = max(0, p.detailOffset-10)
+		case "pgdown":
+			p.detailOffset += 10
 		case "esc", "q":
 			p.open = false
 			p.epoch++
 			return true, nil
 		case "up", "k", "shift+tab":
+			p.detailOffset = 0
 			p.selected = max(0, p.selected-1)
 		case "down", "j", "tab":
-			p.selected = min(max(0, len(p.snapshot.Tasks)-1), p.selected+1)
+			p.detailOffset = 0
+			count := len(p.rows())
+			if p.timeline {
+				count = len(workflowTimeline(p.snapshot))
+			}
+			p.selected = min(max(0, count-1), p.selected+1)
 		case "s", "p", "r":
 			if m.session == nil || p.snapshot.Revision == "" {
 				return true, nil
@@ -147,6 +229,11 @@ func (m *UI) handleWorkflowPanel(msg tea.Msg) (bool, tea.Cmd) {
 			return true, m.workflowControlCmd(engineering.WorkflowControl{Action: action})
 		}
 		return true, nil
+	case tea.PasteMsg:
+		if p.open && p.input.mode != "" && (m.dialog == nil || !m.dialog.HasDialogs()) {
+			p.input.insert(value.Content)
+			return true, nil
+		}
 	}
 	return false, nil
 }
@@ -159,6 +246,7 @@ func (m *UI) workflowControlCmd(control engineering.WorkflowControl) tea.Cmd {
 	id, epoch, request := m.session.ID, p.epoch, p.request+1
 	control.ExpectedRevision = p.snapshot.Revision
 	p.request, p.loading = request, true
+	p.controlInFlight = true
 	ws := m.com.Workspace
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -168,7 +256,7 @@ func (m *UI) workflowControlCmd(control engineering.WorkflowControl) tea.Cmd {
 		if err == nil {
 			snapshot, err = ws.WorkflowSnapshot(ctx, id)
 		}
-		return workflowPanelLoaded{epoch: epoch, request: request, sessionID: id, snapshot: snapshot, err: err}
+		return workflowPanelLoaded{epoch: epoch, request: request, sessionID: id, snapshot: snapshot, views: projectWorkflow(snapshot), err: err}
 	}
 }
 
@@ -176,66 +264,10 @@ func (p *workflowPanel) render(width, height int) string {
 	if width < 1 || height < 1 {
 		return ""
 	}
-	lines := []string{"Agent controls", "Esc close | s stop | p pause | r resume | a assign"}
-	status := "running"
-	if p.snapshot.Paused {
-		status = "dispatch paused"
+	if p.timeline {
+		return p.renderTimeline(width, height)
 	}
-	if !p.snapshot.Busy && !p.snapshot.Paused {
-		status = "idle"
-	}
-	lines = append(lines, fmt.Sprintf("%s | stage %d | calls %d | tokens %d", status, p.snapshot.Stage, p.snapshot.Usage.ToolCalls, p.snapshot.Usage.Tokens))
-	lines = append(lines, fmt.Sprintf("Limits: calls %d | tokens %d | $%.2f / $%.2f", p.snapshot.Limits.MaxToolCalls, p.snapshot.Limits.MaxTokens, p.snapshot.Usage.Cost, p.snapshot.Limits.MaxCost))
-	active := 0
-	for _, op := range p.snapshot.Operations {
-		if op.Status == "running" || op.Status == "background" {
-			active++
-		}
-	}
-	if active > 0 {
-		lines = append(lines, fmt.Sprintf("Unresolved operations: %d; stop requests cancellation", active))
-	}
-	if p.assigning {
-		lines = append(lines, "Role: "+p.role+" | Enter apply, Esc cancel")
-	}
-	if p.err != "" {
-		lines = append(lines, "Error: "+p.err)
-	} else if p.loading && p.snapshot.Revision == "" {
-		lines = append(lines, "Loading workflow…")
-	}
-	available := max(0, height-len(lines)-2)
-	if p.selected < len(p.snapshot.Tasks) && height >= 24 {
-		task := p.snapshot.Tasks[p.selected]
-		lines = append(lines, "Depends on: "+strings.Join(task.DependsOn, ", "), "Owned paths: "+strings.Join(task.OwnedPaths, ", "))
-		for _, run := range p.snapshot.Executions {
-			if run.TaskID == task.ID {
-				status := "verification pending"
-				if run.Passed && run.TaskFingerprint == task.SpecFingerprint {
-					status = "historical checks passed; source gates remain authoritative"
-				}
-				lines = append(lines, "Execution "+run.Agent+": "+status)
-				break
-			}
-		}
-		available = max(0, height-len(lines)-2)
-	}
-	start := max(0, p.selected-available+1)
-	for i := start; i < len(p.snapshot.Tasks) && len(lines) < height-2; i++ {
-		task := p.snapshot.Tasks[i]
-		pointer := " "
-		if i == p.selected {
-			pointer = ">"
-		}
-		lines = append(lines, fmt.Sprintf("%s %s [%s] %s: %s", pointer, task.ID, task.Status, task.Agent, task.Content))
-	}
-	lines = append(lines, fmt.Sprintf("Findings %d | checks %d | checkpoints %d", len(p.snapshot.Findings), len(p.snapshot.Checks), len(p.snapshot.Checkpoints)), "Up/down select; pause blocks new agent dispatch")
-	if len(lines) > height {
-		lines = lines[:height]
-	}
-	for i, line := range lines {
-		lines[i] = ansi.Truncate(ansiext.Escape(strings.ReplaceAll(strings.ReplaceAll(line, "\n", " "), "\r", " ")), width, "")
-	}
-	return strings.Join(lines, "\n")
+	return p.renderWorkspace(width, height)
 }
 
 func (m *UI) drawWorkflowPanel(scr uv.Screen, area uv.Rectangle) {

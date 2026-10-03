@@ -13,6 +13,20 @@ import (
 // errBrowserGroundingBoom simulates a backend failure in tests.
 var errBrowserGroundingBoom = errors.New("boom")
 
+func TestBrowserDoesNotRepeatAnUncertainTimedOutClick(t *testing.T) {
+	t.Parallel()
+	sessions := newFakeBrowserSessions()
+	sess, _ := sessions.Session("test-session")
+	fake := sess.(*fakeBrowserSession)
+	fake.clickErr = errors.New("context deadline exceeded after dispatch")
+	fake.snapshot = []browser.SnapshotElement{{Ref: "e1", Rect: browser.ElementRect{X: 1, Y: 2, Width: 30, Height: 40}}}
+	response, err := runBrowserAction(fake, "click", BrowserParams{Ref: "e1"})
+	require.NoError(t, err)
+	require.True(t, response.IsError)
+	require.Zero(t, fake.clickAtX)
+	require.Contains(t, response.Content, "verify before retrying")
+}
+
 func TestBrowserToolNavigateAppendsFreshSnapshot(t *testing.T) {
 	t.Parallel()
 	sessions := newFakeBrowserSessions()

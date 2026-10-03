@@ -60,6 +60,7 @@ func startProcess(req execution.Request, size execution.TerminalSize) (processTe
 		return processTerminal{}, err
 	}
 	defer attributes.Delete()
+	//nolint:govet // Windows expects HPCON as lpValue, not its address.
 	if err := attributes.Update(windows.PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, unsafe.Pointer(console), unsafe.Sizeof(console)); err != nil {
 		return processTerminal{}, err
 	}

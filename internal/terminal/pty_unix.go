@@ -3,6 +3,7 @@
 package terminal
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -33,7 +34,8 @@ func startProcess(req execution.Request, size execution.TerminalSize) (processTe
 	if strings.ContainsRune(executable, '/') && !filepath.IsAbs(executable) {
 		executable = filepath.Join(req.Root, executable)
 	}
-	command := exec.Command(executable, req.Argv[1:]...)
+	// Cancellation uses the owned process group before reaping its primary PID.
+	command := exec.CommandContext(context.Background(), executable, req.Argv[1:]...)
 	command.Dir, command.Env = req.Root, req.Env
 	terminal, err := pty.StartWithSize(command, &pty.Winsize{Cols: uint16(size.Width), Rows: uint16(size.Height)})
 	if err != nil {

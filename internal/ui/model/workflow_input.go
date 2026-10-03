@@ -37,6 +37,8 @@ func (i workflowInput) label() string {
 		target = "coordinator"
 	}
 	switch i.mode {
+	case "context_pin":
+		return "Pin project context file (literal relative path; maximum 16 files)"
 	case "queue":
 		return "Queue for " + target + " ([dep1,dep2] optional prefix)"
 	case "team_limit":
@@ -172,7 +174,31 @@ func (i workflowInput) control() (engineering.WorkflowControl, error) {
 
 func (m *UI) workflowWorkspaceKey(key string) (bool, tea.Cmd) {
 	p := &m.workflow
-	if key >= "1" && key <= "8" && len(key) == 1 {
+	if p.tab == workflowInteractions && (key == "v" || key == "f") {
+		action := "interaction_capture"
+		if key == "f" {
+			action = "interaction_preview"
+		}
+		return true, m.workflowControlCmd(engineering.WorkflowControl{Action: action})
+	}
+	if key == "i" {
+		p.tab, p.selected, p.timeline, p.details = workflowInteractions, 0, false, false
+		p.detailOffset = 0
+		return true, nil
+	}
+	if p.tab == workflowInteractions && (key == "p" || key == "r") {
+		action := "interaction_pause"
+		if key == "r" {
+			action = "interaction_resume"
+		}
+		return true, m.workflowControlCmd(engineering.WorkflowControl{Action: action})
+	}
+	if key == "0" {
+		p.tab, p.selected, p.timeline, p.details = workflowBatches, 0, false, false
+		p.detailOffset = 0
+		return true, nil
+	}
+	if key >= "1" && key <= "9" && len(key) == 1 {
 		p.tab, p.selected, p.timeline, p.details = int(key[0]-'1'), 0, false, false
 		p.detailOffset = 0
 		return true, nil
@@ -181,6 +207,52 @@ func (m *UI) workflowWorkspaceKey(key string) (bool, tea.Cmd) {
 		return false, nil
 	}
 	row, selected := p.selectedRow()
+	if selected && p.tab == workflowAutomation {
+		action := map[string]string{"p": "job_pause", "r": "job_resume", "x": "job_recover"}[key]
+		if action != "" {
+			return true, m.workflowControlCmd(engineering.WorkflowControl{Action: action, Text: row.ID})
+		}
+	}
+	if selected && p.tab == workflowDurableBoard {
+		action := map[string]string{"a": "board_accept", "r": "board_retry", "x": "board_recover"}[key]
+		if action != "" {
+			return true, m.workflowControlCmd(engineering.WorkflowControl{Action: action, Text: row.ID})
+		}
+	}
+	if p.tab == workflowBatches && key == "f" && selected {
+		for _, batch := range p.snapshot.Batches {
+			for _, item := range batch.Rows {
+				if row.ID == batch.ID+"/"+item.ID {
+					return true, m.workflowControlCmd(engineering.WorkflowControl{Action: "batch_retry", Text: batch.ID})
+				}
+			}
+		}
+		return true, nil
+	}
+	if p.tab == workflowContext {
+		if key == "f" {
+			p.input = workflowInput{mode: "context_pin"}
+			return true, nil
+		}
+		if key == "x" && selected {
+			for _, entry := range p.snapshot.Context.Entries {
+				if entry.ID != row.ID {
+					continue
+				}
+				action := "context_exclude"
+				if entry.Excluded {
+					action = "context_include"
+				}
+				if entry.Kind == "pinned" {
+					action = "context_unpin"
+				} else if entry.Kind != "tool-result" {
+					p.err = "Only optional pinned files and tool results can be removed"
+					return true, nil
+				}
+				return true, m.workflowControlCmd(engineering.WorkflowControl{Action: action, Text: entry.ID})
+			}
+		}
+	}
 	task := row.TaskID
 	switch key {
 	case "e", "E", "n", "N", "a", "l", "b", "v", "w":

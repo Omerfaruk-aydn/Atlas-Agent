@@ -9,6 +9,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ansiext"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ansi"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 )
 
@@ -21,10 +22,16 @@ const (
 	workflowQueue
 	workflowCheckpoints
 	workflowAttention
+	workflowContext
+	workflowBatches
+	workflowInteractions
+	workflowAutomation
+	workflowDurableBoard
+	workflowSourceMemory
 	workflowTabCount
 )
 
-var workflowTabs = [workflowTabCount]string{"Tasks", "Graph", "Handoffs", "Ownership", "Operations", "Queue", "Checkpoints", "Attention"}
+var workflowTabs = [workflowTabCount]string{"Tasks", "Graph", "Handoffs", "Ownership", "Operations", "Queue", "Checkpoints", "Attention", "Context", "Batches", "Interactions", "Automation", "Board", "Memory"}
 
 type workflowRow struct {
 	ID, TaskID, Label string
@@ -38,6 +45,50 @@ type workflowViews [workflowTabCount][]workflowRow
 // summaries are reused across redraws, keyboard movement and terminal resize.
 func projectWorkflow(s engineering.WorkflowSnapshot) workflowViews {
 	var views workflowViews
+	for _, j := range s.PlatformJobs {
+		views[workflowAutomation] = append(views[workflowAutomation], workflowRow{ID: j.ID, Label: fmt.Sprintf("%s · %s · runs %d/%d · paused %t", j.ID, j.Kind, j.Runs, j.MaxRuns, j.Paused), Details: []string{"p: pause; r: resume; x: recover expired attempt", j.Prompt, fmt.Sprintf("Next: %s · status: %s · lease: %d", time.Unix(j.NextAt, 0).Format(time.RFC3339), j.LastStatus, j.LeaseUntil), j.LastResult}})
+	}
+	for _, t := range s.PlatformTasks {
+		views[workflowDurableBoard] = append(views[workflowDurableBoard], workflowRow{ID: t.ID, Label: fmt.Sprintf("%s · %s · worker %s", t.Title, t.Status, t.Worker), Details: []string{"a: accept review; r: retry; x: recover expired worker", t.Prompt, "Acceptance: " + strings.Join(t.Acceptance, "; "), "Evidence: " + strings.Join(t.Evidence, ", "), fmt.Sprintf("Attempt: %s · lease: %d · session: %s", t.Attempt, t.LeaseUntil, t.SessionID), t.Result}})
+	}
+	for _, entry := range s.SourceMemories {
+		details := []string{entry.Text, "Origin session: " + entry.SessionID, fmt.Sprintf("Recorded: %d · valid until: %d", entry.RecordedAt, entry.ValidUntil)}
+		for _, source := range entry.Sources {
+			details = append(details, source.Path+" · "+source.SHA256)
+		}
+		views[workflowSourceMemory] = append(views[workflowSourceMemory], workflowRow{ID: entry.ID, Label: entry.ID + " · " + entry.Status, Details: details})
+	}
+	state := "ready"
+	if s.Interactions.Paused {
+		state = "paused"
+	}
+	views[workflowInteractions] = append(views[workflowInteractions], workflowRow{ID: "interaction-control", Label: fmt.Sprintf("Control: %s · active: %s", state, s.Interactions.Active), Details: []string{"p: pause; r: resume; v: capture preview; f: toggle live preview; Enter: view captured frame", s.Interactions.Reason, "An in-flight driver operation may finish before control is released. Trace records omit typed text and credentials.", "Preview: " + s.Capabilities["interaction_preview"]}})
+	for i := len(s.Interactions.History) - 1; i >= 0; i-- {
+		entry := s.Interactions.History[i]
+		views[workflowInteractions] = append(views[workflowInteractions], workflowRow{ID: fmt.Sprintf("interaction-%d", i), Label: fmt.Sprintf("%s · %s/%s · %s · %dms", entry.Time.Format("15:04:05"), entry.Resource, entry.Action, entry.Status, entry.DurationMS), Details: []string{"Owner: " + entry.OwnerID, "Target: " + entry.Target, "URL: " + entry.URL, "Before capture: " + entry.Before, "After capture: " + entry.After}})
+	}
+	if s.Context.Truncated {
+		views[workflowContext] = append(views[workflowContext], workflowRow{ID: "context-truncated", Label: "Context metadata truncated to 2048 entries; estimate covers the entire request"})
+	}
+	if len(s.Batches) > 0 {
+		views[workflowBatches] = append(views[workflowBatches], workflowRow{ID: "batch-help", Label: "f queues failed-only retry of selected batch; c starts the queue", Details: []string{"Succeeded rows are skipped. Running rows require reconciliation before replay.", "Retry is queued visibly, then executed through the normal agent permission and budget flow."}})
+	}
+	for _, batch := range s.Batches {
+		for _, row := range batch.Rows {
+			views[workflowBatches] = append(views[workflowBatches], workflowRow{ID: batch.ID + "/" + row.ID, Label: fmt.Sprintf("%s / %s · %s · attempt %d", batch.ID, row.ID, row.Status, row.Attempts), Details: []string{"Batch: " + batch.ID, "Item: " + row.ID, "Input: " + row.Input, "Status: " + row.Status, "Output:", row.Output}})
+		}
+	}
+	views[workflowContext] = append(views[workflowContext], workflowRow{ID: "context-summary", Label: fmt.Sprintf("%s · step %d · ~%d tokens", s.Context.Model, s.Context.Step, s.Context.EstimatedTokens), Details: []string{"Estimates use serialized text length; image tokens and provider framing are not measured.", "f: pin a literal project file; x: toggle selected tool output or unpin selected file.", "Mandatory instructions and user messages cannot be excluded."}})
+	for _, entry := range s.Context.Entries {
+		state := "included"
+		if entry.Excluded {
+			state = "excluded"
+		}
+		if entry.ParentID != "" {
+			state = "included in " + entry.ParentID
+		}
+		views[workflowContext] = append(views[workflowContext], workflowRow{ID: entry.ID, Label: fmt.Sprintf("[%s] %s · ~%d tokens (%s)", entry.Kind, entry.Name, entry.EstimatedTokens, state), Details: []string{"Kind: " + entry.Kind, "Name: " + entry.Name, fmt.Sprintf("Serialized bytes: %d", entry.Bytes), "Fingerprint: " + entry.Fingerprint, "Selection: " + state}})
+	}
 	completed := map[string]bool{}
 	for _, task := range s.Tasks {
 		completed[task.ID] = task.Status == "completed"
@@ -209,6 +260,9 @@ func (p *workflowPanel) selectedRow() (workflowRow, bool) {
 }
 
 func (p *workflowPanel) renderWorkspace(width, height int) string {
+	if p.tab == workflowInteractions && p.details && p.selected == 0 && p.snapshot.Interactions.Preview != nil {
+		return renderInteractionPreview(p.snapshot.Interactions.Preview, width, height)
+	}
 	state := "idle"
 	if p.snapshot.Busy {
 		state = "working"
@@ -220,7 +274,7 @@ func (p *workflowPanel) renderWorkspace(width, height int) string {
 	if p.snapshot.AgentLimit > 0 {
 		teamLimit = fmt.Sprint(p.snapshot.AgentLimit)
 	}
-	header := []string{"Agent controls | " + workflowTabs[p.tab], "Esc close | s stop | p pause | r resume | 1-8 views | t timeline", "1 Tasks  2 Graph  3 Handoffs  4 Ownership  5 Operations  6 Queue  7 Checkpoints  8 Attention", fmt.Sprintf("%s | agents %d/%s | tokens %d/%d | $%.2f/$%.2f | calls %d/%d", state, len(p.snapshot.Runners), teamLimit, p.snapshot.Usage.Tokens, p.snapshot.Limits.MaxTokens, p.snapshot.Usage.Cost, p.snapshot.Limits.MaxCost, p.snapshot.Usage.ToolCalls, p.snapshot.Limits.MaxToolCalls)}
+	header := []string{"Agent controls | " + workflowTabs[p.tab], "Esc close | s stop | p pause | r resume | 1-9/0 views | i interactions | t timeline", "1 Tasks  2 Graph  3 Handoffs  4 Ownership  5 Operations  6 Queue  7 Checkpoints  8 Attention  9 Context  0 Batches", fmt.Sprintf("%s | agents %d/%s | tokens %d/%d | $%.2f/$%.2f | calls %d/%d", state, len(p.snapshot.Runners), teamLimit, p.snapshot.Usage.Tokens, p.snapshot.Limits.MaxTokens, p.snapshot.Usage.Cost, p.snapshot.Limits.MaxCost, p.snapshot.Usage.ToolCalls, p.snapshot.Limits.MaxToolCalls)}
 	if p.err != "" {
 		header = append(header, "Error: "+p.err)
 	}
@@ -280,4 +334,25 @@ func (p *workflowPanel) renderWorkspace(width, height int) string {
 	}
 	header = append(header, "Arrows select | Enter details | e steer | n queue | h hold | u unhold | x cancel | v replan | w scope | f retry", "Queue: +/- reorder | Delete cancel | y retry uncertain | z remove received | c continue queue")
 	return workflowFit(header, width, height)
+}
+
+func renderInteractionPreview(preview *interaction.Preview, width, height int) string {
+	if width < 1 || height < 1 {
+		return ""
+	}
+	if preview.Width <= 0 || preview.Width > 120 || preview.Height <= 0 || preview.Height > 80 || len(preview.Pixels) != preview.Width*preview.Height {
+		return workflowFit([]string{"Invalid preview dimensions"}, width, height)
+	}
+	header := workflowFit([]string{"Captured interaction | Enter closes | v refresh | f live preview | p take control | r resume", preview.Path}, width, min(2, height))
+	var b strings.Builder
+	b.WriteString(header)
+	for y := 0; y+1 < preview.Height && y/2 < height-2; y += 2 {
+		b.WriteByte('\n')
+		for x := 0; x < preview.Width && x < width; x++ {
+			top, bottom := preview.Pixels[y*preview.Width+x], preview.Pixels[(y+1)*preview.Width+x]
+			fmt.Fprintf(&b, "\x1b[38;2;%d;%d;%dm\x1b[48;2;%d;%d;%dm▀", top>>16&255, top>>8&255, top&255, bottom>>16&255, bottom>>8&255, bottom&255)
+		}
+		b.WriteString("\x1b[0m")
+	}
+	return b.String()
 }

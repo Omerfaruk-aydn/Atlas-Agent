@@ -2408,6 +2408,10 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 		if cmd := m.handleSelectSessionMode(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+	case dialog.ActionSaveUsageProfile:
+		if cmd := m.handleSaveUsageProfile(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	case dialog.ActionShowGoal:
 		if cmd := m.handleShowGoal(msg); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -5292,6 +5296,31 @@ func (m *UI) openDialog(id string) tea.Cmd {
 		}
 	case "workflow-controls":
 		if cmd := m.openWorkflowPanel(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	case "context-inspector", "agent-batches", "interactions", "agent-automation", "durable-board", "source-memory":
+		m.workflow.tab = workflowContext
+		if id == "agent-batches" {
+			m.workflow.tab = workflowBatches
+		}
+		if id == "interactions" {
+			m.workflow.tab = workflowInteractions
+		}
+		if id == "agent-automation" {
+			m.workflow.tab = workflowAutomation
+		}
+		if id == "durable-board" {
+			m.workflow.tab = workflowDurableBoard
+		}
+		if id == "source-memory" {
+			m.workflow.tab = workflowSourceMemory
+		}
+		m.workflow.selected = 0
+		if cmd := m.openWorkflowPanel(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	case "usage-profiles":
+		if cmd := m.openUsageProfiles(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	case dialog.AgentHubID:

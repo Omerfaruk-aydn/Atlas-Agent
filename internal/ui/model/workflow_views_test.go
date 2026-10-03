@@ -36,6 +36,17 @@ func TestWorkflowViewsExposeRealBlocksAndKeepUnicodeWithinTerminal(t *testing.T)
 	}
 }
 
+func TestWorkflowContextAndBatchViewsUsePersistedRows(t *testing.T) {
+	t.Parallel()
+	views := projectWorkflow(engineering.WorkflowSnapshot{Context: engineering.ContextManifest{Model: "configured", EstimatedTokens: 100, Entries: []engineering.ContextEntry{{ID: "result", Kind: "tool-result", Name: "Result", EstimatedTokens: 20, Excluded: true}}}, Batches: []engineering.AgentBatchReport{{ID: "audit", Rows: []engineering.AgentBatchRow{{AgentBatchItem: engineering.AgentBatchItem{ID: "module", Input: "internal/config"}, Status: "failed", Attempts: 1, Output: "failure"}}}}})
+	require.Len(t, views[workflowContext], 2)
+	require.Contains(t, views[workflowContext][1].Label, "excluded")
+	require.Equal(t, "result", views[workflowContext][1].ID)
+	require.Len(t, views[workflowBatches], 2)
+	require.Contains(t, views[workflowBatches][1].Label, "failed")
+	require.Contains(t, views[workflowBatches][1].Details, "failure")
+}
+
 func TestWorkflowInputTargetsTaskAndParsesQueueDependencies(t *testing.T) {
 	t.Parallel()
 	i := workflowInput{mode: "queue", task: "ui", text: "[api,contract] Implement Türkçe界"}

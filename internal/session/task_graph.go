@@ -95,6 +95,12 @@ func OwnershipOverlaps(a, b []string) bool {
 
 // ReadyTaskWave selects deterministic ready tasks with disjoint write ownership.
 func ReadyTaskWave(todos []Todo, limit int) ([]Todo, error) {
+	return ReadyTaskWaveExcluding(todos, limit, nil)
+}
+
+// ReadyTaskWaveExcluding retains held dependency records without dispatching
+// them or treating an idle held task as a writer.
+func ReadyTaskWaveExcluding(todos []Todo, limit int, held map[string]bool) ([]Todo, error) {
 	if err := ValidateTaskGraph(todos); err != nil {
 		return nil, err
 	}
@@ -107,7 +113,7 @@ func ReadyTaskWave(todos []Todo, limit int) ([]Todo, error) {
 	}
 	var wave []Todo
 	for _, t := range todos {
-		if t.ID == "" || t.Status != TodoStatusPending {
+		if t.ID == "" || t.Status != TodoStatusPending || held[t.ID] {
 			continue
 		}
 		ready := true

@@ -7,14 +7,17 @@ package browser
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/chromedp/cdproto/input"
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
@@ -26,6 +29,7 @@ import (
 // setting the user changes mid-session takes effect on the next launch
 // rather than at the next restart.
 type Options struct {
+	IsolateProfiles bool
 	// ExecutablePath is the Chrome/Chromium binary to launch. Empty lets
 	// chromedp search the usual install locations.
 	ExecutablePath string
@@ -287,6 +291,8 @@ func SupportedKeys() []string {
 
 type chromedpSession struct {
 	ctx           context.Context
+	rootCtx       context.Context
+	tabCancels    []context.CancelFunc
 	cancel        context.CancelFunc
 	actionTimeout time.Duration
 	closeOnce     sync.Once
@@ -295,21 +301,41 @@ type chromedpSession struct {
 	// mu guards console and dialogs, which the CDP event listener
 	// (chromedp.ListenTarget's callback, invoked synchronously and
 	// concurrently with whatever action is in flight) appends to.
-	mu      sync.Mutex
-	console []ConsoleEntry
-	dialogs []DialogInfo
+	mu          sync.Mutex
+	console     []ConsoleEntry
+	dialogs     []DialogInfo
+	network     []NetworkEntry
+	requests    map[string]time.Time
+	callContext context.Context
 }
 
 func newChromedpSession(opts Options) (Session, error) {
+	return newChromedpSessionContext(context.Background(), opts)
+}
+
+func newChromedpSessionContext(parent context.Context, opts Options) (Session, error) {
+	if err := parent.Err(); err != nil {
+		return nil, err
+	}
 	var (
 		allocCtx    context.Context
 		allocCancel context.CancelFunc
 	)
 	if opts.RemoteURL != "" {
-		if err := ensureRemoteBrowser(opts); err != nil {
-			return nil, err
+		u, err := url.Parse(opts.RemoteURL)
+		if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "ws" && u.Scheme != "wss") {
+			return nil, errors.New("invalid remote browser endpoint")
 		}
-		allocCtx, allocCancel = chromedp.NewRemoteAllocator(context.Background(), opts.RemoteURL)
+		if u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost" || u.Hostname() == "::1") {
+			if err := ensureRemoteBrowser(opts); err != nil {
+				return nil, err
+			}
+		}
+		if u.Scheme == "ws" || u.Scheme == "wss" {
+			allocCtx, allocCancel = chromedp.NewRemoteAllocator(context.Background(), opts.RemoteURL, chromedp.NoModifyURL)
+		} else {
+			allocCtx, allocCancel = chromedp.NewRemoteAllocator(context.Background(), opts.RemoteURL)
+		}
 	} else {
 		allocOpts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
 			chromedp.Flag("headless", opts.Headless),
@@ -324,20 +350,42 @@ func newChromedpSession(opts Options) (Session, error) {
 			// time.
 			allocOpts = append(allocOpts, chromedp.UserDataDir(opts.UserDataDir))
 		}
+		if opts.UseRealProfile {
+			profile, err := snapshotRealProfile(opts.UserDataDir, opts.RealProfilePin)
+			if err != nil {
+				return nil, err
+			}
+			allocOpts = append(allocOpts, chromedp.Flag("profile-directory", profile))
+		}
 		allocCtx, allocCancel = chromedp.NewExecAllocator(context.Background(), allocOpts...)
 	}
 	ctx, cancel := chromedp.NewContext(allocCtx)
+	timeout := opts.ActionTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	stopParent := context.AfterFunc(parent, cancel)
+	launchTimer := time.AfterFunc(timeout, cancel)
+	defer stopParent()
+	defer launchTimer.Stop()
 
 	// Launch now so a missing browser binary or launch failure surfaces
 	// here, at session creation, instead of on the caller's first action.
 	if err := chromedp.Run(ctx); err != nil {
 		cancel()
 		allocCancel()
+		if parent.Err() != nil {
+			return nil, parent.Err()
+		}
+		if opts.RemoteURL != "" {
+			return nil, errors.New("failed to attach remote browser; check the endpoint and session expiry")
+		}
 		return nil, fmt.Errorf("failed to launch browser: %w", err)
 	}
 
 	s := &chromedpSession{
 		ctx:           ctx,
+		rootCtx:       ctx,
 		cancel:        func() { cancel(); allocCancel() },
 		actionTimeout: opts.ActionTimeout,
 		ownedBrowser:  opts.RemoteURL == "",
@@ -347,8 +395,11 @@ func newChromedpSession(opts Options) (Session, error) {
 	// (console calls, exceptions, dialog-opening) to fire at all --
 	// enabling is otherwise implicit only for the actions (Navigate,
 	// Click, ...) that need it internally.
-	if err := s.run(runtime.Enable(), page.Enable()); err != nil {
+	if err := s.run(runtime.Enable(), page.Enable(), network.Enable()); err != nil {
 		s.cancel()
+		if opts.RemoteURL != "" {
+			return nil, errors.New("failed to initialize remote browser event reporting")
+		}
 		return nil, fmt.Errorf("failed to enable browser event reporting: %w", err)
 	}
 
@@ -367,6 +418,14 @@ func newChromedpSession(opts Options) (Session, error) {
 // itself, only record what happened for a later call to read.
 func (s *chromedpSession) handleTargetEvent(ev any) {
 	switch ev := ev.(type) {
+	case *network.EventRequestWillBeSent:
+		s.startRequest(string(ev.RequestID))
+	case *network.EventResponseReceived:
+		if ev.Response != nil {
+			s.appendNetwork(NetworkEntry{URL: redactedURL(ev.Response.URL), Status: int(ev.Response.Status), RequestID: string(ev.RequestID), Time: time.Now()})
+		}
+	case *network.EventLoadingFailed:
+		s.appendNetwork(NetworkEntry{RequestID: string(ev.RequestID), Failed: true, Time: time.Now()})
 	case *runtime.EventConsoleAPICalled:
 		s.appendConsole(ConsoleEntry{Type: string(ev.Type), Text: formatConsoleArgs(ev.Args), Time: time.Now()})
 	case *runtime.EventExceptionThrown:
@@ -424,8 +483,14 @@ func (s *chromedpSession) run(actions ...chromedp.Action) error {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	runCtx, cancel := context.WithTimeout(s.ctx, timeout)
+	runCtx, cancel := context.WithTimeout(s.currentContext(), timeout)
 	defer cancel()
+	parent := s.operationContext()
+	if err := parent.Err(); err != nil {
+		return err
+	}
+	stop := context.AfterFunc(parent, cancel)
+	defer stop()
 	return chromedp.Run(runCtx, actions...)
 }
 
@@ -454,15 +519,15 @@ func (s *chromedpSession) Click(selector string) error {
 			selector,
 		)
 	}
-	return s.run(
-		chromedp.Evaluate(
-			fmt.Sprintf(
-				"document.querySelector(%s).scrollIntoView({block: 'center', inline: 'center'})",
-				quoted,
-			), nil,
-		),
-		chromedp.Click(selector, chromedp.ByQuery),
-	)
+	if count > 1 {
+		return fmt.Errorf("ambiguous_target: selector resolves to %d elements", count)
+	}
+	timeoutMS := int(min(s.actionTimeout, 30*time.Second) / time.Millisecond)
+	if timeoutMS <= 0 {
+		timeoutMS = 30000
+	}
+	_, _, err = s.Advanced(s.operationContext(), Request{Action: "semantic_click", Selector: selector, TimeoutMS: timeoutMS})
+	return err
 }
 
 // ClickAt presses the left button at viewport coordinates in CSS
@@ -484,10 +549,12 @@ func (s *chromedpSession) ClickAt(x, y float64) error {
 }
 
 func (s *chromedpSession) Type(selector, text string) error {
-	return s.run(
-		chromedp.Clear(selector, chromedp.ByQuery),
-		chromedp.SendKeys(selector, text, chromedp.ByQuery),
-	)
+	timeoutMS := int(min(s.actionTimeout, 30*time.Second) / time.Millisecond)
+	if timeoutMS <= 0 {
+		timeoutMS = 30000
+	}
+	_, _, err := s.Advanced(s.operationContext(), Request{Action: "semantic_type", Selector: selector, Text: text, TimeoutMS: timeoutMS})
+	return err
 }
 
 func (s *chromedpSession) PressKey(name string) error {
@@ -653,10 +720,21 @@ func (s *chromedpSession) RawCDP(method string, params map[string]any) (map[stri
 
 func (s *chromedpSession) Close() {
 	s.closeOnce.Do(func() {
+		s.mu.Lock()
+		cancels := append([]context.CancelFunc(nil), s.tabCancels...)
+		current := s.ctx
+		s.mu.Unlock()
+		for _, cancel := range cancels {
+			cancel()
+		}
 		if s.ownedBrowser {
 			// Graceful owned-browser shutdown flushes persistent profile data.
 			// Attached user browsers retain their existing tab-only cleanup.
-			ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
+			closeCtx := s.rootCtx
+			if closeCtx == nil {
+				closeCtx = current
+			}
+			ctx, cancel := context.WithTimeout(closeCtx, 5*time.Second)
 			defer cancel()
 			_ = chromedp.Cancel(ctx)
 		}
@@ -677,6 +755,10 @@ type Manager struct {
 	newSession newSessionFunc
 	sessions   map[string]Session
 	lastUsed   map[string]time.Time
+	pending    map[string]*pendingSession
+	epochs     map[string]uint64
+	generation uint64
+	connect    func(context.Context, Options) (Session, error)
 }
 
 func newManager(opts Options, newSession newSessionFunc) *Manager {
@@ -685,12 +767,21 @@ func newManager(opts Options, newSession newSessionFunc) *Manager {
 		newSession: newSession,
 		sessions:   map[string]Session{},
 		lastUsed:   map[string]time.Time{},
+		pending:    map[string]*pendingSession{},
+		epochs:     map[string]uint64{},
+		connect: func(ctx context.Context, opts Options) (Session, error) {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			return newSession(opts)
+		},
 	}
 }
 
 var (
 	defaultManager     *Manager
 	defaultManagerOnce sync.Once
+	defaultManagerMu   sync.RWMutex
 )
 
 // GetManager returns the process-wide browser manager, built on first
@@ -704,7 +795,10 @@ var (
 // nothing until the next restart.
 func GetManager(opts Options) *Manager {
 	defaultManagerOnce.Do(func() {
+		defaultManagerMu.Lock()
+		defer defaultManagerMu.Unlock()
 		defaultManager = newManager(opts, newChromedpSession)
+		defaultManager.connect = newChromedpSessionContext
 	})
 	defaultManager.setOptions(opts)
 	return defaultManager
@@ -715,10 +809,17 @@ func GetManager(opts Options) *Manager {
 // GetManager so tearing down cannot overwrite the running options with
 // a zero value on the way out.
 func CloseAllSessions() {
-	if defaultManager == nil {
+	manager := currentManager()
+	if manager == nil {
 		return
 	}
-	defaultManager.CloseAll()
+	manager.CloseAll()
+}
+
+func currentManager() *Manager {
+	defaultManagerMu.RLock()
+	defer defaultManagerMu.RUnlock()
+	return defaultManager
 }
 
 // setOptions adopts opts for sessions launched from here on. A change to
@@ -727,9 +828,9 @@ func CloseAllSessions() {
 // the next action relaunches under what the user actually chose.
 func (m *Manager) setOptions(opts Options) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	if m.opts == opts {
+		m.mu.Unlock()
 		return
 	}
 	relaunch := m.opts.Headless != opts.Headless ||
@@ -738,77 +839,85 @@ func (m *Manager) setOptions(opts Options) {
 		m.opts.RemoteURL != opts.RemoteURL ||
 		m.opts.UseRealProfile != opts.UseRealProfile ||
 		m.opts.RealProfilePin != opts.RealProfilePin
+	relaunch = relaunch || m.opts.IsolateProfiles != opts.IsolateProfiles
 	m.opts = opts
 	if !relaunch {
+		m.mu.Unlock()
 		return
 	}
-	for id, s := range m.sessions {
-		s.Close()
-		delete(m.sessions, id)
-		delete(m.lastUsed, id)
+	m.generation++
+	var retired []retiredSession
+	for id := range m.sessions {
+		retired = append(retired, m.dropLocked(id))
 	}
+	m.mu.Unlock()
+	m.releaseSessions(retired)
 }
 
 // Session returns the open session for id, launching one if none exists.
 func (m *Manager) Session(id string) (Session, error) {
+	return m.SessionContext(context.Background(), id)
+}
+
+// OwnershipResource serializes explicit connections to the same user browser.
+func (m *Manager) OwnershipResource(id string) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	m.reapLocked()
-
-	if s, ok := m.sessions[id]; ok {
-		m.lastUsed[id] = time.Now()
-		return s, nil
+	if m.opts.RemoteURL != "" {
+		hash := sha256.Sum256([]byte(m.opts.RemoteURL))
+		return fmt.Sprintf("shared/browser/%x", hash[:16])
 	}
+	return "browser/" + id
+}
 
-	s, err := m.newSession(m.opts)
-	if err != nil {
-		return nil, err
-	}
-	m.sessions[id] = s
-	m.lastUsed[id] = time.Now()
-	return s, nil
+// UsesDesktop reports whether browser lifecycle can affect foreground focus.
+func (m *Manager) UsesDesktop() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return !m.opts.Headless || m.opts.RemoteURL != ""
 }
 
 // Close closes the session for id, if one is open. Safe to call when none
 // is.
 func (m *Manager) Close(id string) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	if s, ok := m.sessions[id]; ok {
-		s.Close()
-		delete(m.sessions, id)
-		delete(m.lastUsed, id)
-	}
+	m.epochs[id]++
+	retired := m.dropLocked(id)
+	m.mu.Unlock()
+	m.releaseSessions([]retiredSession{retired})
 }
 
 // CloseAll closes every open session. Called on process shutdown so a
 // headless Chrome instance never outlives the agent that launched it.
 func (m *Manager) CloseAll() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	for id, s := range m.sessions {
-		s.Close()
-		delete(m.sessions, id)
-		delete(m.lastUsed, id)
+	m.generation++
+	var retired []retiredSession
+	for id := range m.sessions {
+		retired = append(retired, m.dropLocked(id))
 	}
+	m.mu.Unlock()
+	m.releaseSessions(retired)
 }
 
 // reapLocked closes and drops sessions idle for longer than opts.IdleTimeout.
 // Called with mu held, on every Session lookup rather than off a background
 // goroutine, so a manager nobody is using holds no timers.
-func (m *Manager) reapLocked() {
-	if m.opts.IdleTimeout <= 0 {
-		return
-	}
+func (m *Manager) reapLocked() []retiredSession {
+	var retired []retiredSession
 	cutoff := time.Now().Add(-m.opts.IdleTimeout)
 	for id, last := range m.lastUsed {
-		if last.Before(cutoff) {
-			if s, ok := m.sessions[id]; ok {
-				s.Close()
+		if driver, ok := m.sessions[id].(*chromedpSession); ok {
+			driver.mu.Lock()
+			busy := driver.callContext != nil && driver.callContext.Err() == nil
+			driver.mu.Unlock()
+			if busy {
+				continue
 			}
-			delete(m.sessions, id)
-			delete(m.lastUsed, id)
+		}
+		if m.pending[id] == nil && (m.opts.IdleTimeout > 0 && last.Before(cutoff)) {
+			retired = append(retired, m.dropLocked(id))
 		}
 	}
+	return retired
 }

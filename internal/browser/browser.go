@@ -512,7 +512,9 @@ func (s *chromedpSession) Scroll(dx, dy int) error {
 
 func (s *chromedpSession) Eval(expression string) (string, error) {
 	var result json.RawMessage
-	if err := s.run(chromedp.Evaluate(expression, &result)); err != nil {
+	if err := s.run(chromedp.Evaluate(expression, &result, func(params *runtime.EvaluateParams) *runtime.EvaluateParams {
+		return params.WithAwaitPromise(true)
+	})); err != nil {
 		return "", err
 	}
 	return string(result), nil

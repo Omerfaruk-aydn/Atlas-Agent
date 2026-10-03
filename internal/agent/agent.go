@@ -76,7 +76,8 @@ var (
 )
 
 type SessionAgentCall struct {
-	SessionID string
+	QueueContinuation bool
+	SessionID         string
 	// RunID, when non-empty, is the caller-supplied correlator that
 	// gets echoed back on the notify.RunComplete event emitted for
 	// this turn. It is preserved when the call is enqueued behind a
@@ -1107,12 +1108,27 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				}
 			}
 			prepared.Messages = options.Messages
+			directives, directiveErr := a.prepareDirectives(callContext, call, options.StepNumber == 0)
+			if directiveErr != nil {
+				return callContext, prepared, directiveErr
+			}
+			if call.QueueContinuation && options.StepNumber == 0 && len(directives) == 0 {
+				return callContext, prepared, fmt.Errorf("queued instruction is no longer ready; no work was started")
+			}
+			prepared.Messages = append(prepared.Messages, directives...)
 			for i := range prepared.Messages {
 				prepared.Messages[i].ProviderOptions = nil
 			}
 
 			// Use latest tools (updated by SetTools when MCP tools change).
-			prepared.Tools = guardTools(a.tools.Copy(), a.engineering)
+			palette := a.tools.Copy()
+			if a.taskContextConfig != nil && a.taskContextConfig.Config().Options.DeferToolSchemas {
+				palette, err = tools.DeferredPalette(callContext, a.engineering, call.SessionID, palette)
+				if err != nil {
+					return callContext, prepared, err
+				}
+			}
+			prepared.Tools = guardTools(palette, a.engineering)
 
 			// Drain queued follow-up prompts for this step. Calls covered
 			// by a cancel recorded while they sat in the queue are dropped:
@@ -1565,9 +1581,22 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	// across the recursive Run's own dispatch handoff — keeping the
 	// session observable to Cancel for the entire transition and
 	// closing the dequeue -> re-register window.
+	queueReady, queueErr := a.durableQueueReady(ctx, call)
+	if queueErr != nil {
+		return result, queueErr
+	}
 	mu := a.sessionMu(call.SessionID)
 	mu.Lock()
 	queuedMessages, _ := a.messageQueue.Get(call.SessionID)
+	mark, _ := a.cancelMark.Get(call.SessionID)
+	if queueReady && mark == 0 && ctx.Err() == nil {
+		next := call
+		next.Prompt = "Continue with the next ready user instruction from the persistent workflow queue."
+		next.Attachments, next.Accepted, next.OnComplete, next.RunID, next.acceptSeq = nil, nil, nil, "", 0
+		next.QueueContinuation = true
+		queuedMessages = append(queuedMessages, next)
+		a.messageQueue.Set(call.SessionID, queuedMessages)
+	}
 	if mark, ok := a.cancelMark.Get(call.SessionID); ok && mark > 0 && len(queuedMessages) > 0 {
 		// A cancel was recorded for this session (e.g. it arrived while
 		// this run was active and follow-ups had been queued). Drop the

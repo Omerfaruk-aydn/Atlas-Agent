@@ -736,6 +736,11 @@
           "type": "array",
           "description": "List of built-in tools to disable and hide from the agent"
         },
+        "defer_tool_schemas": {
+          "type": "boolean",
+          "description": "Expose core tool schemas initially and load other allowed tools through tool_search on subsequent steps",
+          "default": false
+        },
         "disable_provider_auto_update": {
           "type": "boolean",
           "description": "Disable providers auto-update. Atlas Agent ships an embedded provider catalog and uses it by default; enable this flag to opt out and use the catalog as-is",

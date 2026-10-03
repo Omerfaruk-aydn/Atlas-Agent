@@ -85,6 +85,11 @@ func Load(workingDir, dataDir string, debug bool) (*ConfigStore, error) {
 
 	// Validate hooks after all config merging is complete so workspace
 	// hooks also get their matcher regexes compiled.
+	if cfg.Options.UsageProfile != "" {
+		if err := cfg.ApplyUsageProfile(cfg.Options.UsageProfile); err != nil {
+			return nil, err
+		}
+	}
 	if err := cfg.ValidateHooks(); err != nil {
 		return nil, fmt.Errorf("invalid hook configuration: %w", err)
 	}
@@ -1587,8 +1592,16 @@ func (c *Config) ValidateHooks() error {
 
 	for event, eventHooks := range c.Hooks {
 		for i, h := range eventHooks {
-			if h.Command == "" {
+			if h.Command == "" && h.Prompt == "" {
 				return fmt.Errorf("hook %s[%d]: command is required", event, i)
+			}
+			if h.Prompt != "" {
+				if h.Command != "" || h.Agent == "" || len(h.Prompt) > 8192 || h.MaxFires < 0 || h.MaxFires > 16 || h.Timeout < 0 || h.Timeout > 120 {
+					return fmt.Errorf("hook %s[%d]: prompt actions require a named agent, no command, bounded prompt, max_fires 1–16 and timeout at most 120 seconds", event, i)
+				}
+				if !slices.Contains([]string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse"}, event) {
+					return fmt.Errorf("hook %s[%d]: agent actions are supported on SessionStart, UserPromptSubmit, PreToolUse and PostToolUse", event, i)
+				}
 			}
 			if h.Matcher == "" {
 				continue

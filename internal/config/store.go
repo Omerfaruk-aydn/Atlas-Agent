@@ -59,6 +59,7 @@ type fileSnapshot struct {
 // disk. They are applied on top of the loaded Config and survive only for
 // the lifetime of the process (or workspace).
 type RuntimeOverrides struct {
+	UsageProfile           *string
 	SessionMode            *string
 	PreserveSelectedModel  bool
 	SkipPermissionRequests bool
@@ -350,8 +351,18 @@ func (s *ConfigStore) SetConfigFields(scope Scope, kv map[string]any) error {
 	if err := candidate.ValidateExecution(); err != nil {
 		return err
 	}
+	if candidate.Options != nil && candidate.Options.UsageProfile != "" {
+		if err := candidate.ApplyUsageProfile(candidate.Options.UsageProfile); err != nil {
+			return err
+		}
+	}
 	if err := s.writeConfigFields(scope, kv); err != nil {
 		return err
+	}
+	if _, changed := kv["options.usage_profile"]; changed {
+		s.writeMu.Lock()
+		s.overrides.UsageProfile = nil
+		s.writeMu.Unlock()
 	}
 	// Auto-reload to keep in-memory state fresh after config edits.
 	// We use context.Background() since this is an internal operation that
@@ -1252,6 +1263,14 @@ func (s *ConfigStore) reloadFromDiskLocked(ctx context.Context) error {
 
 	// Validate hooks after all config merging is complete so matcher
 	// regexes are recompiled on the reloaded config (mirrors Load).
+	if s.overrides.UsageProfile != nil {
+		cfg.Options.UsageProfile = *s.overrides.UsageProfile
+	}
+	if cfg.Options.UsageProfile != "" {
+		if err := cfg.ApplyUsageProfile(cfg.Options.UsageProfile); err != nil {
+			return err
+		}
+	}
 	if err := cfg.ValidateHooks(); err != nil {
 		return fmt.Errorf("invalid hook configuration on reload: %w", err)
 	}

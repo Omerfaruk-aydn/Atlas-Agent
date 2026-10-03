@@ -212,7 +212,22 @@
         },
         "command": {
           "type": "string",
-          "description": "Shell command to execute when the hook fires"
+          "description": "Shell command to execute when the hook fires; mutually exclusive with prompt"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Bounded read-only specialist task; mutually exclusive with command"
+        },
+        "agent": {
+          "type": "string",
+          "description": "Named specialist for a prompt action"
+        },
+        "max_fires": {
+          "type": "integer",
+          "maximum": 16,
+          "minimum": 1,
+          "description": "Maximum agent actions per session and hook",
+          "default": 3
         },
         "timeout": {
           "type": "integer",
@@ -221,10 +236,7 @@
         }
       },
       "additionalProperties": false,
-      "type": "object",
-      "required": [
-        "command"
-      ]
+      "type": "object"
     },
     "LSPConfig": {
       "properties": {
@@ -549,6 +561,17 @@
     },
     "Options": {
       "properties": {
+        "usage_profile": {
+          "type": "string",
+          "description": "Active named usage profile"
+        },
+        "usage_profiles": {
+          "additionalProperties": {
+            "$ref": "#/$defs/UsageProfile"
+          },
+          "type": "object",
+          "description": "Custom usage profiles or overrides for economical"
+        },
         "workflow_paths": {
           "items": {
             "type": "string"
@@ -1550,6 +1573,41 @@
       },
       "additionalProperties": false,
       "type": "object"
+    },
+    "UsageProfile": {
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "model_role": {
+          "type": "string"
+        },
+        "read_only": {
+          "type": "boolean"
+        },
+        "allowed_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "max_steps": {
+          "type": "integer"
+        },
+        "max_agents": {
+          "type": "integer"
+        },
+        "instructions": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "max_steps",
+        "max_agents",
+        "instructions"
+      ]
     }
   }
 }

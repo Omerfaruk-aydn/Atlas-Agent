@@ -556,16 +556,18 @@ func (Attribution) JSONSchemaExtend(schema *jsonschema.Schema) {
 }
 
 type Options struct {
-	WorkflowPaths        []string    `json:"workflow_paths,omitempty" jsonschema:"description=Directories or JSON files containing versioned project workflow recipes"`
-	Execution            *Execution  `json:"execution,omitempty" jsonschema:"description=Command isolation policy; does not isolate LSP or MCP"`
-	ContextPaths         []string    `json:"context_paths,omitempty" jsonschema:"description=Paths to files containing context information for the AI,example=.cursorrules,example=ATLAS-AGENT.md"`
-	GlobalContextPaths   []string    `json:"global_context_paths,omitempty" jsonschema:"description=Paths to files containing global context information for the AI,default=~/.config/Atlas-Agent/ATLAS-AGENT.md,default=~/.config/AGENTS.md"`
-	SkillsPaths          []string    `json:"skills_paths,omitempty" jsonschema:"description=Paths to directories containing Agent Skills (folders with SKILL.md files),example=~/.config/atlas/skills,example=./skills"`
-	SubagentsPaths       []string    `json:"subagents_paths,omitempty" jsonschema:"description=Paths to directories containing subagent definitions (name.md files with a model role),example=~/.config/atlas/agents,example=./.atlas/agents"`
-	TUI                  *TUIOptions `json:"tui,omitempty" jsonschema:"description=Terminal user interface options"`
-	Debug                bool        `json:"debug,omitempty" jsonschema:"description=Enable debug logging,default=false"`
-	DebugLSP             bool        `json:"debug_lsp,omitempty" jsonschema:"description=Enable debug logging for LSP servers,default=false"`
-	DisableAutoSummarize bool        `json:"disable_auto_summarize,omitempty" jsonschema:"description=Disable automatic conversation summarization,default=false"`
+	UsageProfile         string                  `json:"usage_profile,omitempty" jsonschema:"description=Active named usage profile"`
+	UsageProfiles        map[string]UsageProfile `json:"usage_profiles,omitempty" jsonschema:"description=Custom usage profiles or overrides for economical, research, implementation, review and ci"`
+	WorkflowPaths        []string                `json:"workflow_paths,omitempty" jsonschema:"description=Directories or JSON files containing versioned project workflow recipes"`
+	Execution            *Execution              `json:"execution,omitempty" jsonschema:"description=Command isolation policy; does not isolate LSP or MCP"`
+	ContextPaths         []string                `json:"context_paths,omitempty" jsonschema:"description=Paths to files containing context information for the AI,example=.cursorrules,example=ATLAS-AGENT.md"`
+	GlobalContextPaths   []string                `json:"global_context_paths,omitempty" jsonschema:"description=Paths to files containing global context information for the AI,default=~/.config/Atlas-Agent/ATLAS-AGENT.md,default=~/.config/AGENTS.md"`
+	SkillsPaths          []string                `json:"skills_paths,omitempty" jsonschema:"description=Paths to directories containing Agent Skills (folders with SKILL.md files),example=~/.config/atlas/skills,example=./skills"`
+	SubagentsPaths       []string                `json:"subagents_paths,omitempty" jsonschema:"description=Paths to directories containing subagent definitions (name.md files with a model role),example=~/.config/atlas/agents,example=./.atlas/agents"`
+	TUI                  *TUIOptions             `json:"tui,omitempty" jsonschema:"description=Terminal user interface options"`
+	Debug                bool                    `json:"debug,omitempty" jsonschema:"description=Enable debug logging,default=false"`
+	DebugLSP             bool                    `json:"debug_lsp,omitempty" jsonschema:"description=Enable debug logging for LSP servers,default=false"`
+	DisableAutoSummarize bool                    `json:"disable_auto_summarize,omitempty" jsonschema:"description=Disable automatic conversation summarization,default=false"`
 	// MaxSessionCost, if positive, refuses a new prompt once the
 	// session's accumulated cost has reached it. The refusal happens
 	// before the request is dispatched, so it costs nothing beyond the
@@ -1337,7 +1339,10 @@ type HookConfig struct {
 	// Regex pattern tested against the tool name. Empty means match all.
 	Matcher string `json:"matcher,omitempty" jsonschema:"description=Regex pattern tested against the tool name. Empty means match all tools."`
 	// Shell command to execute.
-	Command string `json:"command" jsonschema:"required,description=Shell command to execute when the hook fires"`
+	Command  string `json:"command,omitempty" jsonschema:"description=Shell command to execute when the hook fires; mutually exclusive with prompt"`
+	Prompt   string `json:"prompt,omitempty" jsonschema:"description=Bounded read-only specialist task; mutually exclusive with command"`
+	Agent    string `json:"agent,omitempty" jsonschema:"description=Named specialist for a prompt action"`
+	MaxFires int    `json:"max_fires,omitempty" jsonschema:"description=Maximum agent actions per session and hook,default=3,minimum=1,maximum=16"`
 	// Timeout in seconds. Default 30.
 	Timeout int `json:"timeout,omitempty" jsonschema:"description=Timeout in seconds for the hook command,default=30"`
 }
@@ -1347,6 +1352,9 @@ type HookConfig struct {
 func (h *HookConfig) DisplayName() string {
 	if h.Name != "" {
 		return h.Name
+	}
+	if h.Prompt != "" {
+		return "agent: " + h.Agent
 	}
 	return h.Command
 }
@@ -1621,6 +1629,10 @@ func allToolNames() []string {
 		"browser",
 		"debugger",
 		"computer",
+		"agent_jobs",
+		"task_board",
+		"source_memory",
+		"tool_pipeline",
 		"team_send",
 		"team_read",
 		// CodeIntel
@@ -1696,7 +1708,7 @@ func filterSlice(data []string, mask []string, include bool) []string {
 }
 
 func (c *Config) SetupAgents() {
-	allowedTools := resolveAllowedTools(allToolNames(), c.Options.DisabledTools)
+	allowedTools := c.profileTools(resolveAllowedTools(allToolNames(), c.Options.DisabledTools))
 
 	agents := map[string]Agent{
 		AgentCoder: {
@@ -1720,6 +1732,12 @@ func (c *Config) SetupAgents() {
 		},
 	}
 	c.Agents = agents
+	if profile, ok := c.UsageProfiles()[c.Options.UsageProfile]; ok && profile.ReadOnly {
+		for id, agent := range c.Agents {
+			agent.AllowedMCP = map[string][]string{}
+			c.Agents[id] = agent
+		}
+	}
 }
 
 // agentModel resolves which model type an agent should use: the override in

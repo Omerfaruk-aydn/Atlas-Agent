@@ -1,0 +1,66 @@
+{
+  "checked_at": "2026-10-02T21:07:34.1953099Z",
+  "tag": "v0.14.3",
+  "published_commit": "82c91a4bb994a1a6db29820395a4b50cd4f9d2ac",
+  "github_release": "https://github.com/Omerfaruk-aydn/Atlas-Agent/releases/tag/v0.14.3",
+  "github_assets": [
+    {
+      "name": "atlas-agent-darwin-arm64",
+      "size": 99829810,
+      "digest": "sha256:5ec972a9002ea576f7bb5d8ff61bf21e6ad7581ea9ced1e19243672514388040"
+    },
+    {
+      "name": "atlas-agent-darwin-x64",
+      "size": 103909872,
+      "digest": "sha256:93109de0a16b9b639626924cf8af7215455c829d31bb150c3fd686b37c280f66"
+    },
+    {
+      "name": "atlas-agent-linux-x64",
+      "size": 101503138,
+      "digest": "sha256:47361ce3de6c9397ef5ce5fc62b00b2caacc35b2616fa1c29f2fc5fd22e34200"
+    },
+    {
+      "name": "atlas-agent-windows-x64.exe",
+      "size": 103460352,
+      "digest": "sha256:ac332356329f4b330e56e5cb52aa3c948ed53e0936dec88c43461091fbfde9a0"
+    },
+    {
+      "name": "install.ps1",
+      "size": 1102,
+      "digest": "sha256:140229a48fb3949c0b9170b0f0b03aeec7cc47df69ffb4aaeb7689cc8fe4ea78"
+    },
+    {
+      "name": "install.sh",
+      "size": 1265,
+      "digest": "sha256:d3791b7b110978c2613ce343d113d5d43e7619ff872b0665ca2c02d9b395a07c"
+    }
+  ],
+  "npm_package": "@atlas-coder/atlas-agent",
+  "npm_version": "0.14.3",
+  "npm_tarball": "https://registry.npmjs.org/@atlas-coder/atlas-agent/-/atlas-agent-0.14.3.tgz",
+  "npm_install_exit_code": 0,
+  "npm_cli_output": "atlas-agent version v0.14.3",
+  "installed_windows_binary_sha256": "ac332356329f4b330e56e5cb52aa3c948ed53e0936dec88c43461091fbfde9a0",
+  "installed_binary_matches_release": true,
+  "publication_commit_batch_count": 40,
+  "ci_followup": {
+    "conpty_handle_ruling": "HPCON must be supplied as the OS handle value, not its address; narrowly documented govet exception",
+    "affected_package_test_exit_code": 0,
+    "dependency_versions_changed": false,
+    "conpty_reference": "https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session",
+    "affected_package_tests": [
+      "agent",
+      "browser",
+      "engineering",
+      "environment",
+      "oauth/antigravity",
+      "server",
+      "session",
+      "subagents",
+      "terminal"
+    ],
+    "scope": "Main-only lint and dependency classification cleanup; published tag and binaries are unchanged",
+    "linux_lint": "golangci-lint v2.13.1 with GOOS=linux: 0 issues",
+    "windows_lint": "golangci-lint v2.13.1: 0 issues"
+  }
+}

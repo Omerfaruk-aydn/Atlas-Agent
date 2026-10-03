@@ -1,0 +1,122 @@
+[
+  {
+    "path": "charts.csv",
+    "source_sha256": "b754c0efffcf54cb889114a9314be1d5af6ceebe65c4c436d713b52018e752c9",
+    "lf_sha256": "77d32cf4d9e78f80795baf391e1cc8f9ee137351aab29ca682938ec9d8ebe7e4"
+  },
+  {
+    "path": "colors.csv",
+    "source_sha256": "4cc0df2785f340b8bd0ace50bd4068dc13a7c4c6fa4d9d2723271244ce904614",
+    "lf_sha256": "19a74a1fe858f92dc9213553bb6b8326b7f32dc6bfc0857668e2b4da32322f8a"
+  },
+  {
+    "path": "icons.csv",
+    "source_sha256": "351fe61ba45b8146c66de6ea7d67297654639d79a94f537b4d0bad570058c28f",
+    "lf_sha256": "351fe61ba45b8146c66de6ea7d67297654639d79a94f537b4d0bad570058c28f"
+  },
+  {
+    "path": "landing.csv",
+    "source_sha256": "010e1e46db271b94e0af6f18973bea86ddba62feeccd62aeeaa6ed40e2ae2db1",
+    "lf_sha256": "51021dbadc40b0305c42f80c270eb515420440afe9f3482dfd048dc2475dbfbd"
+  },
+  {
+    "path": "products.csv",
+    "source_sha256": "5359e3037dcb84e99c792ea13dd44f5b78ab6a53557afb309cf19140512aaf5b",
+    "lf_sha256": "6f9c9be6fdb53a415af273dac6221e87a418d1600da2ee39f974b997e880050e"
+  },
+  {
+    "path": "react-performance.csv",
+    "source_sha256": "904c8afcda229629545912dde0e8ac37503757131f0169f80b016f1f58c4fd3f",
+    "lf_sha256": "904c8afcda229629545912dde0e8ac37503757131f0169f80b016f1f58c4fd3f"
+  },
+  {
+    "path": "stacks/astro.csv",
+    "source_sha256": "ad18dae3ab6d148d37d144592df80dc1825b6c9e86d9d2d68fdda77434206a37",
+    "lf_sha256": "ad18dae3ab6d148d37d144592df80dc1825b6c9e86d9d2d68fdda77434206a37"
+  },
+  {
+    "path": "stacks/flutter.csv",
+    "source_sha256": "e470e6bc2bcd8562667cc764d1e1afb0be0a30ca4dc9ec12fa18b19d46f156bd",
+    "lf_sha256": "fe36d404c799781e8ba6e9a8179b45799ed5126a545528550cd2eb0f2346e8c5"
+  },
+  {
+    "path": "stacks/html-tailwind.csv",
+    "source_sha256": "1f004891dd189f6bc2a7717401e3100244326e7e2f3963a79bf7b2349d85e091",
+    "lf_sha256": "7aef38e75c53559470afcfa91580a9917ca8b7dbf8b92110389e23e93703ac52"
+  },
+  {
+    "path": "stacks/jetpack-compose.csv",
+    "source_sha256": "6c8fd4b0391c342c12b0af15610cd5becbeccaef0bbe8dcfc01d928c3195d93e",
+    "lf_sha256": "6c8fd4b0391c342c12b0af15610cd5becbeccaef0bbe8dcfc01d928c3195d93e"
+  },
+  {
+    "path": "stacks/nextjs.csv",
+    "source_sha256": "06a8e8c13bd44696c6ebb4cb6c4d8dea440e3de8cce77616512529ed29258f0c",
+    "lf_sha256": "e828ccc04843742f52f545a068e8a9ab0d2b97c0e771f7e93bf0cef74da05554"
+  },
+  {
+    "path": "stacks/nuxt-ui.csv",
+    "source_sha256": "05d6e74501b2b6a636faed32450622759f49a5bcafad971f5f4e7eba0eb7be71",
+    "lf_sha256": "05d6e74501b2b6a636faed32450622759f49a5bcafad971f5f4e7eba0eb7be71"
+  },
+  {
+    "path": "stacks/nuxtjs.csv",
+    "source_sha256": "f7a3f2d9542856d00199f85c6c023b7c284cc698e2e6e12d61afce2edacb24d6",
+    "lf_sha256": "f7a3f2d9542856d00199f85c6c023b7c284cc698e2e6e12d61afce2edacb24d6"
+  },
+  {
+    "path": "stacks/react-native.csv",
+    "source_sha256": "a08ca77fcf6b6d9531982dce465366296013bfcf12d2938ac72ad57cf0c4f085",
+    "lf_sha256": "077aefc81d194895ecf7936b3ed298b978e36961f183e3a275f8acda19b5f621"
+  },
+  {
+    "path": "stacks/react.csv",
+    "source_sha256": "b6e3eb0e4c9c01bd00ffb951d5ca224a19d488b4544c75436f48cf92ff12bf45",
+    "lf_sha256": "e5624ab41d33427d88e41d07581ce4eca59b37b36ab72a6ad43a9c8e2d0a1c72"
+  },
+  {
+    "path": "stacks/shadcn.csv",
+    "source_sha256": "395c2e415ef6f48a474acccdc8eb2c7258a6ed751a5037ba171a2d8823e02ded",
+    "lf_sha256": "395c2e415ef6f48a474acccdc8eb2c7258a6ed751a5037ba171a2d8823e02ded"
+  },
+  {
+    "path": "stacks/svelte.csv",
+    "source_sha256": "bc8d158994a8bdf412830a9dd5e5a5534edd2f367a6e50e0ebd4d76f592dfa3f",
+    "lf_sha256": "71af52d64f266c88070b91dbbaa900c2f8074b6baae9f35eaea6ba9cec6fd803"
+  },
+  {
+    "path": "stacks/swiftui.csv",
+    "source_sha256": "e87cb9eee208bb753bdab96d4a261c7f830c4317ee90ec098316b248fc32be85",
+    "lf_sha256": "c9c2d2510f8e66281a2514e8dd0125a6b653b9ef53a71281b5e7dfe003d5b569"
+  },
+  {
+    "path": "stacks/vue.csv",
+    "source_sha256": "9b793c3f4eec85f77a758c09322f2b62f3b3ca549bb713ccf0849ef885934395",
+    "lf_sha256": "c2724915d3c11cd67263f25896cff721f787a0fdd8326002d31e9f5806dfd8f8"
+  },
+  {
+    "path": "styles.csv",
+    "source_sha256": "ad3c3236134d833bda01a2faf31ddeaaa1dbd5005fa430dec571fa91b26e5fea",
+    "lf_sha256": "663ac9775e6f5b874b32d930fa0951591c45e39cde8ac7033278f42a0881c037"
+  },
+  {
+    "path": "typography.csv",
+    "source_sha256": "64695e05ac335ba534aff396c4ba9241c642f80ea53b424251d2669b71c4772b",
+    "lf_sha256": "64695e05ac335ba534aff396c4ba9241c642f80ea53b424251d2669b71c4772b"
+  },
+  {
+    "path": "ui-reasoning.csv",
+    "source_sha256": "58fc52fff69f62709f8c7dd460de6f6693699ea820f24287f3301a427c2b554e",
+    "lf_sha256": "58fc52fff69f62709f8c7dd460de6f6693699ea820f24287f3301a427c2b554e"
+  },
+  {
+    "path": "ux-guidelines.csv",
+    "source_sha256": "1870ee048f2a2bdd60709f8f7adf7f3b6dcad560bc005c8b2915a8ac8639820d",
+    "lf_sha256": "e01943c433b2cad3040f19389b3b0455673758a569b7a927b5bedf65c989cb96"
+  },
+  {
+    "path": "web-interface.csv",
+    "source_sha256": "10bfc24e09a6a15db8309e6ef9b6881e1d4af97dffb7c99418aefb8e30df7d54",
+    "lf_sha256": "10bfc24e09a6a15db8309e6ef9b6881e1d4af97dffb7c99418aefb8e30df7d54"
+  }
+]

@@ -9,6 +9,10 @@ contract:
   outputs: [implementation]
   completion: ['Observable behavior and compatibility contracts are recorded before transformation.', 'Behavioral and compatibility checks establish preserved behavior.', 'Mechanical transformations and requested behavior changes remain distinguishable.']
   required_tools: [view, grep]
+  decision_rights: ['Choose internal simplifications while preserving observable contracts']
+  out_of_scope: ['Unassigned files, business-rule changes and publication without user authorization']
+  stop_conditions: ['Missing consequential input, denied capability, conflicting ownership or unverifiable required criterion']
+  evidence_required: ['Before/after observable behavior and affected caller/regression evidence']
   independent_review: true
 ---
 
@@ -273,3 +277,11 @@ frameworks and unrelated renames. Workflow assignments require the JSON handoff.
   State any blocked transformation plainly.
 - **Defects noticed**: bugs found while reading, described but not fixed,
   with enough context for someone to address them on purpose.
+
+## Decision and delivery example
+
+When extracting shared logic, inspect all callers and error behavior before/after. Preserve documented ordering and cancellation. Reducing line count alone does not establish correctness.
+
+Report status as observed, inferred or unverified. If a required check cannot run,
+name the blocker and complete independent work. Follow the assignment JSON schema
+when supplied; role report headings never replace that schema.

@@ -11,6 +11,10 @@ contract:
   outputs: [findings]
   completion: ['Findings distinguish observed facts from inferences.', 'Unstable external claims include applicable version, source and retrieval date.', 'Recommendations identify decisive evidence, tradeoffs and bounded unknowns.']
   required_tools: [view, grep]
+  decision_rights: ['Choose primary sources and state evidence-backed conclusions']
+  out_of_scope: ['Unassigned files, business-rule changes and publication without user authorization']
+  stop_conditions: ['Missing consequential input, denied capability, conflicting ownership or unverifiable required criterion']
+  evidence_required: ['Source URL/path, revision/date, supported claim and unresolved uncertainty']
   independent_review: false
 ---
 
@@ -285,3 +289,11 @@ Length follows the question. A one-line question with a one-line answer
 gets a short report. Do not pad, narrate your search, or list files you
 opened and learned nothing from. Include commands and measurements only
 when they help the reader verify the answer or make the next decision.
+
+## Decision and delivery example
+
+When two sources list different model identifiers, record their dates/versions and check the provider contract. Report unresolved availability instead of inventing an alias or calling documentation a live test.
+
+Report status as observed, inferred or unverified. If a required check cannot run,
+name the blocker and complete independent work. Follow the assignment JSON schema
+when supplied; role report headings never replace that schema.

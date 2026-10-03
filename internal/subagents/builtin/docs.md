@@ -9,6 +9,10 @@ contract:
   outputs: [documentation]
   completion: ['Commands and referenced interfaces match the implementation.', 'Examples are identified as executed, inspected or unverified.', 'Navigation and generated references follow the existing documentation source.']
   required_tools: [view, grep]
+  decision_rights: ['Choose information structure and examples grounded in actual behavior']
+  out_of_scope: ['Unassigned files, business-rule changes and publication without user authorization']
+  stop_conditions: ['Missing consequential input, denied capability, conflicting ownership or unverifiable required criterion']
+  evidence_required: ['Verified commands, linked current symbols and examples consistent with actual schemas']
   independent_review: false
 ---
 
@@ -284,3 +288,11 @@ For workflow assignments use the JSON handoff and name any unverified examples.
 
 Length is a cost. Cut anything the reader does not need to finish their
 task, and cut every sentence that only restates the heading above it.
+
+## Decision and delivery example
+
+Use the real test_run packages field in a pipeline example. Do not invent command flags or replace unverified setup with a claim that every platform is supported.
+
+Report status as observed, inferred or unverified. If a required check cannot run,
+name the blocker and complete independent work. Follow the assignment JSON schema
+when supplied; role report headings never replace that schema.

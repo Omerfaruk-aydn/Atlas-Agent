@@ -40,6 +40,9 @@ func handleHook(ctx context.Context, args []string, stdin io.Reader, stdout, std
 // hookAddFlags is the declarative flag surface for `hook add`.
 var hookAddFlags = []flagSpec{
 	{name: "--command", jsonKey: "command", kind: flagString, op: opSet},
+	{name: "--prompt", jsonKey: "prompt", kind: flagString, op: opSet},
+	{name: "--agent", jsonKey: "agent", kind: flagString, op: opSet},
+	{name: "--max-fires", jsonKey: "max_fires", kind: flagInt, op: opSet},
 	{name: "--matcher", jsonKey: "matcher", kind: flagString, op: opSet},
 	{name: "--timeout", jsonKey: "timeout", kind: flagInt, op: opSet},
 	{name: "--name", jsonKey: "name", kind: flagString, op: opSet},
@@ -58,7 +61,9 @@ func hookAdd(b *ConfigBuilder, args []string, stderr io.Writer) error {
 	}
 
 	if _, ok := h["command"]; !ok {
-		return usage(stderr, "hook add: --command is required")
+		if _, ok := h["prompt"]; !ok {
+			return usage(stderr, "hook add: --command is required (or --prompt with --agent)")
+		}
 	}
 
 	hooks := b.section("hooks")

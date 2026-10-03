@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -58,7 +59,13 @@ func subagentAllowedTools(sub *subagents.Subagent, coderTools []string) []string
 		return out
 	}
 	if len(sub.Tools) > 0 {
-		return sub.Tools
+		out := []string{}
+		for _, name := range sub.Tools {
+			if slices.Contains(coderTools, name) {
+				out = append(out, name)
+			}
+		}
+		return out
 	}
 	out := make([]string, 0, len(coderTools))
 	for _, t := range coderTools {
@@ -74,12 +81,20 @@ func subagentAllowedTools(sub *subagents.Subagent, coderTools []string) []string
 var agentToolDescription string
 
 type AgentParams struct {
-	TaskType       string   `json:"task_type,omitempty" description:"Structured task type for automatic routing: frontend, backend, test, review, debug, security, architecture, planning, research, docs or refactor."`
-	RequiredTools  []string `json:"required_tools,omitempty" description:"Tool capabilities the selected specialist must support."`
-	ExpectedOutput string   `json:"expected_output,omitempty" description:"Required role output, e.g. implementation, findings, test-results or plan."`
-	QualityOnly    bool     `json:"quality_only,omitempty" description:"Run the named specialist with direct edits, MCP and delegation disabled for independent validation."`
-	WorkspaceID    string   `json:"workspace_id,omitempty" description:"Registered isolated workspace ID; tools are rebuilt with this workspace as their root."`
-	Prompt         string   `json:"prompt" description:"The task for the agent to perform"`
+	OwnedPaths     []string         `json:"owned_paths,omitempty" description:"Literal relative ownership paths required in architect_edit mode to bound editor writes."`
+	SessionKey     string           `json:"session_key,omitempty" description:"Reuse this named specialist's durable conversation within the parent session. Changing its role, tools or workspace starts a new conversation."`
+	Mode           string           `json:"mode,omitempty" description:"single (default), batch, or architect_edit."`
+	BatchID        string           `json:"batch_id,omitempty" description:"Durable batch identifier. Required in batch mode."`
+	Items          []AgentBatchItem `json:"items,omitempty" description:"Batch items with unique IDs and input substituted for {{item}} in prompt."`
+	RetryFailed    bool             `json:"retry_failed,omitempty" description:"Retry only failed rows; omit items to load the stored batch definition. Successful and interrupted rows are never replayed."`
+	Architect      string           `json:"architect,omitempty" description:"Named read-only architect for architect_edit mode."`
+	Editor         string           `json:"editor,omitempty" description:"Named editor for architect_edit mode."`
+	TaskType       string           `json:"task_type,omitempty" description:"Structured task type for automatic routing: frontend, backend, test, review, debug, security, architecture, planning, research, docs or refactor."`
+	RequiredTools  []string         `json:"required_tools,omitempty" description:"Tool capabilities the selected specialist must support."`
+	ExpectedOutput string           `json:"expected_output,omitempty" description:"Required role output, e.g. implementation, findings, test-results or plan."`
+	QualityOnly    bool             `json:"quality_only,omitempty" description:"Run the named specialist with direct edits, MCP and delegation disabled for independent validation."`
+	WorkspaceID    string           `json:"workspace_id,omitempty" description:"Registered isolated workspace ID; tools are rebuilt with this workspace as their root."`
+	Prompt         string           `json:"prompt" description:"The task for the agent to perform"`
 	// AgentName optionally names a configured subagent (see
 	// internal/subagents and `atlas agent list`) to run the task with,
 	// instead of the default agent.
@@ -156,7 +171,8 @@ func (c *coordinator) agentTool(ctx context.Context, available ...func() []strin
 				return fantasy.ToolResponse{}, errors.New("agent message id missing from context")
 			}
 
-			return c.runAgentToolCall(ctx, agentToolCallParams{
+			p := agentToolCallParams{
+				sessionKey: params.SessionKey,
 				availableTools: func() []string {
 					if len(available) > 0 {
 						return available[0]()
@@ -177,7 +193,8 @@ func (c *coordinator) agentTool(ctx context.Context, available ...func() []strin
 				agentName:         params.AgentName,
 				auto:              params.Auto,
 				prompt:            params.Prompt,
-			})
+			}
+			return c.runAgentMode(ctx, params, p)
 		},
 	), nil
 }
@@ -190,6 +207,7 @@ func (c *coordinator) agentTool(ctx context.Context, available ...func() []strin
 // making a network call -- the same trick TestRunOrchestratedAgentHappyPath
 // uses for orchestrate.
 type agentToolCallParams struct {
+	sessionKey        string
 	availableTools    []string
 	route             subagents.RouteRequest
 	qualityOnly       bool
@@ -208,6 +226,7 @@ type agentToolCallParams struct {
 }
 
 func (c *coordinator) runAgentToolCall(ctx context.Context, p agentToolCallParams) (fantasy.ToolResponse, error) {
+	var persistentID string
 	var routingReason string
 	var routedTo string
 	if p.auto && p.agentName == "" {
@@ -266,6 +285,26 @@ func (c *coordinator) runAgentToolCall(ctx context.Context, p agentToolCallParam
 			p.discovered = []*subagents.Subagent{&copy}
 		}
 	}
+	if p.sessionKey != "" {
+		if len(p.sessionKey) > 128 || p.qualityOnly || p.agentName == "" || c.engineering == nil {
+			return fantasy.NewTextErrorResponse("session_key requires a named specialist, durable storage, at most 128 characters and a non-quality invocation"), nil
+		}
+		sub, _ := subagents.Find(p.discovered, p.agentName)
+		scope := engineering.GetScope(ctx, p.sessionID)
+		scope.TaskID = ""
+		identity, err := json.Marshal(struct {
+			Role      *subagents.Subagent
+			Scope     engineering.Scope
+			Tools     []string
+			Models    map[config.SelectedModelType]config.SelectedModel
+			Workspace string
+			Roles     map[string]config.SelectedModel
+		}{sub, scope, p.availableTools, c.cfg.Config().Models, p.workspaceID, c.cfg.Config().Options.ModelRoles})
+		if err != nil {
+			return fantasy.ToolResponse{}, err
+		}
+		persistentID = "specialist-" + engineering.Hash(p.sessionID+"\x00"+p.sessionKey+"\x00"+c.cfg.WorkingDir()+"\x00"+string(identity))
+	}
 	if p.workspaceID != "" {
 		scope := engineering.GetScope(ctx, p.sessionID)
 		workspace, err := c.engineering.Workspace(ctx, scope.SessionID, p.workspaceID)
@@ -304,6 +343,13 @@ func (c *coordinator) runAgentToolCall(ctx context.Context, p agentToolCallParam
 		return fantasy.ToolResponse{}, err
 	}
 	defer p.limiter.release()
+	if persistentID != "" {
+		binding, err := json.Marshal(runAgent.Model().ModelCfg)
+		if err != nil {
+			return fantasy.ToolResponse{}, err
+		}
+		persistentID = "specialist-" + engineering.Hash(persistentID+string(binding))
+	}
 	if c.engineering != nil && engineering.GetScope(ctx, p.sessionID).TaskID == "" {
 		cfg := c.cfg
 		scope := engineering.GetScope(ctx, p.sessionID)
@@ -326,12 +372,13 @@ func (c *coordinator) runAgentToolCall(ctx context.Context, p agentToolCallParam
 	}
 
 	resp, err := c.runSubAgent(ctx, subAgentParams{
-		Agent:          runAgent,
-		SessionID:      p.sessionID,
-		AgentMessageID: p.agentMessageID,
-		ToolCallID:     p.toolCallID,
-		Prompt:         p.prompt,
-		SessionTitle:   sessionTitle,
+		PersistentSessionID: persistentID,
+		Agent:               runAgent,
+		SessionID:           p.sessionID,
+		AgentMessageID:      p.agentMessageID,
+		ToolCallID:          p.toolCallID,
+		Prompt:              p.prompt,
+		SessionTitle:        sessionTitle,
 	})
 	if err != nil || routedTo == "" {
 		return resp, err
@@ -408,7 +455,7 @@ func (c *coordinator) buildSubagentSessionAgent(ctx context.Context, taskCfg con
 	if err != nil {
 		return nil, err
 	}
-	systemPrompt, err := taskSystemPrompt.Build(ctx, large.Model.Provider(), large.Model.Model(), c.cfg)
+	systemPrompt, err := taskSystemPrompt.Build(prompt.WithProtocols(ctx, prompt.SelectProtocols("", sub.Name)), large.Model.Provider(), large.Model.Model(), c.cfg)
 	if err != nil {
 		return nil, err
 	}

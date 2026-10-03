@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/notify"
@@ -26,6 +28,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/credentials"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/schema"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/catwalk"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/discover"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
@@ -48,6 +51,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/skills"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/teams"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/anthropic"
@@ -159,9 +163,12 @@ type Coordinator interface {
 }
 
 type coordinator struct {
-	engineering *engineering.Store
-	cfg         *config.ConfigStore
-	sessions    session.Service
+	automationMu     sync.Mutex
+	automationCancel context.CancelFunc
+	automationDone   chan struct{}
+	engineering      *engineering.Store
+	cfg              *config.ConfigStore
+	sessions         session.Service
 	// goalRuns holds the autonomous run for each session working
 	// towards a goal (see goal.go). Absent means the session is
 	// taking turns the ordinary way, one per prompt.
@@ -287,6 +294,12 @@ func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, 
 	}
 	c.currentAgent = agent
 	c.agents[config.AgentCoder] = agent
+	if c.stateStore() != nil {
+		automationContext, cancel := context.WithCancel(ctx)
+		c.automationCancel = cancel
+		c.automationDone = make(chan struct{})
+		go func() { defer close(c.automationDone); c.automationLoop(automationContext) }()
+	}
 	return c, nil
 }
 
@@ -308,6 +321,14 @@ func (c *coordinator) RunAccepted(ctx context.Context, accept *AcceptedRun, sess
 func (c *coordinator) run(ctx context.Context, accept *AcceptedRun, sessionID string, prompt string, attachments ...message.Attachment) (*fantasy.AgentResult, error) {
 	if err := c.readyWg.Wait(); err != nil {
 		return nil, err
+	}
+	if ctx.Value(tools.ScheduledTurnKey{}) == true && c.IsBusy() {
+		return nil, ErrAutomationBusy
+	}
+	if goal, ok := c.resumeGoalRun(ctx, sessionID); ok && !c.IsSessionBusy(sessionID) {
+		if err := c.persistGoal(ctx, sessionID, goal, true); err != nil {
+			return nil, err
+		}
 	}
 
 	// MCP servers connect asynchronously (see mcp.Initialize).
@@ -333,6 +354,10 @@ func (c *coordinator) run(ctx context.Context, accept *AcceptedRun, sessionID st
 	}
 
 	// refresh models before each run
+	ctx, err := c.preparePromptContext(ctx, sessionID, prompt)
+	if err != nil {
+		return nil, fmt.Errorf("prepare task prompt: %w", err)
+	}
 	if err := c.UpdateModels(ctx); err != nil {
 		return nil, fmt.Errorf("failed to update models: %w", err)
 	}
@@ -382,6 +407,8 @@ func (c *coordinator) run(ctx context.Context, accept *AcceptedRun, sessionID st
 	runID := RunIDFromContext(ctx)
 	run := func() (*fantasy.AgentResult, error) {
 		return c.currentAgent.Run(ctx, SessionAgentCall{
+			SystemPrompt:      frozenSystemPrompt(ctx),
+			IdleOnly:          ctx.Value(tools.ScheduledTurnKey{}) == true,
 			QueueContinuation: ctx.Value(queueContinuationKey{}) == true,
 			SessionID:         sessionID,
 			RunID:             runID,
@@ -862,6 +889,7 @@ func (c *coordinator) buildAgent(ctx context.Context, prompt *prompt.Prompt, age
 		// carries its own instructions already (see agent_tool.go).
 		if !isSubAgent {
 			systemPrompt = c.withSessionMode(systemPrompt)
+			systemPrompt = c.withSourceMemory(initCtx, systemPrompt)
 		}
 		result.SetSystemPrompt(systemPrompt)
 		return nil
@@ -898,6 +926,7 @@ func (c *coordinator) hookRunner(event string) *hooks.Runner {
 		return nil
 	}
 	runner := hooks.NewRunner(configured, c.cfg.WorkingDir(), c.cfg.WorkingDir())
+	runner = runner.WithAgentAction(c.runHookAgent)
 	policy := tools.ExecutionPolicy(c.cfg.Config())
 	if policy.Mode != "" && policy.Mode != "legacy" {
 		runner = runner.WithExecution(execution.Binding{Root: c.cfg.WorkingDir(), Store: c.engineering, Factory: func(ctx context.Context) (execution.Runner, error) {
@@ -1031,14 +1060,14 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 	)
 
 	// Question tool is interactive-only and not available to sub-agents.
-	if !isSubAgent && c.interactive {
+	if !isSubAgent && c.interactive && ctx.Value(tools.ScheduledTurnKey{}) != true {
 		allTools = append(allTools, tools.NewQuestionTool(c.questions))
 	}
 
 	// Browser tool is opt-in: it launches an external Chrome/Chromium
 	// process and can reach any URL the permission prompt allows.
 	if c.cfg.Config().Tools.Browser.IsEnabled() {
-		allTools = append(allTools, tools.NewBrowserTool(c.permissions, c.cfg.WorkingDir(), c.cfg.Config().Tools.Browser))
+		allTools = append(allTools, tools.NewBrowserTool(c.permissions, c.cfg.WorkingDir(), c.cfg.Config().Tools.Browser, &vault.Store{State: c.stateStore(), Namespace: c.platformScope() + "/vault"}))
 	}
 
 	// Debugger tool is opt-in: it launches an external `dlv dap` process
@@ -1207,6 +1236,30 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		}
 		return tools.DiscoverTools(ctx, c.engineering, tools.GetSessionFromContext(ctx), infos)
 	}))
+	if c.stateStore() != nil {
+		allTools = append(allTools, tools.NewPlatformTools(c.stateStore(), c.cfg.WorkingDir(), c.platformScope(), c.permissions)...)
+	}
+	allTools = append(allTools, tools.NewToolPipeline(func(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		for _, target := range c.filterTools(allTools, agent, c.hookRunner(hooks.EventPreToolUse), c.hookRunner(hooks.EventPostToolUse), isSubAgent) {
+			if target.Info().Name == call.Name {
+				info := target.Info()
+				encoded, _ := json.Marshal(map[string]any{"type": "object", "properties": info.Parameters, "required": info.Required})
+				var specification schema.Schema
+				if err := json.Unmarshal(encoded, &specification); err != nil {
+					return fantasy.ToolResponse{}, err
+				}
+				var arguments any
+				if err := json.Unmarshal([]byte(call.Input), &arguments); err != nil {
+					return fantasy.NewTextErrorResponse("Invalid pipeline arguments"), nil
+				}
+				if err := schema.ValidateAgainstSchema(arguments, specification); err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+				return (&guardedTool{AgentTool: target, store: c.engineering}).Run(ctx, call)
+			}
+		}
+		return fantasy.NewTextErrorResponse("Tool is disabled or unavailable: " + call.Name), nil
+	}))
 	return allTools, nil
 }
 
@@ -1256,6 +1309,9 @@ func (c *coordinator) filterTools(allTools []fantasy.AgentTool, agent config.Age
 	// without hook interception to avoid firing the user's hook N times
 	// per delegated turn. The top-level invocation of the sub-agent tool
 	// itself is still wrapped from the coder's side.
+	for i, tool := range filteredTools {
+		filteredTools[i] = tools.WithSecretFilter(tool)
+	}
 	filteredTools = wrapToolsWithHooks(filteredTools, preRunner, postRunner, isSubAgent)
 	for i, tool := range filteredTools {
 		filteredTools[i] = tools.WithExecution(tool, c.cfg, c.engineering)
@@ -2094,7 +2150,17 @@ func (c *coordinator) Cancel(sessionID string) {
 }
 
 func (c *coordinator) CancelAll() {
+	if c.automationCancel != nil {
+		c.automationCancel()
+	}
 	c.currentAgent.CancelAll()
+	if c.automationDone != nil {
+		select {
+		case <-c.automationDone:
+		case <-time.After(5 * time.Second):
+			slog.Warn("Automation shutdown timed out; inspect interrupted jobs on restart")
+		}
+	}
 }
 
 func (c *coordinator) ClearQueue(sessionID string) {
@@ -2212,7 +2278,11 @@ func (c *coordinator) UpdateModels(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	c.currentAgent.SetSystemPrompt(c.withSessionMode(systemPrompt))
+	systemPrompt = c.withSourceMemory(ctx, c.withSessionMode(systemPrompt))
+	if snapshot, ok := ctx.Value(promptSnapshotKey{}).(*promptSnapshot); ok {
+		snapshot.content = systemPrompt
+	}
+	c.currentAgent.SetSystemPrompt(systemPrompt)
 	return nil
 }
 
@@ -2389,12 +2459,13 @@ func (c *coordinator) refreshApiKeyTemplate(ctx context.Context, providerCfg con
 
 // subAgentParams holds the parameters for running a sub-agent.
 type subAgentParams struct {
-	Agent          SessionAgent
-	SessionID      string
-	AgentMessageID string
-	ToolCallID     string
-	Prompt         string
-	SessionTitle   string
+	PersistentSessionID string
+	Agent               SessionAgent
+	SessionID           string
+	AgentMessageID      string
+	ToolCallID          string
+	Prompt              string
+	SessionTitle        string
 	// SessionSetup is an optional callback invoked after session creation
 	// but before agent execution, for custom session configuration.
 	SessionSetup func(sessionID string)
@@ -2404,12 +2475,40 @@ type subAgentParams struct {
 // It creates a sub-session, runs the agent with the given prompt, and propagates
 // the cost to the parent session.
 func (c *coordinator) runSubAgent(ctx context.Context, params subAgentParams) (fantasy.ToolResponse, error) {
+	if params.PersistentSessionID != "" {
+		if c.engineering == nil {
+			return fantasy.NewTextErrorResponse("persistent specialists require durable storage"), nil
+		}
+		release, err := c.engineering.WorkflowLock(ctx, params.PersistentSessionID)
+		if err != nil {
+			return fantasy.NewTextErrorResponse("specialist is busy: " + err.Error()), nil
+		}
+		defer release()
+	}
 	// Create sub-session
 	agentToolSessionID := c.sessions.CreateAgentToolSessionID(params.AgentMessageID, params.ToolCallID)
-	session, err := c.sessions.CreateTaskSession(ctx, agentToolSessionID, params.SessionID, params.SessionTitle)
+	if params.PersistentSessionID != "" {
+		agentToolSessionID = params.PersistentSessionID
+	}
+	child, err := c.sessions.Get(ctx, agentToolSessionID)
+	if params.PersistentSessionID == "" || errors.Is(err, sql.ErrNoRows) {
+		child, err = c.sessions.CreateTaskSession(ctx, agentToolSessionID, params.SessionID, params.SessionTitle)
+	}
 	if err != nil {
 		return fantasy.ToolResponse{}, fmt.Errorf("create session: %w", err)
 	}
+	if child.ParentSessionID != params.SessionID {
+		return fantasy.NewTextErrorResponse("specialist session belongs to another parent"), nil
+	}
+	session := child
+	previousCost := session.Cost
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := c.updateParentSessionCostDelta(cleanup, session.ID, params.SessionID, previousCost); err != nil {
+			slog.Warn("Failed to update parent session cost", "child_session", session.ID, "parent_session", params.SessionID, "error", err)
+		}
+	}()
 
 	// Call session setup function if provided
 	if params.SessionSetup != nil {
@@ -2496,17 +2595,6 @@ func (c *coordinator) runSubAgent(ctx context.Context, params subAgentParams) (f
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("Failed to generate response: %s", err)), nil
 	}
 
-	// Update parent session cost on a best-effort basis. A failure here must
-	// not discard the sub-agent output that was already produced.
-	if err := c.updateParentSessionCost(ctx, session.ID, params.SessionID); err != nil {
-		slog.Warn(
-			"Failed to update parent session cost",
-			"child_session", session.ID,
-			"parent_session", params.SessionID,
-			"error", err,
-		)
-	}
-
 	output := subAgentOutput(result)
 	if output == "" {
 		return fantasy.NewTextErrorResponse("Sub-agent completed but produced no text output."), nil
@@ -2523,6 +2611,17 @@ func subAgentOutput(result *fantasy.AgentResult) string {
 
 // updateParentSessionCost accumulates the cost from a child session to its parent session.
 func (c *coordinator) updateParentSessionCost(ctx context.Context, childSessionID, parentSessionID string) error {
+	return c.updateParentSessionCostDelta(ctx, childSessionID, parentSessionID, 0)
+}
+
+func (c *coordinator) updateParentSessionCostDelta(ctx context.Context, childSessionID, parentSessionID string, previousCost float64) error {
+	if c.engineering != nil {
+		release, err := c.engineering.WorkflowLock(ctx, "cost:"+parentSessionID)
+		if err != nil {
+			return err
+		}
+		defer release()
+	}
 	childSession, err := c.sessions.Get(ctx, childSessionID)
 	if err != nil {
 		return fmt.Errorf("get child session: %w", err)
@@ -2533,7 +2632,7 @@ func (c *coordinator) updateParentSessionCost(ctx context.Context, childSessionI
 		return fmt.Errorf("get parent session: %w", err)
 	}
 
-	parentSession.Cost += childSession.Cost
+	parentSession.Cost += max(0, childSession.Cost-previousCost)
 
 	if _, err := c.sessions.Save(ctx, parentSession); err != nil {
 		return fmt.Errorf("save parent session: %w", err)

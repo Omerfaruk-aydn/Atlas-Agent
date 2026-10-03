@@ -382,6 +382,12 @@ in an `atlasrc` shell config (`mcp add ...`) rather than through a CLI subcomman
 See [engineering tools and workflows](docs/engineering-tools.md) for guarded
 experiment tools, deferred schemas, session timeline and server authentication.
 
+For persistent specialist sessions, durable batches, architect/editor work,
+agent hook actions, request context inspection and usage profiles, see
+[Specialist work modes and context controls](docs/AGENT_WORK_MODES.md).
+
+[Browser and desktop automation, interaction traces and authentication handoffs](docs/INTERACTION_AUTOMATION.md).
+
 ---
 
 ## In-session commands
@@ -1573,3 +1579,9 @@ MIT — see [LICENSE.md](LICENSE.md).
 [npm](https://www.npmjs.com/package/@atlas-coder/atlas-agent)
 
 </div>
+
+### Persistent agent platform
+
+Credential vault, scheduled agents, durable task board, tool pipelines, source memory, persistent goal budgets and document extraction: [usage and limits](docs/AGENT_PLATFORM.md).
+
+Prompt composition, role policy and matched evaluation: [Prompt system](docs/PROMPT_SYSTEM.md).

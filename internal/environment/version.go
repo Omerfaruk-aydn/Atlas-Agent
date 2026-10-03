@@ -29,12 +29,12 @@ func ObservedVersion(requirement ToolRequirement, output string) (string, error)
 	switch requirement.Name {
 	case "go":
 		if len(fields) < 3 || fields[0] != "go" || fields[1] != "version" {
-			return "", fmt.Errorf("Go version was not observed")
+			return "", fmt.Errorf("go version was not observed")
 		}
 		version = strings.TrimPrefix(fields[2], "go")
 	case "python", "python3":
 		if len(fields) != 2 || fields[0] != "Python" {
-			return "", fmt.Errorf("Python version was not observed")
+			return "", fmt.Errorf("python version was not observed")
 		}
 		version = fields[1]
 	case "rustc", "uv":

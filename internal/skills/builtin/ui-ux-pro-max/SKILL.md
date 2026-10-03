@@ -28,6 +28,18 @@ motion and component states. Explain how choices serve the product. Data rows
 may contain unverified compatibility/accessibility claims: measure actual text
 contrast and test the implementation instead of repeating a claim.
 
+For a new visual direction, compare two concise alternatives against the brief,
+then select one coherent system. Spend emphasis on the main task, not decoration
+in every region. Typography, spacing, content density and alignment should explain
+hierarchy. Use real content and realistic long/localized values. Icon families and
+interaction labels stay consistent; never guess brand assets or capabilities.
+
+Keep a state/interaction matrix: trigger, pending feedback, success, failure,
+recovery, focus destination and cancellation. Inspect main-flow and error states
+at relevant narrow/wide sizes. Check actual contrast over real backgrounds,
+keyboard-only use, zoom/reflow and motion preferences. A data row recommending
+glass or a fixed viewport is a reference candidate, not an acceptance test.
+
 For substantial work, use normal permission-checked write/edit tools to persist
 `design-system/MASTER.md` in this project after inspecting existing files.
 Document rationale, tokens, components and validation. Page overrides in

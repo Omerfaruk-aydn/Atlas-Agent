@@ -23,3 +23,7 @@ Some supplied CSV examples have literal unescaped quotes or field counts that
 differ from their headers. Search accepts literal quotes; mismatched rows are
 returned as unstructured reference text with a data warning rather than assigning
 potentially incorrect column labels. The originals are not silently repaired.
+
+2026-10-03 update: SOURCE.md and all 24 CSV assets now match the user-supplied Downloads/ui-ux-pro-max directory. REFERENCE_MANIFEST.json records each dataset hash. Prior archive hashes describe the previous import, not these current bytes. Native design_search still replaces Python scripts; scripts and bytecode are not execution prerequisites.
+
+Dataset contents match the prior import after newline normalization. source_sha256 records the supplied bytes; lf_sha256 records UTF-8 text with LF line endings for reproducible Git checkouts. This update does not assert a newer upstream dataset release.

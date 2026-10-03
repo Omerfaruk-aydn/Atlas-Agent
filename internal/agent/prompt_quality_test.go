@@ -59,6 +59,7 @@ func TestEngineeringPromptsRenderAcrossContextProfiles(t *testing.T) {
 	for _, profile := range profiles {
 		for name, source := range map[string][]byte{"coder": coderPromptTmpl, "task": taskPromptTmpl} {
 			t.Run(profile.name+"/"+name, func(t *testing.T) {
+				t.Parallel()
 				tmpl, err := template.New(name).Option("missingkey=error").Parse(string(source) + string(agentContractTmpl))
 				require.NoError(t, err)
 				var rendered bytes.Buffer

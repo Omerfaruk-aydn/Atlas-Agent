@@ -118,6 +118,7 @@ func newEvalCommand() *cobra.Command {
 			return encoder.Encode(report)
 		},
 	})
+	command.AddCommand(newPromptComparisonCommand())
 	return command
 }
 

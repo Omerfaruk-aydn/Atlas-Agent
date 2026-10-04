@@ -19,6 +19,29 @@ import (
 // errComputerTestBoom simulates a backend failure in tests.
 var errComputerTestBoom = errors.New("boom")
 
+type foregroundComputerBackend struct {
+	fakeComputerBackend
+	foreground string
+}
+
+func (f *foregroundComputerBackend) ForegroundWindow() string { return f.foreground }
+
+func TestComputerKeyDoesNotReachWrongWindow(t *testing.T) {
+	t.Parallel()
+	b := &foregroundComputerBackend{foreground: "22"}
+	s := &computerToolState{backend: b}
+	params := ComputerParams{Key: "escape", Automation: computer.AutomationRequest{WindowID: "11"}}
+	response, err := s.runComputerAction(t.Context(), "key", params)
+	require.NoError(t, err)
+	require.Contains(t, response.Content, "wrong_window")
+	require.Empty(t, b.keys)
+	b.foreground = "11"
+	response, err = s.runComputerAction(t.Context(), "key", params)
+	require.NoError(t, err)
+	require.False(t, response.IsError)
+	require.Equal(t, []string{"escape"}, b.keys)
+}
+
 // fakeComputerBackend records desktop calls so these tests exercise the
 // tool's dispatch/validation/permission logic without a real screen.
 type fakeComputerBackend struct {

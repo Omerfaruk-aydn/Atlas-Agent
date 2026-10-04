@@ -62,11 +62,28 @@ func CropScreenshot(data []byte, x, y, width, height int) ([]byte, error) {
 }
 
 // OCR captures the current display to an ephemeral private file for Windows OCR.
-func OCR(ctx context.Context, backend Backend, driver AutomationBackend) (json.RawMessage, error) {
+func OCR(ctx context.Context, backend Backend, driver AutomationBackend, target ...string) (json.RawMessage, error) {
 	data, err := backend.Screenshot()
 	if err != nil {
 		return nil, err
 	}
+	return ocrImage(ctx, driver, data, target...)
+}
+
+// OCRRegion extracts only the relevant native pixel rectangle.
+func OCRRegion(ctx context.Context, backend Backend, driver AutomationBackend, x, y, width, height int, target ...string) (json.RawMessage, error) {
+	data, err := backend.Screenshot()
+	if err != nil {
+		return nil, err
+	}
+	data, err = CropScreenshot(data, x, y, width, height)
+	if err != nil {
+		return nil, err
+	}
+	return ocrImage(ctx, driver, data, target...)
+}
+
+func ocrImage(ctx context.Context, driver AutomationBackend, data []byte, target ...string) (json.RawMessage, error) {
 	file, err := os.CreateTemp("", "atlas-ocr-*.png")
 	if err != nil {
 		return nil, err

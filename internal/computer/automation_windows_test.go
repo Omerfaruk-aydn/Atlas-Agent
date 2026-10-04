@@ -170,4 +170,90 @@ func TestWindowsAutomationOwnForm(t *testing.T) {
 	}
 	run(AutomationRequest{Action: "invoke", Name: "Fixture save", Role: "ControlType.Button"})
 	require.Contains(t, run(AutomationRequest{Action: "assert", Name: "Saved", Condition: "visible"}), `"passed":true`)
+	_, rejectedValueErr := driver.Automation(ctx, AutomationRequest{Action: "set_value", WindowID: hwnd, Name: "Rejecting input", Text: "Rejected value"})
+	require.ErrorContains(t, rejectedValueErr, "value_not_applied")
+}
+
+func BenchmarkWindowsNativeWindowObservation(b *testing.B) {
+	driver := &windowsBackend{}
+	for b.Loop() {
+		_, err := driver.Automation(b.Context(), AutomationRequest{Action: "windows"})
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func TestWindowsLaunchUnknownAppDoesNotLaunch(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	driver := &windowsBackend{}
+	_, err := driver.Automation(ctx, AutomationRequest{Action: "launch_app", Name: "Atlas nonexistent fixture 58c89b7c-7ca2-49e7"})
+	require.ErrorContains(t, err, "target_missing")
+}
+
+func TestWindowsAppIdentifierValidationInTurkishLocale(t *testing.T) {
+	var guard string
+	for _, line := range strings.Split(automationScript, "\n") {
+		if strings.Contains(line, "if ($appId -") {
+			guard = strings.TrimSpace(line)
+			break
+		}
+	}
+	require.NotEmpty(t, guard)
+	for _, tc := range []struct {
+		id    string
+		valid bool
+	}{{"AppleInc.AppleMusicWin_nzyj5cx40ttqa!App", true}, {"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", true}, {"a;calc.exe", false}, {`a"b`, false}} {
+		t.Run(tc.id, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			script := fmt.Sprintf(`[Threading.Thread]::CurrentThread.CurrentCulture=[Globalization.CultureInfo]::GetCultureInfo('tr-TR'); $appId=$env:ATLAS_TEST_APP_ID; %s; Write-Output 'accepted'`, guard)
+			cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script)
+			cmd.Env = append(os.Environ(), "ATLAS_TEST_APP_ID="+tc.id)
+			cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+			output, err := cmd.CombinedOutput()
+			if tc.valid {
+				require.NoError(t, err, string(output))
+				require.Contains(t, string(output), "accepted")
+			} else {
+				require.Error(t, err)
+				require.Contains(t, string(output), "Unsupported application identifier")
+			}
+		})
+	}
+}
+
+func TestWindowsLaunchInstalledApp(t *testing.T) {
+	name := os.Getenv("ATLAS_TEST_LAUNCH_APP")
+	if name == "" {
+		t.Skip("Set ATLAS_TEST_LAUNCH_APP to verify an explicitly selected installed application")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	driver := &windowsBackend{}
+	data, err := driver.Automation(ctx, AutomationRequest{Action: "launch_app", Name: name})
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"launch_requested":true`)
+	for {
+		data, err = driver.Automation(ctx, AutomationRequest{Action: "windows"})
+		require.NoError(t, err)
+		var windows []struct {
+			Name string `json:"name"`
+			ID   string `json:"window_id"`
+		}
+		require.NoError(t, json.Unmarshal(data, &windows))
+		for _, w := range windows {
+			if strings.EqualFold(w.Name, name) {
+				require.NotEmpty(t, w.ID)
+				t.Log("Installed application launch accepted and visible window observed")
+				return
+			}
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("Requested application window did not appear")
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
 }

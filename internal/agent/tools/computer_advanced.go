@@ -13,7 +13,7 @@ import (
 
 func isComputerAutomationAction(action string) bool {
 	switch action {
-	case "windows", "focus", "inspect", "find", "invoke", "set_value", "assert", "monitors", "ocr", "capture_window":
+	case "launch_app", "windows", "focus", "inspect", "find", "invoke", "set_value", "assert", "monitors", "ocr", "capture_window":
 		return true
 	}
 	return false
@@ -27,6 +27,19 @@ func (s *computerToolState) runAutomation(ctx context.Context, action string, p 
 	request := p.Automation
 	request.Action = action
 	request.ImagePath = ""
+	if err := computer.ValidateAutomationRequest(request); err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	started := time.Now()
+	if action == "assert" {
+		wait := 5 * time.Second
+		if request.WaitMS > 0 {
+			wait = time.Duration(request.WaitMS) * time.Millisecond
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, wait)
+		defer cancel()
+	}
 	if action == "capture_window" {
 		return captureWindow(ctx, s.backend, driver, request.WindowID)
 	}
@@ -34,20 +47,33 @@ func (s *computerToolState) runAutomation(ctx context.Context, action string, p 
 		var data json.RawMessage
 		var err error
 		if action == "ocr" {
-			data, err = computer.OCR(ctx, s.backend, driver)
+			if p.Width != 0 || p.Height != 0 {
+				data, err = computer.OCRRegion(ctx, s.backend, driver, p.X, p.Y, p.Width, p.Height, request.Name)
+			} else {
+				data, err = computer.OCR(ctx, s.backend, driver, request.Name)
+			}
 		} else {
 			data, err = driver.Automation(ctx, request)
 		}
 		if err != nil {
+			if action == "assert" && ctx.Err() != nil {
+				return fantasy.NewTextErrorResponse("condition_timeout: expected desktop state not reached; observe once before retrying"), nil
+			}
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		if action != "assert" {
 			origin := driver.Origin()
+			imageOrigin := computer.Point{}
+			if action == "ocr" && (p.Width != 0 || p.Height != 0) {
+				imageOrigin = computer.Point{X: p.X, Y: p.Y}
+			}
 			result, _ := json.Marshal(struct {
 				Result          json.RawMessage `json:"result"`
 				ScreenOrigin    computer.Point  `json:"screen_origin"`
 				CoordinateSpace string          `json:"coordinate_space"`
-			}{data, origin, "UIA uses native desktop pixels; OCR uses screenshot pixels. Subtract screen_origin only for UIA coordinates."})
+				ImageOrigin     computer.Point  `json:"image_origin"`
+				ElapsedMS       int64           `json:"elapsed_ms"`
+			}{data, origin, "UIA uses native desktop pixels: subtract screen_origin. OCR uses image pixels: add image_origin for screenshot coordinates.", imageOrigin, time.Since(started).Milliseconds()})
 			return fantasy.NewTextResponse(string(result)), nil
 		}
 		var result struct {

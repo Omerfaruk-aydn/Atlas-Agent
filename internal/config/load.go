@@ -99,6 +99,9 @@ func Load(workingDir, dataDir string, debug bool) (*ConfigStore, error) {
 	if err := cfg.ValidateLanguage(); err != nil {
 		return nil, err
 	}
+	if err := cfg.Options.Voice.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid voice configuration: %w", err)
+	}
 
 	if !isInsideWorktree() {
 		const depth = 2

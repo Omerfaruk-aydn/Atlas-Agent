@@ -814,7 +814,7 @@ func TestConfig_setupAgentsWithNoDisabledTools(t *testing.T) {
 
 	taskAgent, ok := cfg.Agents[AgentTask]
 	require.True(t, ok)
-	assert.Equal(t, []string{"lsp_symbols", "lsp_definition", "lsp_call_hierarchy", "glob", "grep", "ls", "session_search", "sourcegraph", "design_search", "usage", "view"}, taskAgent.AllowedTools)
+	assert.Equal(t, []string{"lsp_symbols", "lsp_definition", "lsp_call_hierarchy", "glob", "grep", "ls", "session_search", "sourcegraph", "design_search", "usage", "view", "video"}, taskAgent.AllowedTools)
 }
 
 func TestConfig_setupAgentsRoutesAgentModelsWhenSet(t *testing.T) {
@@ -873,11 +873,11 @@ func TestConfig_setupAgentsWithDisabledTools(t *testing.T) {
 	coderAgent, ok := cfg.Agents[AgentCoder]
 	require.True(t, ok)
 
-	assert.Equal(t, []string{"agent", "bash", "goal", "atlas_info", "atlas_config", "atlas_logs", "job_output", "job_kill", "exit_plan_mode", "multiedit", "lsp_diagnostics", "lsp_references", "lsp_restart", "lsp_symbols", "lsp_definition", "lsp_call_hierarchy", "lsp_rename", "lsp_rename_file", "lsp_replace_symbol", "lsp_edit_plan", "fetch", "agentic_fetch", "orchestrate", "debate", "delegate", "vibe", "facts", "inspect_file", "glob", "ls", "memory", "question", "session_search", "skill_manage", "sourcegraph", "todos", "design_search", "workflow", "verify", "project_map", "tool_search", "code_query", "bug_reproduce", "repro_minimize", "benchmark_compare", "failure_history", "api_probe", "a11y_audit", "interaction_audit", "visual_diff", "context_select", "test_select", "contract_diff", "requirement_trace", "migration_rehearse", "mutation_test", "worktree", "ui_verify", "scenario", "usage", "view", "write", "list_mcp_resources", "read_mcp_resource", "browser", "debugger", "computer", "agent_jobs", "task_board", "source_memory", "tool_pipeline", "team_send", "team_read", "dead_code", "type_hierarchy", "import_graph", "impact_analysis", "code_metrics", "todo_scan", "api_surface", "anti_pattern_scan", "security_scan", "generate_docstring", "generate_tests", "semantic_code_search", "metric_export", "env_var_audit", "scan_secrets", "test_run", "coverage_report", "lint_run", "dep_audit", "docker_build_explain", "k8s_manifest_lint", "terraform_lint", "ci_cd_pipeline_debugger", "cloud_resource_costs", "log_tail", "git_status", "git_log", "git_blame", "git_diff", "git_branches", "changelog_gen", "pr_describe", "pre_commit_guard", "git_conventional_commit", "git_conflict_resolver", "audit_trail", "git_commit_split", "github_pr_view", "doc_index"}, coderAgent.AllowedTools)
+	assert.Equal(t, []string{"agent", "bash", "goal", "atlas_info", "atlas_config", "atlas_logs", "job_output", "job_kill", "exit_plan_mode", "multiedit", "lsp_diagnostics", "lsp_references", "lsp_restart", "lsp_symbols", "lsp_definition", "lsp_call_hierarchy", "lsp_rename", "lsp_rename_file", "lsp_replace_symbol", "lsp_edit_plan", "fetch", "agentic_fetch", "orchestrate", "debate", "delegate", "vibe", "facts", "inspect_file", "glob", "ls", "memory", "question", "session_search", "skill_manage", "sourcegraph", "todos", "design_search", "workflow", "verify", "project_map", "tool_search", "code_query", "bug_reproduce", "repro_minimize", "benchmark_compare", "failure_history", "api_probe", "a11y_audit", "interaction_audit", "visual_diff", "context_select", "test_select", "contract_diff", "requirement_trace", "migration_rehearse", "mutation_test", "worktree", "ui_verify", "scenario", "usage", "view", "video", "write", "list_mcp_resources", "read_mcp_resource", "browser", "debugger", "computer", "agent_jobs", "task_board", "source_memory", "tool_pipeline", "team_send", "team_read", "dead_code", "type_hierarchy", "import_graph", "impact_analysis", "code_metrics", "todo_scan", "api_surface", "anti_pattern_scan", "security_scan", "generate_docstring", "generate_tests", "semantic_code_search", "metric_export", "env_var_audit", "scan_secrets", "test_run", "coverage_report", "lint_run", "dep_audit", "docker_build_explain", "k8s_manifest_lint", "terraform_lint", "ci_cd_pipeline_debugger", "cloud_resource_costs", "log_tail", "git_status", "git_log", "git_blame", "git_diff", "git_branches", "changelog_gen", "pr_describe", "pre_commit_guard", "git_conventional_commit", "git_conflict_resolver", "audit_trail", "git_commit_split", "github_pr_view", "doc_index"}, coderAgent.AllowedTools)
 
 	taskAgent, ok := cfg.Agents[AgentTask]
 	require.True(t, ok)
-	assert.Equal(t, []string{"lsp_symbols", "lsp_definition", "lsp_call_hierarchy", "glob", "ls", "session_search", "sourcegraph", "design_search", "usage", "view"}, taskAgent.AllowedTools)
+	assert.Equal(t, []string{"lsp_symbols", "lsp_definition", "lsp_call_hierarchy", "glob", "ls", "session_search", "sourcegraph", "design_search", "usage", "view", "video"}, taskAgent.AllowedTools)
 }
 
 func TestConfig_setupAgentsWithEveryReadOnlyToolDisabled(t *testing.T) {
@@ -895,6 +895,7 @@ func TestConfig_setupAgentsWithEveryReadOnlyToolDisabled(t *testing.T) {
 				"design_search",
 				"usage",
 				"view",
+				"video",
 			},
 		},
 	}

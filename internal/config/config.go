@@ -17,6 +17,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/antigravity"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/copilot"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/speech"
 	"github.com/invopop/jsonschema"
 )
 
@@ -557,6 +558,7 @@ func (Attribution) JSONSchemaExtend(schema *jsonschema.Schema) {
 }
 
 type Options struct {
+	Voice                speech.DictationOptions `json:"voice,omitzero" jsonschema:"description=Offline microphone dictation using Vosk models or optional Windows recognition; no cloud service"`
 	UsageProfile         string                  `json:"usage_profile,omitempty" jsonschema:"description=Active named usage profile"`
 	UsageProfiles        map[string]UsageProfile `json:"usage_profiles,omitempty" jsonschema:"description=Custom usage profiles or overrides for economical, research, implementation, review and ci"`
 	WorkflowPaths        []string                `json:"workflow_paths,omitempty" jsonschema:"description=Directories or JSON files containing versioned project workflow recipes"`
@@ -1616,6 +1618,7 @@ func allToolNames() []string {
 		"scenario",
 		"usage",
 		"view",
+		"video",
 		"write",
 		"list_mcp_resources",
 		"read_mcp_resource",
@@ -1691,7 +1694,7 @@ func resolveAllowedTools(allTools []string, disabledTools []string) []string {
 }
 
 func resolveReadOnlyTools(tools []string) []string {
-	readOnlyTools := []string{"glob", "grep", "ls", "lsp_call_hierarchy", "lsp_definition", "lsp_symbols", "session_search", "sourcegraph", "usage", "view", "design_search"}
+	readOnlyTools := []string{"glob", "grep", "ls", "lsp_call_hierarchy", "lsp_definition", "lsp_symbols", "session_search", "sourcegraph", "usage", "view", "video", "design_search"}
 	// filter to only include tools that are in allowedtools (include mode)
 	return filterSlice(tools, readOnlyTools, true)
 }

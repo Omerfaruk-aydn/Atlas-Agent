@@ -151,6 +151,39 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "DictationOptions": {
+      "properties": {
+        "backend": {
+          "type": "string",
+          "enum": [
+            "vosk",
+            "windows"
+          ],
+          "description": "Offline recognition backend; defaults to vosk"
+        },
+        "model_dir": {
+          "type": "string",
+          "description": "Directory containing downloaded Vosk model folders"
+        },
+        "runtime_dir": {
+          "type": "string",
+          "description": "Directory containing trusted Vosk runtime libraries"
+        },
+        "language": {
+          "type": "string",
+          "description": "Dictation language such as tr-TR or en-US; Vosk defaults to en-US outside the TUI"
+        },
+        "max_seconds": {
+          "type": "integer",
+          "maximum": 180,
+          "minimum": 1,
+          "description": "Maximum microphone recording duration in seconds",
+          "default": 120
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "Execution": {
       "properties": {
         "mode": {
@@ -561,6 +594,10 @@
     },
     "Options": {
       "properties": {
+        "voice": {
+          "$ref": "#/$defs/DictationOptions",
+          "description": "Offline microphone dictation using Vosk models or optional Windows recognition; no cloud service"
+        },
         "usage_profile": {
           "type": "string",
           "description": "Active named usage profile"

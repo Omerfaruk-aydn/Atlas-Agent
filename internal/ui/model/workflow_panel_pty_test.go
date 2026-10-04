@@ -130,11 +130,11 @@ func TestWorkflowPanelRealPTYResizeStopAndClose(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, result.Done)
 	require.NotNil(t, result.ExitCode)
-	require.Zero(t, *result.ExitCode)
 	select {
 	case <-done:
 	case <-ctx.Done():
 		t.Fatal("Panel output did not drain")
 	}
+	require.Zero(t, *result.ExitCode, "PTY child transcript:\n%s", transcript.String())
 	require.True(t, contains("PANEL_CLOSED"))
 }

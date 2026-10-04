@@ -33,4 +33,7 @@ jobs:
       - name: Enable sandboxed Chrome user namespaces on Ubuntu runner
         if: runner.os == 'Linux'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Validate Windows desktop and terminal fixtures
+        if: runner.os == 'Windows'
+        run: go test -race -count=1 ./internal/computer ./internal/ui/model -run 'TestWindowsAutomationReadAndFixtureOCR|TestWorkflowPanelRealPTYResizeStopAndClose'
       - run: go test -race ./...

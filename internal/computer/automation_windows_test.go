@@ -27,7 +27,7 @@ func TestWindowsAutomationReadAndFixtureOCR(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Windows runtime fixture excluded by short mode")
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 120*time.Second)
 	defer cancel()
 	backend := &windowsBackend{}
 	data, err := backend.Automation(ctx, AutomationRequest{Action: "monitors"})

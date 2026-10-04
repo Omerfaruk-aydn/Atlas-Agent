@@ -4,6 +4,17 @@ try {
 [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
 $p = [Console]::In.ReadToEnd() | ConvertFrom-Json
 function Out-Result($value) { ConvertTo-Json -InputObject $value -Depth 8 -Compress | Write-Output }
+if ($p.action -eq 'launch_app') {
+    if (!$p.name) { throw 'Explicit installed application name required' }
+    $apps = @(Get-StartApps | Where-Object { [string]::Equals($_.Name,[string]$p.name,[StringComparison]::OrdinalIgnoreCase) })
+    if ($apps.Count -eq 0) { throw 'Target missing: installed application name was not found; inspect installed applications or ask for the exact name' }
+    if ($apps.Count -ne 1) { throw 'Target ambiguous: installed application name matches multiple apps' }
+    $appId = [string]$apps[0].AppID
+    # ASCII identity validation must not depend on Turkish I/i case folding.
+    if ($appId -cnotmatch '^[A-Za-z0-9_.!{}\\:-]+$') { throw 'Unsupported application identifier; use an explicit approved launcher' }
+    Start-Process -FilePath (Join-Path $env:WINDIR 'explorer.exe') -ArgumentList @('shell:AppsFolder\' + $appId)
+    Out-Result @{launch_requested=$true;application=$apps[0].Name;verify_required=$true}; exit
+}
 if ($p.action -eq 'monitors') {
     Add-Type -AssemblyName System.Windows.Forms
     Out-Result @( [System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
@@ -31,7 +42,30 @@ if ($p.action -eq 'ocr') {
             $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
             if ($null -eq $engine) { throw 'No installed OCR language' }
             $result = Await-Operation ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
-            Out-Result @{text=$result.Text;lines=@($result.Lines | Select-Object -First 200 | ForEach-Object { @{text=$_.Text;words=@($_.Words | ForEach-Object { @{text=$_.Text;x=$_.BoundingRect.X;y=$_.BoundingRect.Y;width=$_.BoundingRect.Width;height=$_.BoundingRect.Height} })} })}
+            function Normalize-OCRText([string]$value) {
+                return (($value.Normalize().Replace([char]0x2019,[char]0x27).ToLowerInvariant() -replace "\s*'\s*", "'") -replace '\s+', ' ').Trim()
+            }
+            $matches = @()
+            if ($p.name) {
+                $target = Normalize-OCRText $p.name
+                $targetWords = @($target -split ' ').Count
+                foreach ($line in ($result.Lines | Select-Object -First 200)) {
+                    $words = @($line.Words)
+                    for ($i = 0; $i -lt $words.Count; $i++) {
+                        for ($count = 1; $count -le [Math]::Min($targetWords+2,$words.Count-$i); $count++) {
+                            $span = @($words[$i..($i+$count-1)])
+                            $text = ($span | ForEach-Object { $_.Text }) -join ' '
+                            if ((Normalize-OCRText $text) -ne $target) { continue }
+                            $left = ($span | ForEach-Object { $_.BoundingRect.X } | Measure-Object -Minimum).Minimum
+                            $top = ($span | ForEach-Object { $_.BoundingRect.Y } | Measure-Object -Minimum).Minimum
+                            $right = ($span | ForEach-Object { $_.BoundingRect.X+$_.BoundingRect.Width } | Measure-Object -Maximum).Maximum
+                            $bottom = ($span | ForEach-Object { $_.BoundingRect.Y+$_.BoundingRect.Height } | Measure-Object -Maximum).Maximum
+                            $matches += @{text=$text;line_text=$line.Text;x=$left;y=$top;width=($right-$left);height=($bottom-$top);center_x=(($left+$right)/2);center_y=(($top+$bottom)/2)}
+                        }
+                    }
+                }
+            }
+            Out-Result @{text=$result.Text;matches=$matches;match_count=$matches.Count;unique_match=($matches.Count -eq 1);lines=@($result.Lines | Select-Object -First 200 | ForEach-Object { @{text=$_.Text;words=@($_.Words | ForEach-Object { @{text=$_.Text;x=$_.BoundingRect.X;y=$_.BoundingRect.Y;width=$_.BoundingRect.Width;height=$_.BoundingRect.Height} })} })}
         } finally { $bitmap.Dispose() }
     } finally { $stream.Dispose() }
     exit

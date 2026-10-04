@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -32,7 +33,9 @@ func TestOCIArgumentsAndEnvironment(t *testing.T) {
 	p := defaults(ExecutionPolicy{Mode: "container-required", RuntimePath: path, Image: "fixture/image@sha256:" + strings.Repeat("a", 64), ReadOnly: true, EnvironmentKeys: []string{"LANG"}})
 	require.NoError(t, ValidatePolicy(t.Context(), p))
 	r := &ociRunner{policy: p, owner: "owner"}
-	args, err := r.createArguments(Request{RunID: uuid.NewString(), Root: t.TempDir(), Argv: []string{"/bin/sh", "-c", "printf '%s' 'literal;data'"}, Env: []string{"SECRET=value", "LANG=C.UTF-8"}})
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	args, err := r.createArguments(Request{RunID: uuid.NewString(), Root: root, Argv: []string{"/bin/sh", "-c", "printf '%s' 'literal;data'"}, Env: []string{"SECRET=value", "LANG=C.UTF-8"}})
 	require.NoError(t, err)
 	require.Contains(t, args, "--pull=never")
 	require.Contains(t, args, "--read-only")

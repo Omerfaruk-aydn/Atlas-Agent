@@ -20,7 +20,8 @@ func TestOCIRealIsolation(t *testing.T) {
 	policy := ExecutionPolicy{Mode: "container-required", RuntimePath: path, Image: image, ReadOnly: true, TimeoutMS: 30000}
 	runner, err := NewRunner(t.Context(), policy, store)
 	require.NoError(t, err)
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(root, ".env"), []byte("HOST_SECRET=private"), 0o600))
 	external := filepath.Join(t.TempDir(), "outside-project.txt")
 	require.NoError(t, os.WriteFile(external, []byte("external host content"), 0o600))

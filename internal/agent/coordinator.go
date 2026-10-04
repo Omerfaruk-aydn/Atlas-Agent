@@ -1056,6 +1056,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		tools.NewTodosTool(c.sessions),
 		tools.NewDesignSearchTool(),
 		tools.NewViewTool(c.lspManager, c.permissions, c.filetracker, c.skillTracker, c.cfg.WorkingDir(), tools.NewViewLimits(c.cfg.Config()), c.cfg.Config().Options.SkillsPaths...),
+		tools.NewVideoTool(c.cfg.WorkingDir(), c.permissions, c.cfg.Config().Options.Voice),
 		tools.NewWriteTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy),
 	)
 

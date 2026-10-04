@@ -46,6 +46,7 @@ var toolCategories = map[string]ToolCategory{
 	"question":           CategoryReadOnly,
 	"job_output":         CategoryReadOnly,
 	"view":               CategoryEdit,
+	"video":              CategoryEdit,
 	"ls":                 CategoryEdit,
 	"edit":               CategoryEdit,
 	"write":              CategoryEdit,

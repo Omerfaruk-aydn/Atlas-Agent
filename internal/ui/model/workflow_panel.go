@@ -9,6 +9,7 @@ import (
 	uv "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ultraviolet"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/history"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/i18n"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/dialog"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workspace"
@@ -16,6 +17,7 @@ import (
 
 type (
 	workflowPanel struct {
+		locale                 *i18n.Translator
 		open                   bool
 		epoch, request         uint64
 		selected               int
@@ -35,6 +37,7 @@ type (
 		diffLoading, diffDirty bool
 	}
 	workflowPanelLoaded struct {
+		code           string
 		epoch, request uint64
 		sessionID      string
 		snapshot       engineering.WorkflowSnapshot
@@ -44,12 +47,16 @@ type (
 	workflowPanelTick struct{ epoch uint64 }
 )
 
-func workflowFetch(ws workspace.Workspace, id string, epoch, request uint64) tea.Cmd {
+func workflowFetch(ws workspace.Workspace, id string, epoch, request uint64, codes ...string) tea.Cmd {
+	code := "en"
+	if len(codes) > 0 {
+		code = codes[0]
+	}
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		snapshot, err := ws.WorkflowSnapshot(ctx, id)
-		return workflowPanelLoaded{epoch: epoch, request: request, sessionID: id, snapshot: snapshot, views: projectWorkflow(snapshot), err: err}
+		return workflowPanelLoaded{code: code, epoch: epoch, request: request, sessionID: id, snapshot: snapshot, views: projectWorkflow(snapshot, code), err: err}
 	}
 }
 
@@ -62,23 +69,29 @@ func (m *UI) openWorkflowPanel() tea.Cmd {
 		return nil
 	}
 	m.workflow.open = true
+	m.workflow.locale = m.com.Styles.Locale
 	m.workflow.epoch++
 	m.workflow.diffLoading, m.workflow.diffDirty = false, false
 	m.workflow.request++
 	m.workflow.loading = true
-	return tea.Batch(workflowFetch(m.com.Workspace, m.session.ID, m.workflow.epoch, m.workflow.request), workflowTick(m.workflow.epoch))
+	return tea.Batch(workflowFetch(m.com.Workspace, m.session.ID, m.workflow.epoch, m.workflow.request, m.workflow.locale.Code()), workflowTick(m.workflow.epoch))
 }
 
 func (m *UI) handleWorkflowPanel(msg tea.Msg) (bool, tea.Cmd) {
 	p := &m.workflow
 	switch value := msg.(type) {
+	case workflowLanguageLoaded:
+		if p.open && value.epoch == p.epoch && value.revision == p.snapshot.Revision && value.code == p.locale.Code() {
+			p.views = value.views
+		}
+		return true, nil
 	case workflowFilesLoaded:
 		if !p.open || m.session == nil || value.sessionID != m.session.ID || value.epoch != p.epoch {
 			return true, nil
 		}
 		p.diffLoading = false
 		if value.err != nil {
-			p.err = "Diff: " + value.err.Error()
+			p.err = m.com.Text("Diff: ") + value.err.Error()
 		}
 		if d, ok := m.dialog.Dialog(dialog.FileDiffID).(*dialog.FileDiff); ok {
 			for _, entry := range value.entries {
@@ -126,7 +139,7 @@ func (m *UI) handleWorkflowPanel(msg tea.Msg) (bool, tea.Cmd) {
 			}
 			p.request++
 			p.loading = true
-			return true, workflowFetch(m.com.Workspace, m.session.ID, p.epoch, p.request)
+			return true, workflowFetch(m.com.Workspace, m.session.ID, p.epoch, p.request, p.locale.Code())
 		}
 	case workflowPanelLoaded:
 		if !p.open || m.session == nil || value.sessionID != m.session.ID || value.epoch != p.epoch || value.request != p.request {
@@ -158,6 +171,9 @@ func (m *UI) handleWorkflowPanel(msg tea.Msg) (bool, tea.Cmd) {
 				}
 			}
 		}
+		if value.err == nil && value.code != "" && value.code != p.locale.Code() {
+			return true, workflowLanguageCmd(p.snapshot, p.epoch, p.locale.Code())
+		}
 		return true, nil
 	case workflowPanelTick:
 		if !p.open || value.epoch != p.epoch || m.session == nil {
@@ -168,7 +184,7 @@ func (m *UI) handleWorkflowPanel(msg tea.Msg) (bool, tea.Cmd) {
 		}
 		p.request++
 		p.loading = true
-		return true, tea.Batch(workflowFetch(m.com.Workspace, m.session.ID, p.epoch, p.request), workflowTick(p.epoch), m.workflowOutputCmd())
+		return true, tea.Batch(workflowFetch(m.com.Workspace, m.session.ID, p.epoch, p.request, p.locale.Code()), workflowTick(p.epoch), m.workflowOutputCmd())
 	case workspace.ConnectionEvent:
 		if p.open && value.State == workspace.ConnectionRecovered {
 			return false, m.openWorkflowPanel()
@@ -247,6 +263,7 @@ func (m *UI) workflowControlCmd(control engineering.WorkflowControl) tea.Cmd {
 	control.ExpectedRevision = p.snapshot.Revision
 	p.request, p.loading = request, true
 	p.controlInFlight = true
+	code := p.locale.Code()
 	ws := m.com.Workspace
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -256,7 +273,7 @@ func (m *UI) workflowControlCmd(control engineering.WorkflowControl) tea.Cmd {
 		if err == nil {
 			snapshot, err = ws.WorkflowSnapshot(ctx, id)
 		}
-		return workflowPanelLoaded{epoch: epoch, request: request, sessionID: id, snapshot: snapshot, views: projectWorkflow(snapshot), err: err}
+		return workflowPanelLoaded{code: code, epoch: epoch, request: request, sessionID: id, snapshot: snapshot, views: projectWorkflow(snapshot, code), err: err}
 	}
 }
 

@@ -37,7 +37,7 @@ func (m *UI) beginWorkflowFeedback(file string, line int) tea.Cmd {
 	}
 	file = filepath.ToSlash(file)
 	if file == ".." || strings.HasPrefix(file, "../") {
-		m.workflow.err = "Review file is outside this project"
+		m.workflow.err = m.com.Text("Review file is outside this project")
 		return nil
 	}
 	task := ""

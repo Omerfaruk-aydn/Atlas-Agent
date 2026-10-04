@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -31,30 +32,31 @@ func (i workflowInput) visible(width int) string {
 	return ansi.Cut(text, start, start+max(0, width))
 }
 
-func (i workflowInput) label() string {
+func (i workflowInput) label(codes ...string) string {
+	text := workflowTranslator(codes...)
 	target := i.task
 	if target == "" {
-		target = "coordinator"
+		target = text("coordinator")
 	}
 	switch i.mode {
 	case "context_pin":
-		return "Pin project context file (literal relative path; maximum 16 files)"
+		return text("Pin project context file (literal relative path; maximum 16 files)")
 	case "queue":
-		return "Queue for " + target + " ([dep1,dep2] optional prefix)"
+		return text("Queue for ") + target + text(" ([dep1,dep2] optional prefix)")
 	case "team_limit":
-		return "Maximum concurrent agents (1-16)"
+		return text("Maximum concurrent agents (1-16)")
 	case "budget":
-		return "Session limits JSON (max_tokens, max_tool_calls, max_cost_usd, max_duration_ms)"
+		return text("Session limits JSON (max_tokens, max_tool_calls, max_cost_usd, max_duration_ms)")
 	case "reassign":
-		return "Specialist role for " + target
+		return text("Specialist role for ") + target
 	case "task_replan":
-		return "Revised task description for " + target
+		return text("Revised task description for ") + target
 	case "task_scope":
-		return "Owned paths for " + target + " (comma separated)"
+		return text("Owned paths for ") + target + text(" (comma separated)")
 	case "feedback":
-		return fmt.Sprintf("Review %s:%d for %s", i.file, i.line, target)
+		return fmt.Sprintf(text("Review %s:%d for %s"), i.file, i.line, target)
 	default:
-		return "Instruction for " + target
+		return text("Instruction for ") + target
 	}
 }
 
@@ -99,7 +101,7 @@ func (m *UI) handleWorkflowInput(key tea.KeyPressMsg) tea.Cmd {
 		if p.loading {
 			return nil
 		}
-		control, err := i.control()
+		control, err := i.control(p.locale.Code())
 		if err != nil {
 			p.err = err.Error()
 			return nil
@@ -116,10 +118,11 @@ func (m *UI) handleWorkflowInput(key tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-func (i workflowInput) control() (engineering.WorkflowControl, error) {
+func (i workflowInput) control(codes ...string) (engineering.WorkflowControl, error) {
+	text := workflowTranslator(codes...)
 	control := engineering.WorkflowControl{Action: i.mode, TaskID: i.task, Text: strings.TrimSpace(i.text), File: i.file, Line: i.line}
 	if control.Text == "" {
-		return control, fmt.Errorf("enter an instruction or value")
+		return control, errors.New(text("enter an instruction or value"))
 	}
 	switch i.mode {
 	case "task_scope":
@@ -135,7 +138,7 @@ func (i workflowInput) control() (engineering.WorkflowControl, error) {
 	case "team_limit":
 		n, err := strconv.Atoi(control.Text)
 		if err != nil || n < 1 || n > 16 {
-			return control, fmt.Errorf("enter an agent limit between 1 and 16")
+			return control, errors.New(text("enter an agent limit between 1 and 16"))
 		}
 		control.MaxAgents, control.Text = n, ""
 	case "budget":
@@ -143,10 +146,10 @@ func (i workflowInput) control() (engineering.WorkflowControl, error) {
 		decoder := json.NewDecoder(strings.NewReader(control.Text))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(limits); err != nil {
-			return control, fmt.Errorf("invalid budget JSON: %w", err)
+			return control, fmt.Errorf(text("invalid budget JSON: %w"), err)
 		}
 		if err := decoder.Decode(new(any)); err != io.EOF {
-			return control, fmt.Errorf("budget must contain exactly one JSON object")
+			return control, errors.New(text("budget must contain exactly one JSON object"))
 		}
 		if err := limits.Validate(); err != nil {
 			return control, err
@@ -156,7 +159,7 @@ func (i workflowInput) control() (engineering.WorkflowControl, error) {
 		if strings.HasPrefix(control.Text, "[") {
 			end := strings.Index(control.Text, "]")
 			if end < 0 {
-				return control, fmt.Errorf("close the dependency prefix with ]")
+				return control, errors.New(text("close the dependency prefix with ]"))
 			}
 			for _, dependency := range strings.Split(control.Text[1:end], ",") {
 				if dependency = strings.TrimSpace(dependency); dependency != "" {
@@ -165,7 +168,7 @@ func (i workflowInput) control() (engineering.WorkflowControl, error) {
 			}
 			control.Text = strings.TrimSpace(control.Text[end+1:])
 			if control.Text == "" {
-				return control, fmt.Errorf("enter queue instruction after dependencies")
+				return control, errors.New(text("enter queue instruction after dependencies"))
 			}
 		}
 	}
@@ -246,7 +249,7 @@ func (m *UI) workflowWorkspaceKey(key string) (bool, tea.Cmd) {
 				if entry.Kind == "pinned" {
 					action = "context_unpin"
 				} else if entry.Kind != "tool-result" {
-					p.err = "Only optional pinned files and tool results can be removed"
+					p.err = m.com.Text("Only optional pinned files and tool results can be removed")
 					return true, nil
 				}
 				return true, m.workflowControlCmd(engineering.WorkflowControl{Action: action, Text: entry.ID})
@@ -265,7 +268,7 @@ func (m *UI) workflowWorkspaceKey(key string) (bool, tea.Cmd) {
 		}
 		if key == "a" {
 			if task == "" {
-				p.err = "Select a task to assign"
+				p.err = m.com.Text("Select a task to assign")
 				return true, nil
 			}
 			mode = "reassign"
@@ -278,7 +281,7 @@ func (m *UI) workflowWorkspaceKey(key string) (bool, tea.Cmd) {
 		}
 		if key == "v" || key == "w" {
 			if task == "" {
-				p.err = "Select a task to revise"
+				p.err = m.com.Text("Select a task to revise")
 				return true, nil
 			}
 			mode = "task_replan"
@@ -295,13 +298,13 @@ func (m *UI) workflowWorkspaceKey(key string) (bool, tea.Cmd) {
 		return true, nil
 	case "f":
 		if task == "" {
-			p.err = "Select a reconciled task to retry"
+			p.err = m.com.Text("Select a reconciled task to retry")
 			return true, nil
 		}
 		return true, m.workflowControlCmd(engineering.WorkflowControl{Action: "task_retry", TaskID: task})
 	case "h", "u", "x":
 		if task == "" {
-			p.err = "Select a task"
+			p.err = m.com.Text("Select a task")
 			return true, nil
 		}
 		action := "task_pause"

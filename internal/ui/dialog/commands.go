@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -106,36 +107,36 @@ func NewCommands(com *common.Common, sessionID string, hasSession, hasPreviousSe
 
 	c.input = textinput.New()
 	c.input.SetVirtualCursor(false)
-	c.input.Placeholder = "Type to filter"
+	c.input.Placeholder = com.Text("Type to filter")
 	c.input.SetStyles(com.Styles.TextInput)
 	c.input.Focus()
 
 	c.keyMap.Select = key.NewBinding(
 		key.WithKeys("enter", "ctrl+y"),
-		key.WithHelp("enter", "confirm"),
+		key.WithHelp("enter", com.Text("confirm")),
 	)
 	c.keyMap.UpDown = key.NewBinding(
 		key.WithKeys("up", "down"),
-		key.WithHelp("↑/↓", "choose"),
+		key.WithHelp("↑/↓", com.Text("choose")),
 	)
 	c.keyMap.Next = key.NewBinding(
 		key.WithKeys("down"),
-		key.WithHelp("↓", "next item"),
+		key.WithHelp("↓", com.Text("next item")),
 	)
 	c.keyMap.Previous = key.NewBinding(
 		key.WithKeys("up", "ctrl+p"),
-		key.WithHelp("↑", "previous item"),
+		key.WithHelp("↑", com.Text("previous item")),
 	)
 	c.keyMap.Tab = key.NewBinding(
 		key.WithKeys("tab"),
-		key.WithHelp("tab", "switch selection"),
+		key.WithHelp("tab", com.Text("switch selection")),
 	)
 	c.keyMap.ShiftTab = key.NewBinding(
 		key.WithKeys("shift+tab"),
-		key.WithHelp("shift+tab", "switch selection prev"),
+		key.WithHelp("shift+tab", com.Text("switch selection prev")),
 	)
 	closeKey := CloseKey
-	closeKey.SetHelp("esc", "cancel")
+	closeKey.SetHelp("esc", com.Text("cancel"))
 	c.keyMap.Close = closeKey
 
 	if available, known := config.DockerMCPAvailabilityCached(); known {
@@ -274,9 +275,9 @@ func commandsRadioView(sty *styles.Styles, selected CommandType, hasUserCmds boo
 
 	selectedFn := func(t CommandType) string {
 		if t == selected {
-			return sty.Radio.On.Padding(0, 1).Render() + sty.Radio.Label.Render(t.String())
+			return sty.Radio.On.Padding(0, 1).Render() + sty.Radio.Label.Render(sty.Text(t.String()))
 		}
-		return sty.Radio.Off.Padding(0, 1).Render() + sty.Radio.Label.Render(t.String())
+		return sty.Radio.Off.Padding(0, 1).Render() + sty.Radio.Label.Render(sty.Text(t.String()))
 	}
 
 	parts := []string{
@@ -319,7 +320,7 @@ func (c *Commands) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	applyInfoColumnVisibility(c.list.FilteredItems(), innerWidth, commandInfoMaxPercent)
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Commands"
+	rc.Title = c.com.Text("Commands")
 	rc.TitleInfo = commandsRadioView(t, c.selected, len(c.customCommands) > 0, len(c.mcpPrompts) > 0)
 	inputView := t.Dialog.InputPrompt.Render(c.input.View())
 	rc.AddPart(inputView)
@@ -328,7 +329,7 @@ func (c *Commands) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	rc.Help = renderDialogHelp(t, &c.help, c, innerWidth)
 
 	if c.loading {
-		rc.Help = t.Dialog.HelpView.Width(innerWidth).Render(c.spinner.View() + " Generating Prompt...")
+		rc.Help = t.Dialog.HelpView.Width(innerWidth).Render(c.spinner.View() + c.com.Text(" Generating Prompt..."))
 	}
 
 	view := rc.Render()
@@ -487,6 +488,7 @@ func (c *Commands) AllItems() []*CommandItem {
 // defaultCommands returns the list of default system commands.
 func (c *Commands) defaultCommands() []*CommandItem {
 	commands := []*CommandItem{
+		NewCommandItem(c.com.Styles, "language", "Language", "", ActionOpenDialog{DialogID: LanguagesID}).WithSlash("/language").WithSummary("Choose interface language"),
 		NewCommandItem(c.com.Styles, "new_session", "New Session", "ctrl+n", ActionNewSession{}).WithAliases("clear").WithSlash("/new").WithSummary("Start a new chat, clearing this one"),
 		NewCommandItem(c.com.Styles, "switch_session", "Sessions", "ctrl+s", ActionOpenDialog{SessionsID}).WithSlash("/sessions").WithSummary("Browse and switch between sessions"),
 		NewCommandItem(c.com.Styles, "switch_model", "Switch Model", "ctrl+l", ActionOpenDialog{ModelsID}).WithSlash("/model").WithSummary("Choose the model this session runs on"),
@@ -641,6 +643,17 @@ func (c *Commands) defaultCommands() []*CommandItem {
 		NewCommandItem(c.com.Styles, "quit", "Quit", "ctrl+c", tea.QuitMsg{}).WithAliases("exit").WithSlash("/quit").WithSummary("Exit Atlas"),
 	)
 
+	for _, command := range commands {
+		command.aliases = append(command.aliases, command.title)
+		command.title = c.com.Text(command.title)
+		if command.id == "session-mode" {
+			cfg := c.com.Config()
+			if cfg != nil && cfg.Options != nil && strings.TrimSpace(cfg.Options.SessionMode) != "" {
+				command.title = fmt.Sprintf(c.com.Text("Session Mode (%s)"), modeLabel(cfg.Options.SessionMode))
+			}
+		}
+		command.summary = c.com.Text(command.summary)
+	}
 	return commands
 }
 

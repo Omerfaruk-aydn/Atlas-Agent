@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -74,7 +75,7 @@ func (m *UI) workflowFilesCmd() tea.Cmd {
 					continue
 				}
 				if len(file.Content) > 1024*1024 || total+len(file.Content) > 8*1024*1024 {
-					firstErr = fmt.Errorf("large file histories omitted from the bounded diff view")
+					firstErr = errors.New(m.com.Text("large file histories omitted from the bounded diff view"))
 					for _, previous := range files[file.Path] {
 						total -= len(previous.Content)
 					}
@@ -83,7 +84,7 @@ func (m *UI) workflowFilesCmd() tea.Cmd {
 					continue
 				}
 				if len(files) >= 256 && files[file.Path] == nil {
-					firstErr = fmt.Errorf("diff view is limited to 256 files")
+					firstErr = errors.New(m.com.Text("diff view is limited to 256 files"))
 					continue
 				}
 				total += len(file.Content)

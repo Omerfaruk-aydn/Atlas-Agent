@@ -351,6 +351,9 @@ func (s *ConfigStore) SetConfigFields(scope Scope, kv map[string]any) error {
 	if err := candidate.ValidateExecution(); err != nil {
 		return err
 	}
+	if err := candidate.ValidateLanguage(); err != nil {
+		return err
+	}
 	if candidate.Options != nil && candidate.Options.UsageProfile != "" {
 		if err := candidate.ApplyUsageProfile(candidate.Options.UsageProfile); err != nil {
 			return err
@@ -1276,6 +1279,9 @@ func (s *ConfigStore) reloadFromDiskLocked(ctx context.Context) error {
 	}
 	if err := cfg.ValidateExecution(); err != nil {
 		return fmt.Errorf("invalid execution configuration on reload: %w", err)
+	}
+	if err := cfg.ValidateLanguage(); err != nil {
+		return fmt.Errorf("invalid interface language on reload: %w", err)
 	}
 
 	// Save current state for potential rollback BEFORE configureProviders,

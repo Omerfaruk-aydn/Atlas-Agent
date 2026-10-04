@@ -469,6 +469,7 @@ type LSPConfig struct {
 }
 
 type TUIOptions struct {
+	Language    string `json:"language,omitempty" jsonschema:"description=Interface language,enum=en,enum=tr,enum=de,enum=fr,enum=it,enum=ar,default=en"`
 	CompactMode bool   `json:"compact_mode,omitempty" jsonschema:"description=Enable compact mode for the TUI interface,default=false"`
 	DiffMode    string `json:"diff_mode,omitempty" jsonschema:"description=Diff mode for the TUI interface,enum=unified,enum=split"`
 	// Here we can add themes later or any TUI related options

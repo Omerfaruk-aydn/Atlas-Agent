@@ -1196,6 +1196,19 @@
     },
     "TUIOptions": {
       "properties": {
+        "language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "tr",
+            "de",
+            "fr",
+            "it",
+            "ar"
+          ],
+          "description": "Interface language",
+          "default": "en"
+        },
         "compact_mode": {
           "type": "boolean",
           "description": "Enable compact mode for the TUI interface",

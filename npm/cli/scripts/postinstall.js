@@ -14,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { URL } = require('url');
+const { setupWindowsSpeech } = require('./speech-setup');
 
 const PLATFORM_MAP = { win32: 'windows', darwin: 'darwin', linux: 'linux' };
 const platform = PLATFORM_MAP[process.platform] || process.platform;
@@ -135,4 +136,5 @@ function download(url, redirectsLeft, attempt) {
   }
   const size = (fs.statSync(dest).size / 1024 / 1024).toFixed(1);
   console.log(`Atlas Agent postinstall: installed ${assetName} (${size} MB)`);
+  setupWindowsSpeech(dest);
 })();

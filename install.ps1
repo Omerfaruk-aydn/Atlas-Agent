@@ -17,6 +17,27 @@ $url = "https://github.com/$repo/releases/latest/download/$binName"
 Write-Host "Downloading $binName..."
 Invoke-WebRequest -Uri $url -UseBasicParsing -OutFile $target
 
+# The binary owns component detection and setup, so installers and updates use
+# the exact same speech engine as Ctrl+K. A missing optional engine never makes
+# an otherwise usable Atlas installation fail.
+if ($env:ATLAS_AGENT_SKIP_SPEECH_SETUP -ne '1') {
+  $speechCommand = if ($env:ATLAS_AGENT_VOICE_BACKEND -eq 'windows') { 'setup' } else { 'install' }
+  $voiceArguments = @('voice', $speechCommand, '--automatic')
+  if ($env:ATLAS_AGENT_VOICE_LANGUAGE) {
+    $voiceArguments += @('--language', $env:ATLAS_AGENT_VOICE_LANGUAGE)
+  }
+  try {
+    & $target @voiceArguments
+    if ($LASTEXITCODE -ne 0) {
+      Write-Warning "Offline speech setup did not finish. Retry atlas-agent voice $speechCommand later."
+    }
+  } catch {
+    Write-Warning "Offline speech setup did not finish. Retry atlas-agent voice $speechCommand later."
+  }
+} else {
+  Write-Host 'Automatic offline speech setup was skipped.'
+}
+
 # Best-effort: add to user PATH if not present
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if ($userPath -notlike "*$installDir*") {

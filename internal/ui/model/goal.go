@@ -40,14 +40,14 @@ func (m *UI) handleShowGoal(msg dialog.ActionShowGoal) tea.Cmd {
 		sessionID = m.session.ID
 	}
 	if sessionID == "" {
-		return util.ReportInfo("No goal set. Type " + goalCommand + " followed by what this session should work towards.")
+		return util.ReportInfo(m.com.Text("No goal set. Type ") + goalCommand + m.com.Text(" followed by what this session should work towards."))
 	}
 
 	goal := m.currentGoal(sessionID)
 	if goal == "" {
-		return util.ReportInfo("No goal set. Type " + goalCommand + " followed by what this session should work towards.")
+		return util.ReportInfo(m.com.Text("No goal set. Type ") + goalCommand + m.com.Text(" followed by what this session should work towards."))
 	}
-	return util.ReportInfo("Working towards: " + goal + " — " + goalCommand + " clear stops it.")
+	return util.ReportInfo(m.com.Text("Working towards: ") + goal + " — " + goalCommand + m.com.Text(" clear stops it."))
 }
 
 // currentGoal returns the goal already set on the session, or empty.
@@ -160,7 +160,7 @@ func isSpace(b byte) bool {
 // hold the whole thing rather than the header's single truncated line.
 func (m *UI) goalInfo(width int, isSection bool) string {
 	t := m.com.Styles
-	title := t.Resource.Heading.Render("Goal")
+	title := t.Resource.Heading.Render(m.com.Text("Goal"))
 	if isSection {
 		title = common.Section(t, title, width)
 	}
@@ -170,10 +170,10 @@ func (m *UI) goalInfo(width int, isSection bool) string {
 		goal = strings.TrimSpace(m.session.Goal)
 	}
 	if goal == "" {
-		body := t.Resource.AdditionalText.Render("None")
+		body := t.Resource.AdditionalText.Render(m.com.Text("None"))
 		return lipgloss.NewStyle().Width(width).Render(fmt.Sprintf("%s\n\n%s", title, body))
 	}
 
-	body := lipgloss.NewStyle().Width(width).Render(goal + " " + t.Resource.AdditionalText.Render("("+goalCommand+" clear stops it)"))
+	body := lipgloss.NewStyle().Width(width).Render(goal + " " + t.Resource.AdditionalText.Render("("+goalCommand+m.com.Text(" clear stops it)")))
 	return lipgloss.NewStyle().Width(width).Render(fmt.Sprintf("%s\n\n%s", title, body))
 }

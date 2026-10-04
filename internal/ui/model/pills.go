@@ -56,7 +56,7 @@ func queuePill(queue int, t *styles.Styles) string {
 		triangles = triangles[:queue]
 	}
 
-	text := t.Pills.QueueLabel.Render(fmt.Sprintf("%d Queued", queue))
+	text := t.Pills.QueueLabel.Render(fmt.Sprintf(t.Text("%d Queued"), queue))
 	content := fmt.Sprintf("%s %s", strings.Join(triangles, ""), text)
 	return t.Pills.Focused.Render(content)
 }
@@ -82,7 +82,7 @@ func todoPill(todos []session.Todo, spinnerView string, panelFocused bool, t *st
 
 	total := len(todos)
 
-	label := t.Pills.TodoLabel.Render("To-Do")
+	label := t.Pills.TodoLabel.Render(t.Text("To-Do"))
 	progress := t.Pills.TodoProgress.Render(fmt.Sprintf("%d/%d", completed, total))
 
 	var content string

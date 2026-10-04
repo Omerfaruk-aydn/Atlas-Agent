@@ -181,7 +181,7 @@ var versionMark = lipgloss.NewStyle().Foreground(charmtone.Dolly).SetString(`
 // style decides how much of that is shown; see config.ExitBanner.
 func printSessionResume(model *ui.UI, banner config.ExitBanner) {
 	tw, _, _ := term.GetSize(os.Stdout.Fd())
-	body := exitbanner.Render(banner, model.CurrentSession(), tw)
+	body := exitbanner.RenderLanguage(banner, model.CurrentSession(), tw, model.Language())
 	if body == "" {
 		return
 	}

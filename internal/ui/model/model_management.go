@@ -70,10 +70,10 @@ func (m *UI) openToolSettingsDialog() tea.Cmd {
 // of asking the user to pick.
 func (m *UI) handleSetMode(mode string) tea.Cmd {
 	if m.isAgentBusy() {
-		return util.ReportWarn("Agent is busy, please wait...")
+		return util.ReportWarn(m.com.Text("Agent is busy, please wait..."))
 	}
 	if mode != "fast" && mode != "quality" {
-		return util.ReportError(fmt.Errorf("unknown mode %q", mode))
+		return util.ReportError(fmt.Errorf(m.com.Text("unknown mode %q"), mode))
 	}
 	return m.updateAgentModelCmd(func() tea.Msg {
 		return m.applyMode(mode)
@@ -92,14 +92,14 @@ func (m *UI) applyMode(mode string) tea.Msg {
 
 	ws := m.com.Workspace
 	if err := ws.SetConfigField(config.ScopeGlobal, "options.agent_models."+config.AgentCoder, targetType); err != nil {
-		return util.ReportError(fmt.Errorf("switching mode: %w", err))()
+		return util.ReportError(fmt.Errorf(m.com.Text("switching mode: %w"), err))()
 	}
 
 	// SetConfigField reloads the config synchronously before returning,
 	// so this read sees the agent-model override just written.
 	cfg := ws.Config()
 	if cfg == nil {
-		return util.NewInfoMsg(modeLabel(mode) + " mode: now running on the " + string(targetType) + " model.")
+		return util.NewInfoMsg(modeLabel(mode) + m.com.Text(" mode: now running on the ") + string(targetType) + m.com.Text(" model."))
 	}
 
 	if model := cfg.GetModelByType(targetType); model != nil && len(model.ReasoningLevels) > 0 {
@@ -110,14 +110,14 @@ func (m *UI) applyMode(mode string) tea.Msg {
 		selected := cfg.Models[targetType]
 		selected.ReasoningEffort = effort
 		if err := ws.UpdatePreferredModel(config.ScopeGlobal, targetType, selected); err != nil {
-			return util.ReportError(fmt.Errorf("setting reasoning effort: %w", err))()
+			return util.ReportError(fmt.Errorf(m.com.Text("setting reasoning effort: %w"), err))()
 		}
 		ws.UpdateAgentModel(context.Background())
-		return util.NewInfoMsg(fmt.Sprintf("%s mode: now running on the %s model at %s reasoning.", modeLabel(mode), targetType, effort))
+		return util.NewInfoMsg(fmt.Sprintf(m.com.Text("%s mode: now running on the %s model at %s reasoning."), modeLabel(mode), targetType, effort))
 	}
 
 	ws.UpdateAgentModel(context.Background())
-	return util.NewInfoMsg(modeLabel(mode) + " mode: now running on the " + string(targetType) + " model.")
+	return util.NewInfoMsg(modeLabel(mode) + m.com.Text(" mode: now running on the ") + string(targetType) + m.com.Text(" model."))
 }
 
 func modeLabel(mode string) string {
@@ -133,19 +133,19 @@ func (m *UI) handleOpenModelRoleForm(msg dialog.ActionOpenModelRoleForm) tea.Cmd
 	m.dialog.CloseDialog(dialog.ModelRolesID)
 
 	var args []commands.Argument
-	title := "New Model Role"
+	title := m.com.Text("New Model Role")
 	if msg.ExistingName == "" {
-		args = append(args, commands.Argument{ID: "name", Title: "Name", Description: "e.g. research", Required: true})
+		args = append(args, commands.Argument{ID: "name", Title: m.com.Text("Name"), Description: m.com.Text("e.g. research"), Required: true})
 	} else {
-		title = "Edit Role: " + msg.ExistingName
+		title = m.com.Text("Edit Role: ") + msg.ExistingName
 	}
 	args = append(args,
-		commands.Argument{ID: "provider", Title: "Provider", Description: "e.g. openai", Required: true},
-		commands.Argument{ID: "model", Title: "Model", Description: "e.g. gpt-4o", Required: true},
-		commands.Argument{ID: "reasoning_effort", Title: "Reasoning Effort", Description: "e.g. low, medium, high -- leave empty for the model's own default"},
+		commands.Argument{ID: "provider", Title: m.com.Text("Provider"), Description: "e.g. openai", Required: true},
+		commands.Argument{ID: "model", Title: m.com.Text("Model"), Description: "e.g. gpt-4o", Required: true},
+		commands.Argument{ID: "reasoning_effort", Title: m.com.Text("Reasoning Effort"), Description: m.com.Text("e.g. low, medium, high -- leave empty for the model's own default")},
 	)
 
-	form := dialog.NewArguments(m.com, title, "A named model role a subagent, the advisor, or a vibe worker can run on -- see `atlas models roles`.",
+	form := dialog.NewArguments(m.com, title, m.com.Text("A named model role a subagent, the advisor, or a vibe worker can run on -- see `atlas models roles`."),
 		args, dialog.ActionSaveModelRole{ExistingName: msg.ExistingName})
 	if msg.ExistingName != "" {
 		form.SetValues(map[string]string{
@@ -171,7 +171,7 @@ func (m *UI) handleSaveModelRole(msg dialog.ActionSaveModelRole) tea.Cmd {
 		name = strings.TrimSpace(msg.Args["name"])
 	}
 	if name == "" {
-		return util.ReportWarn("Role name is required.")
+		return util.ReportWarn(m.com.Text("Role name is required."))
 	}
 	model := config.SelectedModel{
 		Provider:        strings.TrimSpace(msg.Args["provider"]),
@@ -190,11 +190,11 @@ func (m *UI) handleSaveModelRole(msg dialog.ActionSaveModelRole) tea.Cmd {
 
 func (m *UI) handleOpenFallbackEntryForm(msg dialog.ActionOpenFallbackEntryForm) tea.Cmd {
 	m.dialog.CloseDialog(dialog.FallbacksID)
-	form := dialog.NewArguments(m.com, "Add Fallback: "+string(msg.ModelType),
-		"Appended to the end of "+string(msg.ModelType)+"'s fallback chain -- tried in order when the primary model hits a 429.",
+	form := dialog.NewArguments(m.com, m.com.Text("Add Fallback: ")+string(msg.ModelType),
+		m.com.Text("Appended to the end of ")+string(msg.ModelType)+m.com.Text("'s fallback chain -- tried in order when the primary model hits a 429."),
 		[]commands.Argument{
-			{ID: "provider", Title: "Provider", Description: "e.g. openai", Required: true},
-			{ID: "model", Title: "Model", Description: "e.g. gpt-4o-mini", Required: true},
+			{ID: "provider", Title: m.com.Text("Provider"), Description: "e.g. openai", Required: true},
+			{ID: "model", Title: m.com.Text("Model"), Description: "e.g. gpt-4o-mini", Required: true},
 		},
 		dialog.ActionSaveFallbackEntry{ModelType: msg.ModelType},
 	)
@@ -231,10 +231,10 @@ func (m *UI) handleSaveFallbackEntry(msg dialog.ActionSaveFallbackEntry) tea.Cmd
 
 func (m *UI) handleOpenFallbackCooldownForm(msg dialog.ActionOpenFallbackCooldownForm) tea.Cmd {
 	m.dialog.CloseDialog(dialog.FallbacksID)
-	form := dialog.NewArguments(m.com, "Fallback Cooldown",
-		"Seconds a fallback stays active after a failover before the next turn returns to the primary model. 0 returns every turn.",
+	form := dialog.NewArguments(m.com, m.com.Text("Fallback Cooldown"),
+		m.com.Text("Seconds a fallback stays active after a failover before the next turn returns to the primary model. 0 returns every turn."),
 		[]commands.Argument{
-			{ID: "seconds", Title: "Seconds", Description: "e.g. 300", Required: true},
+			{ID: "seconds", Title: m.com.Text("Seconds"), Description: "e.g. 300", Required: true},
 		},
 		dialog.ActionSaveFallbackCooldown{},
 	)
@@ -246,9 +246,9 @@ func (m *UI) handleOpenFallbackCooldownForm(msg dialog.ActionOpenFallbackCooldow
 func (m *UI) handleSaveFallbackCooldown(msg dialog.ActionSaveFallbackCooldown) tea.Cmd {
 	m.dialog.CloseDialog(dialog.ArgumentsID)
 
-	seconds, err := strconv.Atoi(strings.TrimSpace(msg.Args["seconds"]))
+	seconds, err := strconv.Atoi(strings.TrimSpace(msg.Args[m.com.Text("seconds")]))
 	if err != nil || seconds < 0 {
-		return util.ReportWarn("Cooldown must be a non-negative number of seconds.")
+		return util.ReportWarn(m.com.Text("Cooldown must be a non-negative number of seconds."))
 	}
 
 	ws := m.com.Workspace
@@ -289,7 +289,7 @@ func (m *UI) openModesDialog() tea.Cmd {
 // internal/agent's session_mode.go).
 func (m *UI) handleSelectSessionMode(msg dialog.ActionSelectSessionMode) tea.Cmd {
 	if m.isAgentBusy() {
-		return util.ReportWarn("Agent is busy, please wait...")
+		return util.ReportWarn(m.com.Text("Agent is busy, please wait..."))
 	}
 	m.dialog.CloseDialog(dialog.ModesID)
 
@@ -297,17 +297,17 @@ func (m *UI) handleSelectSessionMode(msg dialog.ActionSelectSessionMode) tea.Cmd
 	ws := m.com.Workspace
 	return m.updateAgentModelCmd(func() tea.Msg {
 		if err := ws.SetConfigField(config.ScopeGlobal, "options.session_mode", mode); err != nil {
-			return util.ReportError(fmt.Errorf("switching mode: %w", err))()
+			return util.ReportError(fmt.Errorf(m.com.Text("switching mode: %w"), err))()
 		}
 		if mode == "" {
-			return util.NewInfoMsg("Session mode cleared -- back to the ordinary coder prompt.")
+			return util.NewInfoMsg(m.com.Text("Session mode cleared -- back to the ordinary coder prompt."))
 		}
 		if cfg := ws.Config(); cfg != nil {
 			if selected, ok := cfg.ResolveRole(mode); ok {
 				return util.NewInfoMsg(fmt.Sprintf("Session mode: %s, on %s/%s.", mode, selected.Provider, selected.Model))
 			}
 		}
-		return util.NewInfoMsg(fmt.Sprintf("Session mode: %s. Assign a model to the %q role to give it its own model.", mode, mode))
+		return util.NewInfoMsg(fmt.Sprintf(m.com.Text("Session mode: %s. Assign a model to the %q role to give it its own model."), mode, mode))
 	})
 }
 
@@ -318,10 +318,10 @@ func (m *UI) handleOpenAutoCompactThresholdForm() tea.Cmd {
 	if cfg := m.com.Config(); cfg != nil && cfg.Options != nil && cfg.Options.AutoSummarizeAt > 0 && cfg.Options.AutoSummarizeAt < 1 {
 		current = strconv.Itoa(int(cfg.Options.AutoSummarizeAt*100 + 0.5))
 	}
-	form := dialog.NewArguments(m.com, "Auto-Compact Threshold",
-		"Percentage of the model's context window that may be used before the session auto-summarizes. Leave empty to use the built-in thresholds.",
+	form := dialog.NewArguments(m.com, m.com.Text("Auto-Compact Threshold"),
+		m.com.Text("Percentage of the model's context window that may be used before the session auto-summarizes. Leave empty to use the built-in thresholds."),
 		[]commands.Argument{
-			{ID: "percent", Title: "Percent", Description: "e.g. 80 for 80% -- empty resets to built-in"},
+			{ID: "percent", Title: m.com.Text("Percent"), Description: m.com.Text("e.g. 80 for 80% -- empty resets to built-in")},
 		},
 		dialog.ActionSaveAutoCompactThreshold{},
 	)
@@ -341,20 +341,20 @@ func (m *UI) handleSaveAutoCompactThreshold(msg dialog.ActionSaveAutoCompactThre
 			if err := ws.SetConfigField(config.ScopeGlobal, "options.auto_summarize_at", 0.0); err != nil {
 				return util.ReportError(err)()
 			}
-			return util.NewInfoMsg("Auto-compact threshold reset to the built-in defaults.")
+			return util.NewInfoMsg(m.com.Text("Auto-compact threshold reset to the built-in defaults."))
 		}
 	}
 
 	percent, err := strconv.ParseFloat(raw, 64)
 	if err != nil || percent <= 0 || percent >= 100 {
-		return util.ReportWarn("Threshold must be a number between 1 and 99 (percent of context used).")
+		return util.ReportWarn(m.com.Text("Threshold must be a number between 1 and 99 (percent of context used)."))
 	}
 
 	return func() tea.Msg {
 		if err := ws.SetConfigField(config.ScopeGlobal, "options.auto_summarize_at", percent/100); err != nil {
 			return util.ReportError(err)()
 		}
-		return util.NewInfoMsg(fmt.Sprintf("Auto-compact threshold set to %g%% of the context window.", percent))
+		return util.NewInfoMsg(fmt.Sprintf(m.com.Text("Auto-compact threshold set to %g%% of the context window."), percent))
 	}
 }
 
@@ -364,18 +364,18 @@ func (m *UI) handleOpenSubagentForm(msg dialog.ActionOpenSubagentForm) tea.Cmd {
 	m.dialog.CloseDialog(dialog.SubagentsID)
 
 	var args []commands.Argument
-	title := "New Subagent"
+	title := m.com.Text("New Subagent")
 	if msg.ExistingName == "" {
-		args = append(args, commands.Argument{ID: "name", Title: "Name", Description: "e.g. research", Required: true})
+		args = append(args, commands.Argument{ID: "name", Title: m.com.Text("Name"), Description: m.com.Text("e.g. research"), Required: true})
 	} else {
-		title = "Edit Subagent: " + msg.ExistingName
+		title = m.com.Text("Edit Subagent: ") + msg.ExistingName
 	}
 	args = append(args,
-		commands.Argument{ID: "description", Title: "Description", Description: "when this subagent should be used", Required: true},
-		commands.Argument{ID: "model", Title: "Model Role", Description: "e.g. research; empty runs on the session's model"},
+		commands.Argument{ID: "description", Title: m.com.Text("Description"), Description: m.com.Text("when this subagent should be used"), Required: true},
+		commands.Argument{ID: "model", Title: m.com.Text("Model Role"), Description: m.com.Text("e.g. research; empty runs on the session's model")},
 	)
 
-	description := "Instructions are edited separately, in $EDITOR, after saving (see enter on the subagents list)."
+	description := m.com.Text("Instructions are edited separately, in $EDITOR, after saving (see enter on the subagents list).")
 	form := dialog.NewArguments(m.com, title, description, args,
 		dialog.ActionSaveSubagentMeta{ExistingName: msg.ExistingName, UserScope: msg.UserScope})
 	if msg.ExistingName != "" {
@@ -408,11 +408,11 @@ func (m *UI) handleSaveSubagentMeta(msg dialog.ActionSaveSubagentMeta) tea.Cmd {
 		name = strings.TrimSpace(msg.Args["name"])
 	}
 	if name == "" {
-		return util.ReportWarn("Subagent name is required.")
+		return util.ReportWarn(m.com.Text("Subagent name is required."))
 	}
 	description := strings.TrimSpace(msg.Args["description"])
 	if description == "" {
-		return util.ReportWarn("Subagent description is required.")
+		return util.ReportWarn(m.com.Text("Subagent description is required."))
 	}
 
 	sub := subagents.Subagent{
@@ -446,7 +446,7 @@ func (m *UI) handleSaveSubagentMeta(msg dialog.ActionSaveSubagentMeta) tea.Cmd {
 				return subagentSavedMsg{err: err}
 			}
 		}
-		return subagentSavedMsg{err: fmt.Errorf("subagent %q no longer exists", name)}
+		return subagentSavedMsg{err: fmt.Errorf(m.com.Text("subagent %q no longer exists"), name)}
 	}
 }
 

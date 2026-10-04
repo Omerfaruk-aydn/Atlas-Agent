@@ -20,7 +20,7 @@ func (m *UI) markProjectInitializedCmd() tea.Cmd {
 		if err := m.com.Workspace.MarkProjectInitialized(); err != nil {
 			return util.InfoMsg{
 				Type: util.InfoTypeError,
-				Msg:  fmt.Sprintf("Failed to mark project as initialized: %v", err),
+				Msg:  fmt.Sprintf(m.com.Text("Failed to mark project as initialized: %v"), err),
 				TTL:  15 * time.Second,
 			}
 		}
@@ -59,7 +59,7 @@ func (m *UI) initializeProject() tea.Cmd {
 		if err != nil {
 			return util.InfoMsg{
 				Type: util.InfoTypeError,
-				Msg:  fmt.Sprintf("Failed to initialize project: %v", err),
+				Msg:  fmt.Sprintf(m.com.Text("Failed to initialize project: %v"), err),
 			}
 		}
 		return sendMessageMsg{Content: initPrompt}
@@ -84,15 +84,15 @@ func (m *UI) initializeView() string {
 	cwd := home.Short(m.com.Workspace.WorkingDir())
 	initFile := m.com.Config().Options.InitializeAs
 
-	header := s.Header.Render("Would you like to initialize this project?")
+	header := s.Header.Render(m.com.Text("Would you like to initialize this project?"))
 	path := s.Accent.PaddingLeft(2).Render(cwd)
-	desc := s.Content.Render(fmt.Sprintf("When I initialize your codebase I examine the project and put the result into an %s file which serves as general context.", initFile))
-	hint := s.Content.Render("You can also initialize anytime via ") + s.Accent.Render("ctrl+p") + s.Content.Render(".")
-	prompt := s.Content.Render("Would you like to initialize now?")
+	desc := s.Content.Render(fmt.Sprintf(m.com.Text("When I initialize your codebase I examine the project and put the result into an %s file which serves as general context."), initFile))
+	hint := s.Content.Render(m.com.Text("You can also initialize anytime via ")) + s.Accent.Render("ctrl+p") + s.Content.Render(".")
+	prompt := s.Content.Render(m.com.Text("Would you like to initialize now?"))
 
 	buttons := common.ButtonGroup(m.com.Styles, []common.ButtonOpts{
-		{Text: "Yep!", Selected: m.onboarding.yesInitializeSelected},
-		{Text: "Nope", Selected: !m.onboarding.yesInitializeSelected},
+		{Text: m.com.Text("Yep!"), Selected: m.onboarding.yesInitializeSelected},
+		{Text: m.com.Text("Nope"), Selected: !m.onboarding.yesInitializeSelected},
 	}, " ")
 
 	// max width 60 so the text is compact

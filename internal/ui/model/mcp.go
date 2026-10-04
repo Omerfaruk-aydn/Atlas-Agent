@@ -36,7 +36,7 @@ func (m *UI) mcpListing(width, maxItems int) string {
 	}
 
 	if len(mcps) == 0 {
-		return t.Resource.AdditionalText.Render("None")
+		return t.Resource.AdditionalText.Render(m.com.Text("None"))
 	}
 	return mcpList(t, mcps, width, maxItems)
 }
@@ -45,13 +45,13 @@ func (m *UI) mcpListing(width, maxItems int) string {
 func mcpCounts(t *styles.Styles, counts mcp.Counts) string {
 	var parts []string
 	if counts.Tools > 0 {
-		parts = append(parts, t.Resource.CapabilityCount.Render(fmt.Sprintf("%d tools", counts.Tools)))
+		parts = append(parts, t.Resource.CapabilityCount.Render(fmt.Sprintf(t.Text("%d tools"), counts.Tools)))
 	}
 	if counts.Prompts > 0 {
-		parts = append(parts, t.Resource.CapabilityCount.Render(fmt.Sprintf("%d prompts", counts.Prompts)))
+		parts = append(parts, t.Resource.CapabilityCount.Render(fmt.Sprintf(t.Text("%d prompts"), counts.Prompts)))
 	}
 	if counts.Resources > 0 {
-		parts = append(parts, t.Resource.CapabilityCount.Render(fmt.Sprintf("%d resources", counts.Resources)))
+		parts = append(parts, t.Resource.CapabilityCount.Render(fmt.Sprintf(t.Text("%d resources"), counts.Resources)))
 	}
 	return strings.Join(parts, " ")
 }
@@ -86,11 +86,11 @@ func mcpList(t *styles.Styles, mcps []mcp.ClientInfo, width, maxItems int) strin
 			icon = t.Resource.ErrorIcon.String()
 			description = t.Resource.StatusText.Render("error")
 			if m.Error != nil {
-				description = t.Resource.StatusText.Render(fmt.Sprintf("error: %s", m.Error.Error()))
+				description = t.Resource.StatusText.Render(fmt.Sprintf(t.Text("error: %s"), m.Error.Error()))
 			}
 		case mcp.StateNeedsAuth:
 			icon = t.Resource.NeedsAuthIcon.String()
-			description = t.Resource.StatusText.Render("needs authentication")
+			description = t.Resource.StatusText.Render(t.Text("needs authentication"))
 		case mcp.StateDisabled:
 			icon = t.Resource.DisabledIcon.String()
 			description = t.Resource.StatusText.Render("disabled")
@@ -109,7 +109,7 @@ func mcpList(t *styles.Styles, mcps []mcp.ClientInfo, width, maxItems int) strin
 	if len(renderedMcps) > maxItems {
 		visibleItems := renderedMcps[:maxItems-1]
 		remaining := len(renderedMcps) - maxItems
-		visibleItems = append(visibleItems, t.Resource.AdditionalText.Render(fmt.Sprintf("…and %d more", remaining)))
+		visibleItems = append(visibleItems, t.Resource.AdditionalText.Render(fmt.Sprintf(t.Text("…and %d more"), remaining)))
 		return lipgloss.JoinVertical(lipgloss.Left, visibleItems...)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, renderedMcps...)

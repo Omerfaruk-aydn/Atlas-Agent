@@ -15,6 +15,17 @@ func testSession() *session.Session {
 	return &session.Session{ID: "abc123def456", Title: "Fix the flaky test"}
 }
 
+func TestRenderLanguagePreservesResumeCommandAndTitle(t *testing.T) {
+	t.Parallel()
+	sess := testSession()
+	sess.Title = "Language /command D:\\Atlas"
+	got := RenderLanguage(config.ExitBannerCompact, sess, 100, "tr")
+	require.Contains(t, got, "Sohbet")
+	require.Contains(t, got, "Sürdür")
+	require.Contains(t, got, sess.Title)
+	require.Contains(t, got, version.BinaryName()+" -s "+session.HashID(sess.ID)[:7])
+}
+
 func TestRender(t *testing.T) {
 	t.Parallel()
 

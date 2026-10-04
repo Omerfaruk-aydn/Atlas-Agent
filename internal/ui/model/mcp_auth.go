@@ -3,7 +3,6 @@ package model
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -33,7 +32,7 @@ func (m *UI) authenticateMCP(ctx context.Context, name string) tea.Cmd {
 	return func() tea.Msg {
 		if err := m.com.Workspace.MCPAuthenticate(ctx, name); err != nil {
 			if isAuthTimeout(err) {
-				return dialog.ActionMCPAuthErrored{Name: name, Error: fmt.Errorf("authentication timed out")}
+				return dialog.ActionMCPAuthErrored{Name: name, Error: errors.New(m.com.Text("authentication timed out"))}
 			}
 			return dialog.ActionMCPAuthErrored{Name: name, Error: err}
 		}

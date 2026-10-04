@@ -179,9 +179,9 @@ func renderHeaderDetails(
 
 	const keystroke = "ctrl+d"
 	if detailsOpen {
-		parts = append(parts, t.Header.Keystroke.Render(keystroke)+t.Header.KeystrokeTip.Render(" close"))
+		parts = append(parts, t.Header.Keystroke.Render(keystroke)+t.Header.KeystrokeTip.Render(com.Text(" close")))
 	} else {
-		parts = append(parts, t.Header.Keystroke.Render(keystroke)+t.Header.KeystrokeTip.Render(" open "))
+		parts = append(parts, t.Header.Keystroke.Render(keystroke)+t.Header.KeystrokeTip.Render(com.Text(" open ")))
 	}
 
 	dot := t.Header.Separator.Render(" • ")

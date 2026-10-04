@@ -12,7 +12,6 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/common"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/styles"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workspace"
-	"github.com/dustin/go-humanize"
 )
 
 // jobStatesTTL bounds how long the memoized background-jobs state may go
@@ -123,7 +122,7 @@ func (m *UI) runningJobsCount() int {
 func (m *UI) jobsInfo(width, maxItems int, isSection bool) string {
 	t := m.com.Styles
 
-	title := t.Resource.Heading.Render("Jobs")
+	title := t.Resource.Heading.Render(m.com.Text("Jobs"))
 	if isSection {
 		title = common.Section(t, title, width)
 	}
@@ -136,7 +135,7 @@ func (m *UI) jobsInfo(width, maxItems int, isSection bool) string {
 	}
 
 	if len(running) == 0 && len(m.subAgentRuns) == 0 {
-		list := t.Resource.AdditionalText.Render("None")
+		list := t.Resource.AdditionalText.Render(m.com.Text("None"))
 		return lipgloss.NewStyle().Width(width).Render(fmt.Sprintf("%s\n\n%s", title, list))
 	}
 
@@ -157,7 +156,7 @@ func jobsList(t *styles.Styles, jobs []shell.BackgroundShellInfo, subAgents []wo
 		if title == "" {
 			title = j.ID
 		}
-		description := t.Resource.StatusText.Render(humanize.Time(j.StartedAt))
+		description := t.Resource.StatusText.Render(t.RelativeTime(j.StartedAt))
 		rendered = append(rendered, common.Status(t, common.StatusOpts{
 			Icon:        t.Resource.BusyIcon.String(),
 			Title:       title,
@@ -168,9 +167,9 @@ func jobsList(t *styles.Styles, jobs []shell.BackgroundShellInfo, subAgents []wo
 	for _, s := range subAgents {
 		title := s.Title
 		if title == "" {
-			title = "Sub-agent"
+			title = t.Text("Sub-agent")
 		}
-		description := t.Resource.StatusText.Render(humanize.Time(s.StartedAt))
+		description := t.Resource.StatusText.Render(t.RelativeTime(s.StartedAt))
 		rendered = append(rendered, common.Status(t, common.StatusOpts{
 			Icon:        t.Resource.BusyIcon.String(),
 			Title:       title,
@@ -182,7 +181,7 @@ func jobsList(t *styles.Styles, jobs []shell.BackgroundShellInfo, subAgents []wo
 	if len(rendered) > maxItems {
 		visibleItems := rendered[:maxItems-1]
 		remaining := len(rendered) - maxItems
-		visibleItems = append(visibleItems, t.Resource.AdditionalText.Render(fmt.Sprintf("…and %d more", remaining)))
+		visibleItems = append(visibleItems, t.Resource.AdditionalText.Render(fmt.Sprintf(t.Text("…and %d more"), remaining)))
 		return lipgloss.JoinVertical(lipgloss.Left, visibleItems...)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rendered...)

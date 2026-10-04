@@ -9,6 +9,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ansi"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-charmtone"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-style/v2"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/i18n"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/logo"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/styles"
@@ -23,6 +24,11 @@ const FallbackWidth = 80
 // there is nothing to print. A nil or untitled session means the resume hint is
 // omitted, which for the compact banner leaves nothing at all.
 func Render(banner config.ExitBanner, sess *session.Session, width int) string {
+	return RenderLanguage(banner, sess, width, "en")
+}
+
+// RenderLanguage uses the active interface locale for the exit banner labels.
+func RenderLanguage(banner config.ExitBanner, sess *session.Session, width int, code string) string {
 	if width <= 0 {
 		width = FallbackWidth
 	}
@@ -36,23 +42,23 @@ func Render(banner config.ExitBanner, sess *session.Session, width int) string {
 		if !hasSession {
 			return ""
 		}
-		return sessionResumeLines(sess, width)
+		return sessionResumeLines(sess, width, code)
 
 	default:
 		// Unrecognized values render the full banner rather than nothing.
 		style := lipgloss.NewStyle().Padding(1, 3)
 		contentWidth := width - style.GetHorizontalFrameSize()
 
-		sections := []string{logoSection(contentWidth)}
+		sections := []string{logoSection(contentWidth, code)}
 		if hasSession {
-			sections = append(sections, sessionResumeLines(sess, contentWidth))
+			sections = append(sections, sessionResumeLines(sess, contentWidth, code))
 		}
 		return style.Render(strings.Join(sections, "\n\n"))
 	}
 }
 
 // logoSection returns the ASCII art logo followed by the parting message.
-func logoSection(contentWidth int) string {
+func logoSection(contentWidth int, code string) string {
 	t := styles.ThemeForProvider("")
 	atlasLogo := logo.Render(t.Logo.GradCanvas, version.Version, true, logo.Opts{
 		TitleColorA:  t.Logo.TitleColorA,
@@ -65,15 +71,16 @@ func logoSection(contentWidth int) string {
 	// Wrap the greeting and the message together: wrapping only the message
 	// leaves the greeting's own width unaccounted for and overflows the frame.
 	return atlasLogo + "\n" +
-		lipgloss.NewStyle().Width(contentWidth).Render("Thanks for using ATLAS-AGENT! "+randomExitMessage())
+		lipgloss.NewStyle().Width(contentWidth).Render(i18n.Text(code, "Thanks for using ATLAS-AGENT! ")+i18n.Text(code, randomExitMessage()))
 }
 
 // sessionResumeLines returns the "Session  <title>\nContinue <binary> -s <hash>"
 // pair used by the exit banner.
-func sessionResumeLines(sess *session.Session, contentWidth int) string {
+func sessionResumeLines(sess *session.Session, contentWidth int, code string) string {
 	title := strings.ReplaceAll(sess.Title, "\n", " ")
 
-	labelWidth := lipgloss.Width("Session  ")
+	sessionLabel, continueLabel := i18n.Text(code, "Session  "), i18n.Text(code, "Continue ")
+	labelWidth := lipgloss.Width(sessionLabel)
 	titleWidth := contentWidth - labelWidth
 	if titleWidth > 0 {
 		title = ansi.Truncate(title, titleWidth, "…")
@@ -81,7 +88,7 @@ func sessionResumeLines(sess *session.Session, contentWidth int) string {
 
 	hash := session.HashID(sess.ID)[:7]
 	label := lipgloss.NewStyle().Foreground(charmtone.Charple)
-	sessionLine := label.Render("Session  ") + title
+	sessionLine := label.Render(sessionLabel) + title
 
 	// The command has to stay intact to be worth printing, so when it does
 	// not fit the decorative label is what gives way. The command name is
@@ -89,8 +96,8 @@ func sessionResumeLines(sess *session.Session, contentWidth int) string {
 	// the frame it was written for, and one line wider than contentWidth
 	// pads every other line out with it.
 	command := version.BinaryName() + " -s " + hash
-	continueLine := label.Render("Continue ") + command
-	if lipgloss.Width("Continue ")+lipgloss.Width(command) > contentWidth {
+	continueLine := label.Render(continueLabel) + command
+	if lipgloss.Width(continueLabel)+lipgloss.Width(command) > contentWidth {
 		continueLine = ansi.Truncate(command, contentWidth, "…")
 	}
 	return sessionLine + "\n" + continueLine

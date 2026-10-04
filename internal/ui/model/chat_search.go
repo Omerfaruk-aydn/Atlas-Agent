@@ -48,13 +48,13 @@ func (m *UI) runChatSearch(query string) tea.Cmd {
 	}
 
 	if len(m.chatSearchMatches) == 0 {
-		return util.ReportWarn(fmt.Sprintf("No matches for %q", query))
+		return util.ReportWarn(fmt.Sprintf(m.com.Text("No matches for %q"), query))
 	}
 
 	id := m.chatSearchMatches[m.chatSearchIdx]
 	idx, ok := m.chat.IndexForID(id)
 	if !ok {
-		return util.ReportWarn(fmt.Sprintf("No matches for %q", query))
+		return util.ReportWarn(fmt.Sprintf(m.com.Text("No matches for %q"), query))
 	}
 	m.chat.SetSelected(idx)
 	var cmds []tea.Cmd

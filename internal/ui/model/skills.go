@@ -38,7 +38,7 @@ func cachedBuiltinSkills() []*skills.Skill {
 func (m *UI) skillsInfo(width, maxItems int, isSection bool) string {
 	t := m.com.Styles
 
-	title := t.Resource.Heading.Render("Skills")
+	title := t.Resource.Heading.Render(m.com.Text("Skills"))
 	if isSection {
 		title = common.Section(t, title, width)
 	}
@@ -52,7 +52,7 @@ func (m *UI) skillsListing(width, maxItems int) string {
 	t := m.com.Styles
 	items := m.skillStatusItems()
 	if len(items) == 0 {
-		return t.Resource.AdditionalText.Render("None")
+		return t.Resource.AdditionalText.Render(m.com.Text("None"))
 	}
 	return skillsList(t, items, width, maxItems)
 }
@@ -132,8 +132,8 @@ func skillsList(t *styles.Styles, items []skillStatusItem, width, maxItems int) 
 		visibleItems := items[:maxItems-1]
 		remaining := len(items) - (maxItems - 1)
 		items = append(visibleItems, skillStatusItem{
-			name:  "more",
-			title: t.Resource.AdditionalText.Render(fmt.Sprintf("…and %d more", remaining)),
+			name:  t.Text("more"),
+			title: t.Resource.AdditionalText.Render(fmt.Sprintf(t.Text("…and %d more"), remaining)),
 		})
 	}
 

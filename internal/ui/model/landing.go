@@ -116,7 +116,7 @@ func (m *UI) landingCards(width, availHeight int) string {
 	// bounded above by cardMaxItems so one large list can't drag the
 	// other two -- and the rest of the landing page -- down with it.
 	maxItems := max(1, min(availHeight-cardBorderRows, cardMaxItems))
-	titles := []string{"LSPs", "MCPs", "Skills"}
+	titles := []string{"LSPs", "MCPs", m.com.Text("Skills")}
 	bodies := []string{
 		m.lspListing(widths[0]-cardChrome, maxItems),
 		m.mcpListing(widths[1]-cardChrome, maxItems),

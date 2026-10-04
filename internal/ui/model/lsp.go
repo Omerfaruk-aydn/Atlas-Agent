@@ -134,7 +134,7 @@ func (m *UI) lspListing(width, maxItems int) string {
 	}
 
 	if len(lsps) == 0 {
-		return t.Resource.AdditionalText.Render("None")
+		return t.Resource.AdditionalText.Render(m.com.Text("None"))
 	}
 	return lspList(t, lsps, width, maxItems)
 }
@@ -186,7 +186,7 @@ func lspList(t *styles.Styles, lsps []LSPInfo, width, maxItems int) string {
 			icon = t.Resource.ErrorIcon.String()
 			description = t.Resource.StatusText.Render("error")
 			if l.Error != nil {
-				description = t.Resource.StatusText.Render(fmt.Sprintf("error: %s", l.Error.Error()))
+				description = t.Resource.StatusText.Render(fmt.Sprintf(t.Text("error: %s"), l.Error.Error()))
 			}
 		case lsp.StateDisabled:
 			icon = t.Resource.DisabledIcon.String()
@@ -205,7 +205,7 @@ func lspList(t *styles.Styles, lsps []LSPInfo, width, maxItems int) string {
 	if len(renderedLsps) > maxItems {
 		visibleItems := renderedLsps[:maxItems-1]
 		remaining := len(renderedLsps) - maxItems
-		visibleItems = append(visibleItems, t.Resource.AdditionalText.Render(fmt.Sprintf("…and %d more", remaining)))
+		visibleItems = append(visibleItems, t.Resource.AdditionalText.Render(fmt.Sprintf(t.Text("…and %d more"), remaining)))
 		return lipgloss.JoinVertical(lipgloss.Left, visibleItems...)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, renderedLsps...)

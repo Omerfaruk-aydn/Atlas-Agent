@@ -58,13 +58,13 @@ func (m *UI) modelInfo(width int) string {
 			if model.CatwalkCfg.CanReason {
 				if len(model.CatwalkCfg.ReasoningLevels) == 0 {
 					if model.ModelCfg.Think {
-						reasoningInfo = "Thinking On"
+						reasoningInfo = m.com.Text("Thinking On")
 					} else {
-						reasoningInfo = "Thinking Off"
+						reasoningInfo = m.com.Text("Thinking Off")
 					}
 				} else {
 					reasoningEffort := cmp.Or(model.ModelCfg.ReasoningEffort, model.CatwalkCfg.DefaultReasoningEffort)
-					reasoningInfo = fmt.Sprintf("Reasoning %s", common.FormatReasoningEffort(reasoningEffort))
+					reasoningInfo = fmt.Sprintf(m.com.Text("Reasoning %s"), common.FormatReasoningEffort(reasoningEffort))
 				}
 			}
 		}

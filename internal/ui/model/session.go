@@ -185,11 +185,11 @@ func (m *UI) handleFileEvent(file history.File) tea.Cmd {
 func (m *UI) filesInfo(cwd string, width, maxItems int, isSection bool) string {
 	t := m.com.Styles
 
-	title := t.Files.SectionTitle.Render("Modified Files")
+	title := t.Files.SectionTitle.Render(m.com.Text("Modified Files"))
 	if isSection {
-		title = common.Section(t, "Modified Files", width)
+		title = common.Section(t, m.com.Text("Modified Files"), width)
 	}
-	list := t.Files.EmptyMessage.Render("None")
+	list := t.Files.EmptyMessage.Render(m.com.Text("None"))
 	var filesWithChanges []SessionFile
 	for _, f := range m.sessionFiles {
 		if f.Additions == 0 && f.Deletions == 0 {
@@ -253,7 +253,7 @@ func fileList(t *styles.Styles, cwd string, filesWithChanges []SessionFile, widt
 
 	if len(filesWithChanges) > maxItems {
 		remaining := len(filesWithChanges) - maxItems
-		renderedFiles = append(renderedFiles, t.Files.TruncationHint.Render(fmt.Sprintf("…and %d more", remaining)))
+		renderedFiles = append(renderedFiles, t.Files.TruncationHint.Render(fmt.Sprintf(t.Text("…and %d more"), remaining)))
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, renderedFiles...)

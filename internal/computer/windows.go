@@ -150,6 +150,9 @@ func (b *windowsBackend) ScreenSize() (Size, error) {
 }
 
 func (b *windowsBackend) Screenshot() ([]byte, error) {
+	// Screen DCs must be released on the thread that acquired them.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	x := getSystemMetrics(smXVirtualScreen)
 	y := getSystemMetrics(smYVirtualScreen)
 	w := getSystemMetrics(smCXVirtualScreen)
@@ -168,27 +171,32 @@ func (b *windowsBackend) Screenshot() ([]byte, error) {
 	if memDC == 0 {
 		return nil, fmt.Errorf("computer-use: CreateCompatibleDC failed")
 	}
-	defer procDeleteDC.Call(memDC)
 
-	bitmap, _, _ := procCreateCompatibleBitmap.Call(
-		screenDC, uintptr(w), uintptr(h),
+	info := bitmapInfo{Header: dibHeader(w, h)}
+	var bits unsafe.Pointer
+	bitmap, _, callErr := procCreateDIBSection.Call(
+		screenDC, uintptr(unsafe.Pointer(&info)), 0, uintptr(unsafe.Pointer(&bits)), 0, 0,
 	)
-	if bitmap == 0 {
-		return nil, fmt.Errorf("computer-use: CreateCompatibleBitmap failed")
+	if bitmap == 0 || bits == nil {
+		procDeleteDC.Call(memDC)
+		if bitmap != 0 {
+			procDeleteObject.Call(bitmap)
+		}
+		return nil, fmt.Errorf("computer-use: CreateDIBSection failed: %v", callErr)
 	}
-	defer procDeleteObject.Call(bitmap)
+	defer func() {
+		// Delete the DC first even if restoring its bitmap failed.
+		procDeleteDC.Call(memDC)
+		procDeleteObject.Call(bitmap)
+	}()
 
-	old, _, _ := procSelectObject.Call(memDC, bitmap)
-	if old == 0 {
-		return nil, fmt.Errorf("computer-use: SelectObject failed")
-	}
-	pixels := make([]byte, 4*w*h)
+	pixels := unsafe.Slice((*byte)(bits), 4*w*h)
 	// One retry around the blit plus readback: a frame can tear if
 	// the display mode changes mid-capture (resolution switch, monitor
 	// plug/unplug, RDP reconnect), and the second attempt then lands
 	// on a stable desktop.
 	if err := captureWithRetry(func() error {
-		return blitAndRead(memDC, bitmap, screenDC, x, y, w, h, pixels)
+		return blitBitmap(memDC, bitmap, screenDC, x, y, w, h)
 	}); err != nil {
 		return nil, err
 	}
@@ -220,18 +228,32 @@ func captureWithRetry(capture func() error) error {
 	return nil
 }
 
-// blitAndRead copies the virtual screen into bitmap through memDC and
-// reads the pixels back into a top-down 32-bit buffer. A failure here
-// with a working cursor and screen size almost always means there is
-// no readable desktop right now, so the errors name the usual causes
-// instead of just the API name.
-func blitAndRead(memDC, bitmap, screenDC uintptr, x, y, w, h int, pixels []byte) error {
-	ok, _, _ := procBitBlt.Call(
-		memDC, 0, 0, uintptr(w), uintptr(h),
-		screenDC, uintptr(x), uintptr(y), srccopy,
-	)
-	if ok == 0 {
-		return fmt.Errorf("computer-use: BitBlt failed (%s)", captureHint())
+// blitBitmap copies the screen and synchronizes direct DIB memory access.
+func blitBitmap(memDC, bitmap, screenDC uintptr, x, y, w, h int) error {
+	err := withCaptureBitmap(func() (uintptr, error) {
+		old, _, callErr := procSelectObject.Call(memDC, bitmap)
+		if old == 0 || old == ^uintptr(0) {
+			return 0, fmt.Errorf("computer-use: SelectObject failed: %v", callErr)
+		}
+		return old, nil
+	}, func(old uintptr) error {
+		previous, _, callErr := procSelectObject.Call(memDC, old)
+		if previous == 0 || previous == ^uintptr(0) {
+			return fmt.Errorf("computer-use: bitmap restoration failed: %v", callErr)
+		}
+		return nil
+	}, func() error {
+		ok, _, callErr := procBitBlt.Call(
+			memDC, 0, 0, uintptr(w), uintptr(h),
+			screenDC, uintptr(x), uintptr(y), srccopy,
+		)
+		if ok == 0 {
+			return fmt.Errorf("computer-use: BitBlt failed: %v (%s)", callErr, captureHint())
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	info := bitmapInfo{Header: dibHeader(w, h)}
 	ok, _, _ = procGetDIBits.Call(

@@ -12,7 +12,6 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/list"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/util"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workspace"
-	"github.com/dustin/go-humanize"
 )
 
 // AgentHubID is the identifier for the agent hub dialog.
@@ -38,15 +37,15 @@ func (e *agentHubEntry) title() string {
 	if e.entry.Title != "" {
 		return e.entry.Title
 	}
-	return "Sub-agent"
+	return e.t.Text("Sub-agent")
 }
 
 func (e *agentHubEntry) info() string {
-	status := "idle"
+	status := e.t.Text("idle")
 	if e.entry.Busy {
-		status = "running"
+		status = e.t.Text("running")
 	}
-	return fmt.Sprintf("%s · $%.4f · %s", status, e.entry.Cost, humanize.Time(e.entry.StartedAt))
+	return fmt.Sprintf("%s · $%.4f · %s", status, e.entry.Cost, e.t.Styles.RelativeTime(e.entry.StartedAt))
 }
 
 func (e *agentHubEntry) SetFocused(focused bool) {
@@ -116,10 +115,10 @@ func NewAgentHub(com *common.Common, sessionID string) *AgentHub {
 		d.list.SelectFirst()
 	}
 
-	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", "next"))
-	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", "previous"))
-	d.keyMap.Kill = key.NewBinding(key.WithKeys("x", "ctrl+x"), key.WithHelp("x", "cancel"))
-	d.keyMap.View = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "view session"))
+	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", com.Text("next")))
+	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", com.Text("previous")))
+	d.keyMap.Kill = key.NewBinding(key.WithKeys("x", "ctrl+x"), key.WithHelp("x", com.Text("cancel")))
+	d.keyMap.View = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", com.Text("view session")))
 	d.keyMap.Close = CloseKey
 
 	return d
@@ -190,7 +189,7 @@ func (d *AgentHub) HandleMsg(msg tea.Msg) Action {
 		}
 	case agentHubKilledMsg:
 		if msg.err != nil {
-			return ActionCmd{util.ReportError(fmt.Errorf("failed to cancel: %w", msg.err))}
+			return ActionCmd{util.ReportError(fmt.Errorf(d.com.Text("failed to cancel: %w"), msg.err))}
 		}
 		d.markIdle(msg.sessionID)
 	}
@@ -227,10 +226,10 @@ func (d *AgentHub) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	innerWidth := width - t.Dialog.View.GetHorizontalFrameSize()
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Agent Hub"
+	rc.Title = d.com.Text("Agent Hub")
 
 	if len(d.list.FilteredItems()) == 0 {
-		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render("No sub-agents have run in this session yet."))
+		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render(d.com.Text("No sub-agents have run in this session yet.")))
 	} else {
 		listHeight, listTotalHeight, _ := sizeDialogList(t, d.list, innerWidth, height)
 		bodyView := t.Dialog.List.Height(d.list.Height()).Render(d.list.Render())

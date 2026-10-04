@@ -34,10 +34,14 @@ func (e *subagentEntry) Finished() bool { return true }
 func (e *subagentEntry) Filter() string { return e.sub.Name }
 
 func (e *subagentEntry) info() string {
-	if e.sub.Model != "" {
-		return e.sub.Description + " · " + e.sub.Model
+	description := e.sub.Description
+	if e.sub.Builtin {
+		description = e.t.Text(firstSentence(description))
 	}
-	return e.sub.Description
+	if e.sub.Model != "" {
+		return description + " · " + e.sub.Model
+	}
+	return description
 }
 
 func (e *subagentEntry) SetFocused(focused bool) {
@@ -99,12 +103,12 @@ func NewSubagents(com *common.Common) *Subagents {
 	h.Styles = com.Styles.DialogHelpStyles()
 	d.help = h
 
-	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", "next"))
-	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", "previous"))
+	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", com.Text("next")))
+	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", com.Text("previous")))
 	d.keyMap.Add = key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add"))
-	d.keyMap.Edit = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit"))
-	d.keyMap.EditFile = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "edit instructions"))
-	d.keyMap.Delete = key.NewBinding(key.WithKeys("x", "ctrl+x"), key.WithHelp("x", "delete"))
+	d.keyMap.Edit = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", com.Text("edit")))
+	d.keyMap.EditFile = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", com.Text("edit instructions")))
+	d.keyMap.Delete = key.NewBinding(key.WithKeys("x", "ctrl+x"), key.WithHelp("x", com.Text("delete")))
 	d.keyMap.Close = CloseKey
 
 	return d
@@ -192,7 +196,7 @@ func (d *Subagents) HandleMsg(msg tea.Msg) Action {
 		}
 	case subagentDeletedMsg:
 		if msg.err != nil {
-			return ActionCmd{util.ReportError(fmt.Errorf("failed to delete subagent %q: %w", msg.name, msg.err))}
+			return ActionCmd{util.ReportError(fmt.Errorf(d.com.Text("failed to delete subagent %q: %w"), msg.name, msg.err))}
 		}
 		d.Refresh()
 	}
@@ -237,10 +241,10 @@ func (d *Subagents) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	innerWidth := width - t.Dialog.View.GetHorizontalFrameSize()
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Subagents"
+	rc.Title = d.com.Text("Subagents")
 
 	if d.list.Len() == 0 {
-		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render(fmt.Sprintf("No subagents configured yet. Press %s to create one.", d.keyMap.Add.Help().Key)))
+		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render(fmt.Sprintf(d.com.Text("No subagents configured yet. Press %s to create one."), d.keyMap.Add.Help().Key)))
 	} else {
 		listHeight, listTotalHeight, _ := sizeDialogList(t, d.list, innerWidth, height)
 		bodyView := t.Dialog.List.Height(d.list.Height()).Render(d.list.Render())

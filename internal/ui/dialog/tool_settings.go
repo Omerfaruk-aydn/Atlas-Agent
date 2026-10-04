@@ -75,9 +75,9 @@ func (e *toolSettingEntry) Finished() bool { return true }
 func (e *toolSettingEntry) Filter() string { return e.label }
 
 func (e *toolSettingEntry) info() string {
-	status := "off"
+	status := e.t.Text("off")
 	if e.enabled {
-		status = "on"
+		status = e.t.Text("on")
 	}
 	return status + " -- " + e.description
 }
@@ -134,8 +134,8 @@ func NewToolSettings(com *common.Common) *ToolSettings {
 	h.Styles = com.Styles.DialogHelpStyles()
 	d.help = h
 
-	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", "next"))
-	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", "previous"))
+	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", com.Text("next")))
+	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", com.Text("previous")))
 	d.keyMap.Toggle = key.NewBinding(key.WithKeys("enter", " "), key.WithHelp("enter", "toggle"))
 	d.keyMap.Close = CloseKey
 
@@ -152,8 +152,8 @@ func (d *ToolSettings) buildItems() []list.FilterableItem {
 	items := make([]list.FilterableItem, 0, len(toolSettingsCatalog))
 	for _, entry := range toolSettingsCatalog {
 		items = append(items, &toolSettingEntry{
-			Versioned: list.NewVersioned(), key: entry.key, label: entry.label,
-			description: entry.description, enabled: enabled[entry.key], t: d.com,
+			Versioned: list.NewVersioned(), key: entry.key, label: d.com.Text(entry.label),
+			description: d.com.Text(entry.description), enabled: enabled[entry.key], t: d.com,
 		})
 	}
 	return items
@@ -218,7 +218,7 @@ func (d *ToolSettings) HandleMsg(msg tea.Msg) Action {
 		}
 	case toolToggledMsg:
 		if msg.err != nil {
-			return ActionCmd{util.ReportError(fmt.Errorf("failed to update %s: %w", msg.key, msg.err))}
+			return ActionCmd{util.ReportError(fmt.Errorf(d.com.Text("failed to update %s: %w"), msg.key, msg.err))}
 		}
 		for _, item := range d.list.FilteredItems() {
 			if e, ok := item.(*toolSettingEntry); ok && e.key == msg.key {
@@ -244,7 +244,7 @@ func (d *ToolSettings) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	innerWidth := width - t.Dialog.View.GetHorizontalFrameSize()
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Tool Settings"
+	rc.Title = d.com.Text("Tool Settings")
 
 	listHeight, listTotalHeight, _ := sizeDialogList(t, d.list, innerWidth, height)
 	bodyView := t.Dialog.List.Height(d.list.Height()).Render(d.list.Render())

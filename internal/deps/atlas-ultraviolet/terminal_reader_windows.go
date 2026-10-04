@@ -64,7 +64,9 @@ func (d *TerminalReader) streamData(ctx context.Context, readc chan []byte) erro
 		select {
 		case <-ctx.Done():
 			return nil
-		case readc <- buf.Bytes():
+		// The receiver owns the packet after the send. Keep it independent of
+		// the serialization buffer, which is reused for the next input batch.
+		case readc <- bytes.Clone(buf.Bytes()):
 		}
 
 		buf.Reset()
@@ -134,7 +136,7 @@ func (d *TerminalReader) serializeWin32InputRecords(records []xwindows.InputReco
 			var button MouseButton
 			alt := mevent.ControlKeyState&(xwindows.LEFT_ALT_PRESSED|xwindows.RIGHT_ALT_PRESSED) != 0
 			ctrl := mevent.ControlKeyState&(xwindows.LEFT_CTRL_PRESSED|xwindows.RIGHT_CTRL_PRESSED) != 0
-			shift := mevent.ControlKeyState&(xwindows.SHIFT_PRESSED) != 0
+			shift := mevent.ControlKeyState&xwindows.SHIFT_PRESSED != 0
 			wheelDirection := int16(highWord(mevent.ButtonState)) //nolint:gosec
 			switch mevent.EventFlags {
 			case 0, xwindows.DOUBLE_CLICK:

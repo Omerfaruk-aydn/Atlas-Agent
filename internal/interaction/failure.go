@@ -6,10 +6,22 @@ import "strings"
 func Failure(message string) (string, string) {
 	lower := strings.ToLower(message)
 	switch {
+	case strings.Contains(lower, "field_not_ready"):
+		return "field_not_ready", "Observe the field and verify retained text and keyboard focus before submission. The key was not sent; do not replay blindly."
+	case strings.Contains(lower, "stale_observation"):
+		return "stale_observation", "Observe the intended window again and select a current numbered target. Do not reuse an expired or changed target."
 	case strings.Contains(lower, "interaction_paused"):
 		return "interaction_paused", "Wait for the user's explicit resume; do not continue automation."
 	case strings.Contains(lower, "wrong_window"):
 		return "wrong_window", "Inspect windows, focus the intended target, then observe again."
+	case strings.Contains(lower, "focus_denied"):
+		return "focus_denied", "Windows did not grant foreground activation. Confirm the intended window before input; do not repeat focus blindly."
+	case strings.Contains(lower, "unsupported_pattern"):
+		return "unsupported_pattern", "Do not retry this pattern on this control. Use its reported supported_patterns or a fresh crop/OCR with guarded visual input."
+	case strings.Contains(lower, "value_not_applied"):
+		return "value_not_applied", "The provider did not retain the requested value. Observe the field, focus it and use guarded keyboard input; do not submit the unchanged field or repeat the same pattern blindly."
+	case strings.Contains(lower, "observation_incomplete"):
+		return "observation_incomplete", "Resolve an exact observed element_id or inspect a relevant crop. A partial tree cannot prove uniqueness or absence."
 	case strings.Contains(lower, "ambiguous"):
 		return "ambiguous_target", "Refine role, name or selector until exactly one target matches."
 	case strings.Contains(lower, "accessibility_unavailable"):

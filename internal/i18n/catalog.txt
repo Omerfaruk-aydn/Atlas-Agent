@@ -1,0 +1,936 @@
+# English|Türkçe|Deutsch|Français|Italiano|العربية
+Language|Dil|Sprache|Langue|Lingua|اللغة
+Choose interface language|Arayüz dilini seç|Oberflächensprache wählen|Choisir la langue de l’interface|Scegli la lingua dell’interfaccia|اختر لغة الواجهة
+Language saved|Dil kaydedildi|Sprache gespeichert|Langue enregistrée|Lingua salvata|تم حفظ اللغة
+Saving language…|Dil kaydediliyor…|Sprache wird gespeichert…|Enregistrement de la langue…|Salvataggio della lingua…|جارٍ حفظ اللغة…
+Type to filter|Filtrelemek için yaz|Zum Filtern tippen|Saisir pour filtrer|Digita per filtrare|اكتب للتصفية
+Current|Geçerli|Aktuell|Actuel|Attuale|الحالية
+Commands|Komutlar|Befehle|Commandes|Comandi|الأوامر
+System|Sistem|System|Système|Sistema|النظام
+User|Kullanıcı|Benutzer|Utilisateur|Utente|المستخدم
+New Session|Yeni sohbet|Neue Sitzung|Nouvelle session|Nuova sessione|جلسة جديدة
+Sessions|Sohbetler|Sitzungen|Sessions|Sessioni|الجلسات
+Switch Model|Model değiştir|Modell wechseln|Changer de modèle|Cambia modello|تغيير النموذج
+Set Session Goal|Sohbet hedefi belirle|Sitzungsziel festlegen|Définir l’objectif de la session|Imposta l’obiettivo della sessione|تحديد هدف الجلسة
+Back to Previous Session|Önceki sohbete dön|Zur vorherigen Sitzung|Revenir à la session précédente|Torna alla sessione precedente|العودة إلى الجلسة السابقة
+Summarize Session|Sohbeti özetle|Sitzung zusammenfassen|Résumer la session|Riassumi la sessione|تلخيص الجلسة
+Refresh Session (recover from a stuck run)|Sohbeti yenile (takılan çalışmayı kurtar)|Sitzung erneuern (blockierten Lauf wiederherstellen)|Actualiser la session (récupérer une exécution bloquée)|Aggiorna la sessione (recupera un’esecuzione bloccata)|تحديث الجلسة (استعادة تشغيل متوقف)
+Interrupt + Correct|Durdur ve düzelt|Unterbrechen und korrigieren|Interrompre et corriger|Interrompi e correggi|مقاطعة وتصحيح
+Disable Auto-Compact|Otomatik özetlemeyi kapat|Automatische Zusammenfassung deaktivieren|Désactiver le résumé automatique|Disattiva il riepilogo automatico|تعطيل التلخيص التلقائي
+Enable Auto-Compact|Otomatik özetlemeyi aç|Automatische Zusammenfassung aktivieren|Activer le résumé automatique|Attiva il riepilogo automatico|تفعيل التلخيص التلقائي
+Set Auto-Compact Threshold|Otomatik özetleme eşiği|Zusammenfassungsschwelle festlegen|Définir le seuil du résumé automatique|Imposta la soglia del riepilogo automatico|تحديد عتبة التلخيص التلقائي
+Enable Thinking Mode|Düşünme modunu aç|Denkmodus aktivieren|Activer le mode de réflexion|Attiva la modalità di ragionamento|تفعيل وضع التفكير
+Disable Thinking Mode|Düşünme modunu kapat|Denkmodus deaktivieren|Désactiver le mode de réflexion|Disattiva la modalità di ragionamento|تعطيل وضع التفكير
+Select Reasoning Effort|Düşünme düzeyini seç|Denkaufwand wählen|Choisir le niveau de raisonnement|Scegli il livello di ragionamento|اختيار مستوى الاستدلال
+Toggle Sidebar|Kenar çubuğunu aç/kapat|Seitenleiste umschalten|Afficher/masquer la barre latérale|Mostra/nascondi la barra laterale|إظهار/إخفاء الشريط الجانبي
+Open File Picker|Dosya seçiciyi aç|Dateiauswahl öffnen|Ouvrir le sélecteur de fichiers|Apri il selettore di file|فتح منتقي الملفات
+Open External Editor|Harici düzenleyiciyi aç|Externen Editor öffnen|Ouvrir l’éditeur externe|Apri l’editor esterno|فتح المحرر الخارجي
+Enable Docker MCP Catalog|Docker MCP kataloğunu aç|Docker-MCP-Katalog aktivieren|Activer le catalogue Docker MCP|Attiva il catalogo Docker MCP|تفعيل كتالوج Docker MCP
+Disable Docker MCP Catalog|Docker MCP kataloğunu kapat|Docker-MCP-Katalog deaktivieren|Désactiver le catalogue Docker MCP|Disattiva il catalogo Docker MCP|تعطيل كتالوج Docker MCP
+Toggle To-Dos/Queue|Görevleri/kuyruğu aç/kapat|Aufgaben/Warteschlange umschalten|Afficher/masquer les tâches/la file|Mostra/nascondi attività/coda|إظهار/إخفاء المهام/الطابور
+Toggle Queue|Kuyruğu aç/kapat|Warteschlange umschalten|Afficher/masquer la file|Mostra/nascondi la coda|إظهار/إخفاء الطابور
+Toggle To-Dos|Görevleri aç/kapat|Aufgaben umschalten|Afficher/masquer les tâches|Mostra/nascondi le attività|إظهار/إخفاء المهام
+Notification Style|Bildirim biçimi|Benachrichtigungsstil|Style de notification|Stile delle notifiche|نمط الإشعارات
+Toggle Yolo Mode|YOLO modunu aç/kapat|YOLO-Modus umschalten|Activer/désactiver le mode YOLO|Attiva/disattiva la modalità YOLO|تفعيل/تعطيل وضع YOLO
+Enable Computer Use|Bilgisayar kontrolünü aç|Computersteuerung aktivieren|Activer le contrôle de l’ordinateur|Attiva il controllo del computer|تفعيل التحكم بالحاسوب
+Disable Computer Use|Bilgisayar kontrolünü kapat|Computersteuerung deaktivieren|Désactiver le contrôle de l’ordinateur|Disattiva il controllo del computer|تعطيل التحكم بالحاسوب
+Cycle Permission Mode|İzin modunu değiştir|Berechtigungsmodus wechseln|Changer le mode d’autorisation|Cambia la modalità di autorizzazione|تغيير وضع الأذونات
+Rewind to Checkpoint|Kontrol noktasına dön|Zum Kontrollpunkt zurückkehren|Revenir au point de contrôle|Torna al punto di controllo|العودة إلى نقطة التحقق
+Background Jobs|Arka plan işleri|Hintergrundaufgaben|Tâches en arrière-plan|Attività in background|مهام الخلفية
+Agent Hub|Ajan merkezi|Agentenzentrale|Centre des agents|Centro agenti|مركز الوكلاء
+Agent Controls|Ajan kontrolleri|Agentensteuerung|Contrôles des agents|Controlli degli agenti|عناصر التحكم بالوكلاء
+Context Inspector|Bağlam inceleyici|Kontextinspektor|Inspecteur de contexte|Ispettore del contesto|فاحص السياق
+Usage Profiles|Kullanım profilleri|Nutzungsprofile|Profils d’utilisation|Profili di utilizzo|ملفات الاستخدام
+Agent Batches|Toplu ajan işleri|Agentenstapel|Lots d’agents|Lotti di agenti|دفعات الوكلاء
+Browser & Desktop Control|Tarayıcı ve masaüstü kontrolü|Browser- und Desktopsteuerung|Contrôle du navigateur et du bureau|Controllo del browser e del desktop|التحكم بالمتصفح وسطح المكتب
+Agent Automation|Ajan otomasyonu|Agentenautomatisierung|Automatisation des agents|Automazione degli agenti|أتمتة الوكلاء
+Durable Task Board|Kalıcı görev panosu|Dauerhaftes Aufgabenboard|Tableau des tâches persistant|Bacheca delle attività persistente|لوحة مهام دائمة
+Source Memory|Kaynaklı bellek|Quellenbasierter Speicher|Mémoire sourcée|Memoria con fonti|ذاكرة موثقة بالمصادر
+Session Mode|Sohbet modu|Sitzungsmodus|Mode de session|Modalità della sessione|وضع الجلسة
+Model Roles|Model rolleri|Modellrollen|Rôles des modèles|Ruoli dei modelli|أدوار النماذج
+Model Fallbacks|Yedek modeller|Ersatzmodelle|Modèles de secours|Modelli di riserva|النماذج البديلة
+Subagents|Uzman ajanlar|Unteragenten|Sous-agents|Sottoagenti|الوكلاء الفرعيون
+Tool Settings|Araç ayarları|Werkzeugeinstellungen|Paramètres des outils|Impostazioni degli strumenti|إعدادات الأدوات
+Fast Mode (small model, lowest reasoning)|Hızlı mod (küçük model, en az düşünme)|Schnellmodus (kleines Modell, geringster Denkaufwand)|Mode rapide (petit modèle, raisonnement minimal)|Modalità rapida (modello piccolo, ragionamento minimo)|الوضع السريع (نموذج صغير، أدنى استدلال)
+Quality Mode (large model, highest reasoning)|Kalite modu (büyük model, en çok düşünme)|Qualitätsmodus (großes Modell, höchster Denkaufwand)|Mode qualité (grand modèle, raisonnement maximal)|Modalità qualità (modello grande, ragionamento massimo)|وضع الجودة (نموذج كبير، أعلى استدلال)
+Search Chat|Sohbette ara|Chat durchsuchen|Rechercher dans la conversation|Cerca nella conversazione|البحث في المحادثة
+Modified Files|Değiştirilen dosyalar|Geänderte Dateien|Fichiers modifiés|File modificati|الملفات المعدلة
+Usage & Cost|Kullanım ve maliyet|Nutzung und Kosten|Utilisation et coût|Utilizzo e costo|الاستخدام والتكلفة
+Snippets|Hazır metinler|Textbausteine|Extraits|Frammenti|المقتطفات
+Search Prompt History|İstem geçmişinde ara|Promptverlauf durchsuchen|Rechercher dans l’historique des prompts|Cerca nella cronologia dei prompt|البحث في سجل الطلبات
+Search All Sessions|Tüm sohbetlerde ara|Alle Sitzungen durchsuchen|Rechercher dans toutes les sessions|Cerca in tutte le sessioni|البحث في جميع الجلسات
+Toggle Help|Yardımı aç/kapat|Hilfe umschalten|Afficher/masquer l’aide|Mostra/nascondi l’aiuto|إظهار/إخفاء المساعدة
+Initialize Project|Projeyi hazırla|Projekt initialisieren|Initialiser le projet|Inizializza il progetto|تهيئة المشروع
+Disable Background Color|Arka plan rengini kapat|Hintergrundfarbe deaktivieren|Désactiver la couleur de fond|Disattiva il colore di sfondo|تعطيل لون الخلفية
+Enable Background Color|Arka plan rengini aç|Hintergrundfarbe aktivieren|Activer la couleur de fond|Attiva il colore di sfondo|تفعيل لون الخلفية
+Quit|Çıkış|Beenden|Quitter|Esci|خروج
+Start a new chat, clearing this one|Yeni bir sohbet başlat|Einen neuen Chat starten|Démarrer une nouvelle conversation|Avvia una nuova conversazione|بدء محادثة جديدة
+Browse and switch between sessions|Sohbetleri görüntüle ve değiştir|Sitzungen ansehen und wechseln|Parcourir les sessions et en changer|Sfoglia e cambia sessione|تصفح الجلسات والتبديل بينها
+Choose the model this session runs on|Bu sohbetin modelini seç|Modell für diese Sitzung wählen|Choisir le modèle de cette session|Scegli il modello per questa sessione|اختيار نموذج هذه الجلسة
+Work towards a goal, taking turns unprompted until it is reached|Hedefe ulaşana kadar otomatik çalış|Bis zum Erreichen des Ziels selbständig arbeiten|Travailler de façon autonome jusqu’à atteindre l’objectif|Lavora autonomamente fino al raggiungimento dell’obiettivo|العمل تلقائيًا حتى تحقيق الهدف
+Return to the session you stepped in from|Geldiğin sohbete dön|Zur Ausgangssitzung zurückkehren|Revenir à la session d’origine|Torna alla sessione di origine|العودة إلى الجلسة الأصلية
+Summarize the session to free up context|Bağlamda yer açmak için sohbeti özetle|Sitzung zusammenfassen, um Kontext freizugeben|Résumer la session pour libérer du contexte|Riassumi la sessione per liberare contesto|تلخيص الجلسة لتوفير مساحة في السياق
+Recover a session stuck mid-run|Çalışırken takılan sohbeti kurtar|Eine blockierte Sitzung wiederherstellen|Récupérer une session bloquée|Recupera una sessione bloccata|استعادة جلسة توقفت أثناء التشغيل
+Interrupt the run and correct the prompt|Çalışmayı durdur ve istemi düzelt|Lauf unterbrechen und Prompt korrigieren|Interrompre l’exécution et corriger le prompt|Interrompi l’esecuzione e correggi il prompt|مقاطعة التشغيل وتصحيح الطلب
+Turn automatic summarizing on or off|Otomatik özetlemeyi aç veya kapat|Automatische Zusammenfassung ein- oder ausschalten|Activer ou désactiver le résumé automatique|Attiva o disattiva il riepilogo automatico|تفعيل أو تعطيل التلخيص التلقائي
+Set how full context gets before summarizing|Özetleme öncesi bağlam doluluk eşiğini belirle|Kontextschwelle für die Zusammenfassung festlegen|Définir le seuil du contexte avant le résumé|Imposta la soglia del contesto prima del riepilogo|تحديد عتبة امتلاء السياق قبل التلخيص
+Turn extended thinking on or off|Ayrıntılı düşünmeyi aç veya kapat|Erweitertes Denken ein- oder ausschalten|Activer ou désactiver la réflexion approfondie|Attiva o disattiva il ragionamento esteso|تفعيل أو تعطيل التفكير الموسع
+Set how hard the model reasons|Modelin düşünme düzeyini belirle|Denkaufwand des Modells festlegen|Définir le niveau de raisonnement du modèle|Imposta il livello di ragionamento del modello|تحديد مستوى استدلال النموذج
+Show or hide the sidebar|Kenar çubuğunu göster veya gizle|Seitenleiste anzeigen oder ausblenden|Afficher ou masquer la barre latérale|Mostra o nascondi la barra laterale|إظهار أو إخفاء الشريط الجانبي
+Attach an image or file to the prompt|İsteme görsel veya dosya ekle|Bild oder Datei an den Prompt anhängen|Joindre une image ou un fichier au prompt|Allega un’immagine o un file al prompt|إرفاق صورة أو ملف بالطلب
+Write the prompt in $EDITOR|İstemi $EDITOR ile yaz|Prompt in $EDITOR schreiben|Écrire le prompt dans $EDITOR|Scrivi il prompt in $EDITOR|كتابة الطلب باستخدام $EDITOR
+Enable the Docker MCP catalog|Docker MCP kataloğunu etkinleştir|Docker-MCP-Katalog aktivieren|Activer le catalogue Docker MCP|Attiva il catalogo Docker MCP|تفعيل كتالوج Docker MCP
+Disable the Docker MCP catalog|Docker MCP kataloğunu devre dışı bırak|Docker-MCP-Katalog deaktivieren|Désactiver le catalogue Docker MCP|Disattiva il catalogo Docker MCP|تعطيل كتالوج Docker MCP
+Show or hide the to-do and queue strip|Görev ve kuyruk şeridini göster veya gizle|Aufgaben- und Warteschlangenleiste umschalten|Afficher ou masquer les tâches et la file|Mostra o nascondi attività e coda|إظهار أو إخفاء شريط المهام والطابور
+Choose how you are notified when a run ends|Çalışma bittiğinde bildirim biçimini seç|Benachrichtigung nach einem Lauf wählen|Choisir la notification en fin d’exécution|Scegli la notifica al termine dell’esecuzione|اختيار طريقة الإشعار عند انتهاء التشغيل
+Run every tool without asking first|Tüm araçları önceden sormadan çalıştır|Alle Werkzeuge ohne vorherige Rückfrage ausführen|Exécuter tous les outils sans demander|Esegui tutti gli strumenti senza chiedere|تشغيل جميع الأدوات دون طلب الإذن مسبقًا
+Let the agent see and control the screen (Windows)|Ajanın ekranı görmesine ve kontrol etmesine izin ver (Windows)|Bildschirmzugriff und Steuerung erlauben (Windows)|Autoriser l’agent à voir et contrôler l’écran (Windows)|Consenti all’agente di vedere e controllare lo schermo (Windows)|السماح للوكيل برؤية الشاشة والتحكم بها (Windows)
+Cycle what Atlas is allowed to do unasked|Atlas’ın sormadan yapabileceklerini değiştir|Berechtigungen ohne Rückfrage wechseln|Changer les actions autorisées sans demande|Cambia le azioni consentite senza chiedere|تغيير ما يُسمح لـ Atlas بفعله دون سؤال
+Roll the session back to a checkpoint|Sohbeti bir kontrol noktasına geri al|Sitzung auf einen Kontrollpunkt zurücksetzen|Ramener la session à un point de contrôle|Riporta la sessione a un punto di controllo|إرجاع الجلسة إلى نقطة تحقق
+View and manage background jobs|Arka plan işlerini görüntüle ve yönet|Hintergrundaufgaben ansehen und verwalten|Voir et gérer les tâches en arrière-plan|Visualizza e gestisci le attività in background|عرض مهام الخلفية وإدارتها
+View and switch between running agents|Çalışan ajanları görüntüle ve aralarında geçiş yap|Laufende Agenten ansehen und wechseln|Voir les agents actifs et passer de l’un à l’autre|Visualizza e cambia gli agenti in esecuzione|عرض الوكلاء الجاري تشغيلهم والتبديل بينهم
+Inspect tasks, budgets and revision-checked controls|Görevleri, bütçeleri ve sürüm denetimli kontrolleri incele|Aufgaben, Budgets und revisionsgeprüfte Steuerung ansehen|Examiner les tâches, budgets et contrôles de révision|Esamina attività, budget e controlli di revisione|فحص المهام والميزانيات وعناصر التحكم المقيدة بالمراجعة
+Inspect request sources and token estimates; pin files or exclude tool outputs|İstem kaynaklarını ve token tahminlerini incele; dosya sabitle veya araç çıktısını dışla|Anfragequellen und Token-Schätzungen prüfen; Dateien anheften oder Werkzeugausgaben ausschließen|Examiner les sources et estimations de tokens ; épingler des fichiers ou exclure des sorties|Esamina fonti e stime dei token; fissa file o escludi output degli strumenti|فحص مصادر الطلب وتقديرات الرموز؛ تثبيت الملفات أو استبعاد مخرجات الأدوات
+Select model, tools, execution limits and output expectations together|Model, araç, çalışma sınırı ve çıktı beklentilerini birlikte seç|Modell, Werkzeuge, Ausführungsgrenzen und Ausgabeziele gemeinsam wählen|Choisir ensemble modèle, outils, limites et résultats attendus|Scegli insieme modello, strumenti, limiti e risultati attesi|اختيار النموذج والأدوات وحدود التشغيل والنتائج المتوقعة معًا
+Inspect durable per-item results and failed batch rows|Kalıcı öğe sonuçlarını ve başarısız toplu iş satırlarını incele|Dauerhafte Einzelergebnisse und fehlgeschlagene Stapelzeilen prüfen|Examiner les résultats persistants et les éléments en échec|Esamina risultati persistenti e righe non riuscite|فحص نتائج العناصر الدائمة وصفوف الدفعة الفاشلة
+Inspect action history; pause for manual authentication and resume control|İşlem geçmişini incele; elle giriş için duraklat ve kontrolü sürdür|Aktionsverlauf prüfen; für manuelle Anmeldung pausieren und fortsetzen|Examiner l’historique ; suspendre pour l’authentification manuelle puis reprendre|Esamina la cronologia; sospendi per l’accesso manuale e riprendi|فحص سجل الإجراءات؛ الإيقاف للمصادقة اليدوية ثم استئناف التحكم
+Inspect heartbeat and cron jobs; pause or resume explicitly|Heartbeat ve cron işlerini incele; duraklat veya sürdür|Heartbeat- und Cron-Aufgaben prüfen; pausieren oder fortsetzen|Examiner les tâches heartbeat et cron ; suspendre ou reprendre|Esamina attività heartbeat e cron; sospendi o riprendi|فحص مهام heartbeat وcron؛ إيقافها أو استئنافها صراحةً
+Inspect worker ownership and evidence; accept review tasks|Worker sahipliğini ve kanıtları incele; inceleme görevlerini kabul et|Worker-Zuständigkeit und Nachweise prüfen; Prüfaufgaben annehmen|Examiner les responsabilités et preuves ; accepter les tâches à réviser|Esamina responsabilità e prove; accetta attività da revisionare|فحص مسؤولية العامل والأدلة؛ قبول مهام المراجعة
+Inspect memory provenance, expiry and source freshness|Bellek kaynağını, geçerliliğini ve güncelliğini incele|Speicherherkunft, Ablauf und Quellenaktualität prüfen|Examiner la provenance, l’expiration et l’actualité des sources|Esamina provenienza, scadenza e aggiornamento delle fonti|فحص مصدر الذاكرة وانتهائها وحداثة المصادر
+Switch the session's working mode|Sohbetin çalışma modunu değiştir|Arbeitsmodus der Sitzung wechseln|Changer le mode de travail de la session|Cambia la modalità di lavoro della sessione|تغيير وضع عمل الجلسة
+Assign models to roles like title and summary|Başlık ve özet gibi rollere model ata|Modelle Rollen wie Titel und Zusammenfassung zuweisen|Attribuer des modèles aux rôles de titre et résumé|Assegna modelli a ruoli come titolo e riepilogo|تعيين نماذج لأدوار مثل العنوان والتلخيص
+Set which models to fall back to on failure|Hata durumunda kullanılacak yedek modelleri belirle|Ersatzmodelle für Fehler festlegen|Définir les modèles de secours en cas d’échec|Imposta i modelli di riserva in caso di errore|تحديد النماذج البديلة عند الفشل
+Configure the subagents available to Atlas|Atlas’ın uzman ajanlarını yapılandır|Verfügbare Unteragenten konfigurieren|Configurer les sous-agents disponibles|Configura i sottoagenti disponibili|إعداد الوكلاء الفرعيين المتاحين لـ Atlas
+Choose which tools Atlas may use|Atlas’ın kullanabileceği araçları seç|Erlaubte Werkzeuge auswählen|Choisir les outils autorisés|Scegli gli strumenti consentiti|اختيار الأدوات التي يمكن لـ Atlas استخدامها
+Small model, lowest reasoning|Küçük model, en az düşünme|Kleines Modell, geringster Denkaufwand|Petit modèle, raisonnement minimal|Modello piccolo, ragionamento minimo|نموذج صغير، أدنى استدلال
+Large model, highest reasoning|Büyük model, en çok düşünme|Großes Modell, höchster Denkaufwand|Grand modèle, raisonnement maximal|Modello grande, ragionamento massimo|نموذج كبير، أعلى استدلال
+Search this conversation|Bu sohbette ara|Diese Unterhaltung durchsuchen|Rechercher dans cette conversation|Cerca in questa conversazione|البحث في هذه المحادثة
+Show files changed in this session|Bu sohbette değişen dosyaları göster|In dieser Sitzung geänderte Dateien anzeigen|Afficher les fichiers modifiés dans cette session|Mostra i file modificati in questa sessione|عرض الملفات المعدلة في هذه الجلسة
+Show token usage and cost|Token kullanımını ve maliyeti göster|Token-Nutzung und Kosten anzeigen|Afficher les tokens utilisés et le coût|Mostra utilizzo dei token e costo|عرض استخدام الرموز والتكلفة
+Insert a saved prompt snippet|Kaydedilmiş hazır istemi ekle|Gespeicherten Promptbaustein einfügen|Insérer un extrait de prompt enregistré|Inserisci un frammento di prompt salvato|إدراج مقتطف طلب محفوظ
+Search prompts you have sent before|Daha önce gönderdiğin istemlerde ara|Frühere Prompts durchsuchen|Rechercher dans les prompts précédents|Cerca nei prompt precedenti|البحث في الطلبات السابقة
+Search across all your sessions|Tüm sohbetlerinde ara|Alle Sitzungen durchsuchen|Rechercher dans toutes vos sessions|Cerca in tutte le tue sessioni|البحث في جميع جلساتك
+Show or hide the keyboard help|Klavye yardımını göster veya gizle|Tastaturhilfe anzeigen oder ausblenden|Afficher ou masquer l’aide du clavier|Mostra o nascondi l’aiuto della tastiera|إظهار أو إخفاء مساعدة لوحة المفاتيح
+Create an AGENTS.md for this project|Bu proje için AGENTS.md oluştur|AGENTS.md für dieses Projekt erstellen|Créer un AGENTS.md pour ce projet|Crea un AGENTS.md per questo progetto|إنشاء AGENTS.md لهذا المشروع
+Use the terminal's own background|Terminalin kendi arka planını kullan|Terminalhintergrund verwenden|Utiliser le fond du terminal|Usa lo sfondo del terminale|استخدام خلفية الطرفية
+Exit Atlas|Atlas’tan çık|Atlas beenden|Quitter Atlas|Esci da Atlas|الخروج من Atlas
+confirm|onayla|bestätigen|confirmer|conferma|تأكيد
+choose|seç|wählen|choisir|scegli|اختيار
+cancel|iptal|abbrechen|annuler|annulla|إلغاء
+exit|çıkış|verlassen|quitter|esci|خروج
+next item|sonraki öğe|nächster Eintrag|élément suivant|elemento successivo|العنصر التالي
+previous item|önceki öğe|vorheriger Eintrag|élément précédent|elemento precedente|العنصر السابق
+next|sonraki|weiter|suivant|successivo|التالي
+previous|önceki|zurück|précédent|precedente|السابق
+select|seç|auswählen|sélectionner|seleziona|اختيار
+switch|değiştir|wechseln|changer|cambia|تبديل
+switch selection|seçimi değiştir|Auswahl wechseln|changer la sélection|cambia selezione|تبديل الاختيار
+switch selection prev|önceki seçime geç|vorherige Auswahl|sélection précédente|selezione precedente|الاختيار السابق
+more|daha fazla|mehr|plus|altro|المزيد
+models|modeller|Modelle|modèles|modelli|النماذج
+suspend|askıya al|anhalten|suspendre|sospendi|تعليق
+change focus|odağı değiştir|Fokus wechseln|changer le focus|cambia focus|تغيير التركيز
+toggle yolo|YOLO aç/kapat|YOLO umschalten|basculer YOLO|attiva/disattiva YOLO|تبديل YOLO
+rewind|geri al|zurücksetzen|revenir|ripristina|رجوع
+jobs|işler|Aufgaben|tâches|attività|المهام
+agents|ajanlar|Agenten|agents|agenti|الوكلاء
+workflow|iş akışı|Arbeitsablauf|flux de travail|flusso di lavoro|سير العمل
+send|gönder|senden|envoyer|invia|إرسال
+send message|mesaj gönder|Nachricht senden|envoyer le message|invia messaggio|إرسال رسالة
+add attachment|ek ekle|Anhang hinzufügen|ajouter une pièce jointe|aggiungi allegato|إضافة مرفق
+cancel run|çalışmayı durdur|Lauf abbrechen|annuler l’exécution|annulla esecuzione|إلغاء التشغيل
+details|ayrıntılar|Details|détails|dettagli|التفاصيل
+copy|kopyala|kopieren|copier|copia|نسخ
+paste|yapıştır|einfügen|coller|incolla|لصق
+delete|sil|löschen|supprimer|elimina|حذف
+rename|yeniden adlandır|umbenennen|renommer|rinomina|إعادة تسمية
+edit|düzenle|bearbeiten|modifier|modifica|تعديل
+save|kaydet|speichern|enregistrer|salva|حفظ
+search|ara|suchen|rechercher|cerca|بحث
+expand|genişlet|erweitern|développer|espandi|توسيع
+collapse|daralt|einklappen|réduire|comprimi|طي
+scroll|kaydır|scrollen|défiler|scorri|تمرير
+scroll up|yukarı kaydır|nach oben scrollen|défiler vers le haut|scorri in alto|تمرير لأعلى
+scroll down|aşağı kaydır|nach unten scrollen|défiler vers le bas|scorri in basso|تمرير لأسفل
+page up|önceki sayfa|Seite hoch|page précédente|pagina precedente|الصفحة السابقة
+page down|sonraki sayfa|Seite runter|page suivante|pagina successiva|الصفحة التالية
+top|en üst|Anfang|début|inizio|الأعلى
+bottom|en alt|Ende|fin|fine|الأسفل
+focus sidebar|kenar çubuğuna odaklan|Seitenleiste fokussieren|activer la barre latérale|attiva la barra laterale|تركيز الشريط الجانبي
+focus chat|sohbete odaklan|Chat fokussieren|activer la conversation|attiva la conversazione|تركيز المحادثة
+yes|evet|ja|oui|sì|نعم
+no|hayır|nein|non|no|لا
+Name|Ad|Name|Nom|Nome|الاسم
+Title|Başlık|Titel|Titre|Titolo|العنوان
+Description|Açıklama|Beschreibung|Description|Descrizione|الوصف
+Model|Model|Modell|Modèle|Modello|النموذج
+Provider|Sağlayıcı|Anbieter|Fournisseur|Fornitore|المزود
+Providers|Sağlayıcılar|Anbieter|Fournisseurs|Fornitori|المزودون
+Tools|Araçlar|Werkzeuge|Outils|Strumenti|الأدوات
+Settings|Ayarlar|Einstellungen|Paramètres|Impostazioni|الإعدادات
+Enabled|Açık|Aktiviert|Activé|Attivato|مفعّل
+Disabled|Kapalı|Deaktiviert|Désactivé|Disattivato|معطّل
+Enable|Aç|Aktivieren|Activer|Attiva|تفعيل
+Disable|Kapat|Deaktivieren|Désactiver|Disattiva|تعطيل
+Auto|Otomatik|Automatisch|Automatique|Automatico|تلقائي
+Native|Sistem|System|Système|Sistema|النظام
+Bell|Zil|Glocke|Cloche|Campanello|جرس
+Automatically detect the best backend|En uygun bildirim sistemini otomatik seç|Bestes Backend automatisch erkennen|Détecter automatiquement le meilleur système|Rileva automaticamente il sistema migliore|اختيار نظام الإشعارات الأنسب تلقائيًا
+Use system notifications (macOS/Linux/Windows)|Sistem bildirimlerini kullan (macOS/Linux/Windows)|Systembenachrichtigungen verwenden (macOS/Linux/Windows)|Utiliser les notifications système (macOS/Linux/Windows)|Usa le notifiche di sistema (macOS/Linux/Windows)|استخدام إشعارات النظام (macOS/Linux/Windows)
+Use terminal OSC escape sequences|Terminalin OSC bildirimlerini kullan|OSC-Sequenzen des Terminals verwenden|Utiliser les séquences OSC du terminal|Usa le sequenze OSC del terminale|استخدام تسلسلات OSC للطرفية
+Use terminal bell character|Terminal zilini kullan|Terminalglocke verwenden|Utiliser la cloche du terminal|Usa il campanello del terminale|استخدام جرس الطرفية
+Turn off notifications|Bildirimleri kapat|Benachrichtigungen ausschalten|Désactiver les notifications|Disattiva le notifiche|إيقاف الإشعارات
+Loading...|Yükleniyor...|Wird geladen...|Chargement...|Caricamento...|جارٍ التحميل...
+Loading…|Yükleniyor…|Wird geladen…|Chargement…|Caricamento…|جارٍ التحميل…
+Loading|Yükleniyor|Wird geladen|Chargement|Caricamento|جارٍ التحميل
+No results|Sonuç yok|Keine Ergebnisse|Aucun résultat|Nessun risultato|لا توجد نتائج
+No matches|Eşleşme yok|Keine Treffer|Aucune correspondance|Nessuna corrispondenza|لا توجد مطابقات
+No sessions found|Sohbet bulunamadı|Keine Sitzungen gefunden|Aucune session trouvée|Nessuna sessione trovata|لم يتم العثور على جلسات
+No files found|Dosya bulunamadı|Keine Dateien gefunden|Aucun fichier trouvé|Nessun file trovato|لم يتم العثور على ملفات
+No models found|Model bulunamadı|Keine Modelle gefunden|Aucun modèle trouvé|Nessun modello trovato|لم يتم العثور على نماذج
+No commands found|Komut bulunamadı|Keine Befehle gefunden|Aucune commande trouvée|Nessun comando trovato|لم يتم العثور على أوامر
+No tools available|Kullanılabilir araç yok|Keine Werkzeuge verfügbar|Aucun outil disponible|Nessuno strumento disponibile|لا توجد أدوات متاحة
+Required|Zorunlu|Erforderlich|Obligatoire|Obbligatorio|مطلوب
+Optional|İsteğe bağlı|Optional|Facultatif|Facoltativo|اختياري
+API Key|API anahtarı|API-Schlüssel|Clé API|Chiave API|مفتاح API
+Enter API key|API anahtarını gir|API-Schlüssel eingeben|Saisir la clé API|Inserisci la chiave API|أدخل مفتاح API
+Authentication|Kimlik doğrulama|Authentifizierung|Authentification|Autenticazione|المصادقة
+Sign In|Giriş yap|Anmelden|Se connecter|Accedi|تسجيل الدخول
+Connected|Bağlı|Verbunden|Connecté|Connesso|متصل
+Disconnected|Bağlantı kesildi|Getrennt|Déconnecté|Disconnesso|غير متصل
+Connecting...|Bağlanıyor...|Verbindung wird hergestellt...|Connexion...|Connessione...|جارٍ الاتصال...
+Reasoning Effort|Düşünme düzeyi|Denkaufwand|Niveau de raisonnement|Livello di ragionamento|مستوى الاستدلال
+Low|Düşük|Niedrig|Faible|Basso|منخفض
+Medium|Orta|Mittel|Moyen|Medio|متوسط
+High|Yüksek|Hoch|Élevé|Alto|مرتفع
+Minimal|En az|Minimal|Minimal|Minimo|أدنى
+Default|Varsayılan|Standard|Par défaut|Predefinito|افتراضي
+None|Yok|Keine|Aucun|Nessuno|لا شيء
+All|Tümü|Alle|Tous|Tutti|الكل
+Profile|Profil|Profil|Profil|Profilo|الملف
+Role|Rol|Rolle|Rôle|Ruolo|الدور
+Roles|Roller|Rollen|Rôles|Ruoli|الأدوار
+Files|Dosyalar|Dateien|Fichiers|File|الملفات
+File Picker|Dosya seçici|Dateiauswahl|Sélecteur de fichiers|Selettore di file|منتقي الملفات
+Search Sessions|Sohbetlerde ara|Sitzungen durchsuchen|Rechercher des sessions|Cerca sessioni|البحث في الجلسات
+Prompt History|İstem geçmişi|Promptverlauf|Historique des prompts|Cronologia dei prompt|سجل الطلبات
+New Snippet|Yeni hazır metin|Neuer Textbaustein|Nouvel extrait|Nuovo frammento|مقتطف جديد
+Content|İçerik|Inhalt|Contenu|Contenuto|المحتوى
+Status|Durum|Status|État|Stato|الحالة
+Running|Çalışıyor|Läuft|En cours|In esecuzione|قيد التشغيل
+Completed|Tamamlandı|Abgeschlossen|Terminé|Completato|مكتمل
+Failed|Başarısız|Fehlgeschlagen|Échec|Non riuscito|فشل
+Pending|Bekliyor|Ausstehend|En attente|In attesa|معلّق
+Paused|Duraklatıldı|Pausiert|Suspendu|In pausa|متوقف مؤقتًا
+Cancelled|İptal edildi|Abgebrochen|Annulé|Annullato|ملغى
+Unknown|Bilinmiyor|Unbekannt|Inconnu|Sconosciuto|غير معروف
+Retry|Yeniden dene|Erneut versuchen|Réessayer|Riprova|إعادة المحاولة
+Continue|Devam et|Fortsetzen|Continuer|Continua|متابعة
+Stop|Durdur|Stoppen|Arrêter|Ferma|إيقاف
+Resume|Sürdür|Fortsetzen|Reprendre|Riprendi|استئناف
+Pause|Duraklat|Pausieren|Suspendre|Sospendi|إيقاف مؤقت
+Allow|İzin ver|Erlauben|Autoriser|Consenti|سماح
+Deny|Reddet|Ablehnen|Refuser|Nega|رفض
+Allow Once|Bir kez izin ver|Einmal erlauben|Autoriser une fois|Consenti una volta|السماح مرة واحدة
+Always Allow|Her zaman izin ver|Immer erlauben|Toujours autoriser|Consenti sempre|السماح دائمًا
+Permission Required|İzin gerekiyor|Berechtigung erforderlich|Autorisation requise|Autorizzazione richiesta|مطلوب إذن
+Permissions|İzinler|Berechtigungen|Autorisations|Autorizzazioni|الأذونات
+Thinking|Düşünüyor|Denkt|Réflexion|Ragionamento|تفكير
+Messages|Mesajlar|Nachrichten|Messages|Messaggi|الرسائل
+Tokens|Tokenlar|Tokens|Tokens|Token|الرموز
+Cost|Maliyet|Kosten|Coût|Costo|التكلفة
+Context|Bağlam|Kontext|Contexte|Contesto|السياق
+Input|Girdi|Eingabe|Entrée|Input|الإدخال
+Output|Çıktı|Ausgabe|Sortie|Output|الإخراج
+Total|Toplam|Gesamt|Total|Totale|الإجمالي
+Duration|Süre|Dauer|Durée|Durata|المدة
+Goal|Hedef|Ziel|Objectif|Obiettivo|الهدف
+Budget|Bütçe|Budget|Budget|Budget|الميزانية
+Tasks|Görevler|Aufgaben|Tâches|Attività|المهام
+Task|Görev|Aufgabe|Tâche|Attività|المهمة
+Agent|Ajan|Agent|Agent|Agente|الوكيل
+Review|İnceleme|Prüfung|Révision|Revisione|مراجعة
+Evidence|Kanıt|Nachweis|Preuve|Prova|دليل
+Sources|Kaynaklar|Quellen|Sources|Fonti|المصادر
+Memory|Bellek|Speicher|Mémoire|Memoria|الذاكرة
+Checkpoint|Kontrol noktası|Kontrollpunkt|Point de contrôle|Punto di controllo|نقطة تحقق
+Checkpoints|Kontrol noktaları|Kontrollpunkte|Points de contrôle|Punti di controllo|نقاط التحقق
+Summary|Özet|Zusammenfassung|Résumé|Riepilogo|ملخص
+Copied to clipboard|Panoya kopyalandı|In die Zwischenablage kopiert|Copié dans le presse-papiers|Copiato negli appunti|تم النسخ إلى الحافظة
+Ready|Hazır|Bereit|Prêt|Pronto|جاهز
+Enable Computer-Use|Bilgisayar kontrolünü aç|Computersteuerung aktivieren|Activer le contrôle de l’ordinateur|Attiva il controllo del computer|تفعيل التحكم بالحاسوب
+Disable Computer-Use|Bilgisayar kontrolünü kapat|Computersteuerung deaktivieren|Désactiver le contrôle de l’ordinateur|Disattiva il controllo del computer|تعطيل التحكم بالحاسوب
+No Mode|Standart mod|Standardmodus|Mode standard|Modalità standard|الوضع العادي
+The ordinary coder prompt, on the session's own model.|Sohbetin modeliyle standart kodlama istemi.|Standard-Coding-Prompt mit dem Sitzungsmodell.|Prompt de développement standard avec le modèle de la session.|Prompt di sviluppo standard con il modello della sessione.|طلب البرمجة العادي باستخدام نموذج الجلسة.
+Finish or stop the active turn before selecting a usage profile.|Profil seçmeden önce etkin çalışmanın bitmesini bekle veya durdur.|Aktiven Lauf vor der Profilwahl beenden oder stoppen.|Terminer ou arrêter l’exécution avant de choisir un profil.|Termina o interrompi l’esecuzione prima di scegliere un profilo.|أكمل التشغيل الحالي أو أوقفه قبل اختيار ملف الاستخدام.
+%s: %s (%d steps, %d agents)|%s: %s (%d adım, %d ajan)|%s: %s (%d Schritte, %d Agenten)|%s : %s (%d étapes, %d agents)|%s: %s (%d passi, %d agenti)|%s: %s (%d خطوات، %d وكلاء)
+unknown usage profile %q|bilinmeyen kullanım profili %q|unbekanntes Nutzungsprofil %q|profil d’utilisation inconnu %q|profilo di utilizzo sconosciuto %q|ملف استخدام غير معروف %q
+Usage profile selected: |Kullanım profili seçildi: |Nutzungsprofil gewählt: |Profil sélectionné : |Profilo selezionato: |تم اختيار ملف الاستخدام: 
+Arguments|Parametreler|Argumente|Arguments|Argomenti|المعاملات
+Skills|Beceriler|Fähigkeiten|Compétences|Competenze|المهارات
+Shell output copied to clipboard|Terminal çıktısı panoya kopyalandı|Shell-Ausgabe in Zwischenablage kopiert|Sortie du shell copiée|Output della shell copiato|تم نسخ مخرجات الطرفية إلى الحافظة
+… %d earlier lines|… önceki %d satır|… %d frühere Zeilen|… %d lignes précédentes|… %d righe precedenti|… %d أسطر سابقة
+… %d more lines|… %d satır daha|… %d weitere Zeilen|… %d lignes supplémentaires|… %d altre righe|… %d أسطر إضافية
+(exit %d)|(çıkış %d)|(Exit %d)|(sortie %d)|(uscita %d)|(خروج %d)
+copy code|kodu kopyala|Code kopieren|copier le code|copia codice|نسخ الرمز
+copy url|bağlantıyı kopyala|URL kopieren|copier le lien|copia URL|نسخ الرابط
+copy & open|kopyala ve aç|kopieren und öffnen|copier et ouvrir|copia e apri|نسخ وفتح
+Let’s authenticate with %s|%s ile giriş yapalım|Bei %s anmelden|S’authentifier avec %s|Accedi con %s|تسجيل الدخول باستخدام %s
+Authenticate with %s|%s ile giriş yap|Bei %s anmelden|S’authentifier avec %s|Accedi con %s|المصادقة باستخدام %s
+Initializing...|Hazırlanıyor...|Wird initialisiert...|Initialisation...|Inizializzazione...|جارٍ التهيئة...
+Verifying... (a brand-new account can take up to a couple of minutes)|Doğrulanıyor... (yeni hesaplarda birkaç dakika sürebilir)|Wird geprüft... (neue Konten können einige Minuten benötigen)|Vérification... (un nouveau compte peut demander quelques minutes)|Verifica... (un nuovo account può richiedere alcuni minuti)|جارٍ التحقق... (قد يستغرق الحساب الجديد بضع دقائق)
+Authentication successful!|Giriş başarılı!|Anmeldung erfolgreich!|Authentification réussie !|Autenticazione riuscita!|تمت المصادقة بنجاح!
+✓ Authentication successful!|✓ Giriş başarılı!|✓ Anmeldung erfolgreich!|✓ Authentification réussie !|✓ Autenticazione riuscita!|✓ تمت المصادقة بنجاح!
+Authentication failed.|Giriş başarısız.|Anmeldung fehlgeschlagen.|Échec de l’authentification.|Autenticazione non riuscita.|فشلت المصادقة.
+authentication timed out|giriş işlemi zaman aşımına uğradı|Zeitüberschreitung bei der Anmeldung|délai d’authentification dépassé|autenticazione scaduta|انتهت مهلة المصادقة
+Code copied to clipboard|Kod panoya kopyalandı|Code in Zwischenablage kopiert|Code copié|Codice copiato|تم نسخ الرمز إلى الحافظة
+URL copied to clipboard|Bağlantı panoya kopyalandı|URL in Zwischenablage kopiert|Lien copié|URL copiato|تم نسخ الرابط إلى الحافظة
+Code copied and URL opened|Kod kopyalandı ve bağlantı açıldı|Code kopiert und URL geöffnet|Code copié et lien ouvert|Codice copiato e URL aperto|تم نسخ الرمز وفتح الرابط
+Message copied to clipboard|Mesaj panoya kopyalandı|Nachricht in Zwischenablage kopiert|Message copié|Messaggio copiato|تم نسخ الرسالة إلى الحافظة
+Invalid parameters|Geçersiz parametreler|Ungültige Parameter|Paramètres invalides|Parametri non validi|معاملات غير صالحة
+To-Do|Görev|Aufgabe|Tâche|Attività|مهمة
+created %d todos, starting first|%d görev oluşturuldu, ilki başlıyor|%d Aufgaben erstellt, erste wird gestartet|%d tâches créées, lancement de la première|%d attività create, avvio della prima|تم إنشاء %d مهام، بدء الأولى
+created %d todos|%d görev oluşturuldu|%d Aufgaben erstellt|%d tâches créées|%d attività create|تم إنشاء %d مهام
+ · completed %d, starting next| · %d tamamlandı, sonraki başlıyor| · %d abgeschlossen, nächste startet| · %d terminées, lancement de la suivante| · %d completate, avvio della successiva| · اكتملت %d، بدء التالية
+ · completed %d| · %d tamamlandı| · %d abgeschlossen| · %d terminées| · %d completate| · اكتملت %d
+ · completed all| · tümü tamamlandı| · alle abgeschlossen| · toutes terminées| · tutte completate| · اكتملت جميعها
+ · starting task| · görev başlıyor| · Aufgabe startet| · lancement de la tâche| · avvio attività| · بدء المهمة
+Configured|Yapılandırıldı|Konfiguriert|Configuré|Configurato|تم الإعداد
+Thinking On|Düşünme açık|Denken aktiviert|Réflexion activée|Ragionamento attivato|التفكير مفعّل
+Thinking Off|Düşünme kapalı|Denken deaktiviert|Réflexion désactivée|Ragionamento disattivato|التفكير معطّل
+Reasoning %s|Düşünme %s|Denkaufwand %s|Raisonnement %s|Ragionamento %s|استدلال %s
+Start|Başlat|Starten|Démarrer|Avvia|بدء
+Job|İş|Aufgabe|Tâche|Attività|مهمة
+Kill|Sonlandır|Beenden|Arrêter|Termina|إنهاء
+List Symbols|Sembolleri listele|Symbole auflisten|Lister les symboles|Elenca simboli|عرض الرموز
+not set|ayarlanmadı|nicht festgelegt|non défini|non impostato|غير محدد
+ (built-in)| (yerleşik)| (integriert)| (intégré)| (integrato)| (مدمج)
+No model roles configured yet.|Henüz model rolü yapılandırılmadı.|Noch keine Modellrollen konfiguriert.|Aucun rôle de modèle configuré.|Nessun ruolo di modello configurato.|لم يتم إعداد أدوار النماذج بعد.
+select checkpoint|kontrol noktası seç|Kontrollpunkt wählen|choisir un point de contrôle|scegli punto di controllo|اختيار نقطة تحقق
+No checkpoints yet — send a message first.|Henüz kontrol noktası yok; önce mesaj gönder.|Noch keine Kontrollpunkte; zuerst eine Nachricht senden.|Aucun point de contrôle ; envoyer d’abord un message.|Nessun punto di controllo; invia prima un messaggio.|لا توجد نقاط تحقق؛ أرسل رسالة أولًا.
+Pick a message to rewind to:|Geri dönülecek mesajı seç:|Nachricht zum Zurücksetzen wählen:|Choisir un message de retour :|Scegli il messaggio a cui tornare:|اختر رسالة للرجوع إليها:
+Rewinding…|Geri alınıyor…|Wird zurückgesetzt…|Retour en cours…|Ripristino…|جارٍ الرجوع…
+Checking what this rewind would change…|Geri alma işleminin değiştirecekleri kontrol ediliyor…|Änderungen durch das Zurücksetzen werden geprüft…|Vérification des changements du retour…|Verifica delle modifiche del ripristino…|جارٍ فحص تغييرات الرجوع…
+Add Image|Görsel ekle|Bild hinzufügen|Ajouter une image|Aggiungi immagine|إضافة صورة
+Add|Ekle|Hinzufügen|Ajouter|Aggiungi|إضافة
+All sessions|Tüm sohbetler|Alle Sitzungen|Toutes les sessions|Tutte le sessioni|جميع الجلسات
+Allow for Session|Bu sohbet için izin ver|Für diese Sitzung erlauben|Autoriser pour la session|Consenti per la sessione|السماح لهذه الجلسة
+Are you sure you want to quit?|Çıkmak istediğine emin misin?|Wirklich beenden?|Voulez-vous vraiment quitter ?|Vuoi davvero uscire?|هل تريد الخروج بالتأكيد؟
+Agent is busy, please wait before starting a new session...|Ajan meşgul; yeni sohbet açmadan önce bekle...|Agent ist beschäftigt; vor einer neuen Sitzung warten...|Agent occupé ; patienter avant une nouvelle session...|Agente occupato; attendi prima di una nuova sessione...|الوكيل مشغول؛ انتظر قبل بدء جلسة جديدة...
+Agent is busy, please wait before summarizing session...|Ajan meşgul; özetleme öncesinde bekle...|Agent ist beschäftigt; vor der Zusammenfassung warten...|Agent occupé ; patienter avant le résumé...|Agente occupato; attendi prima del riepilogo...|الوكيل مشغول؛ انتظر قبل تلخيص الجلسة...
+Agent is busy, please wait...|Ajan meşgul, lütfen bekle...|Agent ist beschäftigt, bitte warten...|Agent occupé, veuillez patienter...|Agente occupato, attendi...|الوكيل مشغول، يرجى الانتظار...
+Agent is working, please wait...|Ajan çalışıyor, lütfen bekle...|Agent arbeitet, bitte warten...|Agent en cours de travail, veuillez patienter...|Agente al lavoro, attendi...|الوكيل يعمل، يرجى الانتظار...
+Agent's turn completed in "%s"|Ajanın çalışması "%s" içinde tamamlandı|Agentenlauf in "%s" abgeschlossen|Exécution de l’agent terminée dans « %s »|Esecuzione dell’agente completata in "%s"|اكتمل تشغيل الوكيل في "%s"
+ATLAS-AGENT is waiting...|ATLAS-AGENT bekliyor...|ATLAS-AGENT wartet...|ATLAS-AGENT attend...|ATLAS-AGENT è in attesa...|ATLAS-AGENT ينتظر...
+Auto-accept edits|Düzenlemeleri otomatik kabul et|Änderungen automatisch annehmen|Accepter automatiquement les modifications|Accetta automaticamente le modifiche|قبول التعديلات تلقائيًا
+Auto-compact enabled|Otomatik özetleme açıldı|Automatische Zusammenfassung aktiviert|Résumé automatique activé|Riepilogo automatico attivato|تم تفعيل التلخيص التلقائي
+Auto-Compact Threshold|Otomatik özetleme eşiği|Schwelle für automatische Zusammenfassung|Seuil du résumé automatique|Soglia del riepilogo automatico|عتبة التلخيص التلقائي
+Auto-compact threshold reset to the built-in defaults.|Özetleme eşiği varsayılana döndürüldü.|Zusammenfassungsschwelle auf Standard zurückgesetzt.|Seuil du résumé réinitialisé.|Soglia del riepilogo ripristinata.|تمت إعادة عتبة التلخيص إلى القيمة الافتراضية.
+Auto-compact threshold set to %g%% of the context window.|Özetleme eşiği bağlamın %g%% oranına ayarlandı.|Zusammenfassungsschwelle auf %g%% des Kontextfensters gesetzt.|Seuil du résumé fixé à %g%% du contexte.|Soglia del riepilogo impostata al %g%% del contesto.|تم تعيين عتبة التلخيص إلى %g%% من السياق.
+AWS SSO Authentication|AWS SSO girişi|AWS-SSO-Anmeldung|Authentification AWS SSO|Autenticazione AWS SSO|مصادقة AWS SSO
+Call Hierarchy|Çağrı hiyerarşisi|Aufrufhierarchie|Hiérarchie des appels|Gerarchia delle chiamate|تسلسل الاستدعاءات
+Add a note...|Not ekle...|Notiz hinzufügen...|Ajouter une note...|Aggiungi una nota...|إضافة ملاحظة...
+Git Tools|Git araçları|Git-Werkzeuge|Outils Git|Strumenti Git|أدوات Git
+Docs Tools|Belge araçları|Dokumentationswerkzeuge|Outils de documentation|Strumenti di documentazione|أدوات المستندات
+Code Intel Tools|Kod analizi araçları|Codeanalyse-Werkzeuge|Outils d’analyse du code|Strumenti di analisi del codice|أدوات تحليل الشيفرة
+Quality Tools|Kalite araçları|Qualitätswerkzeuge|Outils de qualité|Strumenti di qualità|أدوات الجودة
+Teams (sub-agent broadcast)|Takımlar (ajanlar arası iletişim)|Teams (Unteragenten-Kommunikation)|Équipes (communication des sous-agents)|Team (comunicazione dei sottoagenti)|الفرق (تواصل الوكلاء الفرعيين)
+Debugger|Hata ayıklayıcı|Debugger|Débogueur|Debugger|منقح الأخطاء
+Browser|Tarayıcı|Browser|Navigateur|Browser|المتصفح
+Computer-Use|Bilgisayar kontrolü|Computersteuerung|Contrôle de l’ordinateur|Controllo del computer|التحكم بالحاسوب
+Browser: Visible Window|Tarayıcı: görünür pencere|Browser: sichtbares Fenster|Navigateur : fenêtre visible|Browser: finestra visibile|المتصفح: نافذة مرئية
+Read-only git_status/log/blame -- compact answers without shelling out.|Salt okunur git_status/log/blame; shell açmadan kısa yanıtlar.|Schreibgeschütztes git_status/log/blame; kompakte Antworten ohne Shell.|git_status/log/blame en lecture seule ; réponses compactes sans shell.|git_status/log/blame in sola lettura; risposte compatte senza shell.|git_status/log/blame للقراءة فقط؛ إجابات موجزة دون تشغيل الطرفية.
+Index and search a tree's Markdown files by heading.|Markdown dosyalarını başlıklara göre dizinle ve ara.|Markdown-Dateien nach Überschriften indexieren und durchsuchen.|Indexer et rechercher les fichiers Markdown par titre.|Indicizza e cerca file Markdown per titolo.|فهرسة ملفات Markdown والبحث فيها حسب العناوين.
+Go static analysis (dead_code and friends) via go/ast.|go/ast ile Go statik analizi (dead_code ve diğerleri).|Statische Go-Analyse über go/ast (dead_code und weitere).|Analyse statique Go via go/ast (dead_code et autres).|Analisi statica Go tramite go/ast (dead_code e altri).|تحليل Go الثابت عبر go/ast (dead_code وغيرها).
+Secret scanning, coverage, and other code-quality checks.|Gizli bilgi taraması, test kapsamı ve diğer kod kalite kontrolleri.|Geheimnisprüfung, Testabdeckung und weitere Qualitätsprüfungen.|Détection de secrets, couverture et autres contrôles de qualité.|Ricerca di segreti, copertura e altri controlli di qualità.|فحص الأسرار وتغطية الاختبارات وفحوص جودة الشيفرة.
+team_send/team_read so sub-agents spawned by the same task can message each other.|Aynı görevin ajanları arasında team_send/team_read ile iletişim.|team_send/team_read für Kommunikation zwischen Agenten derselben Aufgabe.|team_send/team_read pour les sous-agents d’une même tâche.|team_send/team_read per comunicare tra sottoagenti della stessa attività.|team_send/team_read للتواصل بين الوكلاء الفرعيين للمهمة نفسها.
+Drive a Go program under Delve (dlv dap): breakpoints, step, inspect variables. Requires dlv installed.|Delve (dlv dap) ile Go programını denetle: durak noktaları, adımlama ve değişken inceleme. dlv kurulmalıdır.|Go-Programm mit Delve (dlv dap) steuern: Haltepunkte, Einzelschritte und Variablen. Benötigt dlv.|Piloter Go avec Delve (dlv dap) : points d’arrêt, étapes et variables. Nécessite dlv.|Controlla Go con Delve (dlv dap): breakpoint, passi e variabili. Richiede dlv.|التحكم ببرنامج Go عبر Delve (dlv dap): نقاط توقف وخطوات وفحص متغيرات. يتطلب تثبيت dlv.
+Drive a real browser: navigate, click, type, screenshot, read console.|Gerçek tarayıcıyı kontrol et: gezin, tıkla, yaz, ekran görüntüsü al ve konsolu oku.|Realen Browser steuern: navigieren, klicken, tippen, Screenshots und Konsole.|Piloter un navigateur réel : navigation, clic, saisie, capture et console.|Controlla un browser reale: navigazione, clic, scrittura, screenshot e console.|التحكم بمتصفح فعلي: تنقل ونقر وكتابة وتصوير وقراءة وحدة التحكم.
+See the screen and drive the real desktop: screenshot, click, drag, scroll, type, hotkeys. Windows only. Actions run without per-action approval while on.|Ekranı gör ve masaüstünü kontrol et: görüntü, tıklama, sürükleme, kaydırma, yazma ve kısayollar. Yalnız Windows. Açıkken her işlem için ayrı onay istenmez.|Bildschirm und Desktop steuern: Screenshot, Klick, Ziehen, Scrollen, Tippen und Tastenkürzel. Nur Windows. Aktivierte Aktionen ohne Einzelbestätigung.|Voir et contrôler le bureau : capture, clic, déplacement, défilement, saisie et raccourcis. Windows uniquement. Pas de confirmation individuelle quand activé.|Vedi e controlla il desktop: screenshot, clic, trascinamento, scorrimento, scrittura e scorciatoie. Solo Windows. Se attivo, nessuna conferma per singola azione.|رؤية الشاشة والتحكم بسطح المكتب: تصوير ونقر وسحب وتمرير وكتابة واختصارات. Windows فقط. عند التفعيل لا يُطلب إذن لكل إجراء.
+Show the Chrome window the Browser tool drives instead of running it headless (no window, no audio).|Tarayıcı aracının Chrome penceresini göster; penceresiz modda pencere ve ses yoktur.|Chrome-Fenster des Browserwerkzeugs anzeigen; kopfloser Modus ohne Fenster und Ton.|Afficher la fenêtre Chrome ; le mode sans interface n’a ni fenêtre ni son.|Mostra la finestra Chrome; la modalità headless non ha finestra né audio.|إظهار نافذة Chrome التي تتحكم بها الأداة؛ الوضع دون واجهة بلا نافذة أو صوت.
+on|açık|an|activé|attivo|مفعّل
+off|kapalı|aus|désactivé|disattivo|معطّل
+Canceled|İptal edildi|Abgebrochen|Annulé|Annullato|ملغى
+Canceled.|İptal edildi.|Abgebrochen.|Annulé.|Annullato.|تم الإلغاء.
+Cannot attach a directory|Klasör eklenemez|Verzeichnis kann nicht angehängt werden|Impossible de joindre un dossier|Impossibile allegare una cartella|لا يمكن إرفاق مجلد
+Clipboard holds no image. Copy an image, or the path to an image file.|Panoda görsel yok. Görseli veya görsel dosyasının yolunu kopyala.|Kein Bild in der Zwischenablage. Bild oder Bildpfad kopieren.|Aucune image dans le presse-papiers. Copier une image ou son chemin.|Nessuna immagine negli appunti. Copia un’immagine o il suo percorso.|لا توجد صورة في الحافظة. انسخ صورة أو مسار ملفها.
+Clipboard holds text, not an image: %q|Panoda görsel yerine metin var: %q|Zwischenablage enthält Text statt Bild: %q|Le presse-papiers contient du texte : %q|Gli appunti contengono testo invece di un’immagine: %q|الحافظة تحتوي نصًا بدل صورة: %q
+Clipboard is empty or does not contain text|Pano boş veya metin içermiyor|Zwischenablage ist leer oder enthält keinen Text|Presse-papiers vide ou sans texte|Appunti vuoti o senza testo|الحافظة فارغة أو لا تحتوي نصًا
+Completion tokens|Yanıt tokenları|Antwort-Tokens|Tokens de réponse|Token di risposta|رموز الإجابة
+Prompt tokens|İstem tokenları|Prompt-Tokens|Tokens du prompt|Token del prompt|رموز الطلب
+Computer-use disabled|Bilgisayar kontrolü kapatıldı|Computersteuerung deaktiviert|Contrôle de l’ordinateur désactivé|Controllo del computer disattivato|تم تعطيل التحكم بالحاسوب
+Computer-use enabled: the agent can now see and control the screen|Bilgisayar kontrolü açıldı: ajan artık ekranı görebilir ve kontrol edebilir|Computersteuerung aktiviert: Agent kann Bildschirm sehen und steuern|Contrôle activé : l’agent peut voir et contrôler l’écran|Controllo attivato: l’agente può vedere e controllare lo schermo|تم تفعيل التحكم: يمكن للوكيل رؤية الشاشة والتحكم بها
+Context used|Kullanılan bağlam|Genutzter Kontext|Contexte utilisé|Contesto usato|السياق المستخدم
+Cooldown must be a non-negative number of seconds.|Bekleme süresi negatif olmayan bir saniye değeri olmalı.|Wartezeit muss eine nichtnegative Sekundenzahl sein.|Le délai doit être un nombre de secondes positif ou nul.|L’attesa deve essere un numero di secondi non negativo.|يجب أن تكون مدة الانتظار عدد ثوانٍ غير سالب.
+Custom Command Arguments|Özel komut parametreleri|Argumente für eigenen Befehl|Arguments de commande personnalisée|Argomenti del comando personalizzato|معاملات الأمر المخصص
+Delete this session?|Bu sohbet silinsin mi?|Diese Sitzung löschen?|Supprimer cette session ?|Eliminare questa sessione?|حذف هذه الجلسة؟
+Denied|Reddedildi|Abgelehnt|Refusé|Negato|مرفوض
+Diagnostics|Tanılama|Diagnose|Diagnostics|Diagnostica|التشخيص
+Directory|Klasör|Verzeichnis|Dossier|Cartella|المجلد
+Download|İndir|Herunterladen|Télécharger|Scarica|تنزيل
+Docker MCP disabled successfully|Docker MCP kapatıldı|Docker MCP erfolgreich deaktiviert|Docker MCP désactivé|Docker MCP disattivato|تم تعطيل Docker MCP بنجاح
+Docker MCP enabled and started successfully|Docker MCP açıldı ve başlatıldı|Docker MCP erfolgreich aktiviert und gestartet|Docker MCP activé et démarré|Docker MCP attivato e avviato|تم تفعيل Docker MCP وتشغيله بنجاح
+Enter session name|Sohbet adını gir|Sitzungsnamen eingeben|Saisir le nom de la session|Inserisci il nome della sessione|أدخل اسم الجلسة
+Enter your API key...|API anahtarını gir...|API-Schlüssel eingeben...|Saisir votre clé API...|Inserisci la chiave API...|أدخل مفتاح API...
+Error reported|Hata bildirildi|Fehler gemeldet|Erreur signalée|Errore segnalato|تم الإبلاغ عن الخطأ
+error: %s|hata: %s|Fehler: %s|erreur : %s|errore: %s|خطأ: %s
+ERROR|HATA|FEHLER|ERREUR|ERRORE|خطأ
+Fallback Cooldown|Yedek model bekleme süresi|Wartezeit des Ersatzmodells|Délai du modèle de secours|Attesa del modello di riserva|مدة انتظار النموذج البديل
+Fallback saved.|Yedek model kaydedildi.|Ersatzmodell gespeichert.|Modèle de secours enregistré.|Modello di riserva salvato.|تم حفظ النموذج البديل.
+Fetch|Getir|Abrufen|Récupérer|Recupera|جلب
+File|Dosya|Datei|Fichier|File|ملف
+File is too big (>5mb)|Dosya çok büyük (>5 MB)|Datei zu groß (>5 MB)|Fichier trop volumineux (>5 Mo)|File troppo grande (>5 MB)|الملف كبير جدًا (>5 MB)
+File too large, max 5MB|Dosya çok büyük, en fazla 5 MB|Datei zu groß, maximal 5 MB|Fichier trop volumineux, 5 Mo maximum|File troppo grande, massimo 5 MB|الملف كبير جدًا، الحد الأقصى 5 MB
+Find Definition|Tanımı bul|Definition finden|Trouver la définition|Trova definizione|العثور على التعريف
+Find References|Referansları bul|Referenzen finden|Trouver les références|Trova riferimenti|العثور على المراجع
+Find|Bul|Finden|Trouver|Trova|بحث
+focus editor|düzenleyiciye odaklan|Editor fokussieren|activer l’éditeur|attiva l’editor|تركيز المحرر
+Goal cleared.|Hedef temizlendi.|Ziel gelöscht.|Objectif effacé.|Obiettivo cancellato.|تم مسح الهدف.
+Goal set.|Hedef belirlendi.|Ziel festgelegt.|Objectif défini.|Obiettivo impostato.|تم تحديد الهدف.
+Hook|Hook|Hook|Hook|Hook|خطاف
+Loading actual process output…|İşlemin çıktısı yükleniyor…|Prozessausgabe wird geladen…|Chargement de la sortie du processus…|Caricamento dell’output del processo…|جارٍ تحميل مخرجات العملية…
+Lost connection to the ATLAS-AGENT server — reconnecting…|ATLAS-AGENT sunucusuyla bağlantı kesildi; yeniden bağlanılıyor…|Verbindung zum ATLAS-AGENT-Server verloren; erneute Verbindung…|Connexion au serveur ATLAS-AGENT perdue ; reconnexion…|Connessione al server ATLAS-AGENT persa; riconnessione…|انقطع الاتصال بخادم ATLAS-AGENT؛ جارٍ إعادة الاتصال…
+Reconnected to the ATLAS-AGENT server.|ATLAS-AGENT sunucusuna yeniden bağlanıldı.|Erneut mit ATLAS-AGENT-Server verbunden.|Reconnecté au serveur ATLAS-AGENT.|Riconnesso al server ATLAS-AGENT.|تمت إعادة الاتصال بخادم ATLAS-AGENT.
+Can't restore the connection to the ATLAS-AGENT server. Restart ATLAS-AGENT to recover.|ATLAS-AGENT sunucusuna bağlanılamıyor. Uygulamayı yeniden başlat.|Verbindung zum ATLAS-AGENT-Server nicht wiederherstellbar. ATLAS-AGENT neu starten.|Impossible de rétablir la connexion. Redémarrer ATLAS-AGENT.|Impossibile ripristinare la connessione. Riavvia ATLAS-AGENT.|تعذر استعادة الاتصال بالخادم. أعد تشغيل ATLAS-AGENT.
+MCP Prompt Arguments|MCP istem parametreleri|MCP-Prompt-Argumente|Arguments du prompt MCP|Argomenti del prompt MCP|معاملات طلب MCP
+Message is empty|Mesaj boş|Nachricht ist leer|Message vide|Messaggio vuoto|الرسالة فارغة
+Model Role|Model rolü|Modellrolle|Rôle de modèle|Ruolo del modello|دور النموذج
+Model role saved.|Model rolü kaydedildi.|Modellrolle gespeichert.|Rôle de modèle enregistré.|Ruolo del modello salvato.|تم حفظ دور النموذج.
+New Model Role|Yeni model rolü|Neue Modellrolle|Nouveau rôle de modèle|Nuovo ruolo del modello|دور نموذج جديد
+New Subagent|Yeni uzman ajan|Neuer Unteragent|Nouveau sous-agent|Nuovo sottoagente|وكيل فرعي جديد
+No active session|Etkin sohbet yok|Keine aktive Sitzung|Aucune session active|Nessuna sessione attiva|لا توجد جلسة نشطة
+No active session to rewind|Geri alınacak etkin sohbet yok|Keine aktive Sitzung zum Zurücksetzen|Aucune session active à restaurer|Nessuna sessione attiva da ripristinare|لا توجد جلسة نشطة للرجوع
+No matching prompts.|Eşleşen istem yok.|Keine passenden Prompts.|Aucun prompt correspondant.|Nessun prompt corrispondente.|لا توجد طلبات مطابقة.
+No MCP servers found.|MCP sunucusu bulunamadı.|Keine MCP-Server gefunden.|Aucun serveur MCP trouvé.|Nessun server MCP trovato.|لم يتم العثور على خوادم MCP.
+No modified files in this session.|Bu sohbette değiştirilmiş dosya yok.|Keine geänderten Dateien in dieser Sitzung.|Aucun fichier modifié dans cette session.|Nessun file modificato in questa sessione.|لا توجد ملفات معدلة في هذه الجلسة.
+No saved snippets yet.|Henüz kaydedilmiş hazır metin yok.|Noch keine gespeicherten Textbausteine.|Aucun extrait enregistré.|Nessun frammento salvato.|لا توجد مقتطفات محفوظة بعد.
+No sessions matched.|Eşleşen sohbet yok.|Keine passenden Sitzungen.|Aucune session correspondante.|Nessuna sessione corrispondente.|لا توجد جلسات مطابقة.
+No sub-agents have run in this session yet.|Bu sohbette henüz uzman ajan çalışmadı.|Noch keine Unteragenten in dieser Sitzung.|Aucun sous-agent exécuté dans cette session.|Nessun sottoagente eseguito in questa sessione.|لم يعمل أي وكيل فرعي في هذه الجلسة بعد.
+No subagents configured yet. Press %s to create one.|Henüz uzman ajan yok. Oluşturmak için %s tuşuna bas.|Noch keine Unteragenten. Zum Erstellen %s drücken.|Aucun sous-agent. Appuyer sur %s pour en créer un.|Nessun sottoagente. Premi %s per crearne uno.|لا توجد إعدادات لوكلاء فرعيين. اضغط %s لإنشاء واحد.
+No matches for %q|%q için eşleşme yok|Keine Treffer für %q|Aucune correspondance pour %q|Nessuna corrispondenza per %q|لا توجد مطابقات لـ %q
+Nope|Hayır|Nein|Non|No|لا
+Not yet|Henüz değil|Noch nicht|Pas encore|Non ancora|ليس بعد
+Note|Not|Notiz|Note|Nota|ملاحظة
+Nothing running.|Çalışan iş yok.|Nichts läuft.|Aucune tâche en cours.|Nessuna attività in esecuzione.|لا شيء قيد التشغيل.
+Notifications set to: |Bildirim biçimi: |Benachrichtigungen eingestellt auf: |Notifications réglées sur : |Notifiche impostate su: |تم ضبط الإشعارات على: 
+Path|Yol|Pfad|Chemin|Percorso|المسار
+Pending...|Bekliyor...|Ausstehend...|En attente...|In attesa...|قيد الانتظار...
+Percent|Yüzde|Prozent|Pourcentage|Percentuale|النسبة المئوية
+Permission mode: |İzin modu: |Berechtigungsmodus: |Mode d’autorisation : |Modalità di autorizzazione: |وضع الأذونات: 
+Permission required to execute "%s"|"%s" çalıştırmak için izin gerekiyor|Berechtigung zum Ausführen von "%s" erforderlich|Autorisation requise pour exécuter « %s »|Autorizzazione richiesta per eseguire "%s"|مطلوب إذن لتنفيذ "%s"
+Plan mode (read-only)|Plan modu (salt okunur)|Planmodus (schreibgeschützt)|Mode plan (lecture seule)|Modalità piano (sola lettura)|وضع التخطيط (للقراءة فقط)
+press again to cancel|iptal için tekrar bas|zum Abbrechen erneut drücken|appuyer à nouveau pour annuler|premi ancora per annullare|اضغط مجددًا للإلغاء
+press ctrl+c twice.|ctrl+c tuşuna iki kez bas.|zweimal ctrl+c drücken.|appuyer deux fois sur ctrl+c.|premi ctrl+c due volte.|اضغط ctrl+c مرتين.
+Prompt|İstem|Prompt|Prompt|Prompt|الطلب
+Question|Soru|Frage|Question|Domanda|السؤال
+Ready to go?|Hazır mısın?|Bereit?|Prêt à commencer ?|Pronto a iniziare?|هل أنت مستعد؟
+Reasoning effort set to |Düşünme düzeyi: |Denkaufwand eingestellt auf |Niveau de raisonnement : |Livello di ragionamento: |تم ضبط مستوى الاستدلال على 
+Recently used|Son kullanılanlar|Zuletzt verwendet|Utilisés récemment|Usati di recente|المستخدمة مؤخرًا
+Remove|Kaldır|Entfernen|Retirer|Rimuovi|إزالة
+Rename Symbol|Sembolü yeniden adlandır|Symbol umbenennen|Renommer le symbole|Rinomina simbolo|إعادة تسمية الرمز
+Replace Symbol|Sembolü değiştir|Symbol ersetzen|Remplacer le symbole|Sostituisci simbolo|استبدال الرمز
+Rename this session?|Bu sohbetin adı değişsin mi?|Diese Sitzung umbenennen?|Renommer cette session ?|Rinominare questa sessione?|إعادة تسمية هذه الجلسة؟
+Requesting permission...|İzin isteniyor...|Berechtigung wird angefragt...|Demande d’autorisation...|Richiesta di autorizzazione...|جارٍ طلب الإذن...
+Restart LSP|LSP’yi yeniden başlat|LSP neu starten|Redémarrer LSP|Riavvia LSP|إعادة تشغيل LSP
+Rewound: %d file(s) restored, %d deleted|Geri alındı: %d dosya geri yüklendi, %d silindi|Zurückgesetzt: %d Dateien wiederhergestellt, %d gelöscht|Retour effectué : %d fichiers restaurés, %d supprimés|Ripristino: %d file ripristinati, %d eliminati|تم الرجوع: استُعيدت %d ملفات وحُذفت %d
+Role name is required.|Rol adı gerekiyor.|Rollenname erforderlich.|Nom du rôle requis.|Nome del ruolo obbligatorio.|اسم الدور مطلوب.
+Run a shell command|Terminal komutu çalıştır|Shell-Befehl ausführen|Exécuter une commande shell|Esegui un comando shell|تشغيل أمر طرفية
+Search all sessions by content...|Tüm sohbetlerde içerik ara...|Alle Sitzungen nach Inhalt durchsuchen...|Rechercher le contenu de toutes les sessions...|Cerca nel contenuto di tutte le sessioni...|البحث في محتوى جميع الجلسات...
+Search this chat...|Bu sohbette ara...|Diesen Chat durchsuchen...|Rechercher dans cette conversation...|Cerca in questa conversazione...|البحث في هذه المحادثة...
+Seconds|Saniye|Sekunden|Secondes|Secondi|الثواني
+Selected text copied to clipboard|Seçili metin panoya kopyalandı|Ausgewählten Text kopiert|Texte sélectionné copié|Testo selezionato copiato|تم نسخ النص المحدد إلى الحافظة
+Selection copied to clipboard|Seçim panoya kopyalandı|Auswahl kopiert|Sélection copiée|Selezione copiata|تم نسخ التحديد إلى الحافظة
+Selection cut to clipboard|Seçim kesilip panoya alındı|Auswahl ausgeschnitten|Sélection coupée|Selezione tagliata|تم قص التحديد إلى الحافظة
+Session mode cleared -- back to the ordinary coder prompt.|Sohbet modu temizlendi; standart kodlama istemine dönüldü.|Sitzungsmodus zurückgesetzt; Standard-Coding-Prompt aktiv.|Mode de session effacé ; retour au prompt standard.|Modalità della sessione cancellata; ritorno al prompt standard.|تم مسح وضع الجلسة؛ العودة إلى طلب البرمجة العادي.
+Session mode: %s. Assign a model to the %q role to give it its own model.|Sohbet modu: %s. Ayrı model kullanması için %q rolüne model ata.|Sitzungsmodus: %s. Der Rolle %q ein eigenes Modell zuweisen.|Mode de session : %s. Attribuer un modèle au rôle %q.|Modalità della sessione: %s. Assegna un modello al ruolo %q.|وضع الجلسة: %s. عيّن نموذجًا للدور %q ليستخدم نموذجه الخاص.
+Session refreshed.|Sohbet yenilendi.|Sitzung erneuert.|Session actualisée.|Sessione aggiornata.|تم تحديث الجلسة.
+Showing final 1024 output lines|Çıktının son 1024 satırı gösteriliyor|Letzte 1024 Ausgabezeilen werden angezeigt|Affichage des 1024 dernières lignes|Visualizzazione delle ultime 1024 righe|عرض آخر 1024 سطرًا من المخرجات
+Showing final 64 KiB of persisted output|Kaydedilen çıktının son 64 KiB bölümü gösteriliyor|Letzte 64 KiB der gespeicherten Ausgabe werden angezeigt|Affichage des derniers 64 KiB de la sortie enregistrée|Visualizzazione degli ultimi 64 KiB dell’output salvato|عرض آخر 64 KiB من المخرجات المحفوظة
+Skipped|Atlandı|Übersprungen|Ignoré|Saltato|تم التخطي
+Snippet deleted: |Hazır metin silindi: |Textbaustein gelöscht: |Extrait supprimé : |Frammento eliminato: |تم حذف المقتطف: 
+Snippet saved: |Hazır metin kaydedildi: |Textbaustein gespeichert: |Extrait enregistré : |Frammento salvato: |تم حفظ المقتطف: 
+Snippet name...|Hazır metin adı...|Name des Textbausteins...|Nom de l’extrait...|Nome del frammento...|اسم المقتطف...
+Something else?|Başka bir yanıt?|Etwas anderes?|Autre chose ?|Altro?|شيء آخر؟
+Sub-agent|Uzman ajan|Unteragent|Sous-agent|Sottoagente|وكيل فرعي
+Subagent description is required.|Uzman ajan açıklaması gerekiyor.|Unteragentenbeschreibung erforderlich.|Description du sous-agent requise.|Descrizione del sottoagente obbligatoria.|وصف الوكيل الفرعي مطلوب.
+Subagent name is required.|Uzman ajan adı gerekiyor.|Unteragentenname erforderlich.|Nom du sous-agent requis.|Nome del sottoagente obbligatorio.|اسم الوكيل الفرعي مطلوب.
+Subagent saved. Press enter on it to edit its instructions.|Uzman ajan kaydedildi. Talimatlarını düzenlemek için Enter’a bas.|Unteragent gespeichert. Enter zum Bearbeiten der Anweisungen.|Sous-agent enregistré. Entrée pour modifier ses instructions.|Sottoagente salvato. Premi Invio per modificare le istruzioni.|تم حفظ الوكيل الفرعي. اضغط Enter عليه لتعديل تعليماته.
+Summarizing|Özetleniyor|Wird zusammengefasst|Résumé en cours|Riepilogo in corso|جارٍ التلخيص
+This session|Bu sohbet|Diese Sitzung|Cette session|Questa sessione|هذه الجلسة
+This will be written in your global configuration:|Genel ayarlarına kaydedilecek:|Wird in Ihrer globalen Konfiguration gespeichert:|Sera enregistré dans votre configuration globale :|Verrà salvato nella configurazione globale:|سيُحفظ في إعداداتك العامة:
+Threshold must be a number between 1 and 99 (percent of context used).|Eşik 1–99 arasında olmalı (kullanılan bağlam yüzdesi).|Schwelle muss zwischen 1 und 99 liegen (Kontextprozent).|Le seuil doit être entre 1 et 99 (pourcentage du contexte).|La soglia deve essere tra 1 e 99 (percentuale del contesto).|يجب أن تكون العتبة بين 1 و99 (نسبة استخدام السياق).
+To quit without confirmation|Onaysız çıkmak için|Ohne Bestätigung beenden|Pour quitter sans confirmation|Per uscire senza conferma|للخروج دون تأكيد
+To start, let's choose a provider and model.|Başlamak için sağlayıcı ve model seçelim.|Zuerst Anbieter und Modell wählen.|Choisissons d’abord un fournisseur et un modèle.|Per iniziare scegliamo fornitore e modello.|لنختر مزودًا ونموذجًا للبدء.
+Tool content copied to clipboard|Araç içeriği panoya kopyalandı|Werkzeuginhalt kopiert|Contenu de l’outil copié|Contenuto dello strumento copiato|تم نسخ محتوى الأداة إلى الحافظة
+Tool|Araç|Werkzeug|Outil|Strumento|أداة
+Total cost|Toplam maliyet|Gesamtkosten|Coût total|Costo totale|التكلفة الإجمالية
+Total tokens|Toplam token|Gesamttokens|Total des tokens|Token totali|إجمالي الرموز
+Type to search past prompts...|Geçmiş istemlerde aramak için yaz...|Frühere Prompts durchsuchen...|Saisir pour rechercher les anciens prompts...|Digita per cercare nei prompt precedenti...|اكتب للبحث في الطلبات السابقة...
+Type your answer...|Yanıtını yaz...|Antwort eingeben...|Saisir votre réponse...|Scrivi la tua risposta...|اكتب إجابتك...
+Untitled|Başlıksız|Ohne Titel|Sans titre|Senza titolo|بلا عنوان
+Usage|Kullanım|Nutzung|Utilisation|Utilizzo|الاستخدام
+View|Görüntüle|Ansehen|Voir|Visualizza|عرض
+Waiting for authentication...|Giriş bekleniyor...|Warte auf Anmeldung...|En attente d’authentification...|In attesa di autenticazione...|بانتظار المصادقة...
+Waiting for tool response...|Araç yanıtı bekleniyor...|Warte auf Werkzeugantwort...|En attente de la réponse de l’outil...|In attesa della risposta dello strumento...|بانتظار استجابة الأداة...
+WARN|UYARI|WARNUNG|AVERTISSEMENT|AVVISO|تحذير
+Would you like to initialize now?|Şimdi hazırlansın mı?|Jetzt initialisieren?|Initialiser maintenant ?|Inizializzare ora?|هل تريد التهيئة الآن؟
+Would you like to initialize this project?|Bu proje hazırlansın mı?|Dieses Projekt initialisieren?|Initialiser ce projet ?|Inizializzare questo progetto?|هل تريد تهيئة هذا المشروع؟
+Write|Yaz|Schreiben|Écrire|Scrivi|كتابة
+Yep!|Evet!|Ja!|Oui !|Sì!|نعم!
+Yup!|Evet!|Ja!|Oui !|Sì!|نعم!
+Yolo mode!|YOLO modu!|YOLO-Modus!|Mode YOLO !|Modalità YOLO!|وضع YOLO!
+Ready!|Hazır!|Bereit!|Prêt !|Pronto!|جاهز!
+Ready...|Hazır...|Bereit...|Prêt...|Pronto...|جاهز...
+Ready?|Hazır mısın?|Bereit?|Prêt ?|Pronto?|هل أنت مستعد؟
+Ready for instructions|Talimatlarını bekliyorum|Bereit für Anweisungen|Prêt pour vos instructions|Pronto per le istruzioni|جاهز للتعليمات
+Working!|Çalışıyor!|Arbeitet!|Au travail !|Al lavoro!|يعمل!
+Working...|Çalışıyor...|Arbeitet...|Travail en cours...|Al lavoro...|جارٍ العمل...
+Brrrrr...|Çalışıyor...|Arbeitet...|Travail en cours...|Al lavoro...|جارٍ العمل...
+Prrrrrrrr...|Çalışıyor...|Arbeitet...|Travail en cours...|Al lavoro...|جارٍ العمل...
+Processing...|İşleniyor...|Verarbeitung...|Traitement...|Elaborazione...|جارٍ المعالجة...
+Thinking...|Düşünüyor...|Denkt...|Réflexion...|Ragionamento...|جارٍ التفكير...
+**Command:** %s|**Komut:** %s|**Befehl:** %s|**Commande :** %s|**Comando:** %s|**الأمر:** %s
+**Context:** %d|**Bağlam:** %d|**Kontext:** %d|**Contexte :** %d|**Contesto:** %d|**السياق:** %d
+**Count:** %d|**Adet:** %d|**Anzahl:** %d|**Nombre :** %d|**Conteggio:** %d|**العدد:** %d
+**Edits:** %d|**Düzenlemeler:** %d|**Änderungen:** %d|**Modifications :** %d|**Modifiche:** %d|**التعديلات:** %d
+**File Path:** %s|**Dosya yolu:** %s|**Dateipfad:** %s|**Chemin du fichier :** %s|**Percorso file:** %s|**مسار الملف:** %s
+**File:** %s|**Dosya:** %s|**Datei:** %s|**Fichier :** %s|**File:** %s|**الملف:** %s
+**Format:** %s|**Biçim:** %s|**Format:** %s|**Format :** %s|**Formato:** %s|**التنسيق:** %s
+**Include:** %s|**Dahil et:** %s|**Einbeziehen:** %s|**Inclure :** %s|**Includi:** %s|**التضمين:** %s
+**Limit:** %d|**Sınır:** %d|**Grenze:** %d|**Limite :** %d|**Limite:** %d|**الحد:** %d
+**Literal:** true|**Değişmez:** true|**Literal:** true|**Littéral :** true|**Letterale:** true|**حرفي:** true
+**Offset:** %d|**Başlangıç:** %d|**Versatz:** %d|**Décalage :** %d|**Offset:** %d|**الإزاحة:** %d
+**Path:** %s|**Yol:** %s|**Pfad:** %s|**Chemin :** %s|**Percorso:** %s|**المسار:** %s
+**Pattern:** %s|**Desen:** %s|**Muster:** %s|**Motif :** %s|**Pattern:** %s|**النمط:** %s
+**Project:** diagnostics|**Proje:** diagnostics|**Projekt:** diagnostics|**Projet :** diagnostics|**Progetto:** diagnostics|**المشروع:** diagnostics
+**Prompt:** %s|**İstem:** %s|**Prompt:** %s|**Prompt :** %s|**Prompt:** %s|**الطلب:** %s
+**Query:** %s|**Sorgu:** %s|**Abfrage:** %s|**Requête :** %s|**Query:** %s|**الاستعلام:** %s
+**Timeout:** %ds|**Zaman aşımı:** %ds|**Zeitlimit:** %ds|**Délai :** %ds|**Timeout:** %ds|**المهلة:** %ds
+**Timeout:** %s|**Zaman aşımı:** %s|**Zeitlimit:** %s|**Délai :** %s|**Timeout:** %s|**المهلة:** %s
+**URL:** %s|**URL:** %s|**URL:** %s|**URL :** %s|**URL:** %s|**الرابط:** %s
+## %s Tool Call|## %s araç çağrısı|## %s Werkzeugaufruf|## Appel de l’outil %s|## Chiamata strumento %s|## استدعاء أداة %s
+### Error:|### Hata:|### Fehler:|### Erreur :|### Errore:|### الخطأ:
+### Parameters:|### Parametreler:|### Parameter:|### Paramètres :|### Parametri:|### المعاملات:
+### Result:|### Sonuç:|### Ergebnis:|### Résultat :|### Risultato:|### النتيجة:
+### Status:|### Durum:|### Status:|### État :|### Stato:|### الحالة:
+%d of %d edits succeeded|%d düzenleme başarılı, toplam %d|%d Änderungen erfolgreich, insgesamt %d|%d modifications réussies sur %d|%d modifiche riuscite su %d|نجحت %d تعديلات من أصل %d
+%d prompts|%d istem|%d Prompts|%d prompts|%d prompt|%d طلبات
+%d questions need your input|%d soru yanıtını bekliyor|%d Fragen benötigen Ihre Antwort|%d questions attendent votre réponse|%d domande attendono la tua risposta|%d أسئلة تحتاج إجابتك
+%d %s unanswered|%d %s yanıtsız|%d %s unbeantwortet|%d %s sans réponse|%d %s senza risposta|%d %s دون إجابة
+%d Queued|%d sırada|%d in Warteschlange|%d en attente|%d in coda|%d في الطابور
+%d resources|%d kaynak|%d Ressourcen|%d ressources|%d risorse|%d مصادر
+%d tools|%d araç|%d Werkzeuge|%d outils|%d strumenti|%d أدوات
+%ds before returning to the primary model|Ana modele dönmeden önce %ds|%ds vor Rückkehr zum Hauptmodell|%ds avant le retour au modèle principal|%ds prima di tornare al modello principale|%ds قبل العودة إلى النموذج الأساسي
+%s Key|%s anahtarı|%s-Schlüssel|Clé %s|Chiave %s|مفتاح %s
+%s mode: now running on the %s model at %s reasoning.|%s modu: %s modeliyle %s düşünme düzeyinde çalışılıyor.|%s-Modus: Modell %s mit Denkaufwand %s.|Mode %s : modèle %s, raisonnement %s.|Modalità %s: modello %s, ragionamento %s.|وضع %s: النموذج %s بمستوى استدلال %s.
+%s model changed to %s|%s modeli %s olarak değişti|%s-Modell auf %s geändert|Modèle %s changé pour %s|Modello %s cambiato in %s|تم تغيير نموذج %s إلى %s
+... and %d more|... ve %d tane daha|... und %d weitere|... et %d autres|... e altri %d|... و%d أخرى
+…and %d more|…ve %d tane daha|…und %d weitere|…et %d autres|…e altri %d|…و%d أخرى
+(no text)|(metin yok)|(kein Text)|(aucun texte)|(nessun testo)|(لا يوجد نص)
+(not answered)|(yanıtlanmadı)|(unbeantwortet)|(sans réponse)|(senza risposta)|(لم تتم الإجابة)
+Multi-Edit|Çoklu düzenleme|Mehrfachbearbeitung|Modifications multiples|Modifica multipla|تعديل متعدد
+Stderr:|Hata çıktısı:|Fehlerausgabe:|Sortie d’erreur :|Output errori:|مخرجات الخطأ:
+Stdout:|Standart çıktı:|Standardausgabe:|Sortie standard :|Output standard:|المخرجات القياسية:
+Fetching models...|Modeller getiriliyor...|Modelle werden geladen...|Chargement des modèles...|Caricamento dei modelli...|جارٍ جلب النماذج...
+Generating Prompt...|İstem oluşturuluyor...|Prompt wird erstellt...|Création du prompt...|Generazione del prompt...|جارٍ إنشاء التوجيه...
+Waiting for authorization...|Yetkilendirme bekleniyor...|Autorisierung wird erwartet...|En attente d’autorisation...|In attesa di autorizzazione...|في انتظار التفويض...
+Add Fallback: |Yedek model ekle: |Ausweichmodell hinzufügen: |Ajouter un modèle de secours : |Aggiungi modello di riserva: |إضافة نموذج احتياطي: 
+Edit Role: |Rolü düzenle: |Rolle bearbeiten: |Modifier le rôle : |Modifica ruolo: |تعديل الدور: 
+Edit Subagent: |Uzman ajanı düzenle: |Unteragent bearbeiten: |Modifier le sous-agent : |Modifica sottoagente: |تعديل الوكيل الفرعي: 
+Command: |Komut: |Befehl: |Commande : |Comando: |الأمر: 
+Diff: |Fark: |Änderungen: |Différences : |Differenze: |الفروق: 
+Directory: %s|Dizin: %s|Verzeichnis: %s|Répertoire : %s|Cartella: %s|المجلد: %s
+File: %s|Dosya: %s|Datei: %s|Fichier : %s|File: %s|الملف: %s
+Prompt: %s|İstem: %s|Prompt: %s|Prompt : %s|Prompt: %s|التوجيه: %s
+Working directory: |Çalışma dizini: |Arbeitsverzeichnis: |Répertoire de travail : |Cartella di lavoro: |مجلد العمل: 
+Working towards: |Hedef: |Arbeitsziel: |Objectif : |Obiettivo: |الهدف: 
+Select a task|Bir görev seç|Aufgabe auswählen|Choisir une tâche|Seleziona un’attività|اختر مهمة
+Select a task to assign|Atanacak görevi seç|Aufgabe zum Zuweisen auswählen|Choisir une tâche à attribuer|Seleziona un’attività da assegnare|اختر مهمة لإسنادها
+Select a task to revise|Düzenlenecek görevi seç|Aufgabe zum Überarbeiten auswählen|Choisir une tâche à réviser|Seleziona un’attività da rivedere|اختر مهمة لمراجعتها
+Select a reconciled task to retry|Yeniden denenecek uzlaştırılmış görevi seç|Abgeglichene Aufgabe zum Wiederholen auswählen|Choisir une tâche réconciliée à réessayer|Seleziona un’attività riconciliata da riprovare|اختر مهمة تمت تسويتها لإعادة المحاولة
+Output unavailable: |Çıktı kullanılamıyor: |Ausgabe nicht verfügbar: |Sortie indisponible : |Output non disponibile: |المخرجات غير متاحة: 
+Output error: |Çıktı hatası: |Ausgabefehler: |Erreur de sortie : |Errore di output: |خطأ في المخرجات: 
+History error: |Geçmiş hatası: |Verlaufsfehler: |Erreur d’historique : |Errore della cronologia: |خطأ في السجل: 
+Exit error: |Çıkış hatası: |Beendigungsfehler: |Erreur de sortie : |Errore di uscita: |خطأ في الإنهاء: 
+open browser|tarayıcıyı aç|Browser öffnen|ouvrir le navigateur|apri il browser|فتح المتصفح
+open in browser|tarayıcıda aç|im Browser öffnen|ouvrir dans le navigateur|apri nel browser|فتح في المتصفح
+view diff|farkı göster|Änderungen anzeigen|voir les différences|mostra differenze|عرض الفروق
+view session|sohbeti göster|Sitzung anzeigen|voir la session|mostra sessione|عرض الجلسة
+select all|tümünü seç|alle auswählen|tout sélectionner|seleziona tutto|تحديد الكل
+next tab|sonraki sekme|nächster Tab|onglet suivant|scheda successiva|علامة التبويب التالية
+prev tab|önceki sekme|vorheriger Tab|onglet précédent|scheda precedente|علامة التبويب السابقة
+move up|yukarı taşı|nach oben verschieben|déplacer vers le haut|sposta su|نقل لأعلى
+move down|aşağı taşı|nach unten verschieben|déplacer vers le bas|sposta giù|نقل لأسفل
+move forward|ileri git|vorwärts bewegen|avancer|vai avanti|تحرك للأمام
+move backward|geri git|rückwärts bewegen|reculer|vai indietro|تحرك للخلف
+switch options|seçenek değiştir|Optionen wechseln|changer d’option|cambia opzioni|تبديل الخيارات
+toggle type|türü değiştir|Typ wechseln|changer de type|cambia tipo|تبديل النوع
+clear queue|kuyruğu temizle|Warteschlange leeren|vider la file|svuota coda|مسح قائمة الانتظار
+edit cooldown|bekleme süresini düzenle|Wartezeit bearbeiten|modifier le délai|modifica attesa|تعديل مدة الانتظار
+edit instructions|talimatları düzenle|Anweisungen bearbeiten|modifier les instructions|modifica istruzioni|تعديل التعليمات
+save draft as snippet|taslağı şablon olarak kaydet|Entwurf als Textbaustein speichern|enregistrer le brouillon comme extrait|salva bozza come frammento|حفظ المسودة كمقتطف
+next source line|sonraki kaynak satırı|nächste Quellzeile|ligne source suivante|riga sorgente successiva|سطر المصدر التالي
+previous source line|önceki kaynak satırı|vorherige Quellzeile|ligne source précédente|riga sorgente precedente|سطر المصدر السابق
+line feedback|satır geri bildirimi|Zeilenfeedback|commentaire de ligne|commento sulla riga|ملاحظات السطر
+line start|satır başı|Zeilenanfang|début de ligne|inizio riga|بداية السطر
+needs authentication|giriş gerekiyor|Anmeldung erforderlich|authentification requise|autenticazione richiesta|يلزم تسجيل الدخول
+no reasoning levels available|kullanılabilir akıl yürütme düzeyi yok|keine Denkstufen verfügbar|aucun niveau de raisonnement disponible|nessun livello di ragionamento disponibile|لا توجد مستويات تفكير متاحة
+no model assigned -- uses the session's own|model atanmamış; sohbetin modeli kullanılır|kein Modell zugewiesen; verwendet das Sitzungsmodell|aucun modèle attribué ; utilise celui de la session|nessun modello assegnato; usa quello della sessione|لم يُعيّن نموذج؛ يُستخدم نموذج الجلسة
+runs on |kullanılan model: |verwendet |utilise |usa |يستخدم 
+activate|etkinleştir|aktivieren|activer|attiva|تفعيل
+Server connection degraded|Sunucu bağlantısı zayıfladı|Serververbindung beeinträchtigt|Connexion au serveur dégradée|Connessione al server degradata|تدهور الاتصال بالخادم
+Paste is too big (>5mb)|Yapıştırılan içerik çok büyük (>5 MB)|Eingefügter Inhalt zu groß (>5 MB)|Contenu collé trop volumineux (>5 Mo)|Contenuto incollato troppo grande (>5 MB)|المحتوى الملصق كبير جدًا (>5 ميغابايت)
+Only optional pinned files and tool results can be removed|Yalnızca isteğe bağlı sabitlenmiş dosyalar ve araç sonuçları kaldırılabilir|Nur optionale angeheftete Dateien und Werkzeugergebnisse können entfernt werden|Seuls les fichiers épinglés facultatifs et les résultats d’outils peuvent être retirés|Si possono rimuovere solo file fissati facoltativi e risultati degli strumenti|يمكن إزالة الملفات المثبتة الاختيارية ونتائج الأدوات فقط
+Review file is outside this project|İnceleme dosyası bu projenin dışında|Prüfdatei liegt außerhalb dieses Projekts|Le fichier de révision est hors de ce projet|Il file di revisione è fuori da questo progetto|ملف المراجعة خارج هذا المشروع
+This workspace does not expose background output|Bu çalışma alanı arka plan çıktısını sunmuyor|Dieser Arbeitsbereich stellt keine Hintergrundausgabe bereit|Cet espace de travail ne fournit pas la sortie en arrière-plan|Questo spazio di lavoro non espone l’output in background|مساحة العمل هذه لا تتيح مخرجات الخلفية
+This workspace does not expose process output|Bu çalışma alanı işlem çıktısını sunmuyor|Dieser Arbeitsbereich stellt keine Prozessausgabe bereit|Cet espace de travail ne fournit pas la sortie du processus|Questo spazio di lavoro non espone l’output del processo|مساحة العمل هذه لا تتيح مخرجات العملية
+Output has not been persisted for this operation; inspect its live agent or background job|Bu işlemin çıktısı kaydedilmemiş; çalışan ajanı veya arka plan işini inceleyin|Für diesen Vorgang wurde keine Ausgabe gespeichert; prüfen Sie den aktiven Agenten oder Hintergrundauftrag|La sortie de cette opération n’a pas été enregistrée ; consultez l’agent actif ou la tâche en arrière-plan|L’output di questa operazione non è stato salvato; controlla l’agente attivo o il processo in background|لم تُحفظ مخرجات هذه العملية؛ افحص الوكيل النشط أو مهمة الخلفية
+No coder agent is configured, so images can't be attached|Kodlama ajanı yapılandırılmadığından görsel eklenemiyor|Kein Programmieragent konfiguriert; Bilder können nicht angehängt werden|Aucun agent de programmation configuré ; impossible de joindre des images|Nessun agente di programmazione configurato; impossibile allegare immagini|لم يُضبط وكيل برمجة، لذا لا يمكن إرفاق الصور
+No configuration loaded, so images can't be attached|Yapılandırma yüklenmediğinden görsel eklenemiyor|Keine Konfiguration geladen; Bilder können nicht angehängt werden|Aucune configuration chargée ; impossible de joindre des images|Nessuna configurazione caricata; impossibile allegare immagini|لم تُحمّل إعدادات، لذا لا يمكن إرفاق الصور
+Session Mode (%s)|Sohbet modu (%s)|Sitzungsmodus (%s)|Mode de session (%s)|Modalità sessione (%s)|وضع الجلسة (%s)
+active|etkin|aktiv|actif|attivo|نشط
+Press |Basın: |Drücken Sie |Appuyez sur |Premi |اضغط 
+ to open your browser.| ile tarayıcınızı açın.|, um den Browser zu öffnen.| pour ouvrir le navigateur.| per aprire il browser.| لفتح المتصفح.
+ to open the authorization page.| ile yetkilendirme sayfasını açın.|, um die Autorisierungsseite zu öffnen.| pour ouvrir la page d’autorisation.| per aprire la pagina di autorizzazione.| لفتح صفحة التفويض.
+ to open the browser and finish signing in.| ile tarayıcıyı açıp girişi tamamlayın.|, um den Browser zu öffnen und die Anmeldung abzuschließen.| pour ouvrir le navigateur et terminer la connexion.| per aprire il browser e completare l’accesso.| لفتح المتصفح وإكمال تسجيل الدخول.
+ to copy the code below and open the browser.| ile aşağıdaki kodu kopyalayıp tarayıcıyı açın.|, um den Code unten zu kopieren und den Browser zu öffnen.| pour copier le code ci-dessous et ouvrir le navigateur.| per copiare il codice seguente e aprire il browser.| لنسخ الرمز أدناه وفتح المتصفح.
+Enter your |Girin: |Geben Sie Folgendes ein: |Saisissez votre |Inserisci |أدخل 
+Verifying your |Doğrulanıyor: |Wird überprüft: |Vérification de votre |Verifica di |جارٍ التحقق من 
+ validated.| doğrulandı.| bestätigt.| validé.| verificato.| تم التحقق منه.
+. Try again?|. Yeniden denensin mi?|. Erneut versuchen?|. Réessayer ?|. Riprovare?|. إعادة المحاولة؟
+Invalid |Geçersiz: |Ungültig: |Invalide : |Non valido: |غير صالح: 
+Starting |Başlatılıyor: |Startet: |Démarrage de |Avvio di |جارٍ بدء 
+Loaded Image|Görsel yüklendi|Bild geladen|Image chargée|Immagine caricata|تم تحميل الصورة
+Loaded Skill|Beceri yüklendi|Fertigkeit geladen|Compétence chargée|Abilità caricata|تم تحميل المهارة
+Rewrote Output|Çıktı yeniden yazıldı|Ausgabe neu geschrieben|Sortie réécrite|Output riscritto|أُعيدت كتابة المخرجات
+Thought for |Düşünme süresi: |Denkdauer: |Temps de réflexion : |Tempo di ragionamento: |مدة التفكير: 
+Thinking mode |Düşünme modu |Denkmodus |Mode de réflexion |Modalità ragionamento |وضع التفكير 
+Focus mode |Odak modu |Fokusmodus |Mode concentration |Modalità concentrazione |وضع التركيز 
+Yolo mode |Yolo modu |Yolo-Modus |Mode Yolo |Modalità Yolo |وضع Yolo 
+Transparent background |Saydam arka plan |Transparenter Hintergrund |Arrière-plan transparent |Sfondo trasparente |الخلفية الشفافة 
+ close| kapat| schließen| fermer| chiudi| إغلاق
+ open | aç | öffnen | ouvrir | apri | فتح 
+ reasoning| akıl yürütme| Denkaufwand| raisonnement| ragionamento| التفكير
+ cooldown| bekleme süresi| Wartezeit| délai| attesa| مدة الانتظار
+ — cooldown| — bekleme süresi| — Wartezeit| — délai| — attesa| — مدة الانتظار
+ clear stops it.| clear durdurur.| clear beendet es.| clear l’arrête.| clear lo arresta.| clear يوقفه.
+ clear stops it)| clear durdurur)| clear beendet es)| clear l’arrête)| clear lo arresta)| clear يوقفه)
+No goal set. Type |Hedef belirlenmedi. Yazın: |Kein Ziel gesetzt. Eingabe: |Aucun objectif défini. Saisissez |Nessun obiettivo impostato. Digita |لم يُحدّد هدف. اكتب 
+ followed by what this session should work towards.| ardından bu sohbette ulaşılacak hedefi yazın.| gefolgt vom Ziel dieser Sitzung.| suivi de l’objectif de cette session.| seguito dall’obiettivo della sessione.| ثم الهدف الذي يجب أن تعمل عليه الجلسة.
+ Press n to save your current draft.| Mevcut taslağı kaydetmek için n tuşuna basın.| Drücken Sie n, um den Entwurf zu speichern.| Appuyez sur n pour enregistrer le brouillon.| Premi n per salvare la bozza.| اضغط n لحفظ المسودة الحالية.
+Results for "|Arama sonuçları: "|Ergebnisse für "|Résultats pour "|Risultati per "|نتائج البحث عن "
+Required argument '|Zorunlu argüman '|Erforderliches Argument '|Argument requis '|Argomento richiesto '|المعامل المطلوب '
+' is missing.|' eksik.|' fehlt.|' manquant.|' mancante.|' مفقود.
+Model %q isn't in provider %q's catalog|%q modeli %q sağlayıcısının kataloğunda bulunmuyor|Modell %q fehlt im Katalog des Anbieters %q|Le modèle %q est absent du catalogue du fournisseur %q|Il modello %q non è nel catalogo del provider %q|النموذج %q ليس في كتالوج الموفر %q
+when this subagent should be used|bu uzman ajanın ne zaman kullanılacağı|wann dieser Unteragent verwendet werden soll|quand utiliser ce sous-agent|quando usare questo sottoagente|متى ينبغي استخدام هذا الوكيل الفرعي
+e.g. research|örn. research|z. B. research|p. ex. research|es. research|مثل research
+e.g. research; empty runs on the session's model|örn. research; boşsa sohbet modeli kullanılır|z. B. research; leer verwendet das Sitzungsmodell|p. ex. research ; vide utilise le modèle de session|es. research; vuoto usa il modello della sessione|مثل research؛ عند تركه فارغًا يُستخدم نموذج الجلسة
+e.g. low, medium, high -- leave empty for the model's own default|örn. low, medium, high; modelin varsayılanı için boş bırakın|z. B. low, medium, high; leer für den Modellstandard|p. ex. low, medium, high ; vide pour la valeur par défaut du modèle|es. low, medium, high; vuoto per il valore predefinito del modello|مثل low وmedium وhigh؛ اتركه فارغًا لاستخدام القيمة الافتراضية للنموذج
+e.g. 80 for 80% -- empty resets to built-in|örn. %80 için 80; boş bırakmak yerleşik değere döndürür|z. B. 80 für 80%; leer setzt auf den Standard zurück|p. ex. 80 pour 80 % ; vide rétablit la valeur intégrée|es. 80 per 80%; vuoto ripristina il valore integrato|مثل 80 لنسبة 80%؛ تركه فارغًا يعيد القيمة المضمنة
+Percentage of the model's context window that may be used before the session auto-summarizes. Leave empty to use the built-in thresholds.|Sohbetin otomatik özetlenmesinden önce kullanılabilecek bağlam yüzdesi. Yerleşik eşikler için boş bırakın.|Prozentsatz des Kontextfensters vor der automatischen Zusammenfassung. Leer lassen für integrierte Schwellenwerte.|Pourcentage du contexte utilisable avant le résumé automatique. Laisser vide pour les seuils intégrés.|Percentuale di contesto utilizzabile prima del riepilogo automatico. Lascia vuoto per le soglie integrate.|نسبة السياق المستخدمة قبل التلخيص التلقائي. اتركه فارغًا لاستخدام الحدود المضمنة.
+Seconds a fallback stays active after a failover before the next turn returns to the primary model. 0 returns every turn.|Yedek modelin etkin kalacağı saniye. Sonraki turda ana modele dönülür; 0 her turda döner.|Sekunden, die das Ausweichmodell aktiv bleibt. Danach kehrt der nächste Durchgang zum Hauptmodell zurück; 0 bei jedem Durchgang.|Secondes d’activation du modèle de secours avant le retour au modèle principal au tour suivant. 0 revient à chaque tour.|Secondi di attività del modello di riserva prima del ritorno al principale al turno successivo. 0 torna a ogni turno.|مدة بقاء النموذج الاحتياطي بالثواني قبل العودة للأساسي في الدور التالي. 0 يعيد في كل دور.
+returns to the primary model every turn|her turda ana modele döner|kehrt bei jedem Durchgang zum Hauptmodell zurück|revient au modèle principal à chaque tour|torna al modello principale a ogni turno|يعود إلى النموذج الأساسي في كل دور
+A named model role a subagent, the advisor, or a vibe worker can run on -- see `atlas models roles`.|Uzman ajan, danışman veya vibe worker için adlandırılmış model rolü; bkz. `atlas models roles`.|Benannte Modellrolle für Unteragent, Berater oder Vibe-Worker; siehe `atlas models roles`.|Rôle de modèle nommé pour un sous-agent, conseiller ou worker vibe ; voir `atlas models roles`.|Ruolo di modello denominato per sottoagente, consulente o worker vibe; vedi `atlas models roles`.|دور نموذج مسمى للوكيل الفرعي أو المستشار أو عامل vibe؛ راجع `atlas models roles`.
+Instructions are edited separately, in $EDITOR, after saving (see enter on the subagents list).|Talimatlar kayıttan sonra $EDITOR ile ayrıca düzenlenir (uzman ajan listesinde enter).|Anweisungen werden nach dem Speichern separat in $EDITOR bearbeitet (Enter in der Unteragentenliste).|Les instructions se modifient séparément dans $EDITOR après enregistrement (entrée dans la liste des sous-agents).|Le istruzioni si modificano separatamente in $EDITOR dopo il salvataggio (invio nell’elenco dei sottoagenti).|تُعدّل التعليمات منفصلة في $EDITOR بعد الحفظ (اضغط enter في قائمة الوكلاء الفرعيين).
+'s fallback chain -- tried in order when the primary model hits a 429.| için yedek model zinciri; ana model 429 döndürünce sırayla denenir.|: Ausweichkette; wird bei 429 des Hauptmodells der Reihe nach versucht.| : chaîne de secours, essayée dans l’ordre si le modèle principal renvoie 429.|: catena di riserva, provata in ordine se il modello principale restituisce 429.|: سلسلة النماذج الاحتياطية؛ تُجرّب بالترتيب عند إرجاع النموذج الأساسي 429.
+Appended to the end of |Sonuna eklenir: |Angefügt an das Ende von |Ajouté à la fin de |Aggiunto alla fine di |يُضاف إلى نهاية 
+Search|ara|suchen|rechercher|cerca|بحث
+Edit|düzenle|bearbeiten|modifier|modifica|تعديل
+Yes|evet|ja|oui|sì|نعم
+No|hayır|nein|non|no|لا
+Search chat|Sohbette ara|Chat durchsuchen|Rechercher dans la conversation|Cerca nella conversazione|البحث في المحادثة
+Jobs|işler|Aufgaben|tâches|attività|المهام
+Prompt history|İstem geçmişi|Promptverlauf|Historique des prompts|Cronologia dei prompt|سجل الطلبات
+Confirm|onayla|bestätigen|confirmer|conferma|تأكيد
+quit|çıkış|beenden|quitter|esci|خروج
+Rewind|geri al|zurücksetzen|revenir|ripristina|رجوع
+Search all sessions|Tüm sohbetlerde ara|Alle Sitzungen durchsuchen|Rechercher dans toutes les sessions|Cerca in tutte le sessioni|البحث في جميع الجلسات
+ Fetching models...| Modeller getiriliyor...| Modelle werden geladen...| Chargement des modèles...| Caricamento dei modelli...| جارٍ جلب النماذج...
+ Generating Prompt...| İstem oluşturuluyor...| Prompt wird erstellt...| Création du prompt...| Generazione del prompt...| جارٍ إنشاء التوجيه...
+ Waiting for authorization...| Yetkilendirme bekleniyor...| Autorisierung wird erwartet...| En attente d’autorisation...| In attesa di autorizzazione...| في انتظار التفويض...
+ mode: now running on the | modu: artık kullanılan model: |: verwendet jetzt das Modell | : utilise maintenant le modèle |: ora usa il modello |: يستخدم الآن النموذج 
+ model.|.|.|.|.|.
+agent configuration not found|ajan yapılandırması bulunamadı|Agentenkonfiguration nicht gefunden|configuration de l’agent introuvable|configurazione dell’agente non trovata|لم تُعثر على إعدادات الوكيل
+configuration not found|yapılandırma bulunamadı|Konfiguration nicht gefunden|configuration introuvable|configurazione non trovata|لم تُعثر على الإعدادات
+model configuration not found|model yapılandırması bulunamadı|Modellkonfiguration nicht gefunden|configuration du modèle introuvable|configurazione del modello non trovata|لم تُعثر على إعدادات النموذج
+failed to cancel: %w|iptal edilemedi: %w|Abbrechen fehlgeschlagen: %w|échec de l’annulation : %w|annullamento non riuscito: %w|فشل الإلغاء: %w
+failed to delete role %q: %w|%q rolü silinemedi: %w|Rolle %q konnte nicht gelöscht werden: %w|impossible de supprimer le rôle %q : %w|impossibile eliminare il ruolo %q: %w|تعذر حذف الدور %q: %w
+failed to delete subagent %q: %w|%q uzman ajanı silinemedi: %w|Unteragent %q konnte nicht gelöscht werden: %w|impossible de supprimer le sous-agent %q : %w|impossibile eliminare il sottoagente %q: %w|تعذر حذف الوكيل الفرعي %q: %w
+failed to get providers: %w|sağlayıcılar alınamadı: %w|Anbieter konnten nicht geladen werden: %w|impossible de récupérer les fournisseurs : %w|impossibile ottenere i provider: %w|تعذر جلب الموفرين: %w
+Failed to initialize project: %v|Proje başlatılamadı: %v|Projekt konnte nicht initialisiert werden: %v|Impossible d’initialiser le projet : %v|Impossibile inizializzare il progetto: %v|تعذرت تهيئة المشروع: %v
+Failed to mark project as initialized: %v|Proje başlatılmış olarak işaretlenemedi: %v|Projekt konnte nicht als initialisiert markiert werden: %v|Impossible de marquer le projet comme initialisé : %v|Impossibile segnare il progetto come inizializzato: %v|تعذر وضع علامة تهيئة المشروع: %v
+failed to open browser: %w|tarayıcı açılamadı: %w|Browser konnte nicht geöffnet werden: %w|impossible d’ouvrir le navigateur : %w|impossibile aprire il browser: %w|تعذر فتح المتصفح: %w
+failed to parse command|komut ayrıştırılamadı|Befehl konnte nicht analysiert werden|impossible d’analyser la commande|impossibile analizzare il comando|تعذر تحليل الأمر
+failed to remove fallback entry: %w|yedek model girdisi kaldırılamadı: %w|Ausweicheintrag konnte nicht entfernt werden: %w|impossible de retirer le modèle de secours : %w|impossibile rimuovere il modello di riserva: %w|تعذر إزالة النموذج الاحتياطي: %w
+failed to save API key: %w|API anahtarı kaydedilemedi: %w|API-Schlüssel konnte nicht gespeichert werden: %w|impossible d’enregistrer la clé API : %w|impossibile salvare la chiave API: %w|تعذر حفظ مفتاح API: %w
+failed to set provider items: %w|sağlayıcı öğeleri ayarlanamadı: %w|Anbietereinträge konnten nicht gesetzt werden: %w|impossible de définir les éléments du fournisseur : %w|impossibile impostare gli elementi del provider: %w|تعذر ضبط عناصر الموفر: %w
+failed to update %s: %w|%s güncellenemedi: %w|%s konnte nicht aktualisiert werden: %w|impossible de mettre à jour %s : %w|impossibile aggiornare %s: %w|تعذر تحديث %s: %w
+failed to update recent models: %w|son modeller güncellenemedi: %w|Zuletzt verwendete Modelle konnten nicht aktualisiert werden: %w|impossible de mettre à jour les modèles récents : %w|impossibile aggiornare i modelli recenti: %w|تعذر تحديث النماذج الحديثة: %w
+saving fallback: %w|yedek model kaydedilirken: %w|Ausweichmodell speichern: %w|enregistrement du modèle de secours : %w|salvataggio del modello di riserva: %w|حفظ النموذج الاحتياطي: %w
+saving model role: %w|model rolü kaydedilirken: %w|Modellrolle speichern: %w|enregistrement du rôle de modèle : %w|salvataggio del ruolo di modello: %w|حفظ دور النموذج: %w
+saving subagent: %w|uzman ajan kaydedilirken: %w|Unteragent speichern: %w|enregistrement du sous-agent : %w|salvataggio del sottoagente: %w|حفظ الوكيل الفرعي: %w
+setting reasoning effort: %w|akıl yürütme düzeyi ayarlanırken: %w|Denkaufwand einstellen: %w|réglage de l’effort de raisonnement : %w|impostazione del ragionamento: %w|ضبط مستوى التفكير: %w
+subagent %q no longer exists|%q uzman ajanı artık mevcut değil|Unteragent %q existiert nicht mehr|le sous-agent %q n’existe plus|il sottoagente %q non esiste più|الوكيل الفرعي %q لم يعد موجودًا
+switching mode: %w|mod değiştirilirken: %w|Moduswechsel: %w|changement de mode : %w|cambio modalità: %w|تبديل الوضع: %w
+unknown mode %q|bilinmeyen mod %q|unbekannter Modus %q|mode inconnu %q|modalità sconosciuta %q|وضع غير معروف %q
+update failed: %w|güncelleme başarısız: %w|Aktualisierung fehlgeschlagen: %w|échec de la mise à jour : %w|aggiornamento non riuscito: %w|فشل التحديث: %w
+Updated to v%s — restart Atlas Agent to use it.|v%s sürümüne güncellendi; kullanmak için Atlas Agent’ı yeniden başlatın.|Auf v%s aktualisiert; Atlas Agent neu starten.|Mise à jour vers v%s ; redémarrez Atlas Agent.|Aggiornato a v%s; riavvia Atlas Agent.|تم التحديث إلى v%s؛ أعد تشغيل Atlas Agent.
+ATLAS-AGENT update available: v%s → v%s. Press U to update or run 'atlas-agent update'.|ATLAS-AGENT güncellemesi var: v%s → v%s. U tuşuna basın veya 'atlas-agent update' çalıştırın.|ATLAS-AGENT-Update verfügbar: v%s → v%s. U drücken oder 'atlas-agent update' ausführen.|Mise à jour ATLAS-AGENT disponible : v%s → v%s. Appuyez sur U ou lancez 'atlas-agent update'.|Aggiornamento ATLAS-AGENT disponibile: v%s → v%s. Premi U o esegui 'atlas-agent update'.|يتوفر تحديث ATLAS-AGENT: v%s → v%s. اضغط U أو نفّذ 'atlas-agent update'.
+This is a development version of ATLAS-AGENT. The latest version is v%s. Run 'atlas-agent update' to upgrade.|Bu ATLAS-AGENT geliştirme sürümüdür. Güncel sürüm v%s. Yükseltmek için 'atlas-agent update' çalıştırın.|Dies ist eine Entwicklungsversion von ATLAS-AGENT. Aktuell ist v%s. Zum Aktualisieren 'atlas-agent update' ausführen.|Version de développement ATLAS-AGENT. La dernière version est v%s. Lancez 'atlas-agent update'.|Versione di sviluppo ATLAS-AGENT. L’ultima versione è v%s. Esegui 'atlas-agent update'.|هذه نسخة تطوير من ATLAS-AGENT. أحدث إصدار v%s. نفّذ 'atlas-agent update' للترقية.
+diff view is limited to 256 files|fark görünümü 256 dosyayla sınırlıdır|Änderungsansicht auf 256 Dateien begrenzt|vue des différences limitée à 256 fichiers|vista differenze limitata a 256 file|عرض الفروق محدود بـ256 ملفًا
+large file histories omitted from the bounded diff view|büyük dosya geçmişleri sınırlı fark görünümünden çıkarıldı|Große Dateiverläufe in begrenzter Änderungsansicht ausgelassen|historiques volumineux omis de la vue limitée des différences|cronologie grandi omesse dalla vista differenze limitata|حُذفت سجلات الملفات الكبيرة من عرض الفروق المحدود
+Invalid tool name|Geçersiz araç adı|Ungültiger Werkzeugname|Nom d’outil invalide|Nome strumento non valido|اسم أداة غير صالح
+Listing the previously known providers|Önceden bilinen sağlayıcılar listeleniyor|Bekannte Anbieter werden aufgelistet|Liste des fournisseurs déjà connus|Elenco dei provider già noti|جارٍ عرض الموفرين المعروفين سابقًا
+When I initialize your codebase I examine the project and put the result into an %s file which serves as general context.|Kod tabanınızı başlatırken projeyi inceleyip sonucu genel bağlam olarak kullanılan %s dosyasına kaydederim.|Beim Initialisieren prüfe ich das Projekt und speichere das Ergebnis als allgemeinen Kontext in einer %s-Datei.|À l’initialisation, j’examine le projet et enregistre le résultat dans un fichier %s servant de contexte général.|All’inizializzazione esamino il progetto e salvo il risultato in un file %s come contesto generale.|عند التهيئة أفحص المشروع وأحفظ النتيجة في ملف %s ليكون سياقًا عامًا.
+You can also initialize anytime via |İstediğiniz zaman başlatabilirsiniz: |Sie können jederzeit initialisieren über |Vous pouvez aussi initialiser à tout moment via |Puoi inizializzare in qualsiasi momento tramite |يمكنك أيضًا التهيئة في أي وقت عبر 
+in %s|%s içinde|in %s|dans %s|in %s|في %s
+via %s|%s üzerinden|über %s|via %s|tramite %s|عبر %s
+%.1f%% of %s|%.1f%% / %s|%.1f%% von %s|%.1f%% de %s|%.1f%% di %s|%.1f%% من %s
+Mode: |Mod: |Modus: |Mode : |Modalità: |الوضع: 
+Summarizes the session (auto or /summarize) instead of using the session's own model.|Sohbeti kendi modeli yerine bu modelle özetler (otomatik veya /summarize).|Fasst die Sitzung mit diesem Modell zusammen (automatisch oder /summarize).|Résume la session avec ce modèle (automatiquement ou /summarize).|Riepiloga la sessione con questo modello (automatico o /summarize).|يلخص الجلسة بهذا النموذج (تلقائيًا أو عبر /summarize).
+Reviews each finished turn and leaves a note for the next prompt.|Tamamlanan her turu inceler ve sonraki istem için not bırakır.|Prüft jeden abgeschlossenen Durchgang und hinterlässt einen Hinweis für den nächsten Prompt.|Examine chaque tour terminé et laisse une note pour le prompt suivant.|Rivede ogni turno completato e lascia una nota per il prompt successivo.|يراجع كل دور مكتمل ويترك ملاحظة للتوجيه التالي.
+A stronger model consulted when the primary agent gets stuck.|Ana ajan takıldığında danışılan daha güçlü model.|Stärkeres Modell, das bei Schwierigkeiten des Hauptagenten konsultiert wird.|Modèle plus puissant consulté lorsque l’agent principal bloque.|Modello più potente consultato quando l’agente principale si blocca.|نموذج أقوى يُستشار عندما يتعثر الوكيل الأساسي.
+Maps architecture, ownership, interfaces and migration risks for large projects.|Büyük projelerin mimarisini, sorumluluklarını, arayüzlerini ve geçiş risklerini çıkarır.|Erfasst Architektur, Zuständigkeiten, Schnittstellen und Migrationsrisiken großer Projekte.|Cartographie l’architecture, les responsabilités, les interfaces et les risques de migration des grands projets.|Analizza architettura, responsabilità, interfacce e rischi di migrazione nei grandi progetti.|يرسم معمارية المشاريع الكبيرة ومسؤولياتها وواجهاتها ومخاطر ترحيلها.
+Builds and reviews server-side code -- APIs, data access, background work, concurrency and failure handling -- following the project's existing conventions.|Projenin kurallarına uyarak API, veri erişimi, arka plan işleri, eşzamanlılık ve hata yönetimi kodunu geliştirir ve inceler.|Entwickelt und prüft Servercode für APIs, Datenzugriff, Hintergrundarbeit, Nebenläufigkeit und Fehlerbehandlung nach Projektkonventionen.|Développe et examine le code serveur : API, accès aux données, tâches de fond, concurrence et erreurs, selon les conventions du projet.|Sviluppa e rivede codice server per API, dati, attività in background, concorrenza ed errori secondo le convenzioni del progetto.|يطور ويراجع كود الخادم للواجهات والبيانات والمهام الخلفية والتزامن ومعالجة الأخطاء وفق قواعد المشروع.
+Writes and corrects documentation -- READMEs, API references, guides, doc comments -- grounded in what the code actually does, in the project's existing voice.|Kodun gerçek davranışına dayanan README, API referansı, rehber ve kod açıklamalarını projenin üslubuyla yazar ve düzeltir.|Schreibt und korrigiert README-Dateien, API-Referenzen, Leitfäden und Kommentare anhand des tatsächlichen Codes im Projektstil.|Rédige et corrige README, références API, guides et commentaires selon le comportement réel du code et le style du projet.|Scrive e corregge README, riferimenti API, guide e commenti basandosi sul codice reale e sullo stile del progetto.|يكتب ويصحح ملفات README ومراجع API والأدلة والتعليقات بناءً على سلوك الكود الفعلي وبأسلوب المشروع.
+Builds and reviews user interface code -- components, state, styling, accessibility and rendering performance -- following the project's existing conventions.|Projenin kurallarına uyarak arayüz bileşenlerini, durumu, stili, erişilebilirliği ve çizim performansını geliştirir ve inceler.|Entwickelt und prüft UI-Komponenten, Zustand, Stil, Barrierefreiheit und Rendering-Leistung nach Projektkonventionen.|Développe et examine composants, état, style, accessibilité et performances de rendu selon les conventions du projet.|Sviluppa e rivede componenti, stato, stile, accessibilità e prestazioni di rendering secondo le convenzioni del progetto.|يطور ويراجع مكونات الواجهة والحالة والتنسيق وإمكانية الوصول وأداء العرض وفق قواعد المشروع.
+Turns a feature request or refactor into a concrete, ordered implementation plan grounded in the actual codebase, naming the files to touch and the trade-offs taken.|Özellik veya yeniden düzenleme isteğini, değişecek dosyaları ve tercihleri belirten, kod tabanına dayalı sıralı uygulama planına dönüştürür.|Erstellt aus einer Funktion oder Umstrukturierung einen geordneten Plan mit betroffenen Dateien und Abwägungen auf Basis des Codes.|Transforme une demande en plan ordonné fondé sur le code, en précisant les fichiers et les compromis.|Trasforma una richiesta in un piano ordinato basato sul codice, indicando file e compromessi.|يحول طلب ميزة أو إعادة هيكلة إلى خطة مرتبة تستند للكود وتحدد الملفات والمفاضلات.
+Restructures code without changing behavior -- extracting, renaming, deduplicating, untangling -- in small verified steps that keep tests green.|Davranışı değiştirmeden kodu küçük ve doğrulanmış adımlarla ayırır, yeniden adlandırır, tekrarları ve karmaşıklığı giderir.|Strukturiert Code ohne Verhaltensänderung in kleinen geprüften Schritten um und hält Tests erfolgreich.|Restructure le code sans changer son comportement, par étapes vérifiées gardant les tests au vert.|Ristruttura il codice senza modificarne il comportamento, con piccoli passi verificati e test superati.|يعيد هيكلة الكود دون تغيير السلوك بخطوات صغيرة موثقة تحافظ على نجاح الاختبارات.
+Finds the root cause of a failing test, crash, or wrong behavior by reading code and running experiments, then reports the mechanism and the minimal fix.|Kodu okuyup deneyler yaparak başarısız test, çökme veya yanlış davranışın kök nedenini bulur; işleyişi ve en küçük düzeltmeyi bildirir.|Findet durch Codeanalyse und Experimente die Ursache fehlgeschlagener Tests, Abstürze oder Fehler und erklärt Mechanismus und minimale Korrektur.|Trouve la cause des tests échoués, plantages ou comportements incorrects par analyse et expériences, puis décrit le mécanisme et le correctif minimal.|Trova la causa di test falliti, arresti o comportamenti errati tramite analisi ed esperimenti e descrive la correzione minima.|يحدد سبب فشل الاختبارات أو الأعطال أو السلوك الخاطئ عبر قراءة الكود والتجارب ويشرح الآلية وأصغر إصلاح.
+Answers open questions about a codebase or a technology by gathering evidence and reporting findings with citations, separating what is verified from what is inferred.|Kod veya teknoloji hakkındaki soruları kanıt ve kaynaklarla yanıtlar; doğrulanan bilgilerle çıkarımları ayırır.|Beantwortet Fragen zu Code oder Technik mit Belegen und Quellen und trennt geprüfte Fakten von Schlussfolgerungen.|Répond aux questions sur le code ou la technologie avec preuves et sources, en distinguant faits vérifiés et déductions.|Risponde alle domande su codice o tecnologia con prove e fonti, distinguendo verifiche e deduzioni.|يجيب عن أسئلة الكود أو التقنية بالأدلة والمصادر ويفصل الحقائق المتحققة عن الاستنتاجات.
+Reviews changed or specified code for correctness, security and maintainability, and reports concrete defects with file:line evidence.|Değişen veya belirtilen kodu doğruluk, güvenlik ve bakım açısından inceler; somut hataları dosya:satır kanıtıyla bildirir.|Prüft Code auf Korrektheit, Sicherheit und Wartbarkeit und meldet konkrete Fehler mit Datei:Zeile-Belegen.|Examine exactitude, sécurité et maintenabilité du code et rapporte les défauts avec preuves fichier:ligne.|Rivede correttezza, sicurezza e manutenibilità del codice e segnala difetti con prove file:riga.|يراجع صحة الكود وأمانه وقابليته للصيانة ويبلغ العيوب بأدلة الملف والسطر.
+Audits code for exploitable vulnerabilities -- injection, authz gaps, secret exposure, unsafe deserialization, crypto misuse -- and reports each with an attack path.|Kodu enjeksiyon, yetki açıkları, sır sızıntısı, güvensiz veri çözümleme ve kriptografi hataları için denetler; her açık için saldırı yolunu belirtir.|Prüft Code auf ausnutzbare Schwachstellen wie Injection, Autorisierungslücken, Geheimnislecks und Kryptofehler und beschreibt den Angriffspfad.|Audite les vulnérabilités exploitables : injection, autorisations, secrets, désérialisation et cryptographie, avec chemin d’attaque.|Verifica vulnerabilità sfruttabili: injection, autorizzazioni, segreti, deserializzazione e crittografia, descrivendo il percorso d’attacco.|يدقق الثغرات القابلة للاستغلال مثل الحقن وفجوات الصلاحيات وكشف الأسرار وفك التسلسل والتشفير ويحدد مسار الهجوم.
+Writes tests that fail for the right reason -- covering real behavior, edge cases and error paths in the project's existing test style.|Gerçek davranışı, sınır durumlarını ve hata yollarını kapsayan, doğru nedenle başarısız olan testleri projenin test üslubuyla yazar.|Schreibt Tests für tatsächliches Verhalten, Grenzfälle und Fehlerpfade im Projektstil, die aus dem richtigen Grund fehlschlagen.|Écrit des tests couvrant comportement réel, cas limites et erreurs dans le style du projet, échouant pour la bonne raison.|Scrive test per comportamento reale, casi limite ed errori nello stile del progetto, che falliscono per il motivo corretto.|يكتب اختبارات تفشل للسبب الصحيح وتغطي السلوك الفعلي والحالات الحدية والأخطاء بأسلوب المشروع.
+just now|az önce|gerade eben|à l’instant|adesso|الآن
+%s ago|%s önce|vor %s|il y a %s|%s fa|منذ %s
+%s from now|%s sonra|in %s|dans %s|tra %s|بعد %s
+second|saniye|Sekunde|seconde|secondo|ثانية
+seconds|saniye|Sekunden|secondes|secondi|ثوانٍ
+minute|dakika|Minute|minute|minuto|دقيقة
+minutes|dakika|Minuten|minutes|minuti|دقائق
+hour|saat|Stunde|heure|ora|ساعة
+hours|saat|Stunden|heures|ore|ساعات
+day|gün|Tag|jour|giorno|يوم
+days|gün|Tage|jours|giorni|أيام
+week|hafta|Woche|semaine|settimana|أسبوع
+weeks|hafta|Wochen|semaines|settimane|أسابيع
+month|ay|Monat|mois|mese|شهر
+months|ay|Monate|mois|mesi|أشهر
+year|yıl|Jahr|an|anno|سنة
+years|yıl|Jahre|ans|anni|سنوات
+two seconds|iki saniye|zwei Sekunden|deux secondes|due secondi|ثانيتين
+two minutes|iki dakika|zwei Minuten|deux minutes|due minuti|دقيقتين
+two hours|iki saat|zwei Stunden|deux heures|due ore|ساعتين
+two days|iki gün|zwei Tage|deux jours|due giorni|يومين
+two weeks|iki hafta|zwei Wochen|deux semaines|due settimane|أسبوعين
+two months|iki ay|zwei Monate|deux mois|due mesi|شهرين
+two years|iki yıl|zwei Jahre|deux ans|due anni|سنتين
+idle|boşta|inaktiv|inactif|inattivo|خامل
+running|çalışıyor|läuft|en cours|in esecuzione|قيد التشغيل
+Operation: |İşlem: |Vorgang: |Opération : |Operazione: |العملية: 
+Call: |Çağrı: |Aufruf: |Appel : |Chiamata: |الاستدعاء: 
+Task: |Görev: |Aufgabe: |Tâche : |Attività: |المهمة: 
+Agent: |Ajan: |Agent: |Agent : |Agente: |الوكيل: 
+Tool: |Araç: |Werkzeug: |Outil : |Strumento: |الأداة: 
+Run: |Çalıştırma: |Ausführung: |Exécution : |Esecuzione: |التشغيل: 
+Evidence: |Kanıt: |Nachweis: |Preuve : |Prova: |الدليل: 
+Checkpoint: |Kontrol noktası: |Kontrollpunkt: |Point de contrôle : |Punto di controllo: |نقطة التحقق: 
+Message: |Mesaj: |Nachricht: |Message : |Messaggio: |الرسالة: 
+Operations: |İşlemler: |Vorgänge: |Opérations : |Operazioni: |العمليات: 
+Input fingerprint: |Girdi parmak izi: |Eingabefingerabdruck: |Empreinte d’entrée : |Impronta input: |بصمة الإدخال: 
+Evidence hash: |Kanıt özeti: |Nachweis-Hash: |Hachage de preuve : |Hash della prova: |تجزئة الدليل: 
+Source fingerprint: |Kaynak parmak izi: |Quellfingerabdruck: |Empreinte source : |Impronta sorgente: |بصمة المصدر: 
+Plan fingerprint: |Plan parmak izi: |Planfingerabdruck: |Empreinte du plan : |Impronta piano: |بصمة الخطة: 
+Acceptance: |Kabul ölçütleri: |Abnahme: |Acceptation : |Accettazione: |القبول: 
+Origin session: |Kaynak sohbet: |Ursprungssitzung: |Session d’origine : |Sessione di origine: |جلسة المصدر: 
+Preview: |Önizleme: |Vorschau: |Aperçu : |Anteprima: |المعاينة: 
+Owner: |Sahip: |Besitzer: |Propriétaire : |Proprietario: |المالك: 
+Target: |Hedef: |Ziel: |Cible : |Destinazione: |الهدف: 
+URL: |URL: |URL: |URL : |URL: |الرابط: 
+Before capture: |Önceki görüntü: |Aufnahme vorher: |Capture avant : |Acquisizione prima: |اللقطة السابقة: 
+After capture: |Sonraki görüntü: |Aufnahme nachher: |Capture après : |Acquisizione dopo: |اللقطة التالية: 
+Batch: |Toplu iş: |Stapel: |Lot : |Lotto: |الدفعة: 
+Item: |Öğe: |Eintrag: |Élément : |Elemento: |العنصر: 
+Input: |Girdi: |Eingabe: |Entrée : |Input: |الإدخال: 
+Status: |Durum: |Status: |État : |Stato: |الحالة: 
+Output:|Çıktı:|Ausgabe:|Sortie :|Output:|المخرجات:
+Kind: |Tür: |Art: |Type : |Tipo: |النوع: 
+Name: |Ad: |Name: |Nom : |Nome: |الاسم: 
+Fingerprint: |Parmak izi: |Fingerabdruck: |Empreinte : |Impronta: |البصمة: 
+Selection: |Seçim: |Auswahl: |Sélection : |Selezione: |الاختيار: 
+Assignment: |Atama: |Zuweisung: |Attribution : |Assegnazione: |التكليف: 
+State: |Durum: |Zustand: |État : |Stato: |الحالة: 
+Verification: |Doğrulama: |Überprüfung: |Vérification : |Verifica: |التحقق: 
+Depends on: |Bağımlılıklar: |Abhängig von: |Dépend de : |Dipende da: |يعتمد على: 
+Owned paths: |Sorumlu olunan yollar: |Eigene Pfade: |Chemins attribués : |Percorsi assegnati: |المسارات المملوكة: 
+Acceptance criteria:|Kabul ölçütleri:|Abnahmekriterien:|Critères d’acceptation :|Criteri di accettazione:|معايير القبول:
+Live agent: |Çalışan ajan: |Aktiver Agent: |Agent actif : |Agente attivo: |الوكيل النشط: 
+Child session: |Alt sohbet: |Untersitzung: |Session enfant : |Sessione figlia: |الجلسة الفرعية: 
+Started: |Başlangıç: |Gestartet: |Démarré : |Avvio: |بدأ: 
+Current operation: |Mevcut işlem: |Aktueller Vorgang: |Opération actuelle : |Operazione attuale: |العملية الحالية: 
+Readiness: |Hazır olma durumu: |Bereitschaft: |Disponibilité : |Disponibilità: |الجاهزية: 
+Implementer: |Uygulayan: |Umsetzer: |Auteur : |Esecutore: |المنفّذ: 
+Execution: |Çalıştırma: |Ausführung: |Exécution : |Esecuzione: |التنفيذ: 
+Reported summary: |Bildirilen özet: |Gemeldete Zusammenfassung: |Résumé signalé : |Riepilogo riportato: |الملخص المبلغ عنه: 
+Changed files: |Değişen dosyalar: |Geänderte Dateien: |Fichiers modifiés : |File modificati: |الملفات المعدلة: 
+Reported risks: |Bildirilen riskler: |Gemeldete Risiken: |Risques signalés : |Rischi riportati: |المخاطر المبلغ عنها: 
+Reported check: |Bildirilen kontrol: |Gemeldete Prüfung: |Vérification signalée : |Controllo riportato: |الفحص المبلغ عنه: 
+Execution error: |Çalıştırma hatası: |Ausführungsfehler: |Erreur d’exécution : |Errore di esecuzione: |خطأ التنفيذ: 
+Independent |Bağımsız |Unabhängig |Indépendant |Indipendente |مستقل 
+Duration: |Süre: |Dauer: |Durée : |Durata: |المدة: 
+Background job: |Arka plan işi: |Hintergrundauftrag: |Tâche de fond : |Processo in background: |مهمة الخلفية: 
+Instruction: |Talimat: |Anweisung: |Instruction : |Istruzione: |التعليمات: 
+Delivery: |Teslim: |Zustellung: |Livraison : |Consegna: |التسليم: 
+Source: |Kaynak: |Quelle: |Source : |Origine: |المصدر: 
+Plan: |Plan: |Plan: |Plan : |Piano: |الخطة: 
+Ready tasks: |Hazır görevler: |Bereite Aufgaben: |Tâches prêtes : |Attività pronte: |المهام الجاهزة: 
+Reverify tasks: |Yeniden doğrulanacak görevler: |Erneut zu prüfende Aufgaben: |Tâches à revérifier : |Attività da riverificare: |المهام لإعادة التحقق: 
+Ambiguous operations: |Belirsiz işlemler: |Unklare Vorgänge: |Opérations ambiguës : |Operazioni ambigue: |العمليات الملتبسة: 
+Source inspected: |İncelenen kaynak: |Geprüfte Quelle: |Source examinée : |Sorgente esaminata: |المصدر المفحوص: 
+Error: |Hata: |Fehler: |Erreur : |Errore: |الخطأ: 
+Latest operation: |Son işlem: |Letzter Vorgang: |Dernière opération : |Ultima operazione: |آخر عملية: 
+Queue for |Kuyruk hedefi: |Warteschlange für |File pour |Coda per |قائمة انتظار لـ 
+Specialist role for |Uzman rolü hedefi: |Expertenrolle für |Rôle spécialiste pour |Ruolo specialista per |دور متخصص لـ 
+Revised task description for |Yeni görev açıklaması hedefi: |Überarbeitete Aufgabenbeschreibung für |Description révisée pour |Descrizione rivista per |وصف مهمة منقح لـ 
+Owned paths for |Sorumlu yollar hedefi: |Eigene Pfade für |Chemins attribués à |Percorsi assegnati a |المسارات المملوكة لـ 
+Instruction for |Talimat hedefi: |Anweisung für |Instruction pour |Istruzione per |تعليمات لـ 
+ (comma separated)| (virgülle ayrılmış)| (kommagetrennt)| (séparés par des virgules)| (separati da virgole)| (مفصولة بفواصل)
+ ([dep1,dep2] optional prefix)| ([dep1,dep2] isteğe bağlı önek)| ([dep1,dep2] optionales Präfix)| ([dep1,dep2] préfixe facultatif)| ([dep1,dep2] prefisso facoltativo)| ([dep1,dep2] بادئة اختيارية)
+Maximum concurrent agents (1-16)|En fazla eşzamanlı ajan (1-16)|Maximale gleichzeitige Agenten (1–16)|Agents simultanés maximum (1–16)|Agenti simultanei massimi (1–16)|الحد الأقصى للوكلاء المتزامنين (1–16)
+Pin project context file (literal relative path; maximum 16 files)|Proje bağlam dosyasını sabitle (doğrudan göreli yol; en fazla 16 dosya)|Projektkontextdatei anheften (wörtlicher relativer Pfad; maximal 16 Dateien)|Épingler un fichier de contexte (chemin relatif littéral ; 16 fichiers maximum)|Fissa file di contesto (percorso relativo letterale; massimo 16 file)|تثبيت ملف سياق المشروع (مسار نسبي حرفي؛ 16 ملفًا كحد أقصى)
+Session limits JSON (max_tokens, max_tool_calls, max_cost_usd, max_duration_ms)|Sohbet sınırları JSON (max_tokens, max_tool_calls, max_cost_usd, max_duration_ms)|Sitzungsgrenzen als JSON (max_tokens, max_tool_calls, max_cost_usd, max_duration_ms)|Limites de session JSON (max_tokens, max_tool_calls, max_cost_usd, max_duration_ms)|Limiti sessione JSON (max_tokens, max_tool_calls, max_cost_usd, max_duration_ms)|حدود الجلسة JSON (max_tokens, max_tool_calls, max_cost_usd, max_duration_ms)
+Review %s:%d for %s|%s:%d konumunu %s için incele|%s:%d für %s prüfen|Examiner %s:%d pour %s|Rivedi %s:%d per %s|راجع %s:%d من أجل %s
+Graph|Grafik|Graph|Graphe|Grafo|الرسم البياني
+Handoffs|Devirler|Übergaben|Transferts|Passaggi|عمليات التسليم
+Ownership|Sorumluluklar|Zuständigkeiten|Attributions|Responsabilità|الملكية
+Operations|İşlemler|Vorgänge|Opérations|Operazioni|العمليات
+Queue|Kuyruk|Warteschlange|File|Coda|قائمة الانتظار
+Attention|Dikkat gerektirenler|Aufmerksamkeit|Attention|Attenzione|تحتاج انتباهًا
+Batches|Toplu işler|Stapel|Lots|Lotti|الدفعات
+Interactions|Etkileşimler|Interaktionen|Interactions|Interazioni|التفاعلات
+Automation|Otomasyon|Automatisierung|Automatisation|Automazione|الأتمتة
+Board|Görev panosu|Aufgabenboard|Tableau|Bacheca|لوحة المهام
+coordinator|koordinatör|Koordinator|coordinateur|coordinatore|المنسق
+working|çalışıyor|arbeitet|en cours|al lavoro|يعمل
+configured|yapılandırılmış|konfiguriert|configuré|configurato|مضبوط
+dispatch paused|görev dağıtımı duraklatıldı|Aufgabenverteilung pausiert|distribution suspendue|assegnazione sospesa|توزيع المهام متوقف
+Agent controls \u007c |Ajan kontrolleri \u007c |Agentensteuerung \u007c |Contrôles des agents \u007c |Controlli agenti \u007c |التحكم بالوكلاء \u007c 
+Esc close \u007c s stop \u007c p pause \u007c r resume \u007c 1-9/0 views \u007c i interactions \u007c t timeline|Esc kapat \u007c s durdur \u007c p duraklat \u007c r sürdür \u007c 1-9/0 görünüm \u007c i etkileşim \u007c t zaman çizelgesi|Esc schließen \u007c s stoppen \u007c p pausieren \u007c r fortsetzen \u007c 1-9/0 Ansichten \u007c i Interaktionen \u007c t Zeitachse|Esc fermer \u007c s arrêter \u007c p suspendre \u007c r reprendre \u007c 1-9/0 vues \u007c i interactions \u007c t chronologie|Esc chiudi \u007c s arresta \u007c p pausa \u007c r riprendi \u007c 1-9/0 viste \u007c i interazioni \u007c t cronologia|Esc إغلاق \u007c s إيقاف \u007c p تعليق \u007c r استئناف \u007c 1-9/0 عروض \u007c i تفاعلات \u007c t خط زمني
+1 Tasks  2 Graph  3 Handoffs  4 Ownership  5 Operations  6 Queue  7 Checkpoints  8 Attention  9 Context  0 Batches|1 Görevler  2 Grafik  3 Devirler  4 Sorumluluklar  5 İşlemler  6 Kuyruk  7 Kontrol noktaları  8 Dikkat  9 Bağlam  0 Toplu işler|1 Aufgaben  2 Graph  3 Übergaben  4 Zuständigkeit  5 Vorgänge  6 Warteschlange  7 Kontrollpunkte  8 Aufmerksamkeit  9 Kontext  0 Stapel|1 Tâches  2 Graphe  3 Transferts  4 Attributions  5 Opérations  6 File  7 Points de contrôle  8 Attention  9 Contexte  0 Lots|1 Attività  2 Grafo  3 Passaggi  4 Responsabilità  5 Operazioni  6 Coda  7 Punti di controllo  8 Attenzione  9 Contesto  0 Lotti|1 مهام  2 رسم بياني  3 تسليم  4 ملكية  5 عمليات  6 انتظار  7 نقاط تحقق  8 انتباه  9 سياق  0 دفعات
+%s \u007c agents %d/%s \u007c tokens %d/%d \u007c $%.2f/$%.2f \u007c calls %d/%d|%s \u007c ajan %d/%s \u007c token %d/%d \u007c $%.2f/$%.2f \u007c çağrı %d/%d|%s \u007c Agenten %d/%s \u007c Tokens %d/%d \u007c $%.2f/$%.2f \u007c Aufrufe %d/%d|%s \u007c agents %d/%s \u007c tokens %d/%d \u007c $%.2f/$%.2f \u007c appels %d/%d|%s \u007c agenti %d/%s \u007c token %d/%d \u007c $%.2f/$%.2f \u007c chiamate %d/%d|%s \u007c وكلاء %d/%s \u007c رموز %d/%d \u007c $%.2f/$%.2f \u007c استدعاءات %d/%d
+Loading workflow…|İş akışı yükleniyor…|Arbeitsablauf wird geladen…|Chargement du flux…|Caricamento del flusso…|جارٍ تحميل سير العمل…
+No records in this view|Bu görünümde kayıt yok|Keine Einträge in dieser Ansicht|Aucun enregistrement dans cette vue|Nessun record in questa vista|لا توجد سجلات في هذا العرض
+ \u007c Enter apply, Esc cancel| \u007c Enter uygula, Esc iptal| \u007c Enter anwenden, Esc abbrechen| \u007c Entrée appliquer, Esc annuler| \u007c Invio applica, Esc annulla| \u007c Enter تطبيق، Esc إلغاء
+Details \u007c Enter expands \u007c h hold \u007c u unhold \u007c x cancel task|Ayrıntılar \u007c Enter genişlet \u007c h beklet \u007c u bırak \u007c x görevi iptal et|Details \u007c Enter erweitern \u007c h halten \u007c u freigeben \u007c x Aufgabe abbrechen|Détails \u007c Entrée développer \u007c h retenir \u007c u libérer \u007c x annuler tâche|Dettagli \u007c Invio espandi \u007c h trattieni \u007c u rilascia \u007c x annulla attività|تفاصيل \u007c Enter توسيع \u007c h حجز \u007c u تحرير \u007c x إلغاء المهمة
+e steer task \u007c E steer coordinator \u007c n queue \u007c a assign|e görevi yönlendir \u007c E koordinatörü yönlendir \u007c n kuyruğa ekle \u007c a ata|e Aufgabe lenken \u007c E Koordinator lenken \u007c n einreihen \u007c a zuweisen|e orienter tâche \u007c E orienter coordinateur \u007c n mettre en file \u007c a attribuer|e guida attività \u007c E guida coordinatore \u007c n accoda \u007c a assegna|e توجيه المهمة \u007c E توجيه المنسق \u007c n إضافة للانتظار \u007c a إسناد
+d diff \u007c o jobs/output \u007c g agent history \u007c l team limit \u007c b budget|d fark \u007c o işler/çıktı \u007c g ajan geçmişi \u007c l ekip sınırı \u007c b bütçe|d Änderungen \u007c o Aufträge/Ausgabe \u007c g Agentenverlauf \u007c l Teamgrenze \u007c b Budget|d différences \u007c o tâches/sortie \u007c g historique agents \u007c l limite équipe \u007c b budget|d differenze \u007c o processi/output \u007c g cronologia agenti \u007c l limite squadra \u007c b budget|d فروق \u007c o مهام/مخرجات \u007c g سجل الوكلاء \u007c l حد الفريق \u007c b ميزانية
+Arrows select \u007c Enter details \u007c e steer \u007c n queue \u007c h hold \u007c u unhold \u007c x cancel \u007c v replan \u007c w scope \u007c f retry|Oklar seç \u007c Enter ayrıntılar \u007c e yönlendir \u007c n kuyruğa ekle \u007c h beklet \u007c u bırak \u007c x iptal \u007c v yeniden planla \u007c w kapsam \u007c f yeniden dene|Pfeile wählen \u007c Enter Details \u007c e lenken \u007c n einreihen \u007c h halten \u007c u freigeben \u007c x abbrechen \u007c v neu planen \u007c w Umfang \u007c f wiederholen|Flèches choisir \u007c Entrée détails \u007c e orienter \u007c n file \u007c h retenir \u007c u libérer \u007c x annuler \u007c v replanifier \u007c w portée \u007c f réessayer|Frecce seleziona \u007c Invio dettagli \u007c e guida \u007c n accoda \u007c h trattieni \u007c u rilascia \u007c x annulla \u007c v ripianifica \u007c w ambito \u007c f riprova|أسهم تحديد \u007c Enter تفاصيل \u007c e توجيه \u007c n انتظار \u007c h حجز \u007c u تحرير \u007c x إلغاء \u007c v إعادة التخطيط \u007c w النطاق \u007c f إعادة المحاولة
+Queue: +/- reorder \u007c Delete cancel \u007c y retry uncertain \u007c z remove received \u007c c continue queue|Kuyruk: +/- sırala \u007c Delete iptal \u007c y belirsizi yeniden dene \u007c z alınanı kaldır \u007c c kuyruğu sürdür|Warteschlange: +/- ordnen \u007c Delete abbrechen \u007c y unklare wiederholen \u007c z empfangene entfernen \u007c c fortsetzen|File : +/- réordonner \u007c Delete annuler \u007c y réessayer incertain \u007c z retirer reçu \u007c c continuer|Coda: +/- riordina \u007c Delete annulla \u007c y riprova incerti \u007c z rimuovi ricevuti \u007c c continua|الانتظار: +/- ترتيب \u007c Delete إلغاء \u007c y إعادة الملتبس \u007c z إزالة المستلم \u007c c متابعة
+Session timeline|Sohbet zaman çizelgesi|Sitzungszeitachse|Chronologie de session|Cronologia sessione|الخط الزمني للجلسة
+t tasks \u007c Esc close \u007c arrows select \u007c Enter details|t görevler \u007c Esc kapat \u007c oklar seç \u007c Enter ayrıntılar|t Aufgaben \u007c Esc schließen \u007c Pfeile wählen \u007c Enter Details|t tâches \u007c Esc fermer \u007c flèches choisir \u007c Entrée détails|t attività \u007c Esc chiudi \u007c frecce seleziona \u007c Invio dettagli|t مهام \u007c Esc إغلاق \u007c أسهم تحديد \u007c Enter تفاصيل
+No recorded operations, checks or checkpoints|Kayıtlı işlem, kontrol veya kontrol noktası yok|Keine aufgezeichneten Vorgänge, Prüfungen oder Kontrollpunkte|Aucune opération, vérification ou point de contrôle enregistré|Nessuna operazione, verifica o punto di controllo registrato|لا توجد عمليات أو فحوص أو نقاط تحقق مسجلة
+Timestamp unavailable in checkpoint record|Kontrol noktası kaydında zaman bilgisi yok|Zeitstempel im Kontrollpunkt fehlt|Horodatage absent du point de contrôle|Data assente nel punto di controllo|الطابع الزمني غير متاح في سجل نقطة التحقق
+Invalid preview dimensions|Geçersiz önizleme boyutları|Ungültige Vorschauabmessungen|Dimensions d’aperçu invalides|Dimensioni anteprima non valide|أبعاد المعاينة غير صالحة
+Captured interaction \u007c Enter closes \u007c v refresh \u007c f live preview \u007c p take control \u007c r resume|Yakalanan etkileşim \u007c Enter kapat \u007c v yenile \u007c f canlı önizleme \u007c p kontrolü al \u007c r sürdür|Erfasste Interaktion \u007c Enter schließen \u007c v aktualisieren \u007c f Live-Vorschau \u007c p übernehmen \u007c r fortsetzen|Interaction capturée \u007c Entrée fermer \u007c v actualiser \u007c f aperçu direct \u007c p prendre contrôle \u007c r reprendre|Interazione acquisita \u007c Invio chiudi \u007c v aggiorna \u007c f anteprima live \u007c p prendi controllo \u007c r riprendi|تفاعل ملتقط \u007c Enter إغلاق \u007c v تحديث \u007c f معاينة مباشرة \u007c p تحكم \u007c r استئناف
+ [handoff pending]| [devir bekleniyor]| [Übergabe ausstehend]| [transfert en attente]| [passaggio in attesa]| [تسليم معلق]
+ [reported | [bildirilen: | [gemeldet: | [signalé : | [riportato: | [المبلغ عنه: 
+ \u007c 5 details/output| \u007c 5 ayrıntılar/çıktı| \u007c 5 Details/Ausgabe| \u007c 5 détails/sortie| \u007c 5 dettagli/output| \u007c 5 تفاصيل/مخرجات
+ \u007c task=| \u007c görev=| \u007c Aufgabe=| \u007c tâche=| \u007c attività=| \u007c مهمة=
+] task=|] görev=|] Aufgabe=|] tâche=|] attività=|] مهمة=
+ owns overlapping paths| çakışan yolların sorumlusu| besitzt überlappende Pfade| possède des chemins communs| possiede percorsi sovrapposti| يملك مسارات متداخلة
+: dispatch serializes these writers|: bu yazıcılar sırayla çalıştırılır|: diese Schreiber werden nacheinander ausgeführt| : ces auteurs sont exécutés successivement|: questi scrittori vengono eseguiti in sequenza|: يُشغّل هؤلاء الكاتبون بالتتابع
+: no live runner; inspect operations and verification before retry|: çalışan ajan yok; yeniden denemeden önce işlemleri ve doğrulamayı inceleyin|: kein aktiver Agent; Vorgänge und Prüfung vor Wiederholung prüfen| : aucun agent actif ; examiner opérations et vérification avant de réessayer|: nessun agente attivo; controlla operazioni e verifica prima di riprovare|: لا يوجد وكيل نشط؛ افحص العمليات والتحقق قبل إعادة المحاولة
+] requires inspection; commands are not automatically replayed|] incelenmeli; komutlar otomatik yeniden çalıştırılmaz|] muss geprüft werden; Befehle werden nicht automatisch wiederholt|] nécessite un examen ; les commandes ne sont pas rejouées automatiquement|] richiede controllo; i comandi non vengono ripetuti automaticamente|] يتطلب فحصًا؛ لا تُعاد الأوامر تلقائيًا
+%s · %s · runs %d/%d · paused %t|%s · %s · çalıştırma %d/%d · duraklatılmış %t|%s · %s · Ausführungen %d/%d · pausiert %t|%s · %s · exécutions %d/%d · suspendu %t|%s · %s · esecuzioni %d/%d · sospeso %t|%s · %s · تشغيل %d/%d · معلق %t
+%s · %s · worker %s|%s · %s · çalışan %s|%s · %s · Worker %s|%s · %s · worker %s|%s · %s · worker %s|%s · %s · العامل %s
+%s · step %d · ~%d tokens|%s · adım %d · ~%d token|%s · Schritt %d · ~%d Tokens|%s · étape %d · ~%d tokens|%s · passo %d · ~%d token|%s · خطوة %d · ~%d رمز
+%s / %s · %s · attempt %d|%s / %s · %s · deneme %d|%s / %s · %s · Versuch %d|%s / %s · %s · tentative %d|%s / %s · %s · tentativo %d|%s / %s · %s · محاولة %d
+Attempt: %s · lease: %d · session: %s|Deneme: %s · sahiplik süresi: %d · sohbet: %s|Versuch: %s · Lease: %d · Sitzung: %s|Tentative : %s · bail : %d · session : %s|Tentativo: %s · lease: %d · sessione: %s|المحاولة: %s · الحجز: %d · الجلسة: %s
+Check %s [passed=%t]|Kontrol %s [başarılı=%t]|Prüfung %s [bestanden=%t]|Vérification %s [réussie=%t]|Verifica %s [superata=%t]|فحص %s [ناجح=%t]
+Checkpoint stage %d|Kontrol noktası aşaması %d|Kontrollpunktstufe %d|Étape du point de contrôle %d|Fase del punto di controllo %d|مرحلة نقطة التحقق %d
+Control: %s · active: %s|Kontrol: %s · etkin: %s|Steuerung: %s · aktiv: %s|Contrôle : %s · actif : %s|Controllo: %s · attivo: %s|التحكم: %s · النشط: %s
+Next: %s · status: %s · lease: %d|Sonraki: %s · durum: %s · sahiplik süresi: %d|Nächste: %s · Status: %s · Lease: %d|Suivant : %s · état : %s · bail : %d|Prossimo: %s · stato: %s · lease: %d|التالي: %s · الحالة: %s · الحجز: %d
+Recorded: %d · valid until: %d|Kayıt: %d · geçerlilik sonu: %d|Aufgezeichnet: %d · gültig bis: %d|Enregistré : %d · valide jusqu’à : %d|Registrato: %d · valido fino a: %d|مسجل: %d · صالح حتى: %d
+Outcome observed: %t|Sonuç gözlemlendi: %t|Ergebnis beobachtet: %t|Résultat observé : %t|Risultato osservato: %t|لوحظت النتيجة: %t
+Serialized bytes: %d|Serileştirilmiş bayt: %d|Serialisierte Bytes: %d|Octets sérialisés : %d|Byte serializzati: %d|البايتات المتسلسلة: %d
+Stage: %d|Aşama: %d|Stufe: %d|Étape : %d|Fase: %d|المرحلة: %d
+Stage %d \u007c %s|Aşama %d \u007c %s|Stufe %d \u007c %s|Étape %d \u007c %s|Fase %d \u007c %s|مرحلة %d \u007c %s
+Finding %s:%d %s [%s]|Bulgu %s:%d %s [%s]|Befund %s:%d %s [%s]|Constat %s:%d %s [%s]|Rilievo %s:%d %s [%s]|نتيجة %s:%d %s [%s]
+Review location: %s:%d|İnceleme konumu: %s:%d|Prüfstelle: %s:%d|Emplacement de révision : %s:%d|Posizione revisione: %s:%d|موضع المراجعة: %s:%d
+Observed check: %s passed=%t \u007c %s|Gözlemlenen kontrol: %s başarılı=%t \u007c %s|Beobachtete Prüfung: %s bestanden=%t \u007c %s|Vérification observée : %s réussie=%t \u007c %s|Verifica osservata: %s superata=%t \u007c %s|الفحص الملحوظ: %s ناجح=%t \u007c %s
+Recorded gate passed: %t; current source gates remain authoritative|Kayıtlı kontrol başarılı: %t; güncel kaynak kontrolleri belirleyicidir|Aufgezeichnete Prüfung bestanden: %t; aktuelle Quellprüfungen bleiben maßgeblich|Contrôle enregistré réussi : %t ; les contrôles actuels du code font autorité|Controllo registrato superato: %t; i controlli sorgente attuali restano autorevoli|نجح الفحص المسجل: %t؛ تبقى فحوص المصدر الحالية المرجع
+assign a specialist role|uzman rolü ata|Expertenrolle zuweisen|attribuer un rôle spécialiste|assegna un ruolo specialista|إسناد دور متخصص
+held by user|kullanıcı tarafından bekletiliyor|vom Benutzer angehalten|retenu par l’utilisateur|trattenuto dall’utente|محجوز بواسطة المستخدم
+included in |dahil olduğu öğe: |enthalten in |inclus dans |incluso in |مضمن في 
+waiting for |bekleniyor: |wartet auf |en attente de |in attesa di |في انتظار 
+waiting: |bekleniyor: |wartet: |en attente : |in attesa: |انتظار: 
+writer |yazıcı |Schreiber |auteur |scrittore |الكاتب 
+Overlap with |Çakışma: |Überschneidung mit |Chevauchement avec |Sovrapposizione con |تداخل مع 
+session dispatch paused|sohbet görev dağıtımı duraklatıldı|Sitzungsaufgabenverteilung pausiert|distribution de session suspendue|assegnazione della sessione sospesa|توزيع الجلسة معلق
+team at concurrency limit|ekip eşzamanlılık sınırında|Team an Parallelitätsgrenze|équipe à la limite de concurrence|squadra al limite di concorrenza|الفريق عند حد التزامن
+exit not observed|çıkış gözlemlenmedi|Beendigung nicht beobachtet|sortie non observée|uscita non osservata|لم تُلاحظ نهاية العملية
+dependency-ready; delivery/contract gates apply|bağımlılıklar hazır; teslim ve sözleşme kontrolleri uygulanır|Abhängigkeiten bereit; Zustellungs- und Vertragsprüfungen gelten|dépendances prêtes ; contrôles de livraison et contrat applicables|dipendenze pronte; si applicano controlli di consegna e contratto|التبعيات جاهزة؛ تُطبق فحوص التسليم والعقد
+Independent review required; not complete|Bağımsız inceleme gerekiyor; tamamlanmadı|Unabhängige Prüfung erforderlich; nicht abgeschlossen|Révision indépendante requise ; non terminé|Revisione indipendente richiesta; non completato|تلزم مراجعة مستقلة؛ غير مكتمل
+Dispatch paused by user; r resumes the session|Kullanıcı görev dağıtımını duraklattı; r sohbeti sürdürür|Aufgabenverteilung vom Benutzer pausiert; r setzt fort|Distribution suspendue par l’utilisateur ; r reprend|Assegnazione sospesa dall’utente; r riprende|علّق المستخدم توزيع المهام؛ r يستأنف الجلسة
+Session budget exhausted; b edits limits|Sohbet bütçesi tükendi; b sınırları düzenler|Sitzungsbudget erschöpft; b bearbeitet Grenzen|Budget épuisé ; b modifie les limites|Budget esaurito; b modifica i limiti|نفدت ميزانية الجلسة؛ b يعدّل الحدود
+e directs steering to this task; x requests only this task's cancellation|e bu görevi yönlendirir; x yalnızca bu görevin iptalini ister|e lenkt diese Aufgabe; x bricht nur diese Aufgabe ab|e oriente cette tâche ; x demande uniquement son annulation|e guida questa attività; x richiede solo il suo annullamento|e يوجه هذه المهمة؛ x يطلب إلغاءها فقط
+o opens jobs and output; g opens agent history|o işleri ve çıktıyı açar; g ajan geçmişini açar|o öffnet Aufträge und Ausgabe; g den Agentenverlauf|o ouvre tâches et sortie ; g l’historique des agents|o apre processi e output; g la cronologia agenti|o يفتح المهام والمخرجات؛ g يفتح سجل الوكلاء
+o opens live jobs; g opens agent history|o çalışan işleri açar; g ajan geçmişini açar|o öffnet aktive Aufträge; g den Agentenverlauf|o ouvre les tâches actives ; g l’historique des agents|o apre processi attivi; g la cronologia agenti|o يفتح المهام النشطة؛ g يفتح سجل الوكلاء
+i inspects current recovery plan; R applies an unchanged reconciled plan|i mevcut kurtarma planını inceler; R değişmemiş uzlaştırılmış planı uygular|i prüft den Wiederherstellungsplan; R wendet einen unveränderten abgeglichenen Plan an|i examine le plan de reprise ; R applique le plan réconcilié inchangé|i controlla il piano di ripristino; R applica il piano riconciliato invariato|i يفحص خطة الاسترداد؛ R يطبق الخطة المسواة دون تغيير
+Uncertain instruction delivery; inspect history before explicit retry|Talimatın teslimi belirsiz; yeniden denemeden önce geçmişi inceleyin|Anweisungszustellung unklar; Verlauf vor Wiederholung prüfen|Livraison incertaine ; examiner l’historique avant de réessayer|Consegna incerta; controlla la cronologia prima di riprovare|تسليم التعليمات غير مؤكد؛ افحص السجل قبل إعادة المحاولة
+Queued means pending delivery; received means recorded in agent history, not finished work.|Kuyrukta teslim beklenir; alındı, ajan geçmişine kaydedildi demektir. İşin tamamlandığını göstermez.|Eingereiht bedeutet ausstehende Zustellung; empfangen bedeutet im Agentenverlauf gespeichert, nicht abgeschlossene Arbeit.|En file signifie livraison en attente ; reçu signifie enregistré dans l’historique, pas travail terminé.|In coda significa consegna in attesa; ricevuto significa registrato nella cronologia, non lavoro completato.|في الانتظار تعني انتظار التسليم؛ ومستلم تعني تسجيله في سجل الوكيل، لا اكتمال العمل.
+p: pause; r: resume; x: recover expired attempt|p: duraklat; r: sürdür; x: süresi dolan denemeyi kurtar|p: pausieren; r: fortsetzen; x: abgelaufenen Versuch wiederherstellen|p : suspendre ; r : reprendre ; x : récupérer la tentative expirée|p: pausa; r: riprendi; x: recupera tentativo scaduto|p: تعليق؛ r: استئناف؛ x: استرداد المحاولة المنتهية
+a: accept review; r: retry; x: recover expired worker|a: incelemeyi kabul et; r: yeniden dene; x: süresi dolan çalışanı kurtar|a: Prüfung akzeptieren; r: wiederholen; x: abgelaufenen Worker wiederherstellen|a : accepter la révision ; r : réessayer ; x : récupérer le worker expiré|a: accetta revisione; r: riprova; x: recupera worker scaduto|a: قبول المراجعة؛ r: إعادة المحاولة؛ x: استرداد العامل المنتهي
+p: pause; r: resume; v: capture preview; f: toggle live preview; Enter: view captured frame|p: duraklat; r: sürdür; v: önizleme al; f: canlı önizlemeyi değiştir; Enter: yakalanan kareyi göster|p: pausieren; r: fortsetzen; v: Vorschau erfassen; f: Live-Vorschau umschalten; Enter: Aufnahme anzeigen|p : suspendre ; r : reprendre ; v : capturer ; f : aperçu direct ; Entrée : afficher la capture|p: pausa; r: riprendi; v: acquisisci anteprima; f: anteprima live; Invio: mostra acquisizione|p: تعليق؛ r: استئناف؛ v: التقاط معاينة؛ f: تبديل المعاينة المباشرة؛ Enter: عرض اللقطة
+An in-flight driver operation may finish before control is released. Trace records omit typed text and credentials.|Devam eden sürücü işlemi kontrol bırakılmadan önce tamamlanabilir. İz kayıtlarında yazılan metin ve kimlik bilgileri yer almaz.|Ein laufender Treibervorgang kann vor der Freigabe enden. Protokolle enthalten keine eingegebenen Texte oder Zugangsdaten.|Une opération en cours peut finir avant la libération du contrôle. Les traces omettent le texte saisi et les identifiants.|Un’operazione in corso può terminare prima del rilascio. Le tracce omettono testo digitato e credenziali.|قد تنتهي عملية قيد التنفيذ قبل تحرير التحكم. لا تتضمن السجلات النص المكتوب أو بيانات الدخول.
+Context metadata truncated to 2048 entries; estimate covers the entire request|Bağlam bilgisi 2048 öğeyle sınırlandı; tahmin tüm isteği kapsar|Kontextmetadaten auf 2048 Einträge begrenzt; Schätzung umfasst die ganze Anfrage|Métadonnées limitées à 2048 éléments ; estimation de toute la requête|Metadati limitati a 2048 voci; la stima copre tutta la richiesta|بيانات السياق محدودة بـ2048 عنصرًا؛ يشمل التقدير الطلب كاملًا
+f queues failed-only retry of selected batch; c starts the queue|f seçili toplu işte yalnızca başarısızları yeniden denemeye ekler; c kuyruğu başlatır|f reiht nur fehlgeschlagene Stapeleinträge erneut ein; c startet die Warteschlange|f remet en file les échecs du lot choisi ; c démarre la file|f accoda solo gli elementi falliti del lotto; c avvia la coda|f يضيف عناصر الدفعة الفاشلة فقط لإعادة المحاولة؛ c يبدأ الانتظار
+Succeeded rows are skipped. Running rows require reconciliation before replay.|Başarılı satırlar atlanır. Çalışan satırlar yeniden denemeden önce uzlaştırılmalıdır.|Erfolgreiche Zeilen werden übersprungen. Laufende Zeilen müssen vor Wiederholung abgeglichen werden.|Les lignes réussies sont ignorées. Les lignes en cours doivent être réconciliées avant reprise.|Le righe riuscite vengono saltate. Quelle in corso richiedono riconciliazione prima di ripetere.|تُتخطى الصفوف الناجحة. تتطلب الصفوف النشطة تسوية قبل إعادة التنفيذ.
+Retry is queued visibly, then executed through the normal agent permission and budget flow.|Yeniden deneme görünür biçimde kuyruğa alınır; normal ajan izin ve bütçe akışıyla yürütülür.|Wiederholung wird sichtbar eingereiht und durch den normalen Berechtigungs- und Budgetablauf ausgeführt.|La nouvelle tentative est mise en file visiblement, puis suit les autorisations et le budget habituels.|Il tentativo viene accodato visibilmente e segue il normale flusso di permessi e budget.|تُضاف إعادة المحاولة إلى الانتظار بوضوح ثم تُنفذ وفق تدفق الأذونات والميزانية المعتاد.
+Estimates use serialized text length; image tokens and provider framing are not measured.|Tahminler serileştirilmiş metin uzunluğunu kullanır; görsel tokenları ve sağlayıcı ek yükü ölçülmez.|Schätzungen basieren auf serialisierter Textlänge; Bildtokens und Anbieterrahmen werden nicht erfasst.|Estimations fondées sur le texte sérialisé ; tokens d’image et encadrement du fournisseur non mesurés.|Stime basate sul testo serializzato; token immagini e struttura del provider non misurati.|تستند التقديرات لطول النص المتسلسل؛ لا تُقاس رموز الصور أو إضافات الموفر.
+f: pin a literal project file; x: toggle selected tool output or unpin selected file.|f: doğrudan proje dosyasını sabitle; x: araç çıktısını değiştir veya dosyanın sabitlemesini kaldır.|f: Projektdatei anheften; x: Werkzeugausgabe umschalten oder Datei lösen.|f : épingler un fichier ; x : basculer la sortie d’outil ou désépingler le fichier.|f: fissa file di progetto; x: cambia output strumento o rimuovi file fissato.|f: تثبيت ملف المشروع؛ x: تبديل مخرجات الأداة أو إلغاء تثبيت الملف.
+Mandatory instructions and user messages cannot be excluded.|Zorunlu talimatlar ve kullanıcı mesajları hariç tutulamaz.|Pflichtanweisungen und Benutzernachrichten können nicht ausgeschlossen werden.|Les instructions obligatoires et messages utilisateur ne peuvent être exclus.|Le istruzioni obbligatorie e i messaggi utente non possono essere esclusi.|لا يمكن استبعاد التعليمات الإلزامية أو رسائل المستخدم.
+Empty ownership reserves the repository; overlapping writers are serialized.|Boş sorumluluk listesi tüm depoyu ayırır; çakışan yazıcılar sırayla çalıştırılır.|Leere Zuständigkeit reserviert das Repository; überlappende Schreiber laufen nacheinander.|Attribution vide réserve le dépôt ; les auteurs en conflit sont exécutés successivement.|Responsabilità vuota riserva il repository; scrittori sovrapposti vengono eseguiti in sequenza.|الملكية الفارغة تحجز المستودع؛ يُنفّذ الكاتبون المتداخلون بالتتابع.
+pending|bekliyor|ausstehend|en attente|in attesa|معلق
+in_progress|devam ediyor|in Bearbeitung|en cours|in corso|قيد التنفيذ
+completed|tamamlandı|abgeschlossen|terminé|completato|مكتمل
+failed|başarısız|fehlgeschlagen|échoué|fallito|فاشل
+blocked|engellendi|blockiert|bloqué|bloccato|محجوب
+paused|duraklatıldı|pausiert|suspendu|sospeso|متوقف مؤقتًا
+cancelled|iptal edildi|abgebrochen|annulé|annullato|ملغى
+ready|hazır|bereit|prêt|pronto|جاهز
+included|dahil|enthalten|inclus|incluso|مضمن
+excluded|hariç|ausgeschlossen|exclu|escluso|مستبعد
+queued|kuyrukta|eingereiht|en file|in coda|في الانتظار
+received|alındı|empfangen|reçu|ricevuto|مستلم
+uncertain|belirsiz|unklar|incertain|incerto|غير مؤكد
+[%s] %s · ~%d tokens (%s)|[%s] %s · ~%d token (%s)|[%s] %s · ~%d Tokens (%s)|[%s] %s · ~%d tokens (%s)|[%s] %s · ~%d token (%s)|[%s] %s · ~%d رمز (%s)
+enter an instruction or value|bir talimat veya değer girin|Anweisung oder Wert eingeben|saisissez une instruction ou valeur|inserisci istruzione o valore|أدخل تعليمات أو قيمة
+enter an agent limit between 1 and 16|1 ile 16 arasında ajan sınırı girin|Agentengrenze zwischen 1 und 16 eingeben|saisissez une limite d’agents entre 1 et 16|inserisci limite agenti tra 1 e 16|أدخل حدًا للوكلاء بين 1 و16
+invalid budget JSON: %w|Geçersiz bütçe JSON: %w|Ungültiges Budget-JSON: %w|JSON de budget invalide : %w|JSON budget non valido: %w|JSON الميزانية غير صالح: %w
+budget must contain exactly one JSON object|bütçe tam olarak bir JSON nesnesi içermeli|Budget muss genau ein JSON-Objekt enthalten|le budget doit contenir exactement un objet JSON|il budget deve contenere un solo oggetto JSON|يجب أن تحتوي الميزانية على كائن JSON واحد فقط
+close the dependency prefix with ]|bağımlılık önekini ] ile kapatın|Abhängigkeitspräfix mit ] schließen|fermez le préfixe de dépendances avec ]|chiudi il prefisso dipendenze con ]|أغلق بادئة التبعيات باستخدام ]
+enter queue instruction after dependencies|bağımlılıklardan sonra kuyruk talimatı girin|Warteschlangenanweisung nach Abhängigkeiten eingeben|saisissez l’instruction après les dépendances|inserisci istruzione dopo le dipendenze|أدخل تعليمات الانتظار بعد التبعيات
+Session  |Sohbet  |Sitzung  |Session  |Sessione  |الجلسة  
+Continue |Sürdür |Fortsetzen |Continuer |Continua |متابعة 
+Thanks for using ATLAS-AGENT! |ATLAS-AGENT kullandığınız için teşekkürler! |Danke für die Nutzung von ATLAS-AGENT! |Merci d’utiliser ATLAS-AGENT ! |Grazie per aver usato ATLAS-AGENT! |شكرًا لاستخدام ATLAS-AGENT! 
+See ya later.|Görüşürüz.|Bis später.|À plus tard.|A presto.|إلى اللقاء.
+You look great.|Harika görünüyorsun.|Du siehst toll aus.|Tu as fière allure.|Hai un bell’aspetto.|تبدو رائعًا.
+Have a gorgeous time.|Güzel vakit geçir.|Hab eine schöne Zeit.|Passe un bon moment.|Passa dei bei momenti.|أتمنى لك وقتًا جميلًا.
+Get some rest.|Biraz dinlen.|Ruh dich aus.|Repose-toi.|Riposati.|خذ قسطًا من الراحة.
+Come back soon.|Yakında yine bekleriz.|Komm bald wieder.|Reviens bientôt.|Torna presto.|عد قريبًا.
+You worked handsomely.|İyi iş çıkardın.|Du hast gut gearbeitet.|Tu as bien travaillé.|Hai lavorato bene.|لقد عملت جيدًا.
+Time for a snack.|Atıştırma vakti.|Zeit für einen Snack.|L’heure d’un en-cas.|Ora di uno spuntino.|حان وقت وجبة خفيفة.
+Who’s hungry?|Kim acıktı?|Wer hat Hunger?|Qui a faim ?|Chi ha fame?|من يشعر بالجوع؟
+That was fun.|Eğlenceliydi.|Das hat Spaß gemacht.|C’était amusant.|È stato divertente.|كان ذلك ممتعًا.
+See you at breakfast?|Kahvaltıda görüşelim mi?|Sehen wir uns beim Frühstück?|On se voit au petit déjeuner ?|Ci vediamo a colazione?|نلتقي على الإفطار؟
+Time for a nap.|Şekerleme vakti.|Zeit für ein Nickerchen.|L’heure d’une sieste.|Ora di un pisolino.|حان وقت قيلولة.
+Who wants some spaghetti?|Kim spagetti ister?|Wer möchte Spaghetti?|Qui veut des spaghettis ?|Chi vuole degli spaghetti?|من يريد السباغيتي؟
+Take care of yourself.|Kendine iyi bak.|Pass auf dich auf.|Prends soin de toi.|Abbi cura di te.|اعتنِ بنفسك.
+Remember to hydrate.|Su içmeyi unutma.|Vergiss nicht zu trinken.|Pense à boire de l’eau.|Ricordati di bere.|تذكر شرب الماء.
+Time for a swim?|Yüzme vakti mi?|Zeit zum Schwimmen?|C’est l’heure de nager ?|Ora di una nuotata?|حان وقت السباحة؟
+You’re quite glamorous, you know.|Oldukça göz alıcısın.|Du bist ziemlich glamourös.|Tu es très élégant.|Sei davvero affascinante.|أنت أنيق جدًا.
+Nice work.|İyi iş.|Gute Arbeit.|Beau travail.|Bel lavoro.|عمل جيد.
+You’re a sensation.|Çok etkileyicisin.|Du bist eine Sensation.|Tu fais sensation.|Sei sensazionale.|أنت مذهل.
+Where’s my eyeliner?|Göz kalemim nerede?|Wo ist mein Eyeliner?|Où est mon eye-liner ?|Dov’è il mio eyeliner?|أين قلم تحديد عيني؟
+It’s tea time.|Çay vakti.|Es ist Teezeit.|C’est l’heure du thé.|È l’ora del tè.|حان وقت الشاي.

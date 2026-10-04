@@ -10,9 +10,11 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"syscall"
+	"time"
 	"unicode/utf16"
 )
 
@@ -30,6 +32,15 @@ func (b *windowsBackend) ForegroundWindow() string {
 }
 
 func (b *windowsBackend) Automation(ctx context.Context, p AutomationRequest) (json.RawMessage, error) {
+	if err := ValidateAutomationRequest(p); err != nil {
+		return nil, err
+	}
+	if p.Action == "focus" {
+		return b.focusWindow(ctx, p.WindowID)
+	}
+	if p.Action == "windows" {
+		return b.listNativeWindows(ctx)
+	}
 	data, err := json.Marshal(p)
 	if err != nil {
 		return nil, err

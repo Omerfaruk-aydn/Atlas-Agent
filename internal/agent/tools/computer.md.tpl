@@ -57,3 +57,41 @@ Advanced desktop actions:
 - A screenshot or accessibility failure does not establish that the desktop is locked or that Snipping Tool/overlays caused the problem. Report the returned stage and details, distinguish observations from hypotheses, and try one fresh observation before handoff. `accessibility_unavailable` concerns UI controls; native focus and screenshot may still work. On `wrong_window`, refocus and inspect rather than dropping the window guard or sending keys blindly.
 - `handoff` persists a pause and stops this turn for CAPTCHA/passkey/manual authentication. The user resumes via `/interactions`; never bypass authentication or resume yourself.
 - `status`/`trace` inspect parent-chat control and recent metadata. `trace_start`/`trace_stop` explicitly toggle before/after captures for supported non-text actions. Captures may contain visible personal data; text-entry actions are omitted. Desktop input is serialized across agents, and a timed-out native driver retains ownership until it finishes.
+
+Efficient, evidence-based desktop execution:
+- Prefer tool_pipeline, when available, for short sequences whose arguments are already known: focus plus inspect; or guarded field click, type, Enter and OCR/capture_window. This avoids one model round trip per elementary action. Each child call retains permissions and window checks. End the sequence where a new observation must inform the next target. Never batch guessed coordinates, blind retries or clicks into results not yet observed.
+- One relevant observation per decision is normally enough. Do not combine screenshot, screen_size, full OCR and full inspect unless each resolves a specific missing fact. Use windows first to identify the intended application's foreground state; a successful focus already verifies the input window. After a mutation, prefer one focused assertion or OCR/crop to repeated screenshots and tree scans. Verify completion once and stop.
+- For a simple task such as finding and playing a song, aim for roughly one minute under ordinary conditions. This is a planning target, not a promise or a reason to skip verification. Use a short sequence: identify/focus the application, inspect the relevant controls once, perform the supported operation, resolve the exact result, verify completion, stop.
+- Inspect/find reports supported_patterns. Use invoke only with Invoke, and set_value only with Value. For unsupported_pattern, switch method immediately rather than trying the same action again. Prefer a known application shortcut or a fresh, tightly cropped OCR target.
+- A truncated observation is incomplete evidence. Resolve an exact element_id or a narrower crop; never infer uniqueness or absence from a partial tree. Exact runtime IDs bypass unrelated descendants. Do not broadly rescan the full application after each action.
+- In dense lists, use exact observed text bounds and their centers. Never infer a song/file/row by counting neighboring rows or reusing a prior row's coordinates. Confirm distinguishing context such as artist and album when available. An OCR text match locates text; it does not prove the surrounding row is actionable.
+- If the wrong item opens, observe current state before one focused correction. Do not repeatedly click adjacent rows. Verify the requested item's identity in the resulting player/detail view before claiming success.
+- Tool results include elapsed_ms for accessibility/OCR observations; trace includes per-action duration_ms. If a simple task is taking too long, inspect these timings and change a failing strategy rather than accumulating retries. Tool timings exclude model response latency, so do not attribute the entire task duration to the desktop backend.
+# Numbered observations and health
+
+For application work, start with `windows`, select the intended window, and use
+`observe` with `automation.window_id`. It returns a native window crop together
+with numbered accessibility controls, supported patterns and a `snapshot_id`.
+The crop description states the image origin. Numbered controls are listed in
+JSON; do not interpret their ordinal as a pixel coordinate. Partial coverage is
+reported as `truncated:true`; it cannot prove a name is unique or absent.
+
+Use `snapshot_id` plus top-level `element` for `invoke`, `set_value` or `assert`.
+References belong to the current conversation, expire after 30 seconds and are
+invalidated by any input attempt. The tool freshly checks identity and geometry
+before dispatch. On `stale_observation`, observe again; never guess a replacement.
+Password controls cannot be used through numbered references.
+
+Use `tool_pipeline` for short, already-resolved sequences. An `assert` step can
+set `require_passed:true` to stop unless the observed condition is true. The
+`observation_from` field references an earlier single `observe` step's snapshot.
+After mutation, obtain a new observation before using another numbered target.
+Each child still runs through normal hooks and permission checks. Stop to choose
+a target whenever new results introduce ambiguity. Neither a successful invoke
+nor verified field text proves submission or task completion.
+
+`health` performs read-only capture, display, window enumeration and foreground
+checks. Supply `automation.window_id` for an accessibility check of that window.
+It reports independent statuses, timings, error categories and recovery hints;
+it does not focus, type, click, install anything or close applications. A listed
+window does not prove its pixels or accessibility provider are readable.

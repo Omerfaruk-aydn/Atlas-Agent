@@ -97,7 +97,7 @@ func NewFilePicker(com *common.Common) (*FilePicker, tea.Cmd) {
 	)
 
 	fp := filepicker.New()
-	fp.AllowedTypes = common.AllowedImageTypes
+	fp.AllowedTypes = nil
 	fp.ShowPermissions = false
 	fp.ShowSize = false
 	fp.AutoHeight = false
@@ -181,7 +181,7 @@ func (f *FilePicker) HandleMsg(msg tea.Msg) Action {
 	f.fp, cmd = f.fp.Update(msg)
 	if selFile := f.fp.HighlightedPath(); selFile != "" {
 		var allowed bool
-		for _, allowedExt := range f.fp.AllowedTypes {
+		for _, allowedExt := range common.AllowedImageTypes {
 			if strings.HasSuffix(strings.ToLower(selFile), allowedExt) {
 				allowed = true
 				break
@@ -246,7 +246,7 @@ func (f *FilePicker) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 
 	rc := NewRenderContext(t, width)
 	rc.Gap = 1
-	rc.Title = f.com.Text("Add Image")
+	rc.Title = f.com.Text("Add File")
 	rc.Help = renderDialogHelp(t, &f.help, f, innerWidth)
 
 	if imgPrevHeight > 0 {

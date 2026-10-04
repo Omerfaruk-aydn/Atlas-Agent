@@ -100,5 +100,9 @@ func ocrImage(ctx context.Context, driver AutomationBackend, data []byte, target
 	if closeErr != nil {
 		return nil, closeErr
 	}
-	return driver.Automation(ctx, AutomationRequest{Action: "ocr", ImagePath: path})
+	request := AutomationRequest{Action: "ocr", ImagePath: path}
+	if len(target) > 0 {
+		request.Name = target[0]
+	}
+	return driver.Automation(ctx, request)
 }

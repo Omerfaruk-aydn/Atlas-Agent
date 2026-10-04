@@ -525,6 +525,7 @@ Usage:
   option ui <key> <value>
 
 Available Keys:
+  language en|tr|de|fr|it|ar    choose the interface language
   compact bool                  use the compact chat layout
   diff unified|split            choose unified or side-by-side diffs
   transparent bool              use the terminal background
@@ -540,6 +541,7 @@ Available Keys:
 
 ```bash
 option ui compact true
+option ui language tr
 option ui diff unified
 option ui transparent true
 option ui scrollbar always
@@ -547,6 +549,21 @@ option ui exit-banner compact
 option ui completions-max-depth 4
 option ui completions-max-items 200
 ```
+
+The `/language` command opens a searchable picker for English, Türkçe, Deutsch,
+Français, Italiano, and العربية. Selection is saved to the global configuration
+and applies immediately after a successful save. The default is English.
+You can also set `option ui language tr` in `atlasrc`, or
+`"options": {"tui": {"language": "tr"}}` in JSON. Project settings follow normal
+configuration precedence and can override a global preference on restart.
+
+Atlas interface labels and descriptions use bundled translation catalogs;
+no translation service or API key is needed. Command names such as `/language`,
+model identifiers, code, paths, user-defined command content, conversation
+history, and external tool output retain their original text. This preference
+does not select the model's response language. Missing catalog entries fall back
+to English. Arabic is stored in its logical Unicode order; glyph shaping and
+bidirectional display depend on the terminal.
 
 > [!IMPORTANT]
 > These skill paths load by default — you do NOT need `skill-path`

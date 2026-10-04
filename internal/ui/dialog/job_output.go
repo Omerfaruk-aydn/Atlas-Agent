@@ -26,21 +26,21 @@ func (d *Jobs) outputCmd(id string) tea.Cmd {
 		defer cancel()
 		reader, ok := ws.(workspace.BackgroundOutputReader)
 		if !ok {
-			return jobOutputMsg{id: id, done: true, lines: []string{"This workspace does not expose process output"}}
+			return jobOutputMsg{id: id, done: true, lines: []string{d.com.Text("This workspace does not expose process output")}}
 		}
 		out, err := reader.BackgroundJobOutput(ctx, id)
 		if err != nil {
-			return jobOutputMsg{id: id, done: true, lines: []string{"Output unavailable: " + err.Error()}}
+			return jobOutputMsg{id: id, done: true, lines: []string{d.com.Text("Output unavailable: ") + err.Error()}}
 		}
-		lines := []string{fmt.Sprintf("Finished=%t | truncated=%t", out.Done, out.Truncated), "Stdout:"}
+		lines := []string{fmt.Sprintf("Finished=%t | truncated=%t", out.Done, out.Truncated), d.com.Text("Stdout:")}
 		lines = append(lines, strings.Split(out.Stdout, "\n")...)
-		lines = append(lines, "Stderr:")
+		lines = append(lines, d.com.Text("Stderr:"))
 		lines = append(lines, strings.Split(out.Stderr, "\n")...)
 		if out.Error != "" {
-			lines = append(lines, "Exit error: "+out.Error)
+			lines = append(lines, d.com.Text("Exit error: ")+out.Error)
 		}
 		if len(lines) > 1024 {
-			lines = append([]string{"Showing final 1024 output lines"}, lines[len(lines)-1023:]...)
+			lines = append([]string{d.com.Text("Showing final 1024 output lines")}, lines[len(lines)-1023:]...)
 		}
 		return jobOutputMsg{id: id, lines: lines, done: out.Done}
 	}

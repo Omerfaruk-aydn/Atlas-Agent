@@ -17,7 +17,6 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/list"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/util"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workspace"
-	"github.com/dustin/go-humanize"
 )
 
 // JobsID is the identifier for the background jobs dialog.
@@ -50,7 +49,7 @@ func (e *jobEntry) title() string {
 	if e.SubAgent.Title != "" {
 		return e.SubAgent.Title
 	}
-	return "Sub-agent"
+	return e.t.Text("Sub-agent")
 }
 
 func (e *jobEntry) startedAt() time.Time {
@@ -87,7 +86,7 @@ func (e *jobEntry) Render(width int) string {
 		InfoTextBlurred: t.Dialog.Sessions.InfoBlurred,
 		InfoTextFocused: t.Dialog.Sessions.InfoFocused,
 	}
-	info := humanize.Time(e.startedAt())
+	info := e.t.Styles.RelativeTime(e.startedAt())
 	return renderItem(itemStyles, e.title(), info, e.focused, width, nil, nil)
 }
 
@@ -133,9 +132,9 @@ func NewJobs(com *common.Common, jobs []shell.BackgroundShellInfo, subAgents []w
 	d.list = list.NewFilterableList(items...)
 	d.list.Focus()
 
-	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", "next"))
-	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", "previous"))
-	d.keyMap.Kill = key.NewBinding(key.WithKeys("x", "ctrl+x"), key.WithHelp("x", "cancel"))
+	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", com.Text("next")))
+	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", com.Text("previous")))
+	d.keyMap.Kill = key.NewBinding(key.WithKeys("x", "ctrl+x"), key.WithHelp("x", com.Text("cancel")))
 	d.keyMap.View = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "output/session"))
 	d.keyMap.Close = CloseKey
 
@@ -241,14 +240,14 @@ func (d *Jobs) HandleMsg(msg tea.Msg) Action {
 				return nil
 			}
 			if entry.Job != nil {
-				d.outputID, d.output = entry.Job.ID, []string{"Loading actual process output…"}
+				d.outputID, d.output = entry.Job.ID, []string{d.com.Text("Loading actual process output…")}
 				return ActionCmd{d.outputCmd(entry.Job.ID)}
 			}
 			return ActionViewSession{SessionID: entry.SubAgent.SessionID}
 		}
 	case jobKilledMsg:
 		if msg.err != nil {
-			return ActionCmd{util.ReportError(fmt.Errorf("failed to cancel: %w", msg.err))}
+			return ActionCmd{util.ReportError(fmt.Errorf(d.com.Text("failed to cancel: %w"), msg.err))}
 		}
 		d.removeByKillID(msg.id)
 		if d.outputID == msg.id {
@@ -291,7 +290,7 @@ func (d *Jobs) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	innerWidth := width - t.Dialog.View.GetHorizontalFrameSize()
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Jobs"
+	rc.Title = d.com.Text("Jobs")
 
 	if d.outputID != "" {
 		rc.Title = "Process output | " + d.outputID
@@ -304,7 +303,7 @@ func (d *Jobs) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		rc.AddPart(strings.Join(lines, "\n"))
 		rc.AddPart("Esc back | arrows/PgUp/PgDown scroll | x cancel")
 	} else if len(d.list.FilteredItems()) == 0 {
-		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render("Nothing running."))
+		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render(d.com.Text("Nothing running.")))
 	} else {
 		listHeight, listTotalHeight, _ := sizeDialogList(t, d.list, innerWidth, height)
 		bodyView := t.Dialog.List.Height(d.list.Height()).Render(d.list.Render())

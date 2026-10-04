@@ -87,25 +87,25 @@ func NewNotifications(com *common.Common) *Notifications {
 
 	n.input = textinput.New()
 	n.input.SetVirtualCursor(false)
-	n.input.Placeholder = "Type to filter"
+	n.input.Placeholder = com.Text("Type to filter")
 	n.input.SetStyles(com.Styles.TextInput)
 	n.input.Focus()
 
 	n.keyMap.Select = key.NewBinding(
 		key.WithKeys("enter", "ctrl+y"),
-		key.WithHelp("enter", "confirm"),
+		key.WithHelp("enter", com.Text("confirm")),
 	)
 	n.keyMap.Next = key.NewBinding(
 		key.WithKeys("down", "ctrl+n"),
-		key.WithHelp("↓", "next item"),
+		key.WithHelp("↓", com.Text("next item")),
 	)
 	n.keyMap.Previous = key.NewBinding(
 		key.WithKeys("up", "ctrl+p"),
-		key.WithHelp("↑", "previous item"),
+		key.WithHelp("↑", com.Text("previous item")),
 	)
 	n.keyMap.UpDown = key.NewBinding(
 		key.WithKeys("up", "down"),
-		key.WithHelp("↑/↓", "choose"),
+		key.WithHelp("↑/↓", com.Text("choose")),
 	)
 	n.keyMap.Close = CloseKey
 
@@ -190,7 +190,7 @@ func (n *Notifications) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	n.list.SetSize(innerWidth, max(0, height-heightOffset))
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Notification Style"
+	rc.Title = n.com.Text("Notification Style")
 	inputView := t.Dialog.InputPrompt.Render(n.input.View())
 	rc.AddPart(inputView)
 
@@ -247,6 +247,8 @@ func (n *Notifications) setItems() {
 	items := make([]list.FilterableItem, 0, len(AllNotificationStyles))
 	selectedIndex := 0
 	for _, style := range AllNotificationStyles {
+		style.Title = n.com.Text(style.Title)
+		style.Description = n.com.Text(style.Description)
 		// Native OS notifications don't build on every platform
 		// (illumos/solaris); hide the option where it can't work.
 		if style.ID == "native" && !notification.NativeSupported {

@@ -111,24 +111,24 @@ func (d *Usage) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	}
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Usage"
+	rc.Title = d.com.Text("Usage")
 	rc.Gap = 1
 
 	sessionLines := []string{
-		t.Resource.Heading.Render("This session"),
-		d.row(innerWidth, "Messages", humanize.Comma(s.MessageCount)),
-		d.row(innerWidth, "Prompt tokens", humanize.Comma(s.PromptTokens)),
-		d.row(innerWidth, "Completion tokens", humanize.Comma(s.CompletionTokens)),
-		d.row(innerWidth, "Context used", fmt.Sprintf("%.1f%% of %s", contextPct, humanize.Comma(s.ContextWindow))),
-		d.row(innerWidth, "Cost", formatUsageCost(s.Cost, s.EstimatedUsage)),
+		t.Resource.Heading.Render(d.com.Text("This session")),
+		d.row(innerWidth, d.com.Text("Messages"), humanize.Comma(s.MessageCount)),
+		d.row(innerWidth, d.com.Text("Prompt tokens"), humanize.Comma(s.PromptTokens)),
+		d.row(innerWidth, d.com.Text("Completion tokens"), humanize.Comma(s.CompletionTokens)),
+		d.row(innerWidth, d.com.Text("Context used"), fmt.Sprintf(d.com.Text("%.1f%% of %s"), contextPct, humanize.Comma(s.ContextWindow))),
+		d.row(innerWidth, d.com.Text("Cost"), formatUsageCost(s.Cost, s.EstimatedUsage)),
 	}
 	rc.AddPart(lipgloss.JoinVertical(lipgloss.Left, sessionLines...))
 
 	totalLines := []string{
-		t.Resource.Heading.Render("All sessions"),
-		d.row(innerWidth, "Sessions", humanize.Comma(int64(s.TotalSessions))),
-		d.row(innerWidth, "Total tokens", humanize.Comma(s.TotalPromptTokens+s.TotalCompletionTokens)),
-		d.row(innerWidth, "Total cost", formatUsageCost(s.TotalCost, false)),
+		t.Resource.Heading.Render(d.com.Text("All sessions")),
+		d.row(innerWidth, d.com.Text("Sessions"), humanize.Comma(int64(s.TotalSessions))),
+		d.row(innerWidth, d.com.Text("Total tokens"), humanize.Comma(s.TotalPromptTokens+s.TotalCompletionTokens)),
+		d.row(innerWidth, d.com.Text("Total cost"), formatUsageCost(s.TotalCost, false)),
 	}
 	rc.AddPart(lipgloss.JoinVertical(lipgloss.Left, totalLines...))
 

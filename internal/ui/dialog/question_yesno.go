@@ -42,10 +42,10 @@ func NewYesNo(sty *styles.Styles, req question.Question) *YesNo {
 		questionEditor: newQuestionEditor(sty),
 		Request:        req,
 		selectedNo:     true, // Default to "No" for safety.
-		keyLeftRight:   key.NewBinding(key.WithKeys("left", "right", "h", "l"), key.WithHelp("←/→", "switch")),
-		keyEnter:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
-		keyYes:         key.NewBinding(key.WithKeys("y", "Y"), key.WithHelp("y", "yes")),
-		keyNo:          key.NewBinding(key.WithKeys("n", "N"), key.WithHelp("n", "no")),
+		keyLeftRight:   key.NewBinding(key.WithKeys("left", "right", "h", "l"), key.WithHelp("←/→", sty.Text("switch"))),
+		keyEnter:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", sty.Text("confirm"))),
+		keyYes:         key.NewBinding(key.WithKeys("y", "Y"), key.WithHelp("y", sty.Text("yes"))),
+		keyNo:          key.NewBinding(key.WithKeys("n", "N"), key.WithHelp("n", sty.Text("no"))),
 		keyClose:       CloseKey,
 	}
 }

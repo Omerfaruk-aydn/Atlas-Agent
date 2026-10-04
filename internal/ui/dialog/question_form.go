@@ -101,7 +101,7 @@ func NewQuestionForm(sty *styles.Styles, batch question.Request) *QuestionForm {
 	if hasConfirm {
 		confirmTitle := batch.ConfirmTitle
 		if confirmTitle == "" {
-			confirmTitle = "Confirm"
+			confirmTitle = sty.Text("Confirm")
 		}
 		confirmComp = NewConfirmComponent(
 			sty,
@@ -113,7 +113,7 @@ func NewQuestionForm(sty *styles.Styles, batch question.Request) *QuestionForm {
 		)
 		allLabels = make([]string, len(labels)+1)
 		copy(allLabels, labels)
-		allLabels[len(labels)] = "Confirm"
+		allLabels[len(labels)] = sty.Text("Confirm")
 	}
 	showTabs := numQuestions > 1
 
@@ -130,11 +130,11 @@ func NewQuestionForm(sty *styles.Styles, batch question.Request) *QuestionForm {
 		confirmComp:  confirmComp,
 		keyPrevTab: key.NewBinding(
 			key.WithKeys("[", "ctrl+left"),
-			key.WithHelp("[", "prev tab"),
+			key.WithHelp("[", sty.Text("prev tab")),
 		),
 		keyNextTab: key.NewBinding(
 			key.WithKeys("]", "ctrl+right"),
-			key.WithHelp("]", "next tab"),
+			key.WithHelp("]", sty.Text("next tab")),
 		),
 		keyClose: CloseKey,
 	}

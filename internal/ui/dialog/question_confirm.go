@@ -53,7 +53,7 @@ type ConfirmComponent struct {
 // NewConfirmComponent creates a new confirmation component.
 func NewConfirmComponent(sty *styles.Styles, title, description string, labels []string, requests []question.Question, answers []*question.Answer) *ConfirmComponent {
 	if title == "" || title == "Confirm" {
-		title = "Ready to go?"
+		title = sty.Text("Ready to go?")
 	}
 	return &ConfirmComponent{
 		Styles:           sty,
@@ -63,14 +63,14 @@ func NewConfirmComponent(sty *styles.Styles, title, description string, labels [
 		QuestionRequests: requests,
 		Answers:          answers,
 		confirmYes:       true,
-		keyLeft:          key.NewBinding(key.WithKeys("left"), key.WithHelp("←/→", "switch")),
-		keyRight:         key.NewBinding(key.WithKeys("right"), key.WithHelp("←/→", "switch")),
-		keyYes:           key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "yes")),
-		keyNo:            key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "no")),
-		keyEnter:         key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
+		keyLeft:          key.NewBinding(key.WithKeys("left"), key.WithHelp("←/→", sty.Text("switch"))),
+		keyRight:         key.NewBinding(key.WithKeys("right"), key.WithHelp("←/→", sty.Text("switch"))),
+		keyYes:           key.NewBinding(key.WithKeys("y"), key.WithHelp("y", sty.Text("yes"))),
+		keyNo:            key.NewBinding(key.WithKeys("n"), key.WithHelp("n", sty.Text("no"))),
+		keyEnter:         key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", sty.Text("confirm"))),
 		keyClose:         CloseKey,
-		keyUp:            key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑", "scroll")),
-		keyDown:          key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓", "scroll")),
+		keyUp:            key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑", sty.Text("scroll"))),
+		keyDown:          key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓", sty.Text("scroll"))),
 	}
 }
 
@@ -234,7 +234,7 @@ func (c *ConfirmComponent) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		if missed > 1 {
 			word = "questions"
 		}
-		warn := warnStyle.Render("WARN") + " " + msgStyle.Render(fmt.Sprintf("%d %s unanswered", missed, word))
+		warn := warnStyle.Render(c.Styles.Text("WARN")) + " " + msgStyle.Render(fmt.Sprintf(c.Styles.Text("%d %s unanswered"), missed, word))
 		lines = append(lines, line{text: warn})
 		lines = append(lines, line{}) // blank
 	}
@@ -245,8 +245,8 @@ func (c *ConfirmComponent) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 
 	totalLines := len(lines)
 	confirmButtonOpts := []common.ButtonOpts{
-		{Text: "Yup!", Selected: c.confirmYes, Padding: 3, UnderlineIndex: 0},
-		{Text: "Not yet", Selected: !c.confirmYes, Padding: 3, UnderlineIndex: 0},
+		{Text: c.Styles.Text("Yup!"), Selected: c.confirmYes, Padding: 3, UnderlineIndex: 0},
+		{Text: c.Styles.Text("Not yet"), Selected: !c.confirmYes, Padding: 3, UnderlineIndex: 0},
 	}
 	overflow := viewport > 0 && totalLines > viewport
 
@@ -341,7 +341,7 @@ func (c *ConfirmComponent) UpdateAnswers(answers []*question.Answer) {
 // Choice IDs are resolved to display labels when possible.
 func (c *ConfirmComponent) answerSummary(idx int) string {
 	if idx >= len(c.Answers) || c.Answers[idx] == nil {
-		return "(not answered)"
+		return c.Styles.Text("(not answered)")
 	}
 	resp := c.Answers[idx]
 	var parts []string
@@ -360,11 +360,11 @@ func (c *ConfirmComponent) answerSummary(idx int) string {
 	}
 	if resp.Yes != nil {
 		if *resp.Yes {
-			return "Yes"
+			return c.Styles.Text("Yes")
 		}
-		return "No"
+		return c.Styles.Text("No")
 	}
-	return "(not answered)"
+	return c.Styles.Text("(not answered)")
 }
 
 // choiceLabel resolves a choice ID to its display label.

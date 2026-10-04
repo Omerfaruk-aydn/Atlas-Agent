@@ -44,7 +44,7 @@ const (
 
 // NewFreeText creates a new free-text question component.
 func NewFreeText(sty *styles.Styles, req question.Question) *FreeText {
-	ta := newQuestionTextarea(sty, "Type your answer...", 1000)
+	ta := newQuestionTextarea(sty, sty.Text("Type your answer..."), 1000)
 	ta.DynamicHeight = false
 	ta.MinHeight = freeTextMinEditorHeight
 	ta.MaxHeight = freeTextMaxEditorHeight

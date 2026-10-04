@@ -36,28 +36,28 @@ func NewQuit(com *common.Common) *Quit {
 	}
 	q.keyMap.LeftRight = key.NewBinding(
 		key.WithKeys("left", "right"),
-		key.WithHelp("←/→", "switch options"),
+		key.WithHelp("←/→", com.Text("switch options")),
 	)
 	q.keyMap.EnterSpace = key.NewBinding(
 		key.WithKeys("enter", " "),
-		key.WithHelp("enter/space", "confirm"),
+		key.WithHelp("enter/space", com.Text("confirm")),
 	)
 	q.keyMap.Yes = key.NewBinding(
 		key.WithKeys("y", "Y", "ctrl+c"),
-		key.WithHelp("y/Y/ctrl+c", "yes"),
+		key.WithHelp("y/Y/ctrl+c", com.Text("yes")),
 	)
 	q.keyMap.No = key.NewBinding(
 		key.WithKeys("n", "N"),
-		key.WithHelp("n/N", "no"),
+		key.WithHelp("n/N", com.Text("no")),
 	)
 	q.keyMap.Tab = key.NewBinding(
 		key.WithKeys("tab"),
-		key.WithHelp("tab", "switch options"),
+		key.WithHelp("tab", com.Text("switch options")),
 	)
 	q.keyMap.Close = CloseKey
 	q.keyMap.Quit = key.NewBinding(
 		key.WithKeys("ctrl+c"),
-		key.WithHelp("ctrl+c", "quit"),
+		key.WithHelp("ctrl+c", com.Text("quit")),
 	)
 	return q
 }
@@ -95,18 +95,18 @@ func (q *Quit) HandleMsg(msg tea.Msg) Action {
 
 // Draw implements [Dialog].
 func (q *Quit) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
-	const (
-		question    = "Are you sure you want to quit?"
-		hintLineOne = "To quit without confirmation"
-		hintLineTwo = "press ctrl+c twice."
+	var (
+		question    = q.com.Text("Are you sure you want to quit?")
+		hintLineOne = q.com.Text("To quit without confirmation")
+		hintLineTwo = q.com.Text("press ctrl+c twice.")
 	)
 	var (
 		baseStyle = q.com.Styles.Dialog.Quit.Content
 		hintStyle = q.com.Styles.Dialog.Quit.Hint
 	)
 	buttonOpts := []common.ButtonOpts{
-		{Text: "Yep!", Selected: !q.selectedNo, Padding: 3},
-		{Text: "Nope", Selected: q.selectedNo, Padding: 3},
+		{Text: q.com.Text("Yep!"), Selected: !q.selectedNo, Padding: 3},
+		{Text: q.com.Text("Nope"), Selected: q.selectedNo, Padding: 3},
 	}
 	buttons := common.ButtonGroup(q.com.Styles, buttonOpts, " ")
 	content := baseStyle.Render(

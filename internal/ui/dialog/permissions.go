@@ -449,7 +449,7 @@ func (p *Permissions) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 func (p *Permissions) renderHeader(contentWidth int) string {
 	t := p.com.Styles
 
-	title := common.DialogTitle(t, "Permission Required", contentWidth-t.Dialog.Title.GetHorizontalFrameSize())
+	title := common.DialogTitle(t, p.com.Text("Permission Required"), contentWidth-t.Dialog.Title.GetHorizontalFrameSize())
 	title = t.Dialog.Title.Render(title)
 
 	// Tool info.
@@ -465,7 +465,7 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 		tools.SkillManageToolName:
 		// These tools show their own File/Directory line below.
 	default:
-		lines = append(lines, p.renderKeyValue("Path", fsext.PrettyPath(p.permission.Path), contentWidth))
+		lines = append(lines, p.renderKeyValue(p.com.Text("Path"), fsext.PrettyPath(p.permission.Path), contentWidth))
 	}
 
 	// Add tool-specific header info.
@@ -477,7 +477,7 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 	case tools.DownloadToolName:
 		if params, ok := p.permission.Params.(tools.DownloadPermissionsParams); ok {
 			lines = append(lines, p.renderKeyValue("URL", params.URL, contentWidth))
-			lines = append(lines, p.renderKeyValue("File", fsext.PrettyPath(params.FilePath), contentWidth))
+			lines = append(lines, p.renderKeyValue(p.com.Text("File"), fsext.PrettyPath(params.FilePath), contentWidth))
 		}
 	case tools.EditToolName, tools.WriteToolName, tools.MultiEditToolName, tools.ViewToolName,
 		tools.ReplaceSymbolToolName, tools.MemoryToolName, tools.SkillManageToolName, tools.LSPEditPlanToolName:
@@ -501,11 +501,11 @@ func (p *Permissions) renderHeader(contentWidth int) string {
 			filePath = params.FilePath
 		}
 		if filePath != "" {
-			lines = append(lines, p.renderKeyValue("File", fsext.PrettyPath(filePath), contentWidth))
+			lines = append(lines, p.renderKeyValue(p.com.Text("File"), fsext.PrettyPath(filePath), contentWidth))
 		}
 	case tools.LSToolName:
 		if params, ok := p.permission.Params.(tools.LSPermissionsParams); ok {
-			lines = append(lines, p.renderKeyValue("Directory", fsext.PrettyPath(params.Path), contentWidth))
+			lines = append(lines, p.renderKeyValue(p.com.Text("Directory"), fsext.PrettyPath(params.Path), contentWidth))
 		}
 	}
 
@@ -536,7 +536,7 @@ func (p *Permissions) renderToolName(width int) string {
 		}
 	}
 
-	return p.renderKeyValue("Tool", toolName, width)
+	return p.renderKeyValue(p.com.Text("Tool"), toolName, width)
 }
 
 // prettyName converts snake_case or kebab-case to Title Case.
@@ -594,7 +594,7 @@ func (p *Permissions) renderBashContent(width int) string {
 		if root == "" {
 			root = p.com.Workspace.WorkingDir()
 		}
-		return p.renderContentPanel("Working directory: "+root+"\nLiteral arguments:\n"+string(argv), width)
+		return p.renderContentPanel(p.com.Text("Working directory: ")+root+"\nLiteral arguments:\n"+string(argv), width)
 	}
 	cmd := common.StripBashDisplayPrefix(params.Command, p.com.Workspace.WorkingDir())
 	command, err := common.SyntaxHighlightLexerName(p.com.Styles, cmd, "bash", p.com.Styles.Dialog.ContentPanelBg)
@@ -719,7 +719,7 @@ func (p *Permissions) renderAgenticFetchContent(width int) string {
 	if params.URL != "" {
 		content = fmt.Sprintf("URL: %s\n\nPrompt: %s", params.URL, params.Prompt)
 	} else {
-		content = fmt.Sprintf("Prompt: %s", params.Prompt)
+		content = fmt.Sprintf(p.com.Text("Prompt: %s"), params.Prompt)
 	}
 
 	return p.renderContentPanel(content, width)
@@ -731,7 +731,7 @@ func (p *Permissions) renderViewContent(width int) string {
 		return ""
 	}
 
-	content := fmt.Sprintf("File: %s", fsext.PrettyPath(params.FilePath))
+	content := fmt.Sprintf(p.com.Text("File: %s"), fsext.PrettyPath(params.FilePath))
 	if params.Offset > 0 {
 		content += fmt.Sprintf("\nStarting from line: %d", params.Offset+1)
 	}
@@ -748,7 +748,7 @@ func (p *Permissions) renderLSContent(width int) string {
 		return ""
 	}
 
-	content := fmt.Sprintf("Directory: %s", fsext.PrettyPath(params.Path))
+	content := fmt.Sprintf(p.com.Text("Directory: %s"), fsext.PrettyPath(params.Path))
 	if len(params.Ignore) > 0 {
 		content += fmt.Sprintf("\nIgnore patterns: %s", strings.Join(params.Ignore, ", "))
 	}
@@ -809,9 +809,9 @@ func (p *Permissions) renderContentPanel(content string, width int) string {
 
 func (p *Permissions) renderButtons(contentWidth int, fullscreen bool) string {
 	buttons := []common.ButtonOpts{
-		{Text: "Allow", UnderlineIndex: 0, Selected: p.selectedOption == 0},
-		{Text: "Allow for Session", UnderlineIndex: 10, Selected: p.selectedOption == 1},
-		{Text: "Deny", UnderlineIndex: 0, Selected: p.selectedOption == 2},
+		{Text: p.com.Text("Allow"), UnderlineIndex: 0, Selected: p.selectedOption == 0},
+		{Text: p.com.Text("Allow for Session"), UnderlineIndex: 10, Selected: p.selectedOption == 1},
+		{Text: p.com.Text("Deny"), UnderlineIndex: 0, Selected: p.selectedOption == 2},
 	}
 
 	content := common.ButtonGroup(p.com.Styles, buttons, "  ")

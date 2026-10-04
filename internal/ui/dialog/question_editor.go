@@ -57,8 +57,8 @@ type questionEditor struct {
 func newQuestionEditor(sty *styles.Styles) questionEditor {
 	return questionEditor{
 		Styles:     sty,
-		fillIn:     newQuestionTextarea(sty, "Something else?", 500),
-		noteEditor: newQuestionTextarea(sty, "Add a note...", 300),
+		fillIn:     newQuestionTextarea(sty, sty.Text("Something else?"), 500),
+		noteEditor: newQuestionTextarea(sty, sty.Text("Add a note..."), 300),
 		notes:      make(map[string]string),
 		keyNote:    key.NewBinding(key.WithKeys("alt+n"), key.WithHelp("alt+n", "note")),
 		navUp:      key.NewBinding(key.WithKeys("up"), key.WithHelp("↑", "up")),
@@ -161,7 +161,7 @@ func (e *questionEditor) drawFillIn(lines *[]contentLine, innerWidth int, bar, b
 		*lines = append(*lines, contentLine{text: bar + fillPrefix + rendered, cursorItem: isActive, choiceIdx: -1})
 		return
 	}
-	*lines = append(*lines, contentLine{text: bar + fillPrefix + bodyStyle.Render("Something else?"), cursorItem: isActive, choiceIdx: -1})
+	*lines = append(*lines, contentLine{text: bar + fillPrefix + bodyStyle.Render(e.Styles.Text("Something else?")), cursorItem: isActive, choiceIdx: -1})
 }
 
 // drawNote appends note rows to lines for the given key. When the

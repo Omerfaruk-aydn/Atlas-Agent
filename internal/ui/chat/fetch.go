@@ -36,12 +36,12 @@ type FetchToolRenderContext struct{}
 func (f *FetchToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "Fetch", opts.Anim, opts.Compact)
+		return pendingTool(sty, sty.Text("Fetch"), opts.Anim, opts.Compact)
 	}
 
 	var params tools.FetchParams
 	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
-		return toolErrorContent(sty, &message.ToolResult{Content: "Invalid parameters"}, cappedWidth)
+		return toolErrorContent(sty, &message.ToolResult{Content: sty.Text("Invalid parameters")}, cappedWidth)
 	}
 
 	toolParams := []string{params.URL}
@@ -52,7 +52,7 @@ func (f *FetchToolRenderContext) RenderTool(sty *styles.Styles, width int, opts 
 		toolParams = append(toolParams, "timeout", formatTimeout(params.Timeout))
 	}
 
-	header := toolHeader(sty, opts.Status, "Fetch", cappedWidth, opts, toolParams...)
+	header := toolHeader(sty, opts.Status, sty.Text("Fetch"), cappedWidth, opts, toolParams...)
 	if opts.Compact {
 		return header
 	}
@@ -111,16 +111,16 @@ type WebFetchToolRenderContext struct{}
 func (w *WebFetchToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "Fetch", opts.Anim, opts.Compact)
+		return pendingTool(sty, sty.Text("Fetch"), opts.Anim, opts.Compact)
 	}
 
 	var params tools.WebFetchParams
 	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
-		return toolErrorContent(sty, &message.ToolResult{Content: "Invalid parameters"}, cappedWidth)
+		return toolErrorContent(sty, &message.ToolResult{Content: sty.Text("Invalid parameters")}, cappedWidth)
 	}
 
 	toolParams := []string{params.URL}
-	header := toolHeader(sty, opts.Status, "Fetch", cappedWidth, opts, toolParams...)
+	header := toolHeader(sty, opts.Status, sty.Text("Fetch"), cappedWidth, opts, toolParams...)
 	if opts.Compact {
 		return header
 	}
@@ -165,16 +165,16 @@ type WebSearchToolRenderContext struct{}
 func (w *WebSearchToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "Search", opts.Anim, opts.Compact)
+		return pendingTool(sty, sty.Text("Search"), opts.Anim, opts.Compact)
 	}
 
 	var params tools.WebSearchParams
 	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
-		return toolErrorContent(sty, &message.ToolResult{Content: "Invalid parameters"}, cappedWidth)
+		return toolErrorContent(sty, &message.ToolResult{Content: sty.Text("Invalid parameters")}, cappedWidth)
 	}
 
 	toolParams := []string{params.Query}
-	header := toolHeader(sty, opts.Status, "Search", cappedWidth, opts, toolParams...)
+	header := toolHeader(sty, opts.Status, sty.Text("Search"), cappedWidth, opts, toolParams...)
 	if opts.Compact {
 		return header
 	}

@@ -75,7 +75,7 @@ func NewAWSSSO(com *common.Common, command string) (*AWSSSO, tea.Cmd) {
 
 	m.keyMap.Open = key.NewBinding(
 		key.WithKeys("enter", "ctrl+y"),
-		key.WithHelp("enter", "open in browser"),
+		key.WithHelp("enter", com.Text("open in browser")),
 	)
 	m.keyMap.Close = CloseKey
 
@@ -167,7 +167,7 @@ func (m *AWSSSO) headerContent() string {
 		titleStyle   = t.Dialog.Title
 		dialogStyle  = t.Dialog.View.Width(m.width)
 		headerOffset = titleStyle.GetHorizontalFrameSize() + dialogStyle.GetHorizontalFrameSize()
-		dialogTitle  = "AWS SSO Authentication"
+		dialogTitle  = m.com.Text("AWS SSO Authentication")
 	)
 	return common.DialogTitle(t, titleStyle.Render(dialogTitle), m.width-headerOffset)
 }
@@ -195,9 +195,9 @@ func (m *AWSSSO) innerDialogContent() string {
 			// text segment with its own style: wrapping the whole string in
 			// one style would drop the text color after enterKeyStyle's
 			// reset code.
-			instructionText := instructionStyle.Render("Press ") +
+			instructionText := instructionStyle.Render(m.com.Text("Press ")) +
 				enterKeyStyle.Render("enter") +
-				instructionStyle.Render(" to open the authorization page.")
+				instructionStyle.Render(m.com.Text(" to open the authorization page."))
 			instructions := lipgloss.NewStyle().
 				Width(innerWidth).
 				Padding(0, 1).
@@ -216,7 +216,7 @@ func (m *AWSSSO) innerDialogContent() string {
 				Padding(0, 1).
 				Render(
 					successStyle.Render(m.spinner.View()) +
-						statusTextStyle.Render("Waiting for authentication..."),
+						statusTextStyle.Render(m.com.Text("Waiting for authentication...")),
 				)
 
 			return lipgloss.JoinVertical(
@@ -237,7 +237,7 @@ func (m *AWSSSO) innerDialogContent() string {
 			Padding(0, 1).
 			Render(
 				successStyle.Render(m.spinner.View()) +
-					statusTextStyle.Render("Starting "+m.command+"..."),
+					statusTextStyle.Render(m.com.Text("Starting ")+m.command+"..."),
 			)
 		return lipgloss.JoinVertical(lipgloss.Left, "", spinnerLine, "")
 
@@ -245,13 +245,13 @@ func (m *AWSSSO) innerDialogContent() string {
 		return successStyle.
 			Width(innerWidth).
 			Align(lipgloss.Center).
-			Render("✓ Authentication successful!")
+			Render(m.com.Text("✓ Authentication successful!"))
 
 	case awsSSOStateError:
 		header := errorStyle.
 			Width(innerWidth).
 			Padding(0, 1).
-			Render("Authentication failed.")
+			Render(m.com.Text("Authentication failed."))
 
 		if m.errMsg == "" {
 			return header

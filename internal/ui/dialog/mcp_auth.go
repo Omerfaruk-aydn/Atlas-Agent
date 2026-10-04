@@ -75,11 +75,11 @@ func NewMCPAuth(com *common.Common, pending []mcptools.PendingAuthServer, authUR
 
 	m.keyMap.Submit = key.NewBinding(
 		key.WithKeys("enter", "ctrl+y"),
-		key.WithHelp("enter", "open browser"),
+		key.WithHelp("enter", com.Text("open browser")),
 	)
 	m.keyMap.Copy = key.NewBinding(
 		key.WithKeys("c", "u"),
-		key.WithHelp("c", "copy url"),
+		key.WithHelp("c", com.Text("copy url")),
 	)
 	m.keyMap.Skip = key.NewBinding(
 		key.WithKeys("s"),
@@ -137,10 +137,10 @@ func (m *MCPAuth) HandleMsg(msg tea.Msg) Action {
 			// prompt we fall back to the server URL. Starting the flow
 			// (and opening the browser) is enter's job, not c's.
 			if u := m.authURL(); u != "" {
-				return ActionCmd{common.CopyToClipboard(u, "URL copied to clipboard")}
+				return ActionCmd{common.CopyToClipboard(u, m.com.Text("URL copied to clipboard"))}
 			}
 			if u := m.currentServer().URL; u != "" {
-				return ActionCmd{common.CopyToClipboard(u, "URL copied to clipboard")}
+				return ActionCmd{common.CopyToClipboard(u, m.com.Text("URL copied to clipboard"))}
 			}
 		case key.Matches(msg, m.keyMap.Skip):
 			if m.state == MCPAuthStatePrompt {
@@ -248,7 +248,7 @@ func (m *MCPAuth) headerContent() string {
 	dialogStyle := t.Dialog.View.Width(m.width)
 	headerOffset := titleStyle.GetHorizontalFrameSize() + dialogStyle.GetHorizontalFrameSize()
 
-	title := fmt.Sprintf("Authenticate with %s", m.currentServer().Name)
+	title := fmt.Sprintf(m.com.Text("Authenticate with %s"), m.currentServer().Name)
 	return common.DialogTitle(t, titleStyle.Render(title), m.width-headerOffset)
 }
 
@@ -291,9 +291,9 @@ func (m *MCPAuth) innerContent() string {
 
 	switch m.state {
 	case MCPAuthStatePrompt:
-		instructions := instructionStyle.Render("Press ") +
+		instructions := instructionStyle.Render(m.com.Text("Press ")) +
 			enterStyle.Render("enter") +
-			instructionStyle.Render(" to open your browser.") +
+			instructionStyle.Render(m.com.Text(" to open your browser.")) +
 			statusStyle.Render(progress)
 		return lipgloss.JoinVertical(
 			lipgloss.Left,
@@ -306,7 +306,7 @@ func (m *MCPAuth) innerContent() string {
 
 	case MCPAuthStateAuthenticating:
 		waiting := successStyle.Render(m.spinner.View()) +
-			statusStyle.Render(" Waiting for authorization...")
+			statusStyle.Render(m.com.Text(" Waiting for authorization..."))
 		return lipgloss.JoinVertical(
 			lipgloss.Left,
 			"",
@@ -320,10 +320,10 @@ func (m *MCPAuth) innerContent() string {
 		return successStyle.
 			Width(innerWidth).
 			Padding(1).
-			Render("Authentication successful!")
+			Render(m.com.Text("Authentication successful!"))
 
 	case MCPAuthStateError:
-		errMsg := "Authentication failed."
+		errMsg := m.com.Text("Authentication failed.")
 		if m.err != nil {
 			errMsg = m.err.Error()
 		}
@@ -356,7 +356,7 @@ func (m *MCPAuth) ShortHelp() []key.Binding {
 	case MCPAuthStateSuccess:
 		label := "finish"
 		if m.current+1 < len(m.pending) {
-			label = "next"
+			label = m.com.Text("next")
 		}
 		return []key.Binding{
 			key.NewBinding(

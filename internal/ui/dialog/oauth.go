@@ -104,15 +104,15 @@ func newOAuth(
 
 	m.keyMap.Copy = key.NewBinding(
 		key.WithKeys("c"),
-		key.WithHelp("c", "copy code"),
+		key.WithHelp("c", com.Text("copy code")),
 	)
 	m.keyMap.CopyURL = key.NewBinding(
 		key.WithKeys("u"),
-		key.WithHelp("u", "copy url"),
+		key.WithHelp("u", com.Text("copy url")),
 	)
 	m.keyMap.Submit = key.NewBinding(
 		key.WithKeys("enter", "ctrl+y"),
-		key.WithHelp("enter", "copy & open"),
+		key.WithHelp("enter", com.Text("copy & open")),
 	)
 	m.keyMap.Close = CloseKey
 
@@ -274,7 +274,7 @@ func (m *OAuth) headerContent() string {
 		textStyle    = t.Dialog.PrimaryText
 		dialogStyle  = t.Dialog.View.Width(m.width)
 		headerOffset = titleStyle.GetHorizontalFrameSize() + dialogStyle.GetHorizontalFrameSize()
-		dialogTitle  = fmt.Sprintf("Let’s authenticate with %s", m.oAuthProvider.name())
+		dialogTitle  = fmt.Sprintf(m.com.Text("Let’s authenticate with %s"), m.oAuthProvider.name())
 	)
 	if m.isOnboarding {
 		return textStyle.Render(dialogTitle)
@@ -305,7 +305,7 @@ func (m *OAuth) innerDialogContent() string {
 			Align(lipgloss.Center).
 			Render(
 				successStyle.Render(m.spinner.View()) +
-					statusTextStyle.Render("Initializing..."),
+					statusTextStyle.Render(m.com.Text("Initializing...")),
 			)
 
 	case OAuthStateDisplay:
@@ -318,11 +318,11 @@ func (m *OAuth) innerDialogContent() string {
 		// Render each text segment with its own style. Wrapping the
 		// whole concatenation in a single style would lose the text
 		// color after enterKeyStyle's reset code.
-		instructionBody := " to open the browser and finish signing in."
+		instructionBody := m.com.Text(" to open the browser and finish signing in.")
 		if hasUserCode {
-			instructionBody = " to copy the code below and open the browser."
+			instructionBody = m.com.Text(" to copy the code below and open the browser.")
 		}
-		instructionText := instructionStyle.Render("Press ") +
+		instructionText := instructionStyle.Render(m.com.Text("Press ")) +
 			enterKeyStyle.Render("enter") +
 			instructionStyle.Render(instructionBody)
 		instructions := lipgloss.NewStyle().
@@ -352,7 +352,7 @@ func (m *OAuth) innerDialogContent() string {
 			Width(innerWidth).
 			Padding(0, 1).
 			Render(
-				successStyle.Render(m.spinner.View()) + statusTextStyle.Render("Verifying... (a brand-new account can take up to a couple of minutes)"),
+				successStyle.Render(m.spinner.View()) + statusTextStyle.Render(m.com.Text("Verifying... (a brand-new account can take up to a couple of minutes)")),
 			)
 
 		elements := []string{""}
@@ -368,7 +368,7 @@ func (m *OAuth) innerDialogContent() string {
 		return successStyle.
 			Width(innerWidth).
 			Padding(1).
-			Render("Authentication successful!")
+			Render(m.com.Text("Authentication successful!"))
 
 	case OAuthStateSaving:
 		return lipgloss.NewStyle().
@@ -376,14 +376,14 @@ func (m *OAuth) innerDialogContent() string {
 			Align(lipgloss.Center).
 			Render(
 				successStyle.Render(m.spinner.View()) +
-					statusTextStyle.Render(" Fetching models..."),
+					statusTextStyle.Render(m.com.Text(" Fetching models...")),
 			)
 
 	case OAuthStateError:
 		return errorStyle.
 			Width(innerWidth).
 			Padding(1).
-			Render("Authentication failed.")
+			Render(m.com.Text("Authentication failed."))
 
 	default:
 		return ""
@@ -434,14 +434,14 @@ func (m *OAuth) copyCode() tea.Cmd {
 	if m.State != OAuthStateDisplay {
 		return nil
 	}
-	return common.CopyToClipboard(m.userCode, "Code copied to clipboard")
+	return common.CopyToClipboard(m.userCode, m.com.Text("Code copied to clipboard"))
 }
 
 func (m *OAuth) copyURL() tea.Cmd {
 	if m.State != OAuthStateDisplay {
 		return nil
 	}
-	return common.CopyToClipboard(m.verificationURL, "URL copied to clipboard")
+	return common.CopyToClipboard(m.verificationURL, m.com.Text("URL copied to clipboard"))
 }
 
 func (m *OAuth) copyCodeAndOpenURL() tea.Cmd {
@@ -450,7 +450,7 @@ func (m *OAuth) copyCodeAndOpenURL() tea.Cmd {
 	}
 	openBrowser := func() tea.Msg {
 		if err := browser.OpenURL(m.verificationURL); err != nil {
-			return ActionOAuthErrored{fmt.Errorf("failed to open browser: %w", err)}
+			return ActionOAuthErrored{fmt.Errorf(m.com.Text("failed to open browser: %w"), err)}
 		}
 		return nil
 	}
@@ -461,7 +461,7 @@ func (m *OAuth) copyCodeAndOpenURL() tea.Cmd {
 	}
 	return common.CopyToClipboardWithCallback(
 		m.userCode,
-		"Code copied and URL opened",
+		m.com.Text("Code copied and URL opened"),
 		openBrowser,
 	)
 }
@@ -479,7 +479,7 @@ func (m *OAuth) saveCredential() tea.Cmd {
 	)
 	return func() tea.Msg {
 		if err := com.Workspace.SetProviderAPIKey(config.ScopeGlobal, string(provider.ID), token); err != nil {
-			return oauthSaveErrMsg{err: fmt.Errorf("failed to save API key: %w", err)}
+			return oauthSaveErrMsg{err: fmt.Errorf(m.com.Text("failed to save API key: %w"), err)}
 		}
 		return oauthSaveDoneMsg{}
 	}

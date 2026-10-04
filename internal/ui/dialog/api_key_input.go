@@ -74,7 +74,7 @@ func NewAPIKeyInput(
 
 	m.input = textinput.New()
 	m.input.SetVirtualCursor(false)
-	m.input.Placeholder = "Enter your API key..."
+	m.input.Placeholder = com.Text("Enter your API key...")
 	m.input.SetStyles(com.Styles.TextInput)
 	m.input.Focus()
 
@@ -172,7 +172,7 @@ func (m *APIKeyInput) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	content := strings.Join([]string{
 		m.headerView(),
 		inputStyle.Render(m.inputView()),
-		textStyle.Render("This will be written in your global configuration:"),
+		textStyle.Render(m.com.Text("This will be written in your global configuration:")),
 		textStyle.Render(config.GlobalConfigData()),
 		"",
 		helpView,
@@ -214,13 +214,13 @@ func (m *APIKeyInput) dialogTitle() string {
 	)
 	switch m.state {
 	case APIKeyInputStateInitial:
-		return textStyle.Render("Enter your ") + accentStyle.Render(fmt.Sprintf("%s Key", m.provider.Name)) + textStyle.Render(".")
+		return textStyle.Render(m.com.Text("Enter your ")) + accentStyle.Render(fmt.Sprintf(m.com.Text("%s Key"), m.provider.Name)) + textStyle.Render(".")
 	case APIKeyInputStateVerifying:
-		return textStyle.Render("Verifying your ") + accentStyle.Render(fmt.Sprintf("%s Key", m.provider.Name)) + textStyle.Render("...")
+		return textStyle.Render(m.com.Text("Verifying your ")) + accentStyle.Render(fmt.Sprintf(m.com.Text("%s Key"), m.provider.Name)) + textStyle.Render("...")
 	case APIKeyInputStateVerified:
-		return accentStyle.Render(fmt.Sprintf("%s Key", m.provider.Name)) + textStyle.Render(" validated.")
+		return accentStyle.Render(fmt.Sprintf(m.com.Text("%s Key"), m.provider.Name)) + textStyle.Render(m.com.Text(" validated."))
 	case APIKeyInputStateError:
-		return errorStyle.Render("Invalid ") + accentStyle.Render(fmt.Sprintf("%s Key", m.provider.Name)) + errorStyle.Render(". Try again?")
+		return errorStyle.Render(m.com.Text("Invalid ")) + accentStyle.Render(fmt.Sprintf(m.com.Text("%s Key"), m.provider.Name)) + errorStyle.Render(m.com.Text(". Try again?"))
 	}
 	return ""
 }
@@ -309,7 +309,7 @@ func (m *APIKeyInput) verifyAPIKey() tea.Msg {
 func (m *APIKeyInput) saveKeyAndContinue() Action {
 	err := m.com.Workspace.SetProviderAPIKey(config.ScopeGlobal, string(m.provider.ID), m.input.Value())
 	if err != nil {
-		return ActionCmd{util.ReportError(fmt.Errorf("failed to save API key: %w", err))}
+		return ActionCmd{util.ReportError(fmt.Errorf(m.com.Text("failed to save API key: %w"), err))}
 	}
 
 	return ActionSelectModel{

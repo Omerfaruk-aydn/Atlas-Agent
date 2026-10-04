@@ -13,7 +13,6 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/list"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/styles"
-	"github.com/dustin/go-humanize"
 	"github.com/rivo/uniseg"
 	"github.com/sahilm/fuzzy"
 )
@@ -107,7 +106,7 @@ func (s *SessionItem) Cursor() *tea.Cursor {
 
 // InfoText returns the secondary text shown on the right of the item.
 func (s *SessionItem) InfoText() string {
-	return humanize.Time(time.Unix(s.UpdatedAt, 0))
+	return s.t.RelativeTime(time.Unix(s.UpdatedAt, 0))
 }
 
 // SetHideInfo controls whether the timestamp info column is shown. The

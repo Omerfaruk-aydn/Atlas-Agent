@@ -93,23 +93,23 @@ func NewRewind(com *common.Common, sessionID, sessionTitle string) (*Rewind, err
 
 	r.keyMap.Select = key.NewBinding(
 		key.WithKeys("enter"),
-		key.WithHelp("enter", "select checkpoint"),
+		key.WithHelp("enter", com.Text("select checkpoint")),
 	)
 	r.keyMap.Next = key.NewBinding(
 		key.WithKeys("down", "ctrl+n"),
-		key.WithHelp("↓", "next"),
+		key.WithHelp("↓", com.Text("next")),
 	)
 	r.keyMap.Previous = key.NewBinding(
 		key.WithKeys("up", "ctrl+p"),
-		key.WithHelp("↑", "previous"),
+		key.WithHelp("↑", com.Text("previous")),
 	)
 	r.keyMap.Confirm = key.NewBinding(
 		key.WithKeys("y", "enter"),
-		key.WithHelp("y", "confirm"),
+		key.WithHelp("y", com.Text("confirm")),
 	)
 	r.keyMap.Cancel = key.NewBinding(
 		key.WithKeys("n", "esc"),
-		key.WithHelp("n", "cancel"),
+		key.WithHelp("n", com.Text("cancel")),
 	)
 	r.keyMap.Close = CloseKey
 
@@ -256,15 +256,15 @@ func (r *Rewind) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	innerWidth := width - t.Dialog.View.GetHorizontalFrameSize()
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Rewind"
+	rc.Title = r.com.Text("Rewind")
 
 	switch r.mode {
 	case rewindModePicking:
 		if len(r.list.FilteredItems()) == 0 {
-			rc.AddPart(t.Dialog.Sessions.DeletingMessage.Render("No checkpoints yet — send a message first."))
+			rc.AddPart(t.Dialog.Sessions.DeletingMessage.Render(r.com.Text("No checkpoints yet — send a message first.")))
 			break
 		}
-		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render("Pick a message to rewind to:"))
+		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render(r.com.Text("Pick a message to rewind to:")))
 		listHeight, listTotalHeight, _ := sizeDialogList(t, r.list, innerWidth, height)
 		bodyView := t.Dialog.List.Height(r.list.Height()).Render(r.list.Render())
 		bodyView = joinScrollbar(t, bodyView, listHeight, listTotalHeight, listHeight, r.list.Offset())
@@ -274,7 +274,7 @@ func (r *Rewind) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		rc.ViewStyle = t.Dialog.Sessions.DeletingView
 		rc.AddPart(t.Dialog.Sessions.DeletingMessage.Render(r.confirmMessage()))
 	case rewindModeApplying:
-		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render("Rewinding…"))
+		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render(r.com.Text("Rewinding…")))
 	}
 
 	rc.Help = renderDialogHelp(t, &r.help, r, innerWidth)
@@ -289,7 +289,7 @@ func (r *Rewind) confirmMessage() string {
 		return fmt.Sprintf("Could not preview this rewind: %v\n\nPress any key to go back.", r.previewErr)
 	}
 	if r.previewLoading {
-		return "Checking what this rewind would change…"
+		return r.com.Text("Checking what this rewind would change…")
 	}
 	if r.applyErr != nil {
 		return fmt.Sprintf("Rewind failed: %v\n\nPress y to retry, n to go back.", r.applyErr)

@@ -92,49 +92,49 @@ func NewSessions(com *common.Common, selectedSessionID string) (*Session, error)
 
 	s.input = textinput.New()
 	s.input.SetVirtualCursor(false)
-	s.input.Placeholder = "Enter session name"
+	s.input.Placeholder = com.Text("Enter session name")
 	s.input.SetStyles(com.Styles.TextInput)
 	s.input.Focus()
 
 	s.keyMap.Select = key.NewBinding(
 		key.WithKeys("enter", "tab", "ctrl+y"),
-		key.WithHelp("enter", "choose"),
+		key.WithHelp("enter", com.Text("choose")),
 	)
 	s.keyMap.Next = key.NewBinding(
 		key.WithKeys("down", "ctrl+n"),
-		key.WithHelp("↓", "next item"),
+		key.WithHelp("↓", com.Text("next item")),
 	)
 	s.keyMap.Previous = key.NewBinding(
 		key.WithKeys("up", "ctrl+p"),
-		key.WithHelp("↑", "previous item"),
+		key.WithHelp("↑", com.Text("previous item")),
 	)
 	s.keyMap.UpDown = key.NewBinding(
 		key.WithKeys("up", "down"),
-		key.WithHelp("↑↓", "choose"),
+		key.WithHelp("↑↓", com.Text("choose")),
 	)
 	s.keyMap.Delete = key.NewBinding(
 		key.WithKeys("ctrl+x"),
-		key.WithHelp("ctrl+x", "delete"),
+		key.WithHelp("ctrl+x", com.Text("delete")),
 	)
 	s.keyMap.Rename = key.NewBinding(
 		key.WithKeys("ctrl+r"),
-		key.WithHelp("ctrl+r", "rename"),
+		key.WithHelp("ctrl+r", com.Text("rename")),
 	)
 	s.keyMap.ConfirmRename = key.NewBinding(
 		key.WithKeys("enter"),
-		key.WithHelp("enter", "confirm"),
+		key.WithHelp("enter", com.Text("confirm")),
 	)
 	s.keyMap.CancelRename = key.NewBinding(
 		key.WithKeys("esc"),
-		key.WithHelp("esc", "cancel"),
+		key.WithHelp("esc", com.Text("cancel")),
 	)
 	s.keyMap.ConfirmDelete = key.NewBinding(
 		key.WithKeys("y"),
-		key.WithHelp("y", "delete"),
+		key.WithHelp("y", com.Text("delete")),
 	)
 	s.keyMap.CancelDelete = key.NewBinding(
 		key.WithKeys("n", "esc"),
-		key.WithHelp("n", "cancel"),
+		key.WithHelp("n", com.Text("cancel")),
 	)
 	s.keyMap.Close = CloseKey
 
@@ -190,7 +190,7 @@ func (s *Session) HandleMsg(msg tea.Msg) Action {
 				s.list.SetItems(sessionItems(s.com.Styles, sessionsModeUpdating, s.sessions...)...)
 			case key.Matches(msg, s.keyMap.Delete):
 				if s.isCurrentSessionBusy() {
-					return ActionCmd{util.ReportWarn("Agent is busy, please wait...")}
+					return ActionCmd{util.ReportWarn(s.com.Text("Agent is busy, please wait..."))}
 				}
 				s.sessionsMode = sessionsModeDeleting
 				s.list.SetItems(sessionItems(s.com.Styles, sessionsModeDeleting, s.sessions...)...)
@@ -301,16 +301,16 @@ func (s *Session) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 
 	var cur *tea.Cursor
 	rc := NewRenderContext(t, width)
-	rc.Title = "Sessions"
+	rc.Title = s.com.Text("Sessions")
 	switch s.sessionsMode {
 	case sessionsModeDeleting:
 		rc.TitleStyle = t.Dialog.Sessions.DeletingTitle
 		rc.ViewStyle = t.Dialog.Sessions.DeletingView
-		rc.AddPart(t.Dialog.Sessions.DeletingMessage.Render("Delete this session?"))
+		rc.AddPart(t.Dialog.Sessions.DeletingMessage.Render(s.com.Text("Delete this session?")))
 	case sessionsModeUpdating:
 		rc.TitleStyle = t.Dialog.Sessions.RenamingingTitle
 		rc.ViewStyle = t.Dialog.Sessions.RenamingView
-		message := t.Dialog.Sessions.RenamingingMessage.Render("Rename this session?")
+		message := t.Dialog.Sessions.RenamingingMessage.Render(s.com.Text("Rename this session?"))
 		rc.AddPart(message)
 		item := s.selectedSessionItem()
 		if item == nil {

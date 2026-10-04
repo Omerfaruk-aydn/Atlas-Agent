@@ -43,7 +43,7 @@ func NewChatSearch(com *common.Common) *ChatSearch {
 
 	d.input = textinput.New()
 	d.input.SetVirtualCursor(false)
-	d.input.Placeholder = "Search this chat..."
+	d.input.Placeholder = com.Text("Search this chat...")
 	d.input.SetStyles(com.Styles.TextInput)
 	d.input.Focus()
 
@@ -51,7 +51,7 @@ func NewChatSearch(com *common.Common) *ChatSearch {
 	h.Styles = com.Styles.DialogHelpStyles()
 	d.help = h
 
-	d.keyMap.Submit = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "search"))
+	d.keyMap.Submit = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", com.Text("search")))
 	d.keyMap.Close = CloseKey
 
 	return d
@@ -104,7 +104,7 @@ func (d *ChatSearch) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	d.input.SetWidth(max(0, innerWidth-1))
 
 	rc := NewRenderContext(t, d.width)
-	rc.Title = "Search chat"
+	rc.Title = d.com.Text("Search chat")
 	rc.AddPart(t.Dialog.InputPrompt.Render(d.input.View()))
 	rc.Help = renderDialogHelp(t, &d.help, d, innerWidth)
 

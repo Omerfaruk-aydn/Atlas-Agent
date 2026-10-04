@@ -46,7 +46,7 @@ func NewSessionSearch(com *common.Common) *SessionSearch {
 
 	d.input = textinput.New()
 	d.input.SetVirtualCursor(false)
-	d.input.Placeholder = "Search all sessions by content..."
+	d.input.Placeholder = com.Text("Search all sessions by content...")
 	d.input.SetStyles(com.Styles.TextInput)
 	d.input.Focus()
 
@@ -54,7 +54,7 @@ func NewSessionSearch(com *common.Common) *SessionSearch {
 	h.Styles = com.Styles.DialogHelpStyles()
 	d.help = h
 
-	d.keyMap.Submit = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "search"))
+	d.keyMap.Submit = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", com.Text("search")))
 	d.keyMap.Close = CloseKey
 
 	return d
@@ -100,7 +100,7 @@ func (d *SessionSearch) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	d.input.SetWidth(max(0, innerWidth-1))
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Search all sessions"
+	rc.Title = d.com.Text("Search all sessions")
 	rc.AddPart(t.Dialog.InputPrompt.Render(d.input.View()))
 	rc.Help = renderDialogHelp(t, &d.help, d, innerWidth)
 
@@ -156,7 +156,7 @@ func (e *sessionSearchResultItem) Render(width int) string {
 	}
 	title := e.session.Title
 	if title == "" {
-		title = "Untitled"
+		title = e.t.Text("Untitled")
 	}
 	return renderItem(itemStyles, title, "", e.focused, width, nil, nil)
 }
@@ -195,8 +195,8 @@ func NewSessionSearchResults(com *common.Common, query string, sessions []sessio
 	h.Styles = com.Styles.DialogHelpStyles()
 	d.help = h
 
-	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", "next"))
-	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", "previous"))
+	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", com.Text("next")))
+	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", com.Text("previous")))
 	d.keyMap.Select = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open"))
 	d.keyMap.Close = CloseKey
 
@@ -258,10 +258,10 @@ func (d *SessionSearchResults) Draw(scr uv.Screen, area uv.Rectangle) *tea.Curso
 	innerWidth := width - t.Dialog.View.GetHorizontalFrameSize()
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Results for \"" + d.query + "\""
+	rc.Title = d.com.Text("Results for \"") + d.query + "\""
 
 	if len(d.list.FilteredItems()) == 0 {
-		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render("No sessions matched."))
+		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render(d.com.Text("No sessions matched.")))
 	} else {
 		listHeight, listTotalHeight, _ := sizeDialogList(t, d.list, innerWidth, height)
 		bodyView := t.Dialog.List.Height(d.list.Height()).Render(d.list.Render())

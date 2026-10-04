@@ -7,7 +7,6 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/list"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/styles"
-	"github.com/dustin/go-humanize"
 	"github.com/sahilm/fuzzy"
 )
 
@@ -79,7 +78,7 @@ func (r *RewindItem) SetHideInfo(v bool) {
 
 // InfoText returns the secondary text shown on the right of the item.
 func (r *RewindItem) InfoText() string {
-	return humanize.Time(time.Unix(r.CreatedAt/1000, 0))
+	return r.t.RelativeTime(time.Unix(r.CreatedAt/1000, 0))
 }
 
 func (r *RewindItem) preview() string {
@@ -102,7 +101,7 @@ func (r *RewindItem) Render(width int) string {
 	}
 	title := r.preview()
 	if title == "" {
-		title = "(no text)"
+		title = r.t.Text("(no text)")
 	}
 	return renderItem(itemStyles, title, info, r.focused, width, r.cache, &r.m)
 }

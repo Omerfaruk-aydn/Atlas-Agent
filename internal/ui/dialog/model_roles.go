@@ -91,7 +91,7 @@ func (e *modelRoleEntry) Filter() string { return e.name }
 
 func (e *modelRoleEntry) info() string {
 	if !e.assigned {
-		info := "not set"
+		info := e.t.Text("not set")
 		if e.description != "" {
 			info += " -- " + e.description
 		}
@@ -99,10 +99,10 @@ func (e *modelRoleEntry) info() string {
 	}
 	info := fmt.Sprintf("%s / %s", e.model.Provider, e.model.Model)
 	if e.model.ReasoningEffort != "" {
-		info += " · " + e.model.ReasoningEffort + " reasoning"
+		info += " · " + e.model.ReasoningEffort + e.t.Text(" reasoning")
 	}
 	if e.builtin {
-		info += " (built-in)"
+		info += e.t.Text(" (built-in)")
 	}
 	return info
 }
@@ -167,11 +167,11 @@ func NewModelRoles(com *common.Common) *ModelRoles {
 	h.Styles = com.Styles.DialogHelpStyles()
 	d.help = h
 
-	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", "next"))
-	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", "previous"))
+	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", com.Text("next")))
+	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", com.Text("previous")))
 	d.keyMap.Add = key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add"))
-	d.keyMap.Edit = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit"))
-	d.keyMap.Delete = key.NewBinding(key.WithKeys("x", "ctrl+x"), key.WithHelp("x", "delete"))
+	d.keyMap.Edit = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", com.Text("edit")))
+	d.keyMap.Delete = key.NewBinding(key.WithKeys("x", "ctrl+x"), key.WithHelp("x", com.Text("delete")))
 	d.keyMap.Close = CloseKey
 
 	return d
@@ -203,10 +203,14 @@ func (d *ModelRoles) buildItems() []list.FilterableItem {
 	presets := presetModelRoles()
 	isPreset := make(map[string]bool, len(presets))
 	for _, p := range presets {
+		description := d.com.Text(p.description)
+		if strings.HasPrefix(p.description, "Mode: ") {
+			description = d.com.Text("Mode: ") + d.com.Text(strings.TrimPrefix(p.description, "Mode: "))
+		}
 		isPreset[p.name] = true
 		model, ok := roles[p.name]
 		items = append(items, &modelRoleEntry{
-			Versioned: list.NewVersioned(), name: p.name, description: p.description,
+			Versioned: list.NewVersioned(), name: p.name, description: description,
 			model: model, assigned: ok, t: d.com,
 		})
 	}
@@ -290,7 +294,7 @@ func (d *ModelRoles) HandleMsg(msg tea.Msg) Action {
 		}
 	case modelRoleDeletedMsg:
 		if msg.err != nil {
-			return ActionCmd{util.ReportError(fmt.Errorf("failed to delete role %q: %w", msg.name, msg.err))}
+			return ActionCmd{util.ReportError(fmt.Errorf(d.com.Text("failed to delete role %q: %w"), msg.name, msg.err))}
 		}
 		d.Refresh()
 	}
@@ -340,10 +344,10 @@ func (d *ModelRoles) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	innerWidth := width - t.Dialog.View.GetHorizontalFrameSize()
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Model Roles"
+	rc.Title = d.com.Text("Model Roles")
 
 	if d.list.Len() == 0 {
-		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render("No model roles configured yet."))
+		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render(d.com.Text("No model roles configured yet.")))
 	} else {
 		listHeight, listTotalHeight, _ := sizeDialogList(t, d.list, innerWidth, height)
 		bodyView := t.Dialog.List.Height(d.list.Height()).Render(d.list.Render())

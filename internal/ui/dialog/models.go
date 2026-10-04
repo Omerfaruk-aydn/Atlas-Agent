@@ -119,27 +119,27 @@ func NewModels(com *common.Common, isOnboarding bool) (*Models, error) {
 
 	m.keyMap.Tab = key.NewBinding(
 		key.WithKeys("tab", "shift+tab"),
-		key.WithHelp("tab", "toggle type"),
+		key.WithHelp("tab", com.Text("toggle type")),
 	)
 	m.keyMap.Select = key.NewBinding(
 		key.WithKeys("enter", "ctrl+y"),
-		key.WithHelp("enter", "confirm"),
+		key.WithHelp("enter", com.Text("confirm")),
 	)
 	m.keyMap.Edit = key.NewBinding(
 		key.WithKeys("ctrl+e"),
-		key.WithHelp("ctrl+e", "edit"),
+		key.WithHelp("ctrl+e", com.Text("edit")),
 	)
 	m.keyMap.UpDown = key.NewBinding(
 		key.WithKeys("up", "down"),
-		key.WithHelp("↑/↓", "choose"),
+		key.WithHelp("↑/↓", com.Text("choose")),
 	)
 	m.keyMap.Next = key.NewBinding(
 		key.WithKeys("down", "ctrl+n"),
-		key.WithHelp("↓", "next item"),
+		key.WithHelp("↓", com.Text("next item")),
 	)
 	m.keyMap.Previous = key.NewBinding(
 		key.WithKeys("up", "ctrl+p"),
-		key.WithHelp("↑", "previous item"),
+		key.WithHelp("↑", com.Text("previous item")),
 	)
 	m.keyMap.Close = CloseKey
 
@@ -149,13 +149,13 @@ func NewModels(com *common.Common, isOnboarding bool) (*Models, error) {
 	m.providers, err = config.Providers(m.com.Config())
 	if err != nil {
 		if len(m.providers) == 0 {
-			return nil, fmt.Errorf("failed to get providers: %w", err)
+			return nil, fmt.Errorf(com.Text("failed to get providers: %w"), err)
 		}
-		slog.Warn("Listing the previously known providers", "error", err)
+		slog.Warn(com.Text("Listing the previously known providers"), "error", err)
 	}
 
 	if err := m.setProviderItems(); err != nil {
-		return nil, fmt.Errorf("failed to set provider items: %w", err)
+		return nil, fmt.Errorf(com.Text("failed to set provider items: %w"), err)
 	}
 
 	return m, nil
@@ -273,11 +273,11 @@ func (m *Models) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	listHeight, listTotalHeight, _ := sizeDialogList(t, m.list, innerWidth, height)
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Switch Model"
+	rc.Title = m.com.Text("Switch Model")
 	rc.TitleInfo = m.modelTypeRadioView()
 
 	if m.isOnboarding {
-		titleText := t.Dialog.PrimaryText.Render("To start, let's choose a provider and model.")
+		titleText := t.Dialog.PrimaryText.Render(m.com.Text("To start, let's choose a provider and model."))
 		rc.AddPart(titleText)
 	}
 
@@ -361,7 +361,7 @@ func (m *Models) setProviderItems() error {
 	// Get a list of known providers to compare against
 	knownProviders, err := config.Providers(cfg)
 	if err != nil && len(knownProviders) == 0 {
-		return fmt.Errorf("failed to get providers: %w", err)
+		return fmt.Errorf(m.com.Text("failed to get providers: %w"), err)
 	}
 
 	containsProviderFunc := func(id string) func(p catwalk.Provider) bool {
@@ -458,7 +458,7 @@ func (m *Models) setProviderItems() error {
 	}
 
 	if len(recentItems) > 0 {
-		recentGroup := NewModelGroup(t, "Recently used", false)
+		recentGroup := NewModelGroup(t, m.com.Text("Recently used"), false)
 
 		var validRecentItems []config.SelectedModel
 		for _, recent := range recentItems {
@@ -482,7 +482,7 @@ func (m *Models) setProviderItems() error {
 		if len(validRecentItems) != len(recentItems) {
 			// FIXME: Does this need to be here? Is it mutating the config during a read?
 			if err := m.com.Workspace.SetConfigField(config.ScopeGlobal, fmt.Sprintf("recent_models.%s", selectedType), validRecentItems); err != nil {
-				return fmt.Errorf("failed to update recent models: %w", err)
+				return fmt.Errorf(m.com.Text("failed to update recent models: %w"), err)
 			}
 		}
 

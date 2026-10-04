@@ -36,14 +36,14 @@ func (r *fallbackRow) Finished() bool { return true }
 
 func (r *fallbackRow) Filter() string {
 	if r.isCooldown {
-		return string(r.modelType) + " cooldown"
+		return string(r.modelType) + r.t.Text(" cooldown")
 	}
 	return fmt.Sprintf("%s %s %s", r.modelType, r.model.Provider, r.model.Model)
 }
 
 func (r *fallbackRow) title() string {
 	if r.isCooldown {
-		return string(r.modelType) + " — cooldown"
+		return string(r.modelType) + r.t.Text(" — cooldown")
 	}
 	return fmt.Sprintf("%s #%d", r.modelType, r.index+1)
 }
@@ -51,9 +51,9 @@ func (r *fallbackRow) title() string {
 func (r *fallbackRow) info() string {
 	if r.isCooldown {
 		if r.cooldown <= 0 {
-			return "returns to the primary model every turn"
+			return r.t.Text("returns to the primary model every turn")
 		}
-		return fmt.Sprintf("%ds before returning to the primary model", r.cooldown)
+		return fmt.Sprintf(r.t.Text("%ds before returning to the primary model"), r.cooldown)
 	}
 	return fmt.Sprintf("%s / %s", r.model.Provider, r.model.Model)
 }
@@ -117,11 +117,11 @@ func NewFallbacks(com *common.Common) *Fallbacks {
 	h.Styles = com.Styles.DialogHelpStyles()
 	d.help = h
 
-	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", "next"))
-	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", "previous"))
+	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", com.Text("next")))
+	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", com.Text("previous")))
 	d.keyMap.Add = key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add"))
-	d.keyMap.Cooldown = key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "edit cooldown"))
-	d.keyMap.Delete = key.NewBinding(key.WithKeys("x", "ctrl+x"), key.WithHelp("x", "delete"))
+	d.keyMap.Cooldown = key.NewBinding(key.WithKeys("c"), key.WithHelp("c", com.Text("edit cooldown")))
+	d.keyMap.Delete = key.NewBinding(key.WithKeys("x", "ctrl+x"), key.WithHelp("x", com.Text("delete")))
 	d.keyMap.Close = CloseKey
 
 	return d
@@ -212,7 +212,7 @@ func (d *Fallbacks) HandleMsg(msg tea.Msg) Action {
 		}
 	case fallbackEntryDeletedMsg:
 		if msg.err != nil {
-			return ActionCmd{util.ReportError(fmt.Errorf("failed to remove fallback entry: %w", msg.err))}
+			return ActionCmd{util.ReportError(fmt.Errorf(d.com.Text("failed to remove fallback entry: %w"), msg.err))}
 		}
 		d.Refresh()
 	}
@@ -261,7 +261,7 @@ func (d *Fallbacks) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	innerWidth := width - t.Dialog.View.GetHorizontalFrameSize()
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Model Fallbacks"
+	rc.Title = d.com.Text("Model Fallbacks")
 
 	listHeight, listTotalHeight, _ := sizeDialogList(t, d.list, innerWidth, height)
 	bodyView := t.Dialog.List.Height(d.list.Height()).Render(d.list.Render())

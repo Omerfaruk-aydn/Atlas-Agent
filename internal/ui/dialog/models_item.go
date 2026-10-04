@@ -46,7 +46,7 @@ func (m *ModelGroup) Render(width int) string {
 	var configured string
 	if m.configured {
 		configuredIcon := m.t.ToolCallSuccess.Render()
-		configuredText := m.t.Dialog.Models.ConfiguredText.Render("Configured")
+		configuredText := m.t.Dialog.Models.ConfiguredText.Render(m.t.Text("Configured"))
 		configured = configuredIcon + " " + configuredText
 	}
 

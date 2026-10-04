@@ -75,25 +75,25 @@ func NewReasoning(com *common.Common) (*Reasoning, error) {
 
 	r.input = textinput.New()
 	r.input.SetVirtualCursor(false)
-	r.input.Placeholder = "Type to filter"
+	r.input.Placeholder = com.Text("Type to filter")
 	r.input.SetStyles(com.Styles.TextInput)
 	r.input.Focus()
 
 	r.keyMap.Select = key.NewBinding(
 		key.WithKeys("enter", "ctrl+y"),
-		key.WithHelp("enter", "confirm"),
+		key.WithHelp("enter", com.Text("confirm")),
 	)
 	r.keyMap.Next = key.NewBinding(
 		key.WithKeys("down", "ctrl+n"),
-		key.WithHelp("↓", "next item"),
+		key.WithHelp("↓", com.Text("next item")),
 	)
 	r.keyMap.Previous = key.NewBinding(
 		key.WithKeys("up", "ctrl+p"),
-		key.WithHelp("↑", "previous item"),
+		key.WithHelp("↑", com.Text("previous item")),
 	)
 	r.keyMap.UpDown = key.NewBinding(
 		key.WithKeys("up", "down"),
-		key.WithHelp("↑/↓", "choose"),
+		key.WithHelp("↑/↓", com.Text("choose")),
 	)
 	r.keyMap.Close = CloseKey
 
@@ -186,7 +186,7 @@ func (r *Reasoning) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	listHeight, listTotalHeight, _ := sizeDialogList(t, r.list, innerWidth, height)
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Select Reasoning Effort"
+	rc.Title = r.com.Text("Select Reasoning Effort")
 	inputView := t.Dialog.InputPrompt.Render(r.input.View())
 	rc.AddPart(inputView)
 
@@ -238,17 +238,17 @@ func (r *Reasoning) setReasoningItems() error {
 	cfg := r.com.Config()
 	agentCfg, ok := cfg.Agents[config.AgentCoder]
 	if !ok {
-		return errors.New("agent configuration not found")
+		return errors.New(r.com.Text("agent configuration not found"))
 	}
 
 	selectedModel := cfg.Models[agentCfg.Model]
 	model := cfg.GetModelByType(agentCfg.Model)
 	if model == nil {
-		return errors.New("model configuration not found")
+		return errors.New(r.com.Text("model configuration not found"))
 	}
 
 	if len(model.ReasoningLevels) == 0 {
-		return errors.New("no reasoning levels available")
+		return errors.New(r.com.Text("no reasoning levels available"))
 	}
 
 	currentEffort := selectedModel.ReasoningEffort

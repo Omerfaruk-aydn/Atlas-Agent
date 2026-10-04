@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/i18n"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/speech"
 )
 
 // handleOption implements the `option` builtin.
@@ -49,6 +50,35 @@ func handleOption(ctx context.Context, args []string, stdin io.Reader, stdout, s
 
 	if key == "ui" {
 		return optionUI(o, args, stderr)
+	}
+	if key == "voice" {
+		if len(args) != 4 {
+			return usage(stderr, "usage: option voice <backend|model-dir|runtime-dir|language|max-seconds> <value>")
+		}
+		voice := childMap(o, "voice")
+		switch args[2] {
+		case "backend":
+			if err := (speech.DictationOptions{Backend: args[3]}).Validate(); err != nil {
+				return usage(stderr, err.Error())
+			}
+			voice["backend"] = args[3]
+		case "model-dir", "runtime-dir":
+			voice[strings.ReplaceAll(args[2], "-", "_")] = args[3]
+		case "language":
+			if err := (speech.DictationOptions{Language: args[3]}).Validate(); err != nil {
+				return usage(stderr, err.Error())
+			}
+			voice["language"] = args[3]
+		case "max-seconds":
+			n, err := strconv.Atoi(args[3])
+			if err != nil || n < 1 || n > 180 {
+				return usage(stderr, "option voice max-seconds expects an integer between 1 and 180")
+			}
+			voice["max_seconds"] = n
+		default:
+			return usage(stderr, "unknown voice option; expected backend, model-dir, runtime-dir, language or max-seconds")
+		}
+		return nil
 	}
 	if key == "execution" {
 		return optionExecution(ctx, o, args, stderr)

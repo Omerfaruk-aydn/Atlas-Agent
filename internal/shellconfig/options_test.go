@@ -27,6 +27,41 @@ func TestOptionUILanguage(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestOfflineVoiceOptions(t *testing.T) {
+	t.Parallel()
+	data, err := LoadShellConfig(t.Context(), filepath.Join(t.TempDir(), "atlasrc"), []byte("option voice language de-DE\noption voice max-seconds 45"))
+	require.NoError(t, err)
+	var result struct {
+		Options struct {
+			Voice struct {
+				Language   string `json:"language"`
+				MaxSeconds int    `json:"max_seconds"`
+			} `json:"voice"`
+		} `json:"options"`
+	}
+	require.NoError(t, json.Unmarshal(data, &result))
+	require.Equal(t, "de-DE", result.Options.Voice.Language)
+	require.Equal(t, 45, result.Options.Voice.MaxSeconds)
+	for _, script := range []string{"option voice max-seconds 0", "option voice max-seconds 181", "option voice language invalid/code", "option voice api-key secret", "option voice mode local"} {
+		_, err := LoadShellConfig(t.Context(), filepath.Join(t.TempDir(), "atlasrc"), []byte(script))
+		require.Error(t, err, "unsupported voice settings must be rejected")
+	}
+}
+
+func TestVoskVoiceOptions(t *testing.T) {
+	t.Parallel()
+	data, err := LoadShellConfig(t.Context(), filepath.Join(t.TempDir(), "atlasrc"), []byte("option voice backend vosk\noption voice model-dir 'D:/Atlas/.atlas/speech-models'\noption voice runtime-dir 'D:/Atlas/.atlas/speech-runtime'\noption voice language tr-TR"))
+	require.NoError(t, err)
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(data, &result))
+	voice := result["options"].(map[string]any)["voice"].(map[string]any)
+	require.Equal(t, "vosk", voice["backend"])
+	require.Equal(t, "D:/Atlas/.atlas/speech-models", voice["model_dir"])
+	require.Equal(t, "D:/Atlas/.atlas/speech-runtime", voice["runtime_dir"])
+	_, err = LoadShellConfig(t.Context(), filepath.Join(t.TempDir(), "atlasrc"), []byte("option voice backend cloud"))
+	require.Error(t, err)
+}
+
 func TestOption_Bool(t *testing.T) {
 	t.Parallel()
 

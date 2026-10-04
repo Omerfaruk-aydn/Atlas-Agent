@@ -32,13 +32,13 @@ type SymbolsToolRenderContext struct{}
 func (r *SymbolsToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "List Symbols", opts.Anim, opts.Compact)
+		return pendingTool(sty, sty.Text("List Symbols"), opts.Anim, opts.Compact)
 	}
 
 	var params tools.SymbolsParams
 	_ = json.Unmarshal([]byte(opts.ToolCall.Input), &params)
 
-	header := toolHeader(sty, opts.Status, "List Symbols", cappedWidth, opts, params.FilePath)
+	header := toolHeader(sty, opts.Status, sty.Text("List Symbols"), cappedWidth, opts, params.FilePath)
 	if opts.Compact {
 		return header
 	}

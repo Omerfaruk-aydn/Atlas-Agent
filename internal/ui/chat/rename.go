@@ -33,7 +33,7 @@ type RenameToolRenderContext struct{}
 func (r *RenameToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "Rename Symbol", opts.Anim, opts.Compact)
+		return pendingTool(sty, sty.Text("Rename Symbol"), opts.Anim, opts.Compact)
 	}
 
 	var params tools.RenameParams
@@ -44,7 +44,7 @@ func (r *RenameToolRenderContext) RenderTool(sty *styles.Styles, width int, opts
 		toolParams = append(toolParams, "path", fsext.PrettyPath(params.Path))
 	}
 
-	header := toolHeader(sty, opts.Status, "Rename Symbol", cappedWidth, opts, toolParams...)
+	header := toolHeader(sty, opts.Status, sty.Text("Rename Symbol"), cappedWidth, opts, toolParams...)
 	if opts.Compact {
 		return header
 	}

@@ -33,14 +33,14 @@ type ReplaceSymbolToolRenderContext struct{}
 func (r *ReplaceSymbolToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *ToolRenderOpts) string {
 	// Replace symbol uses full width for diffs, like edit.
 	if opts.IsPending() {
-		return pendingTool(sty, "Replace Symbol", opts.Anim, opts.Compact)
+		return pendingTool(sty, sty.Text("Replace Symbol"), opts.Anim, opts.Compact)
 	}
 
 	var params tools.ReplaceSymbolParams
 	_ = json.Unmarshal([]byte(opts.ToolCall.Input), &params)
 
 	file := fsext.PrettyPath(params.FilePath)
-	header := toolHeader(sty, opts.Status, "Replace Symbol", width, opts, params.Symbol, file)
+	header := toolHeader(sty, opts.Status, sty.Text("Replace Symbol"), width, opts, params.Symbol, file)
 	if opts.Compact {
 		return header
 	}

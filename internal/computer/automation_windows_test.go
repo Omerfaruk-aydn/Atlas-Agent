@@ -5,6 +5,7 @@ package computer
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -57,14 +58,33 @@ func TestWindowsAutomationReadAndFixtureOCR(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, png.Encode(f, large))
 	require.NoError(t, f.Close())
-	data, err = backend.Automation(ctx, AutomationRequest{Action: "ocr", ImagePath: path})
+	data, err = backend.Automation(ctx, AutomationRequest{Action: "ocr", ImagePath: path, Name: "12345"})
 	require.NoError(t, err)
 	var result struct {
-		Text string `json:"text"`
+		Text    string                                                    `json:"text"`
+		Matches []struct{ X, Y, Width, Height, CenterX, CenterY float64 } `json:"matches"`
 	}
 	require.NoError(t, json.Unmarshal(data, &result))
 	require.Contains(t, strings.ToUpper(result.Text), "ATLAS")
 	require.Contains(t, result.Text, "12345")
+	require.Len(t, result.Matches, 1)
+	require.Greater(t, result.Matches[0].Width, float64(0))
+	// Repeated labels must remain ambiguous rather than pick the first row.
+	drawer.Dot = fixed.P(500, 90)
+	drawer.DrawString("12345")
+	f, err = os.Create(path)
+	require.NoError(t, err)
+	require.NoError(t, png.Encode(f, large))
+	require.NoError(t, f.Close())
+	data, err = backend.Automation(ctx, AutomationRequest{Action: "ocr", ImagePath: path, Name: "12345"})
+	require.NoError(t, err)
+	var duplicate struct {
+		MatchCount int  `json:"match_count"`
+		Unique     bool `json:"unique_match"`
+	}
+	require.NoError(t, json.Unmarshal(data, &duplicate))
+	require.Equal(t, 2, duplicate.MatchCount, string(data))
+	require.False(t, duplicate.Unique)
 }
 
 func TestWindowsAutomationOwnForm(t *testing.T) {

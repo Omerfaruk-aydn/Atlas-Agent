@@ -255,27 +255,29 @@ func blitBitmap(memDC, bitmap, screenDC uintptr, x, y, w, h int) error {
 	if err != nil {
 		return err
 	}
-	info := bitmapInfo{Header: dibHeader(w, h)}
-	ok, _, _ = procGetDIBits.Call(
-		memDC, bitmap, 0, uintptr(h),
-		uintptr(unsafe.Pointer(&pixels[0])),
-		uintptr(unsafe.Pointer(&info)),
-		0, // DIB_RGB_COLORS
-	)
+	ok, _, callErr := procGdiFlush.Call()
 	if ok == 0 {
-		return fmt.Errorf("computer-use: GetDIBits failed (%s)", captureHint())
+		return fmt.Errorf("computer-use: GdiFlush failed: %v", callErr)
 	}
 	return nil
 }
 
-// captureHint names the environmental causes of a capture failure.
-// Screen size and cursor reads need no video output, so they keep
-// working while the desktop itself is unreadable.
-func captureHint() string {
-	return "no readable desktop: the workstation may be locked, the RDP window minimized, or a secure desktop (UAC prompt) on screen; restore and retry"
+// withCaptureBitmap restores the DC before readback or bitmap destruction.
+func withCaptureBitmap(selectBitmap func() (uintptr, error), restore func(uintptr) error, blit func() error) (err error) {
+	old, err := selectBitmap()
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, restore(old)) }()
+	return blit()
 }
 
-// dibHeader builds the top-down 32-bit DIB descriptor GetDIBits
+// captureHint suggests checks without claiming an environmental diagnosis.
+func captureHint() string {
+	return "cause not determined; check whether the workstation is locked, the RDP window minimized, or a secure desktop (UAC prompt) is active, then retry"
+}
+
+// dibHeader builds the top-down 32-bit DIB descriptor CreateDIBSection
 // expects: rows arrive BGRA, first row first.
 func dibHeader(w, h int) bitmapInfoHeader {
 	return bitmapInfoHeader{
@@ -532,16 +534,34 @@ var modifierVKs = map[string]uint16{
 }
 
 func (b *windowsBackend) Hotkey(modifiers []string, key string) error {
-	mods, err := ParseModifiers(modifiers)
+	inputs, err := hotkeyInputs(modifiers, key)
 	if err != nil {
 		return err
 	}
+	return sendInputs(inputs)
+}
+
+// hotkeyInputs uses physical virtual keys so modifiers trigger shortcuts.
+func hotkeyInputs(modifiers []string, key string) ([]winInput, error) {
+	mods, err := ParseModifiers(modifiers)
+	if err != nil {
+		return nil, err
+	}
 	if len(mods) == 0 {
-		return fmt.Errorf("computer-use: hotkey needs at least one modifier")
+		return nil, fmt.Errorf("computer-use: hotkey needs at least one modifier")
 	}
 	vk, ok := ResolveKey(key)
 	if !ok {
-		return fmt.Errorf("computer-use: unknown key %q", key)
+		return nil, fmt.Errorf("computer-use: unknown key %q", key)
+	}
+	if vk == 0 {
+		if len(key) == 1 && key[0] >= 'a' && key[0] <= 'z' {
+			vk = uint16(key[0] - 'a' + 'A')
+		} else if len(key) == 1 && (key[0] >= 'A' && key[0] <= 'Z' || key[0] >= '0' && key[0] <= '9') {
+			vk = uint16(key[0])
+		} else {
+			return nil, fmt.Errorf("computer-use: hotkey requires a named key or ASCII letter/digit, got %q; Unicode text is not a keyboard shortcut", key)
+		}
 	}
 	var inputs []winInput
 	for _, m := range mods {
@@ -551,13 +571,7 @@ func (b *windowsBackend) Hotkey(modifiers []string, key string) error {
 			Payload: keyboardPayload(mv, 0, 0),
 		})
 	}
-	if vk == 0 {
-		for _, unit := range utf16.Encode([]rune(key)) {
-			inputs = append(inputs, typeUnicode(unit)...)
-		}
-	} else {
-		inputs = append(inputs, pressVK(vk)...)
-	}
+	inputs = append(inputs, pressVK(vk)...)
 	for i := len(mods) - 1; i >= 0; i-- {
 		mv := modifierVKs[mods[i]]
 		inputs = append(inputs, winInput{
@@ -565,5 +579,5 @@ func (b *windowsBackend) Hotkey(modifiers []string, key string) error {
 			Payload: keyboardPayload(mv, 0, keyUp),
 		})
 	}
-	return sendInputs(inputs)
+	return inputs, nil
 }

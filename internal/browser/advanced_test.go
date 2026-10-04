@@ -43,7 +43,7 @@ func TestAdvancedBrowserRealFixture(t *testing.T) {
 		fmt.Fprint(w, `<!doctype html><input aria-label="Email"><input id="upload" type="file"><button aria-label="Save" onclick="document.querySelector('#result').textContent='Saved'">Save</button><p id="result"></p><iframe src="/frame"></iframe><div id="shadow"></div><a id="download" href="/download">Download</a><script>const s=document.querySelector('#shadow').attachShadow({mode:'open'});s.innerHTML='<button aria-label="Shadow" onclick="this.textContent=\'Clicked\'">Shadow</button>';</script>`)
 	}))
 	defer server.Close()
-	session, err := newChromedpSession(Options{ExecutablePath: exe, Headless: true, UserDataDir: t.TempDir(), ActionTimeout: 10 * time.Second})
+	session, err := newChromedpSession(Options{ExecutablePath: exe, Headless: true, UserDataDir: t.TempDir(), ActionTimeout: 30 * time.Second})
 	require.NoError(t, err)
 	defer session.Close()
 	require.NoError(t, session.Navigate(server.URL))

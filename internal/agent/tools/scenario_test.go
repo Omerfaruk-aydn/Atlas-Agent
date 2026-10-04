@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/scenarios"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/terminal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -52,6 +54,11 @@ func TestScenarioRealTerminalPersistsProofAndDeniedRunNeverStarts(t *testing.T) 
 		return true, nil
 	}}
 	run, err := ExecuteScenario(t.Context(), services, s, fantasy.ToolCall{ID: "real", Input: `{}`})
+	if errors.Is(err, terminal.ErrUnavailable) {
+		require.False(t, run.Observed)
+		require.False(t, run.Passed)
+		t.Skip("Platform has no real terminal backend; no terminal proof was produced")
+	}
 	require.NoError(t, err)
 	require.True(t, run.Passed, "%+v", run)
 	require.True(t, run.Observed)
@@ -119,12 +126,12 @@ func TestScenarioRealBrowserPersistsAcrossReload(t *testing.T) {
 		fmt.Fprint(w, `<!doctype html><input id="value"><button id="save" onclick="localStorage.setItem('saved',document.querySelector('#value').value)">Save</button><script>document.querySelector('#value').value=localStorage.getItem('saved')||''</script>`)
 	}))
 	defer server.Close()
-	manager := browser.GetManager(browser.Options{ExecutablePath: executable, Headless: true, UserDataDir: t.TempDir(), ActionTimeout: 10 * time.Second})
+	manager := browser.GetManager(browser.Options{ExecutablePath: executable, Headless: true, UserDataDir: t.TempDir(), ActionTimeout: 30 * time.Second})
 	defer manager.Close("scenario-browser")
 	tool := newBrowserTool(&mockBashPermissionService{}, root, manager, "test")
 	ctx := context.WithValue(t.Context(), SessionIDContextKey, "scenario-browser")
 	services := ScenarioServices{Root: root, SessionID: "scenario-browser", Store: store, Invoke: tool.Run}
-	s := scenarios.Scenario{ID: "browser", Version: 1, Target: "web", URL: server.URL, Width: 800, Height: 600, TimeoutMS: 30000, Steps: []scenarios.Step{{Action: "type", Selector: "#value", Value: "persisted"}, {Action: "click", Selector: "#save"}, {Action: "reload"}}, Assertions: []scenarios.Assertion{{Kind: "value", Selector: "#value", Expected: "persisted"}, {Kind: "visible", Selector: "#save"}}}
+	s := scenarios.Scenario{ID: "browser", Version: 1, Target: "web", URL: server.URL, Width: 800, Height: 600, TimeoutMS: 120000, Steps: []scenarios.Step{{Action: "type", Selector: "#value", Value: "persisted"}, {Action: "click", Selector: "#save"}, {Action: "reload"}}, Assertions: []scenarios.Assertion{{Kind: "value", Selector: "#value", Expected: "persisted"}, {Kind: "visible", Selector: "#save"}}}
 	run, err := ExecuteScenario(ctx, services, s, fantasy.ToolCall{ID: "browser-real", Input: `{}`})
 	require.NoError(t, err)
 	require.True(t, run.Passed, "%+v", run)

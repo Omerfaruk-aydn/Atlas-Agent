@@ -52,25 +52,16 @@ If you installed Atlas Agent via 'go install' instead, run:
 
 		fmt.Printf("Updating v%s → v%s ...\n", info.Current, info.Latest)
 
-		if runtime.GOOS == "windows" {
-			// npm's postinstall step writes the new binary to this exact
-			// process's own executable path. Windows refuses to overwrite
-			// an open file -- only rename is allowed -- so that write
-			// fails with EPERM every time, no matter how many *other*
-			// Atlas Agent windows are closed first: this process is
-			// always the one holding the lock on its own image. Rename it
-			// aside first so the path is free for npm to write the new
-			// binary to.
-			if err := freeRunningBinaryForReplacement(); err != nil {
-				fmt.Printf("Warning: could not free the running binary for replacement (%v); update may fail with EPERM.\n", err)
-			}
-		}
-
 		// The wrapper package is what npm distributes; the binary it
 		// installs is replaced by the postinstall script, so the user
 		// gets a self-contained upgrade without any extra steps.
-		installCmd := exec.CommandContext(ctx, "npm", "install", "-g",
-			"@atlas-coder/atlas-agent@latest")
+		// Windows component downloads can take longer than the registry check.
+		installCtx, installCancel := context.WithTimeout(cmd.Context(), 20*time.Minute)
+		defer installCancel()
+		installCmd, err := npmCommand(installCtx, "install", "-g", "@atlas-coder/atlas-agent@latest")
+		if err != nil {
+			return err
+		}
 		installCmd.Stdin = os.Stdin
 		installCmd.Stdout = os.Stdout
 		installCmd.Stderr = os.Stderr
@@ -79,6 +70,13 @@ If you installed Atlas Agent via 'go install' instead, run:
 			// installed to a non-default location.
 			"NPM_CONFIG_UPDATE_NOTIFIER=false",
 		)
+		if runtime.GOOS == "windows" {
+			// Resolve npm before renaming the running image. Windows permits
+			// renaming a mapped executable but refuses to overwrite it.
+			if err := freeRunningBinaryForReplacement(); err != nil {
+				fmt.Printf("Warning: could not free the running binary for replacement (%v); update may fail with EPERM.\n", err)
+			}
+		}
 		if err := installCmd.Run(); err != nil {
 			return fmt.Errorf("npm install failed: %w", err)
 		}
@@ -90,7 +88,7 @@ If you installed Atlas Agent via 'go install' instead, run:
 		// otherwise ignores. Confirm the installed binary actually reports
 		// the new version before declaring success, instead of trusting
 		// npm's exit code alone.
-		if installedVersion, err := installedBinaryVersion(ctx); err == nil && installedVersion != "" && installedVersion != info.Latest {
+		if installedVersion, err := installedBinaryVersion(installCtx); err == nil && installedVersion != "" && installedVersion != info.Latest {
 			return fmt.Errorf(
 				"npm reported success, but the installed binary still reports v%s (expected v%s). "+
 					"This usually means Windows couldn't replace the running executable. "+
@@ -133,7 +131,11 @@ func freeRunningBinaryForReplacement() error {
 // as "could not verify" rather than a hard failure: this check is a bonus
 // safety net, not the update's success criterion.
 func installedBinaryVersion(ctx context.Context) (string, error) {
-	rootOut, err := exec.CommandContext(ctx, "npm", "root", "-g").Output()
+	rootCmd, err := npmCommand(ctx, "root", "-g")
+	if err != nil {
+		return "", err
+	}
+	rootOut, err := rootCmd.Output()
 	if err != nil {
 		return "", err
 	}
@@ -162,4 +164,27 @@ func installedBinaryVersion(ctx context.Context) (string, error) {
 		return "", nil
 	}
 	return strings.TrimPrefix(fields[len(fields)-1], "v"), nil
+}
+
+// npmCommand executes npm without passing paths or arguments through a shell.
+// Windows distributes npm.cmd; CreateProcess cannot execute that shim directly.
+func npmCommand(ctx context.Context, args ...string) (*exec.Cmd, error) {
+	npmPath, err := exec.LookPath("npm")
+	if err != nil {
+		return nil, fmt.Errorf("find npm: %w", err)
+	}
+	ext := strings.ToLower(filepath.Ext(npmPath))
+	if runtime.GOOS != "windows" || (ext != ".cmd" && ext != ".bat") {
+		return exec.CommandContext(ctx, npmPath, args...), nil
+	}
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		return nil, fmt.Errorf("find Node.js for npm: %w", err)
+	}
+	cliPath := filepath.Join(filepath.Dir(npmPath), "node_modules", "npm", "bin", "npm-cli.js")
+	info, err := os.Stat(cliPath)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("npm JavaScript entry point is unavailable at %s; repair the Node.js/npm installation or update with npm install -g @atlas-coder/atlas-agent@latest", cliPath)
+	}
+	return exec.CommandContext(ctx, nodePath, append([]string{cliPath}, args...)...), nil
 }

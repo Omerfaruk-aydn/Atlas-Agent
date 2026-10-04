@@ -45,12 +45,32 @@ func (b *windowsBackend) Automation(ctx context.Context, p AutomationRequest) (j
 	if err != nil {
 		return nil, err
 	}
-	units := utf16.Encode([]rune(automationScript))
+	// Load the embedded script from a private temporary file so growing UIA
+	// helpers cannot exceed Windows' 32767-character command-line limit.
+	file, err := os.CreateTemp("", "atlas-automation-*.ps1")
+	if err != nil {
+		return nil, fmt.Errorf("create automation script: %w", err)
+	}
+	path := file.Name()
+	defer os.Remove(path)
+	if err = file.Chmod(0o600); err == nil {
+		_, err = file.WriteString(automationScript)
+	}
+	closeErr := file.Close()
+	if err != nil {
+		return nil, fmt.Errorf("write automation script: %w", err)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("close automation script: %w", closeErr)
+	}
+	loader := `& ([scriptblock]::Create([System.IO.File]::ReadAllText($env:ATLAS_AUTOMATION_SCRIPT)))`
+	units := utf16.Encode([]rune(loader))
 	encoded := make([]byte, len(units)*2)
 	for i, v := range units {
 		binary.LittleEndian.PutUint16(encoded[i*2:], v)
 	}
 	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", base64.StdEncoding.EncodeToString(encoded))
+	cmd.Env = append(os.Environ(), "ATLAS_AUTOMATION_SCRIPT="+path)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	cmd.Stdin = bytes.NewReader(data)
 	var output, stderr bytes.Buffer
@@ -69,9 +89,10 @@ func (b *windowsBackend) Automation(ctx context.Context, p AutomationRequest) (j
 	var failure struct {
 		Code     string `json:"error_code"`
 		Recovery string `json:"recovery"`
+		Detail   string `json:"detail"`
 	}
 	if err := json.Unmarshal(result, &failure); err == nil && failure.Code != "" {
-		return nil, fmt.Errorf("%s: %s", failure.Code, failure.Recovery)
+		return nil, fmt.Errorf("%s: %s; %s", failure.Code, failure.Detail, failure.Recovery)
 	}
 	return append(json.RawMessage(nil), result...), nil
 }

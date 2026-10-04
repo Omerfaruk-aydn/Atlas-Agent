@@ -96,3 +96,45 @@ func (b *windowsBackend) Automation(ctx context.Context, p AutomationRequest) (j
 	}
 	return append(json.RawMessage(nil), result...), nil
 }
+
+// focusWindow uses HWND activation independently of accessibility providers.
+func (b *windowsBackend) focusWindow(ctx context.Context, id string) (json.RawMessage, error) {
+	n, err := strconv.ParseUint(id, 10, 64)
+	if err != nil || n == 0 || uint64(uintptr(n)) != n || strconv.FormatUint(n, 10) != id {
+		return nil, fmt.Errorf("invalid_target: focus requires an explicit numeric window_id from windows")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	hwnd := uintptr(n)
+	valid, _, _ := modUser32.NewProc("IsWindow").Call(hwnd)
+	if valid == 0 {
+		return nil, fmt.Errorf("target_missing: window %s disappeared; list windows again", id)
+	}
+	visible, _, _ := modUser32.NewProc("IsWindowVisible").Call(hwnd)
+	if visible == 0 {
+		return nil, fmt.Errorf("target_not_actionable: window %s is hidden", id)
+	}
+	minimized, _, _ := modUser32.NewProc("IsIconic").Call(hwnd)
+	if minimized != 0 {
+		_, _, _ = modUser32.NewProc("ShowWindowAsync").Call(hwnd, 9) // SW_RESTORE.
+	}
+	_, _, _ = modUser32.NewProc("SetForegroundWindow").Call(hwnd)
+	// Activation can complete asynchronously on another input queue.
+	deadline := time.NewTimer(500 * time.Millisecond)
+	defer deadline.Stop()
+	tick := time.NewTicker(20 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		if b.ForegroundWindow() == id {
+			return json.Marshal(map[string]any{"focused": true, "window_id": id, "foreground_window_id": id})
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-deadline.C:
+			return nil, fmt.Errorf("focus_denied: Windows did not activate window %s (foreground=%s); activate the intended window and inspect again before input", id, b.ForegroundWindow())
+		case <-tick.C:
+		}
+	}
+}

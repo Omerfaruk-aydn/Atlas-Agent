@@ -12,15 +12,26 @@ import (
 
 // AutomationRequest targets a fresh accessibility element in one window.
 type AutomationRequest struct {
-	Action    string `json:"action"`
-	WindowID  string `json:"window_id,omitempty"`
-	ElementID string `json:"element_id,omitempty"`
-	Name      string `json:"name,omitempty"`
-	Role      string `json:"role,omitempty"`
-	Text      string `json:"text,omitempty"`
-	Condition string `json:"condition,omitempty"`
-	Expected  string `json:"expected,omitempty"`
-	ImagePath string `json:"image_path,omitempty"`
+	Focus       bool   `json:"focus,omitempty" description:"For set_value: focus the field and require verified keyboard focus before changing its value."`
+	Action      string `json:"action"`
+	WindowID    string `json:"window_id,omitempty"`
+	ElementID   string `json:"element_id,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Role        string `json:"role,omitempty"`
+	Text        string `json:"text,omitempty"`
+	Condition   string `json:"condition,omitempty"`
+	Expected    string `json:"expected,omitempty"`
+	ImagePath   string `json:"image_path,omitempty"`
+	MaxElements int    `json:"max_elements,omitempty" description:"Observation limit, 1-500; default inspect limit is 150."`
+	WaitMS      int    `json:"wait_ms,omitempty" description:"Assertion wait in milliseconds, maximum 15000; default 5000."`
+}
+
+// ValidateAutomationRequest rejects unbounded provider work before dispatch.
+func ValidateAutomationRequest(p AutomationRequest) error {
+	if p.MaxElements < 0 || p.MaxElements > 500 || p.WaitMS < 0 || p.WaitMS > 15000 {
+		return fmt.Errorf("invalid_request: max_elements must be 0-500 and wait_ms must be 0-15000")
+	}
+	return nil
 }
 
 // AutomationBackend supplements pixel input with platform accessibility APIs.

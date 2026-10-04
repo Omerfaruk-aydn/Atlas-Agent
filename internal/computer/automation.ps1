@@ -72,35 +72,53 @@ if ($p.action -eq 'ocr') {
 }
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
-$root = [System.Windows.Automation.AutomationElement]::RootElement
-$children = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
 function Finite-Number($value) { if ([double]::IsInfinity($value) -or [double]::IsNaN($value)) { return $null }; return $value }
 function Describe($e) {
     $c = $e.Current
-    @{element_id=($e.GetRuntimeId() -join ':');window_id=$(if($p.window_id){$p.window_id}else{[string]$c.NativeWindowHandle});native_handle=([string]$c.NativeWindowHandle);name=$(if($c.IsPassword){'[password]'}else{$c.Name});role=$c.ControlType.ProgrammaticName;automation_id=$c.AutomationId;process_id=$c.ProcessId;enabled=$c.IsEnabled;offscreen=$c.IsOffscreen;password=$c.IsPassword;x=(Finite-Number $c.BoundingRectangle.X);y=(Finite-Number $c.BoundingRectangle.Y);width=(Finite-Number $c.BoundingRectangle.Width);height=(Finite-Number $c.BoundingRectangle.Height)}
+    @{element_id=($e.GetRuntimeId() -join ':');window_id=$(if($p.window_id){$p.window_id}else{[string]$c.NativeWindowHandle});native_handle=([string]$c.NativeWindowHandle);name=$(if($c.IsPassword){'[password]'}else{$c.Name});role=$c.ControlType.ProgrammaticName;automation_id=$c.AutomationId;process_id=$c.ProcessId;enabled=$c.IsEnabled;offscreen=$c.IsOffscreen;password=$c.IsPassword;supported_patterns=@($e.GetSupportedPatterns() | ForEach-Object { $_.ProgrammaticName -replace 'PatternIdentifiers.Pattern$','' });x=(Finite-Number $c.BoundingRectangle.X);y=(Finite-Number $c.BoundingRectangle.Y);width=(Finite-Number $c.BoundingRectangle.Width);height=(Finite-Number $c.BoundingRectangle.Height)}
 }
-if ($p.action -eq 'windows') { Out-Result @($children | ForEach-Object { Describe $_ }); exit }
+if ($p.action -eq 'windows') {
+    $root = [System.Windows.Automation.AutomationElement]::RootElement
+    $children = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+    Out-Result @($children | ForEach-Object { Describe $_ }); exit
+}
 if ($p.window_id -notmatch '^\d+$') { throw 'Explicit numeric window_id required' }
-$windows = @($children | Where-Object { [string]$_.Current.NativeWindowHandle -eq $p.window_id })
-if ($windows.Count -ne 1) { throw 'Window disappeared; inspect windows again' }
-$window = $windows[0]
-if ($p.action -eq 'focus') { $window.SetFocus(); Out-Result @{focused=$true;window_id=$p.window_id}; exit }
+$window = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]::new([long]$p.window_id))
+if ($null -eq $window) { throw 'Window disappeared; inspect windows again' }
 # A breadth-first traversal caps both provider calls and returned elements.
 $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
 $queue = [System.Collections.Generic.Queue[System.Windows.Automation.AutomationElement]]::new()
 $queue.Enqueue($window)
 $elements = [System.Collections.Generic.List[System.Windows.Automation.AutomationElement]]::new()
-while ($queue.Count -gt 0 -and $elements.Count -lt 500) {
+$limit = 500
+if ($p.action -eq 'inspect') { $limit = 150 }
+if ($p.max_elements -gt 0) { $limit = [int]$p.max_elements }
+$clock = [System.Diagnostics.Stopwatch]::StartNew()
+$truncated = $false
+while ($queue.Count -gt 0 -and $elements.Count -lt $limit -and $clock.ElapsedMilliseconds -lt 2000) {
     $e = $queue.Dequeue()
     $elements.Add($e)
+    # Runtime IDs are unique; exact identity avoids scanning unrelated controls.
+    if ($p.element_id -and ($e.GetRuntimeId() -join ':') -eq $p.element_id) { $queue.Clear(); break }
     $child = $walker.GetFirstChild($e)
-    while ($null -ne $child -and $queue.Count -lt 500) { $queue.Enqueue($child); $child = $walker.GetNextSibling($child) }
+    while ($null -ne $child -and $queue.Count -lt $limit) { $queue.Enqueue($child); $child = $walker.GetNextSibling($child) }
+    if ($null -ne $child) { $truncated = $true }
 }
-if ($p.action -eq 'inspect') { Out-Result @{window_id=$p.window_id;truncated=($queue.Count -gt 0);elements=@($elements | ForEach-Object { Describe $_ })}; exit }
+$truncated = $truncated -or $queue.Count -gt 0
+if ($p.action -eq 'inspect') { Out-Result @{window_id=$p.window_id;truncated=$truncated;scanned_count=$elements.Count;elements=@($elements | ForEach-Object { Describe $_ })}; exit }
 if (!$p.element_id -and !$p.name -and !$p.role) { throw 'Element identity, name or role required' }
 $matches = @($elements | Where-Object { (!$p.element_id -or ($_.GetRuntimeId() -join ':') -eq $p.element_id) -and (!$p.name -or $_.Current.Name -eq $p.name) -and (!$p.role -or $_.Current.ControlType.ProgrammaticName -eq $p.role) })
-if ($p.action -eq 'find') { Out-Result @{count=$matches.Count;matches=@($matches | ForEach-Object { Describe $_ })}; exit }
+if ($p.action -eq 'find') { Out-Result @{count=$matches.Count;truncated=$truncated;scanned_count=$elements.Count;matches=@($matches | ForEach-Object { Describe $_ })}; exit }
+if ($truncated -and !($p.element_id -and $matches.Count -eq 1)) { throw 'Observation incomplete; resolve a unique runtime element_id with inspect/find or use a crop' }
 if ($p.action -eq 'assert' -and $p.condition -eq 'hidden') { Out-Result @{passed=($matches.Count -eq 0 -or @($matches | Where-Object { !$_.Current.IsOffscreen }).Count -eq 0)}; exit }
+if ($p.action -eq 'assert') {
+    # Hidden duplicates cannot satisfy a visible control assertion.
+    $matches = @($matches | Where-Object { !$_.Current.IsOffscreen })
+} elseif ($p.action -eq 'invoke' -or $p.action -eq 'set_value') {
+    $actionable = @($matches | Where-Object { $_.Current.IsEnabled -and !$_.Current.IsOffscreen })
+    if ($matches.Count -gt 0 -and $actionable.Count -eq 0) { throw 'Target is disabled or offscreen' }
+    $matches = $actionable
+}
 if ($p.action -eq 'assert' -and $matches.Count -eq 0) { Out-Result @{passed=$false;reason='target_missing'}; exit }
 if ($matches.Count -eq 0) { throw 'Target missing' }
 if ($matches.Count -gt 1) { throw 'Target ambiguous' }
@@ -111,7 +129,8 @@ if ($p.action -eq 'assert') {
         'visible' { $passed = !$element.Current.IsOffscreen }
         'enabled' { $passed = $element.Current.IsEnabled }
         'text' { $passed = !$element.Current.IsPassword -and $element.Current.Name -eq $p.expected }
-        'value' { if ($element.Current.IsPassword) { throw 'Password inspection prohibited' }; $pattern = $element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern); $passed = $pattern.Current.Value -eq $p.expected }
+        'value' { if ($element.Current.IsPassword) { throw 'Password inspection prohibited' }; $pattern = $null; if (!$element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) { throw 'Pattern unavailable: Value; use observed visual input instead' }; $passed = $pattern.Current.Value -eq $p.expected }
+        'keyboard_focused' { $passed = $element.Current.HasKeyboardFocus }
         default { throw 'Unsupported assertion condition' }
     }
     Out-Result @{passed=$passed;window_id=$p.window_id}; exit

@@ -1,8 +1,29 @@
 See and control the Windows desktop: screenshots plus mouse and keyboard input.
 
-Workflow: take a screenshot, find your target in the returned image, then act on it with click / type / key / hotkey. Take another screenshot to verify the result. Coordinates are physical pixels with (0, 0) at the top-left corner. The screenshot is downscaled for readability: when it is, the reply states the scale factor, so multiply image coordinates by that factor to get screen pixels (pass full_res true for a native-resolution capture).
+For application tasks, prefer `tool_pipeline` desktop recipes to separate model
+turns for known operations. Start with `desktop:{"mode":"prepare","application":
+"Exact app name"}` to find or launch, verify focus and return an observation in
+one model turn. After choosing a fresh target, use `desktop.mode:"act"` with a
+known `input` and its explicit window_id to execute and observe together. Use
+`desktop.mode:"fill_submit"` for a supported search field: verified text and field
+focus are required before Enter. Include a known `wait_for` expected state when
+available. Without it, the returned image must establish the next decision.
+Do not spend separate model turns on Windows search, typing an app name and
+Enter when prepare can resolve the installed app. Do not request an additional
+inspect/capture when the recipe's observation already contains the needed
+evidence. Choose new result targets in a fresh model turn; do not batch unseen
+clicks. Verify the final requested item and application state before finishing.
+
+Application workflow: prepare the app, select a target from the fresh observation,
+act or fill_submit with a new observation, and verify the requested result. Use
+primitive screenshot/input calls when a recipe cannot perform the needed step.
+Coordinates are physical pixels with (0, 0) at the screenshot's top-left corner.
+When a screenshot is downscaled, multiply image coordinates by the returned scale
+factor (full_res true returns native resolution). Cropped observations report
+their origin; do not mix crop, native desktop and full-screen coordinates.
 
 Available actions:
+- launch_app: request launching one exact installed Start-app name via automation.name; ambiguity or unknown names fail. A launch request is not readiness proof. Prefer prepare for launch, focus and observation together.
 - screenshot: capture the screen. Returns the image as PNG, downscaled unless full_res is true.
 - screen_size: report the screen width and height in pixels.
 - cursor_position: report where the pointer currently is.
@@ -14,7 +35,7 @@ Available actions:
 - scroll: turn the mouse wheel at the current pointer location. scroll_y notches vertically (positive scrolls up), scroll_x horizontally. One notch is a single wheel click.
 - type: type text as keystrokes into whatever currently has focus. Click the target field first.
 - key: press and release one key. Named keys: enter, tab, esc, space, backspace, delete, insert, home, end, pageup, pagedown, up, down, left, right, f1-f12, shift, ctrl, alt, win, capslock, printscreen. A single character is typed as-is.
-- hotkey: press a key while holding modifiers, e.g. modifiers ctrl with key s saves, modifiers "ctrl+shift" with key s is usually save-as. Modifiers are any combination of ctrl, alt, shift, win joined with +.
+- hotkey: press a physical virtual key while holding modifiers, e.g. modifiers ctrl with key s saves, modifiers "ctrl+shift" with key s is usually save-as. Keys are named keys or ASCII letters/digits; unsupported text characters are rejected instead of typed. Modifiers are any combination of ctrl, alt, shift, win joined with +. An accepted hotkey is not proof that the expected panel opened: verify its state before typing into a newly opened application/system dialog.
 
 Rules:
 - Always screenshot first in a fresh situation; never guess coordinates from a stale screenshot after the screen may have changed.

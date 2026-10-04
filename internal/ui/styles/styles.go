@@ -16,6 +16,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-widgets/v2/help"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-widgets/v2/textarea"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-widgets/v2/textinput"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/i18n"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/diffview"
 	"github.com/alecthomas/chroma/v2"
 )
@@ -204,6 +205,8 @@ const (
 )
 
 type Styles struct {
+	// Locale belongs to this interface, never to a process-wide singleton.
+	Locale *i18n.Translator
 	// ANSI holds the 16 standard ANSI colors (0-7 normal, 8-15 bright)
 	// used to remap legible colors onto raw terminal output, such as the
 	// output of bang-mode shell commands. Terminal programs emit the

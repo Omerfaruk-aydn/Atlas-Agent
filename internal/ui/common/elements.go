@@ -47,7 +47,7 @@ func ModelInfo(t *styles.Styles, modelName, providerName, reasoningInfo string, 
 	// Build first line with model name and optionally provider on the same line
 	var firstLine string
 	if providerName != "" {
-		providerInfo := t.ModelInfo.Provider.Render(fmt.Sprintf("via %s", providerName))
+		providerInfo := t.ModelInfo.Provider.Render(fmt.Sprintf(t.Text("via %s"), providerName))
 		modelWithProvider := fmt.Sprintf("%s %s %s", modelIcon, modelName, providerInfo)
 
 		// Check if it fits on one line
@@ -65,7 +65,7 @@ func ModelInfo(t *styles.Styles, modelName, providerName, reasoningInfo string, 
 
 	// If provider didn't fit on first line, add it as second line
 	if providerName != "" && !strings.Contains(firstLine, "via") {
-		providerInfo := fmt.Sprintf("via %s", providerName)
+		providerInfo := fmt.Sprintf(t.Text("via %s"), providerName)
 		parts = append(parts, t.ModelInfo.ProviderFallback.Render(providerInfo))
 	}
 

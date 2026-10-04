@@ -9,6 +9,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	tea "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ui/v2"
 	uv "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ultraviolet"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/i18n"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/styles"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/util"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workspace"
@@ -45,10 +46,24 @@ func DefaultCommon(ws workspace.Workspace) *Common {
 		}
 	}
 	s := styles.ThemeForProvider(largeModelProviderID(ws))
+	s.Locale = i18n.New("en")
+	if ws != nil {
+		if cfg := ws.Config(); cfg != nil && cfg.Options != nil && cfg.Options.TUI != nil {
+			s.Locale.Set(cfg.Options.TUI.Language)
+		}
+	}
 	return &Common{
 		Workspace: ws,
 		Styles:    &s,
 	}
+}
+
+// Text translates an Atlas-authored literal without touching user content.
+func (c *Common) Text(source string) string {
+	if c == nil {
+		return source
+	}
+	return c.Styles.Text(source)
 }
 
 // largeModelProviderID returns the provider ID of the currently selected

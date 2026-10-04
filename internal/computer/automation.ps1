@@ -136,8 +136,24 @@ if ($p.action -eq 'assert') {
     Out-Result @{passed=$passed;window_id=$p.window_id}; exit
 }
 if (!$element.Current.IsEnabled -or $element.Current.IsOffscreen) { throw 'Target is disabled or offscreen' }
-if ($p.action -eq 'invoke') { $pattern = $element.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern); $pattern.Invoke(); Out-Result @{action_sent=$true;verify_required=$true}; exit }
-if ($p.action -eq 'set_value') { $pattern = $element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern); if($pattern.Current.IsReadOnly){throw 'Target is read-only'}; $pattern.SetValue($p.text); Out-Result @{action_sent=$true;verify_required=$true}; exit }
+if ($p.action -eq 'invoke') { $pattern = $null; if (!$element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { throw 'Pattern unavailable: Invoke; use observed visual input instead' }; $pattern.Invoke(); Out-Result @{action_sent=$true;verify_required=$true}; exit }
+if ($p.action -eq 'set_value') {
+    if ($p.focus) {
+        $element.SetFocus()
+        if (!$element.Current.HasKeyboardFocus) { throw 'Field focus not confirmed; do not submit' }
+    }
+    $pattern = $null
+    if (!$element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) { throw 'Pattern unavailable: Value; use observed visual input instead' }
+    if ($pattern.Current.IsReadOnly) { throw 'Target is read-only' }
+    $pattern.SetValue($p.text)
+    $verified = $null
+    if (!$element.Current.IsPassword) {
+        Start-Sleep -Milliseconds 50
+        $verified = [string]::Equals($pattern.Current.Value, [string]$p.text, [StringComparison]::Ordinal)
+        if (!$verified) { throw 'Value not applied; the provider accepted the call but readback differs. Observe the field and use focused keyboard input; do not submit or retry the same pattern blindly.' }
+    }
+    Out-Result @{action_sent=$true;verify_required=$true;value_verified=$verified;keyboard_focused=$element.Current.HasKeyboardFocus;element_id=($element.GetRuntimeId() -join ':');submission_required=$true}; exit
+}
 throw 'Unsupported automation action'
 } catch {
     $code = 'accessibility_unavailable'
@@ -151,6 +167,10 @@ throw 'Unsupported automation action'
         'Password inspection*' { $code = 'password_protected' }
         'Unsupported*' { $code = 'unsupported_action' }
         'No installed OCR*' { $code = 'ocr_unavailable' }
+        'Pattern unavailable*' { $code = 'unsupported_pattern' }
+        'Observation incomplete*' { $code = 'observation_incomplete' }
+        'Value not applied*' { $code = 'value_not_applied' }
+        'Field focus not confirmed*' { $code = 'focus_denied' }
     }
-    Out-Result @{error_code=$code;recovery='Observe the current window and resolve the target again; use screenshot/OCR or manual handoff when the provider is unavailable.'}
+    Out-Result @{error_code=$code;detail=$_.Exception.Message;recovery='Observe the current window and resolve the target again; use screenshot/OCR or manual handoff when the provider is unavailable.'}
 }

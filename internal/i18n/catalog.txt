@@ -1,4 +1,21 @@
 # English|Türkçe|Deutsch|Français|Italiano|العربية
+microphone dictation|mikrofonla yazdır|Mikrofondiktat|dictée au microphone|dettatura al microfono|الإملاء بالميكروفون
+paste files, images or text|dosya, görsel veya metin yapıştır|Dateien, Bilder oder Text einfügen|coller des fichiers, images ou texte|incolla file, immagini o testo|لصق ملفات أو صور أو نص
+add file|dosya ekle|Datei hinzufügen|ajouter un fichier|aggiungi file|إضافة ملف
+Add File|Dosya Ekle|Datei hinzufügen|Ajouter un fichier|Aggiungi file|إضافة ملف
+Switch to the prompt editor before using the microphone.|Mikrofonu kullanmadan önce prompt editörüne geç.|Wechsle vor der Mikrofonnutzung zum Prompt-Editor.|Passez à l’éditeur de prompt avant d’utiliser le microphone.|Passa all’editor del prompt prima di usare il microfono.|انتقل إلى محرر الطلب قبل استخدام الميكروفون.
+Offline speech model is unavailable: %v|Çevrimdışı konuşma modeli kullanılamıyor: %v|Offline-Sprachmodell ist nicht verfügbar: %v|Le modèle vocal hors ligne est indisponible : %v|Il modello vocale offline non è disponibile: %v|نموذج الكلام دون اتصال غير متاح: %v
+Offline microphone dictation currently requires Windows.|Çevrimdışı mikrofonla yazdırma şu anda Windows gerektiriyor.|Offline-Mikrofondiktat erfordert derzeit Windows.|La dictée hors ligne nécessite actuellement Windows.|La dettatura offline richiede attualmente Windows.|الإملاء دون اتصال يتطلب Windows حاليًا.
+Microphone dictation failed: %v|Mikrofonla yazdırma başarısız: %v|Mikrofondiktat fehlgeschlagen: %v|Échec de la dictée au microphone : %v|Dettatura al microfono non riuscita: %v|فشل الإملاء بالميكروفون: %v
+No speech was recognized. The prompt was kept unchanged.|Konuşma tanınamadı. Prompt değiştirilmedi.|Keine Sprache erkannt. Der Prompt blieb unverändert.|Aucune parole reconnue. Le prompt est resté inchangé.|Nessun parlato riconosciuto. Il prompt è rimasto invariato.|لم يتم التعرف على كلام. بقي الطلب دون تغيير.
+Speech added to the prompt. Review it before sending.|Konuşma prompta eklendi. Göndermeden önce kontrol et.|Sprache zum Prompt hinzugefügt. Prüfe ihn vor dem Senden.|Parole ajoutée au prompt. Vérifiez avant d’envoyer.|Parlato aggiunto al prompt. Controllalo prima di inviare.|أُضيف الكلام إلى الطلب. راجعه قبل الإرسال.
+Preparing offline microphone dictation… Esc cancels.|Çevrimdışı mikrofon hazırlanıyor… Esc iptal eder.|Offline-Mikrofondiktat wird vorbereitet… Esc bricht ab.|Préparation de la dictée hors ligne… Échap annule.|Preparazione della dettatura offline… Esc annulla.|جارٍ إعداد الإملاء دون اتصال… Esc للإلغاء.
+Recording (%s) · Ctrl+K finishes · Esc cancels|Kaydediliyor (%s) · Ctrl+K bitirir · Esc iptal eder|Aufnahme (%s) · Ctrl+K beendet · Esc bricht ab|Enregistrement (%s) · Ctrl+K termine · Échap annule|Registrazione (%s) · Ctrl+K termina · Esc annulla|جارٍ التسجيل (%s) · Ctrl+K للإنهاء · Esc للإلغاء
+Converting speech to text locally… Esc cancels.|Konuşma yerelde yazıya çevriliyor… Esc iptal eder.|Sprache wird lokal in Text umgewandelt… Esc bricht ab.|Conversion locale de la parole en texte… Échap annule.|Conversione locale del parlato in testo… Esc annulla.|جارٍ تحويل الكلام إلى نص محليًا… Esc للإلغاء.
+Microphone dictation canceled.|Mikrofonla yazdırma iptal edildi.|Mikrofondiktat abgebrochen.|Dictée au microphone annulée.|Dettatura al microfono annullata.|أُلغي الإملاء بالميكروفون.
+Finish or cancel microphone dictation before sending.|Göndermeden önce mikrofonla yazdırmayı bitir veya iptal et.|Beende oder verwerfe das Mikrofondiktat vor dem Senden.|Terminez ou annulez la dictée avant d’envoyer.|Termina o annulla la dettatura prima di inviare.|أنهِ الإملاء أو ألغِه قبل الإرسال.
+Clipboard contains no usable files, image or text.|Panoda kullanılabilir dosya, görsel veya metin yok.|Die Zwischenablage enthält keine verwendbaren Dateien, Bilder oder Texte.|Le presse-papiers ne contient aucun fichier, image ou texte utilisable.|Gli appunti non contengono file, immagini o testo utilizzabili.|لا تحتوي الحافظة على ملفات أو صور أو نص قابل للاستخدام.
+Some clipboard content could not be attached: %v|Panodaki bazı içerikler eklenemedi: %v|Einige Inhalte der Zwischenablage konnten nicht angehängt werden: %v|Certains contenus du presse-papiers n’ont pas pu être joints : %v|Alcuni contenuti degli appunti non possono essere allegati: %v|تعذر إرفاق بعض محتويات الحافظة: %v
 Language|Dil|Sprache|Langue|Lingua|اللغة
 Choose interface language|Arayüz dilini seç|Oberflächensprache wählen|Choisir la langue de l’interface|Scegli la lingua dell’interfaccia|اختر لغة الواجهة
 Language saved|Dil kaydedildi|Sprache gespeichert|Langue enregistrée|Lingua salvata|تم حفظ اللغة
@@ -934,3 +951,4 @@ Nice work.|İyi iş.|Gute Arbeit.|Beau travail.|Bel lavoro.|عمل جيد.
 You’re a sensation.|Çok etkileyicisin.|Du bist eine Sensation.|Tu fais sensation.|Sei sensazionale.|أنت مذهل.
 Where’s my eyeliner?|Göz kalemim nerede?|Wo ist mein Eyeliner?|Où est mon eye-liner ?|Dov’è il mio eyeliner?|أين قلم تحديد عيني؟
 It’s tea time.|Çay vakti.|Es ist Teezeit.|C’est l’heure du thé.|È l’ora del tè.|حان وقت الشاي.
+Waiting for response|Yanıt bekleniyor|Warte auf Antwort|En attente de réponse|In attesa della risposta|في انتظار الرد

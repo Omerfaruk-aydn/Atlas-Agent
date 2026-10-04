@@ -98,7 +98,11 @@ type promptQueueMsg struct {
 // agentRunSubmittedMsg reports that AgentRun accepted a prompt (it either
 // started a run or was enqueued behind one), so busy and queue state should
 // be re-fetched.
-type agentRunSubmittedMsg struct{}
+type agentRunSubmittedMsg struct {
+	sessionID string
+	previewID string
+	err       error
+}
 
 // agentModelChangedMsg reports that the coordinator's model was updated
 // (model selection, thinking toggle, reasoning effort), so the memoized

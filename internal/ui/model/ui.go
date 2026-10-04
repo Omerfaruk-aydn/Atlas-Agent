@@ -13,10 +13,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -43,7 +41,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-widgets/v2/textarea"
 	xstrings "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-xstrings"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/event"
-	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/fsext"
+
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/history"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/home"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/lsp"
@@ -177,6 +175,8 @@ type (
 
 // UI represents the main user interface model.
 type UI struct {
+	voice        voiceState
+	draftGen     uint64
 	workflow     workflowPanel
 	com          *common.Common
 	session      *session.Session
@@ -277,7 +277,8 @@ type UI struct {
 	completionsPositionStart image.Point // x,y where user typed '@'
 
 	// Chat components
-	chat *Chat
+	chat        *Chat
+	firstPrompt *firstPromptPreview
 
 	// onboarding state
 	onboarding struct {
@@ -480,6 +481,8 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 	// use ATLAS-AGENT's clipboard backend and user feedback; disable the
 	// textarea's built-in copy binding.
 	ta.KeyMap.CopySelection = key.NewBinding()
+	// Ctrl+K belongs to microphone dictation in the composer.
+	ta.KeyMap.DeleteAfterCursor = key.NewBinding()
 	ta.Focus()
 
 	ch := NewChat(com, com.Config().Options.TUI.Scrollbar)
@@ -732,6 +735,7 @@ func (m *UI) shouldSendNotification() bool {
 // setState changes the UI state and focus.
 func (m *UI) setState(state uiState, focus uiFocusState) {
 	if state == uiLanding {
+		m.clearFirstPromptPreview()
 		// Always turn off compact mode when going to landing
 		m.isCompact = false
 	}
@@ -803,6 +807,10 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+	case voiceMsg:
+		cmds = append(cmds, m.handleVoice(msg))
+	case clipboardMsg:
+		cmds = append(cmds, m.handleClipboard(msg))
 	case tea.EnvMsg:
 		// Is this Windows Terminal?
 		if !m.sendProgressBar {
@@ -868,6 +876,14 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 	case agentRunSubmittedMsg:
+		if msg.err != nil && msg.sessionID == m.currentSessionID() {
+			if p := m.firstPrompt; p != nil && p.user.ID == msg.previewID {
+				m.clearFirstPromptPreview()
+			}
+			if !errors.Is(msg.err, context.Canceled) {
+				cmds = append(cmds, util.ReportError(msg.err))
+			}
+		}
 		// A prompt was just accepted (run started or enqueued): fetch the
 		// authoritative busy/queue state to confirm the optimistic values
 		// sendMessage wrote.
@@ -880,6 +896,11 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 	case loadSessionMsg:
+		if m.firstPrompt != nil && m.firstPrompt.user.SessionID != msg.session.ID {
+			m.clearFirstPromptPreview()
+		}
+		m.cancelVoice()
+		m.draftGen++
 		if m.workflow.open && (m.session == nil || m.session.ID != msg.session.ID) {
 			m.workflow = workflowPanel{epoch: m.workflow.epoch + 1}
 		}
@@ -1650,6 +1671,7 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case util.ClearStatusMsg:
 		m.status.ClearInfoMsg()
 		m.pendingUpdate = nil
+		m.refreshVoiceStatus()
 	case completions.CompletionItemsLoadedMsg:
 		if m.completionsOpen {
 			m.completions.SetItems(msg.Files, msg.Resources)
@@ -1713,6 +1735,9 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // setSessionMessages sets the messages for the current session in the chat
 func (m *UI) setSessionMessages(msgs []message.Message) tea.Cmd {
+	for _, msg := range msgs {
+		m.reconcileFirstPrompt(msg)
+	}
 	m.sessionMessages = msgs
 	m.resetChatSearch()
 	var cmds []tea.Cmd
@@ -1771,6 +1796,9 @@ func (m *UI) setSessionMessages(msgs []message.Message) tea.Cmd {
 		cmds = append(cmds, cmd)
 	}
 	m.chat.SelectLast()
+	if cmd := m.restoreFirstPromptPreview(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	return tea.Sequence(cmds...)
 }
 
@@ -1875,6 +1903,7 @@ func (m *UI) appendSessionMessage(msg message.Message) tea.Cmd {
 		// message already exists, skip
 		return nil
 	}
+	m.reconcileFirstPrompt(msg)
 	m.sessionMessages = append(m.sessionMessages, msg)
 
 	switch msg.Role {
@@ -1901,6 +1930,9 @@ func (m *UI) appendSessionMessage(msg message.Message) tea.Cmd {
 			}
 		}
 		m.chat.AppendMessages(items...)
+		if cmd := m.restoreFirstPromptPreview(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 		if cmd := m.chat.ScrollToBottomAndAnimate(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -2537,6 +2569,7 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 		})
 		m.dialog.CloseDialog(dialog.CommandsID)
 	case dialog.ActionQuit:
+		m.cancelVoice()
 		cmds = append(cmds, tea.Quit)
 	case dialog.ActionEnableDockerMCP:
 		m.dialog.CloseDialog(dialog.CommandsID)
@@ -2598,17 +2631,13 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 		}
 
 	case dialog.ActionFilePickerSelected:
-		cmds = append(cmds, tea.Sequence(
-			msg.Cmd(),
-			func() tea.Msg {
-				m.dialog.CloseDialog(dialog.FilePickerID)
-				return nil
-			},
-			func() tea.Msg {
-				fimage.ResetCache()
-				return nil
-			},
-		))
+		m.dialog.CloseDialog(dialog.FilePickerID)
+		gen, path := m.draftGen, msg.Path
+		cmds = append(cmds, func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			return prepareFiles(ctx, gen, []string{path})
+		})
 
 	case dialog.ActionRunCustomCommand:
 		if len(msg.Arguments) > 0 && msg.Args == nil {
@@ -2872,6 +2901,13 @@ func (m *UI) openAuthenticationDialog(provider catwalk.Provider, model config.Se
 
 func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 	var cmds []tea.Cmd
+	if m.voice.phase != voiceIdle && (key.Matches(msg, m.keyMap.Chat.Cancel) || key.Matches(msg, m.keyMap.Quit)) {
+		m.cancelVoice()
+		return util.ReportInfo(m.com.Text("Microphone dictation canceled."))
+	}
+	if m.voice.phase != voiceIdle && key.Matches(msg, m.keyMap.Editor.Dictate) {
+		return m.toggleVoice()
+	}
 
 	handleGlobalKeys := func(msg tea.KeyPressMsg) bool {
 		switch {
@@ -3103,6 +3139,12 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 	case uiChat, uiLanding:
 		switch m.focus {
 		case uiFocusEditor:
+			if key.Matches(msg, m.keyMap.Editor.Dictate) {
+				return m.toggleVoice()
+			}
+			if m.voice.phase != voiceIdle && key.Matches(msg, m.keyMap.Editor.SendMessage) {
+				return util.ReportInfo(m.com.Text("Finish or cancel microphone dictation before sending."))
+			}
 			// Handle completions if open.
 			if m.completionsOpen {
 				if msg, ok := m.completions.Update(msg); ok {
@@ -3138,20 +3180,12 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 
 			switch {
 			case key.Matches(msg, m.keyMap.Editor.AddImage):
-				if reason := m.imageSupportRefusal(); reason != "" {
-					cmds = append(cmds, util.ReportWarn(reason))
-					break
-				}
 				if cmd := m.openFilesDialog(); cmd != nil {
 					cmds = append(cmds, cmd)
 				}
 
 			case key.Matches(msg, m.keyMap.Editor.PasteImage):
-				if reason := m.imageSupportRefusal(); reason != "" {
-					cmds = append(cmds, util.ReportWarn(reason))
-					break
-				}
-				cmds = append(cmds, m.pasteImageFromClipboard)
+				cmds = append(cmds, m.pasteClipboard())
 			case key.Matches(msg, m.keyMap.Editor.PasteText):
 				cmds = append(cmds, m.pasteTextFromClipboard)
 
@@ -3168,6 +3202,7 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 				}
 
 				// Otherwise, send the message
+				m.draftGen++
 				m.textarea.Reset()
 				if cmd := m.handleTextareaHeightChange(prevHeight); cmd != nil {
 					cmds = append(cmds, cmd)
@@ -3929,6 +3964,9 @@ func (m *UI) FullHelp() [][]key.Binding {
 		switch m.focus {
 		case uiFocusEditor:
 			editorBinds := []key.Binding{
+				k.Editor.Dictate,
+				k.Editor.PasteImage,
+				k.Editor.AddImage,
 				k.Editor.Newline,
 				k.Editor.MentionFile,
 				k.Editor.OpenEditor,
@@ -3936,9 +3974,6 @@ func (m *UI) FullHelp() [][]key.Binding {
 				k.Editor.SelectAll,
 				k.Editor.CopySelection,
 				k.Editor.CutSelection,
-			}
-			if m.currentModelSupportsImages() {
-				editorBinds = append(editorBinds, k.Editor.AddImage, k.Editor.PasteImage)
 			}
 			binds = append(binds, editorBinds)
 			if hasAttachments {
@@ -4004,6 +4039,9 @@ func (m *UI) FullHelp() [][]key.Binding {
 				},
 			)
 			editorBinds := []key.Binding{
+				k.Editor.Dictate,
+				k.Editor.PasteImage,
+				k.Editor.AddImage,
 				k.Editor.Newline,
 				k.Editor.MentionFile,
 				k.Editor.OpenEditor,
@@ -4011,9 +4049,6 @@ func (m *UI) FullHelp() [][]key.Binding {
 				k.Editor.SelectAll,
 				k.Editor.CopySelection,
 				k.Editor.CutSelection,
-			}
-			if m.currentModelSupportsImages() {
-				editorBinds = append(editorBinds, k.Editor.AddImage, k.Editor.PasteImage)
 			}
 			binds = append(binds, editorBinds)
 			if hasAttachments {
@@ -5005,6 +5040,11 @@ func (m *UI) sendMessage(content string, attachments ...message.Attachment) tea.
 
 	// Capture session ID to avoid race with main goroutine updating m.session.
 	sessionID := m.session.ID
+	var previewID string
+	if cmd := m.previewFirstPrompt(content, attachments); cmd != nil {
+		cmds = append(cmds, cmd)
+		previewID = m.firstPrompt.user.ID
+	}
 	// Optimistically mark the agent busy: the prompt we are about to submit
 	// either starts a run or is enqueued behind one. This keeps esc pressed
 	// right after enter routing to cancelAgent instead of reading a stale
@@ -5020,13 +5060,7 @@ func (m *UI) sendMessage(content string, attachments ...message.Attachment) tea.
 		// or transport error. Run failures and cancellation surface
 		// through SSE-derived events, not this return value.
 		err := m.com.Workspace.AgentRun(context.Background(), sessionID, content, attachments...)
-		if err != nil && !errors.Is(err, context.Canceled) {
-			return util.InfoMsg{
-				Type: util.InfoTypeError,
-				Msg:  fmt.Sprintf("%v", err),
-			}
-		}
-		return agentRunSubmittedMsg{}
+		return agentRunSubmittedMsg{sessionID: sessionID, previewID: previewID, err: err}
 	})
 	return tea.Batch(cmds...)
 }
@@ -5188,6 +5222,7 @@ func (m *UI) interruptAgent() tea.Cmd {
 // doCancelAgent performs the actual cancellation shared by cancelAgent's
 // second escape press and interruptAgent's single ctrl+c press.
 func (m *UI) doCancelAgent() tea.Cmd {
+	m.clearFirstPromptPreview()
 	// Cancel a running bang command if one is in progress.
 	if m.bangCancel != nil {
 		m.bangCancel()
@@ -5810,12 +5845,18 @@ func (m *UI) handleAgentNotification(n notify.Notification) tea.Cmd {
 	var cmds []tea.Cmd
 	switch n.Type {
 	case notify.TypeAgentFinished:
+		if n.SessionID == m.currentSessionID() {
+			m.clearFirstPromptPreview()
+		}
 		common.StopTurn()
 		cmds = append(cmds, m.sendNotification(notification.Notification{
 			Title:   m.com.Text("ATLAS-AGENT is waiting..."),
 			Message: fmt.Sprintf(m.com.Text("Agent's turn completed in \"%s\""), n.SessionTitle),
 		}))
 	case notify.TypeAgentError:
+		if n.SessionID == m.currentSessionID() {
+			m.clearFirstPromptPreview()
+		}
 		// Terminal edge like TypeAgentFinished; fall through to the
 		// busy/queue refresh below.
 	case notify.TypeReAuthenticate:
@@ -5905,6 +5946,8 @@ func (m *UI) handleAWSSSOAuthResult(errMsg string) tea.Cmd {
 // The actual session creation happens when the user sends their first message.
 // Returns a command to reload prompt history.
 func (m *UI) newSession() tea.Cmd {
+	m.cancelVoice()
+	m.draftGen++
 	if !m.hasSession() {
 		return nil
 	}
@@ -5917,6 +5960,7 @@ func (m *UI) newSession() tea.Cmd {
 	m.textarea.Focus()
 	m.chat.Blur()
 	m.chat.ClearMessages()
+	m.sessionMessages = nil
 	m.pillsExpanded = false
 	m.pillsAutoExpanded = false
 	m.promptQueue = 0
@@ -5958,87 +6002,23 @@ func (m *UI) checkBangModeAfterPaste() {
 	m.setEditorPrompt(m.permissionModeCached())
 }
 
-// handlePasteMsg handles a paste message.
+// handlePasteMsg handles bracketed paste without doing clipboard or file IO in Update.
 func (m *UI) handlePasteMsg(msg tea.PasteMsg) tea.Cmd {
-	// Normalize \r\n before the textarea sanitizer sees it.
-	msg.Content = strings.ReplaceAll(msg.Content, "\r\n", "\n")
-
 	if m.dialog.HasDialogs() {
 		return m.handleDialogMsg(msg)
 	}
-
 	if m.focus != uiFocusEditor {
 		return nil
 	}
-
-	// A terminal that binds paste itself (Windows Terminal does, by default)
-	// consumes the keystroke and hands over the clipboard's *text*. When the
-	// clipboard holds files copied from a file manager there is no text, so
-	// the paste arrives empty and the image would be lost with no sign. Treat
-	// an empty paste as the request it was and go look for the files.
-	if strings.TrimSpace(msg.Content) == "" {
-		if paths, err := clipboard.ReadFiles(); err == nil && len(paths) > 0 {
-			return func() tea.Msg { return attachImageFile(paths[0]) }
-		}
+	if msg.Content == "" {
+		return m.pasteClipboard()
 	}
-
-	if hasPasteExceededThreshold(msg) {
-		return func() tea.Msg {
-			content := []byte(msg.Content)
-			if int64(len(content)) > common.MaxAttachmentSize {
-				return util.ReportWarn(m.com.Text("Paste is too big (>5mb)"))
-			}
-			name := fmt.Sprintf("paste_%d.txt", m.pasteIdx())
-			mimeBufferSize := min(512, len(content))
-			mimeType := http.DetectContentType(content[:mimeBufferSize])
-			return message.Attachment{
-				FileName: name,
-				FilePath: name,
-				MimeType: mimeType,
-				Content:  content,
-			}
-		}
+	gen, text := m.draftGen, msg.Content
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return preparePaste(ctx, gen, text)
 	}
-
-	// Attempt to parse pasted content as file paths. If possible to parse,
-	// all files exist and are valid, add as attachments.
-	// Otherwise, paste as text.
-	paths := fsext.ParsePastedFiles(msg.Content)
-	allExistsAndValid := func() bool {
-		if len(paths) == 0 {
-			return false
-		}
-		for _, path := range paths {
-			if _, err := os.Stat(path); os.IsNotExist(err) {
-				return false
-			}
-
-			lowerPath := strings.ToLower(path)
-			isValid := false
-			for _, ext := range common.AllowedImageTypes {
-				if strings.HasSuffix(lowerPath, ext) {
-					isValid = true
-					break
-				}
-			}
-			if !isValid {
-				return false
-			}
-		}
-		return true
-	}
-	if !allExistsAndValid() {
-		prevHeight := m.textarea.Height()
-		cmd := m.updateTextareaWithPrevHeight(msg, prevHeight)
-		m.checkBangModeAfterPaste()
-		return cmd
-	}
-
-	var cmds []tea.Cmd
-	for _, path := range paths {
-		cmds = append(cmds, m.handleFilePathPaste(path))
-	}
-	return tea.Batch(cmds...)
 }
 
 func hasPasteExceededThreshold(msg tea.PasteMsg) bool {
@@ -6057,37 +6037,6 @@ func hasPasteExceededThreshold(msg tea.PasteMsg) bool {
 	return false
 }
 
-// handleFilePathPaste handles a pasted file path.
-func (m *UI) handleFilePathPaste(path string) tea.Cmd {
-	return func() tea.Msg {
-		fileInfo, err := os.Stat(path)
-		if err != nil {
-			return util.ReportError(err)
-		}
-		if fileInfo.IsDir() {
-			return util.ReportWarn(m.com.Text("Cannot attach a directory"))
-		}
-		if fileInfo.Size() > common.MaxAttachmentSize {
-			return util.ReportWarn(m.com.Text("File is too big (>5mb)"))
-		}
-
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return util.ReportError(err)
-		}
-
-		mimeBufferSize := min(512, len(content))
-		mimeType := http.DetectContentType(content[:mimeBufferSize])
-		fileName := filepath.Base(path)
-		return message.Attachment{
-			FilePath: path,
-			FileName: fileName,
-			MimeType: mimeType,
-			Content:  content,
-		}
-	}
-}
-
 // pasteTextFromClipboard reads text from the system clipboard and returns a
 // tea.PasteMsg so it flows through the same paste logic as bracketed paste.
 func (m *UI) pasteTextFromClipboard() tea.Msg {
@@ -6099,143 +6048,6 @@ func (m *UI) pasteTextFromClipboard() tea.Msg {
 		}
 	}
 	return tea.PasteMsg{Content: string(textData)}
-}
-
-// pasteExcerptWidth caps how much clipboard text a notification will quote
-// back. Long enough to recognise a path, short enough that a copied paragraph
-// does not become the notification.
-const pasteExcerptWidth = 60
-
-// pasteExcerpt reduces clipboard text to a single short line fit to appear
-// inside a notification.
-func pasteExcerpt(s string) string {
-	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
-		s = s[:i]
-	}
-	r := []rune(s)
-	if len(r) > pasteExcerptWidth {
-		return string(r[:pasteExcerptWidth]) + "…"
-	}
-	return s
-}
-
-// pasteImageFromClipboard reads image data from the system clipboard and
-// creates an attachment. If no image data is found, it falls back to
-// interpreting clipboard text as a file path.
-func (m *UI) pasteImageFromClipboard() tea.Msg {
-	imageData, err := clipboard.Read(clipboard.FormatImage)
-	if err == nil {
-		if int64(len(imageData)) > common.MaxAttachmentSize {
-			return util.InfoMsg{
-				Type: util.InfoTypeError,
-				Msg:  m.com.Text("File too large, max 5MB"),
-			}
-		}
-		name := fmt.Sprintf("paste_%d.png", m.pasteIdx())
-		return message.Attachment{
-			FilePath: name,
-			FileName: name,
-			MimeType: mimeOf(imageData),
-			Content:  imageData,
-		}
-	}
-
-	// A file manager's copy transfers a reference, not pixels, so the image
-	// read above finds nothing even though the user did copy an image. Only
-	// the first path is taken: the composer attaches one image per paste.
-	if paths, filesErr := clipboard.ReadFiles(); filesErr == nil && len(paths) > 0 {
-		return attachImageFile(paths[0])
-	}
-
-	textData, textErr := clipboard.Read(clipboard.FormatText)
-	if textErr != nil || len(textData) == 0 {
-		// Nothing the clipboard holds is usable. Saying so matters more than
-		// it looks: a paste that returns silently is indistinguishable from a
-		// dead keybinding, and that ambiguity has already cost a debugging
-		// session.
-		return util.NewInfoMsg(m.com.Text("Clipboard holds no image. Copy an image, or the path to an image file."))
-	}
-
-	path := strings.TrimSpace(string(textData))
-	path = strings.ReplaceAll(path, "\\ ", " ")
-	if _, statErr := os.Stat(path); statErr != nil {
-		// The clipboard held text, but not a path to anything that exists.
-		// Echoing a short excerpt tells the user which of the two it was
-		// without spilling a whole copied paragraph into the notification.
-		return util.NewInfoMsg(fmt.Sprintf(
-			m.com.Text("Clipboard holds text, not an image: %q"), pasteExcerpt(path)))
-	}
-
-	return attachImageFile(path)
-}
-
-// attachImageFile turns a path on disk into an attachment, or into the message
-// explaining why it cannot be one. Both clipboard routes — a file manager's
-// file list and a copied path in plain text — end here, so the rules about
-// what may be attached are stated once.
-func attachImageFile(path string) tea.Msg {
-	lowerPath := strings.ToLower(path)
-	isAllowed := false
-	for _, ext := range common.AllowedImageTypes {
-		if strings.HasSuffix(lowerPath, ext) {
-			isAllowed = true
-			break
-		}
-	}
-	if !isAllowed {
-		return util.NewInfoMsg(fmt.Sprintf(
-			"%q is not a supported image format", pasteExcerpt(filepath.Base(path))))
-	}
-
-	fileInfo, statErr := os.Stat(path)
-	if statErr != nil {
-		return util.InfoMsg{
-			Type: util.InfoTypeError,
-			Msg:  fmt.Sprintf("Unable to read file: %v", statErr),
-		}
-	}
-	if fileInfo.IsDir() {
-		return util.NewInfoMsg(fmt.Sprintf(
-			"%q is a folder, not an image", pasteExcerpt(filepath.Base(path))))
-	}
-	if fileInfo.Size() > common.MaxAttachmentSize {
-		return util.InfoMsg{
-			Type: util.InfoTypeError,
-			Msg:  "File too large, max 5MB",
-		}
-	}
-
-	content, readErr := os.ReadFile(path)
-	if readErr != nil {
-		return util.InfoMsg{
-			Type: util.InfoTypeError,
-			Msg:  fmt.Sprintf("Unable to read file: %v", readErr),
-		}
-	}
-
-	return message.Attachment{
-		FilePath: path,
-		FileName: filepath.Base(path),
-		MimeType: mimeOf(content),
-		Content:  content,
-	}
-}
-
-var pasteRE = regexp.MustCompile(`paste_(\d+).txt`)
-
-func (m *UI) pasteIdx() int {
-	result := 0
-	for _, at := range m.attachments.List() {
-		found := pasteRE.FindStringSubmatch(at.FileName)
-		if len(found) == 0 {
-			continue
-		}
-		idx, err := strconv.Atoi(found[1])
-		if err == nil {
-			result = max(result, idx)
-		}
-	}
-	return result + 1
 }
 
 // drawSessionDetails draws the session details in compact mode.

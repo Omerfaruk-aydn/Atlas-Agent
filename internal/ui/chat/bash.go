@@ -50,7 +50,7 @@ func (b *BashToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *
 
 	var params tools.BashParams
 	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
-		params.Command = "failed to parse command"
+		params.Command = sty.Text("failed to parse command")
 	}
 
 	// Check if this is a background job.
@@ -61,8 +61,8 @@ func (b *BashToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *
 
 	if meta.Background {
 		description := cmp.Or(meta.Description, params.Command)
-		content := "Command: " + params.Command + "\n" + opts.Result.Content
-		return renderJobTool(sty, opts, cappedWidth, "Start", meta.ShellID, description, content)
+		content := sty.Text("Command: ") + params.Command + "\n" + opts.Result.Content
+		return renderJobTool(sty, opts, cappedWidth, sty.Text("Start"), meta.ShellID, description, content)
 	}
 
 	// Regular bash command.
@@ -134,12 +134,12 @@ type JobOutputToolRenderContext struct{}
 func (j *JobOutputToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "Job", opts.Anim, opts.Compact)
+		return pendingTool(sty, sty.Text("Job"), opts.Anim, opts.Compact)
 	}
 
 	var params tools.JobOutputParams
 	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
-		return toolErrorContent(sty, &message.ToolResult{Content: "Invalid parameters"}, cappedWidth)
+		return toolErrorContent(sty, &message.ToolResult{Content: sty.Text("Invalid parameters")}, cappedWidth)
 	}
 
 	var description string
@@ -154,7 +154,7 @@ func (j *JobOutputToolRenderContext) RenderTool(sty *styles.Styles, width int, o
 	if opts.HasResult() {
 		content = opts.Result.Content
 	}
-	return renderJobTool(sty, opts, cappedWidth, "Output", params.ShellID, description, content)
+	return renderJobTool(sty, opts, cappedWidth, sty.Text("Output"), params.ShellID, description, content)
 }
 
 // -----------------------------------------------------------------------------
@@ -185,12 +185,12 @@ type JobKillToolRenderContext struct{}
 func (j *JobKillToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "Job", opts.Anim, opts.Compact)
+		return pendingTool(sty, sty.Text("Job"), opts.Anim, opts.Compact)
 	}
 
 	var params tools.JobKillParams
 	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
-		return toolErrorContent(sty, &message.ToolResult{Content: "Invalid parameters"}, cappedWidth)
+		return toolErrorContent(sty, &message.ToolResult{Content: sty.Text("Invalid parameters")}, cappedWidth)
 	}
 
 	var description string
@@ -205,7 +205,7 @@ func (j *JobKillToolRenderContext) RenderTool(sty *styles.Styles, width int, opt
 	if opts.HasResult() {
 		content = opts.Result.Content
 	}
-	return renderJobTool(sty, opts, cappedWidth, "Kill", params.ShellID, description, content)
+	return renderJobTool(sty, opts, cappedWidth, sty.Text("Kill"), params.ShellID, description, content)
 }
 
 // renderJobTool renders a job-related tool with the common pattern:
@@ -233,7 +233,7 @@ func renderJobTool(sty *styles.Styles, opts *ToolRenderOpts, width int, action, 
 // Format: "● Job (Action) PID shellID description..."
 func jobHeader(sty *styles.Styles, status ToolStatus, action, shellID, description string, width int) string {
 	icon := toolIcon(sty, status)
-	jobPart := sty.Tool.JobToolName.Render("Job")
+	jobPart := sty.Tool.JobToolName.Render(sty.Text("Job"))
 	actionPart := sty.Tool.JobAction.Render("(" + action + ")")
 	pidPart := sty.Tool.JobPID.Render("PID " + shellID)
 

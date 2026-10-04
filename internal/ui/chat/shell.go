@@ -85,7 +85,7 @@ func NewPendingShellItem(sty *styles.Styles, command string) *ShellItem {
 	}
 	s.anim = anim.New(anim.Settings{
 		ID:         id,
-		Label:      "Running",
+		Label:      sty.Text("Running"),
 		LabelColor: sty.WorkingLabelColor,
 		GradColorA: sty.WorkingGradFromColor,
 		GradColorB: sty.WorkingGradToColor,
@@ -167,7 +167,7 @@ func (s *ShellItem) HandleKeyEvent(key tea.KeyMsg) (bool, tea.Cmd) {
 	switch k := key.String(); k {
 	case "c", "y":
 		text := "$ " + s.command + "\n" + ansi.Strip(s.output.String())
-		return true, common.CopyToClipboard(text, "Shell output copied to clipboard")
+		return true, common.CopyToClipboard(text, s.sty.Text("Shell output copied to clipboard"))
 	case "shift+left", "H":
 		if s.xOffset > 0 {
 			s.xOffset = max(0, s.xOffset-shellHScrollStep)
@@ -220,7 +220,7 @@ func (s *ShellItem) RawRender(width int) string {
 			return header + "\n" + s.anim.Render()
 		}
 	} else if s.exitCode != 0 {
-		header += " " + s.sty.Messages.ShellExitCode.Render(fmt.Sprintf("(exit %d)", s.exitCode))
+		header += " " + s.sty.Messages.ShellExitCode.Render(fmt.Sprintf(s.sty.Text("(exit %d)"), s.exitCode))
 	}
 
 	if s.output.Len() == 0 {
@@ -281,7 +281,7 @@ func (s *ShellItem) RawRender(width int) string {
 	// the "more lines" notice before the output.
 	if truncatedCount > 0 && s.pending {
 		body.WriteString(s.sty.Messages.ShellTruncation.Render(
-			fmt.Sprintf("… %d earlier lines", truncatedCount),
+			fmt.Sprintf(s.sty.Text("… %d earlier lines"), truncatedCount),
 		))
 		body.WriteString("\n")
 	}
@@ -299,7 +299,7 @@ func (s *ShellItem) RawRender(width int) string {
 	// When finished, hidden lines are below, so show the notice after.
 	if truncatedCount > 0 && !s.pending && !s.expandedContent {
 		body.WriteString(s.sty.Messages.ShellTruncation.Render(
-			fmt.Sprintf("… %d more lines", truncatedCount),
+			fmt.Sprintf(s.sty.Text("… %d more lines"), truncatedCount),
 		))
 		return header + "\n" + body.String()
 	}

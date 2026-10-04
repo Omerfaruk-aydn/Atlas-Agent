@@ -25,6 +25,8 @@ var computerDescription string
 
 // computerActions lists every value ComputerParams.Action accepts.
 var computerActions = []string{
+	"launch_app",
+	"observe", "health",
 	"screenshot", "screen_size", "cursor_position", "move",
 	"click", "double_click", "right_click", "drag",
 	"scroll", "type", "key", "hotkey",
@@ -32,10 +34,12 @@ var computerActions = []string{
 }
 
 type ComputerParams struct {
+	SnapshotID string                     `json:"snapshot_id,omitempty" description:"ID returned by observe; required with element."`
+	Element    int                        `json:"element,omitempty" description:"One-based numbered control from observe; supported for invoke/set_value/assert."`
 	Automation computer.AutomationRequest `json:"automation,omitempty" description:"Parameters for accessibility actions: window_id required except windows/monitors/ocr. Name, role or element_id select a fresh element."`
 	Width      int                        `json:"width,omitempty" description:"Native pixel width for capture_region."`
 	Height     int                        `json:"height,omitempty" description:"Native pixel height for capture_region."`
-	Action     string                     `json:"action" description:"Desktop action: screenshot/screen_size/cursor_position/move/click/double_click/right_click/drag/scroll/type/key/hotkey; windows/focus/inspect/find/invoke/set_value/assert/monitors/ocr/capture_region/capture_window; handoff/status/trace/trace_start/trace_stop. See tool description."`
+	Action     string                     `json:"action" description:"Desktop action: launch_app/observe/health; screenshot/screen_size/cursor_position/move/click/double_click/right_click/drag/scroll/type/key/hotkey; windows/focus/inspect/find/invoke/set_value/assert/monitors/ocr/capture_region/capture_window; handoff/status/trace/trace_start/trace_stop. See tool description."`
 	// X and Y are screen coordinates in physical pixels, matching the
 	// screenshot image 1:1. Required for move, click, double_click,
 	// right_click, and drag (start point).
@@ -82,6 +86,7 @@ func NewComputerTool(
 // captures) so validation helpers and the timeout wrapper share one
 // receiver.
 type computerToolState struct {
+	observations  desktopObservations
 	permissions   permission.Service
 	workingDir    string
 	backend       computer.Backend
@@ -157,6 +162,7 @@ func newComputerTool(
 			}
 
 			if action == "handoff" {
+				state.observations.clear()
 				interaction.Default.Pause(controlID, "Desktop user intervention required")
 				if err := interaction.Default.Record(workingDir, controlID, interaction.Entry{Time: time.Now(), Resource: "desktop", Action: action, Status: "paused"}); err != nil {
 					return fantasy.NewTextErrorResponse(err.Error()), nil
@@ -301,6 +307,22 @@ func (s *computerToolState) runComputerAction(ctx context.Context, action string
 		return fantasy.ToolResponse{}, err
 	}
 	backend := s.backend
+	if action == "health" {
+		return s.health(ctx, params)
+	}
+	if action == "observe" {
+		return s.observe(ctx, params)
+	}
+	if params.Element != 0 || params.SnapshotID != "" {
+		var err error
+		params, err = s.resolveObservation(ctx, action, params)
+		if err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+	}
+	if desktopMutation(action) {
+		s.observations.clear()
+	}
 	if isComputerAutomationAction(action) {
 		return s.runAutomation(ctx, action, params)
 	}
@@ -401,6 +423,28 @@ func (s *computerToolState) runComputerAction(ctx context.Context, action string
 		}
 		return fantasy.NewTextResponse("Typed the text."), nil
 	case "key":
+		if params.Automation.ElementID != "" {
+			driver, ok := backend.(computer.AutomationBackend)
+			if !ok {
+				return fantasy.NewTextErrorResponse("field_not_ready: target focus cannot be verified"), nil
+			}
+			data, err := driver.Automation(ctx, computer.AutomationRequest{Action: "assert", WindowID: params.Automation.WindowID, ElementID: params.Automation.ElementID, Condition: "keyboard_focused"})
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			var field struct {
+				Passed bool `json:"passed"`
+			}
+			if json.Unmarshal(data, &field) != nil || !field.Passed {
+				return fantasy.NewTextErrorResponse("field_not_ready: keyboard focus changed; key was not sent"), nil
+			}
+			if driver, ok := backend.(interface{ ForegroundWindow() string }); ok && driver.ForegroundWindow() != params.Automation.WindowID {
+				return fantasy.NewTextErrorResponse("wrong_window: foreground changed; key was not sent"), nil
+			}
+			if err := ctx.Err(); err != nil {
+				return fantasy.ToolResponse{}, err
+			}
+		}
 		key := strings.ToLower(strings.TrimSpace(params.Key))
 		if _, ok := computer.ResolveKey(key); !ok {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("unknown key %q.", params.Key)), nil

@@ -80,6 +80,7 @@ func init() {
 		sessionCmd,
 		updateCmd,
 		cornersCmd,
+		voiceCmd,
 	)
 }
 
@@ -137,6 +138,7 @@ cat README.md | %[1]s run "make this more glamorous" > GLAMOROUS_README.md
 
 		com := common.DefaultCommon(ws)
 		model := ui.New(com, sessionID, continueLast)
+		defer model.Close()
 
 		inputFilter := ui.NewFilter()
 		var env uv.Environ = os.Environ()

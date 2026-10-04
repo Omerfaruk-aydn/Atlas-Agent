@@ -3,6 +3,9 @@
 > [!NOTE]
 > This document was designed for both humans and agents.
 
+For offline microphone dictation, clipboard attachments and video input, see
+[media input](../media-input.md).
+
 > [!TIP]
 >
 > Atlas can configure itself via a builtin config skill. That is to say,

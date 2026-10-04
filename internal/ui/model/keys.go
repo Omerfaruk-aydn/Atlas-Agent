@@ -34,6 +34,7 @@ type KeyMap struct {
 		// PasteText pastes clipboard text into the textarea, as an
 		// alternative to bracketed paste.
 		PasteText key.Binding
+		Dictate   key.Binding
 	}
 
 	Chat struct {
@@ -213,7 +214,7 @@ func DefaultKeyMap() KeyMap {
 	)
 	km.Editor.AddImage = key.NewBinding(
 		key.WithKeys("ctrl+f"),
-		key.WithHelp("ctrl+f", "add image"),
+		key.WithHelp("ctrl+f", "add file"),
 	)
 	km.Editor.PasteImage = key.NewBinding(
 		// Terminals commonly bind ctrl+v to their own paste and consume the
@@ -223,12 +224,13 @@ func DefaultKeyMap() KeyMap {
 		// arrives. ctrl+alt+v is the escape hatch: no terminal claims it, so
 		// it reaches here whatever the host is configured to do.
 		key.WithKeys("ctrl+v", "ctrl+alt+v"),
-		key.WithHelp("ctrl+v", "paste image from clipboard"),
+		key.WithHelp("ctrl+v/ctrl+alt+v", "paste files, images or text"),
 	)
 	km.Editor.PasteText = key.NewBinding(
 		key.WithKeys("ctrl+shift+v"),
 		key.WithHelp("ctrl+shift+v", "paste text"),
 	)
+	km.Editor.Dictate = key.NewBinding(key.WithKeys("ctrl+k"), key.WithHelp("ctrl+k", "microphone dictation"))
 	km.Editor.MentionFile = key.NewBinding(
 		key.WithKeys("@"),
 		key.WithHelp("@", "mention file"),

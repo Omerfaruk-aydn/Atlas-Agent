@@ -347,7 +347,7 @@ func (a *AssistantInfoItem) renderContent(width int) string {
 	}
 	finishTime := time.Unix(finishData.Time, 0)
 	duration := finishTime.Sub(a.lastUserMessageTime)
-	infoMsg := a.sty.Messages.AssistantInfoDuration.Render(fmt.Sprintf("in %s", duration))
+	infoMsg := a.sty.Messages.AssistantInfoDuration.Render(fmt.Sprintf(a.sty.Text("in %s"), duration))
 	icon := a.sty.Messages.AssistantInfoIcon.Render(styles.ModelIcon)
 	model := a.cfg.GetModel(a.message.Provider, a.message.Model)
 	if model == nil {
@@ -358,7 +358,7 @@ func (a *AssistantInfoItem) renderContent(width int) string {
 	if providerConfig, ok := a.cfg.Providers.Get(a.message.Provider); ok {
 		providerName = providerConfig.Name
 	}
-	provider := a.sty.Messages.AssistantInfoProvider.Render(fmt.Sprintf("via %s", providerName))
+	provider := a.sty.Messages.AssistantInfoProvider.Render(fmt.Sprintf(a.sty.Text("via %s"), providerName))
 	assistant := fmt.Sprintf("%s %s %s %s", icon, modelFormatted, provider, infoMsg)
 	return common.Section(a.sty, assistant, width)
 }

@@ -303,7 +303,7 @@ func (m *UserMessageItem) renderImagePreviews(atts []message.Attachment) string 
 func (m *UserMessageItem) HandleKeyEvent(key tea.KeyMsg) (bool, tea.Cmd) {
 	if k := key.String(); k == "c" || k == "y" {
 		text := m.message.Content().Text
-		return true, common.CopyToClipboard(text, "Message copied to clipboard")
+		return true, common.CopyToClipboard(text, m.sty.Text("Message copied to clipboard"))
 	}
 	return false, nil
 }

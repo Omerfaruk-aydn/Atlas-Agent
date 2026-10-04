@@ -505,7 +505,7 @@ func (a *AssistantMessageItem) renderMessageContent(width int) (string, int) {
 	if a.message.IsFinished() {
 		switch {
 		case a.message.FinishReason() == message.FinishReasonCanceled:
-			messageParts = append(messageParts, a.sty.Messages.AssistantCanceled.Render("Canceled"))
+			messageParts = append(messageParts, a.sty.Messages.AssistantCanceled.Render(a.sty.Text("Canceled")))
 		case a.message.IsErrorLike():
 			messageParts = append(messageParts, a.cachedError(width))
 		}
@@ -694,7 +694,7 @@ func (a *AssistantMessageItem) renderThinking(thinking string, width int) string
 	if !a.message.IsThinking() || len(a.message.ToolCalls()) > 0 {
 		duration := a.message.ThinkingDuration()
 		if duration.String() != "0s" {
-			footer = a.sty.Messages.ThinkingFooterTitle.Render("Thought for ") +
+			footer = a.sty.Messages.ThinkingFooterTitle.Render(a.sty.Text("Thought for ")) +
 				a.sty.Messages.ThinkingFooterDuration.Render(duration.String())
 		}
 	}
@@ -722,9 +722,9 @@ func (a *AssistantMessageItem) renderMarkdown(content string, width int) string 
 
 func (a *AssistantMessageItem) renderSpinning() string {
 	if a.message.IsThinking() {
-		a.anim.SetLabel("Thinking")
+		a.anim.SetLabel(a.sty.Text("Thinking"))
 	} else if a.message.IsSummaryMessage {
-		a.anim.SetLabel("Summarizing")
+		a.anim.SetLabel(a.sty.Text("Summarizing"))
 	}
 	return a.anim.Render()
 }
@@ -732,7 +732,7 @@ func (a *AssistantMessageItem) renderSpinning() string {
 // renderError renders an error or provider-refusal banner.
 func (a *AssistantMessageItem) renderError(width int) string {
 	finishPart := a.message.FinishPart()
-	tagLabel := "ERROR"
+	tagLabel := a.sty.Text("ERROR")
 	titleText := finishPart.Message
 	detailsText := finishPart.Details
 	if finishPart.Reason == message.FinishReasonContentFilter {
@@ -890,7 +890,7 @@ func (a *AssistantMessageItem) HandleMouseClick(btn ansi.MouseButton, x, y int) 
 func (a *AssistantMessageItem) HandleKeyEvent(key tea.KeyMsg) (bool, tea.Cmd) {
 	if k := key.String(); k == "c" || k == "y" {
 		text := a.message.Content().Text
-		return true, common.CopyToClipboard(text, "Message copied to clipboard")
+		return true, common.CopyToClipboard(text, a.sty.Text("Message copied to clipboard"))
 	}
 	return false, nil
 }

@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/i18n"
 )
 
 // handleOption implements the `option` builtin.
@@ -211,7 +213,7 @@ var optionSpecs = map[string]optionSpec{
 // that live under options.tui rather than as top-level options.
 func optionUI(options map[string]any, args []string, stderr io.Writer) error {
 	if len(args) != 4 {
-		return usage(stderr, "usage: option ui <compact|diff|transparent|scrollbar|completions-max-depth|completions-max-items|exit-banner> <value>")
+		return usage(stderr, "usage: option ui <language|compact|diff|transparent|scrollbar|completions-max-depth|completions-max-items|exit-banner> <value>")
 	}
 
 	key := args[2]
@@ -219,6 +221,11 @@ func optionUI(options map[string]any, args []string, stderr io.Writer) error {
 	ui := childMap(options, "tui")
 
 	switch key {
+	case "language":
+		if !i18n.Supported(value) {
+			return usage(stderr, "option ui language expects en, tr, de, fr, it or ar")
+		}
+		ui["language"] = value
 	case "compact", "transparent":
 		parsed, err := parseBool(value)
 		if err != nil {

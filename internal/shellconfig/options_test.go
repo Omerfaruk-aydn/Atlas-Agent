@@ -8,6 +8,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestOptionUILanguage(t *testing.T) {
+	t.Parallel()
+	for _, code := range []string{"en", "tr", "de", "fr", "it", "ar"} {
+		data, err := LoadShellConfig(t.Context(), filepath.Join(t.TempDir(), "atlasrc"), []byte("option ui language "+code))
+		require.NoError(t, err)
+		var result struct {
+			Options struct {
+				TUI struct {
+					Language string `json:"language"`
+				} `json:"tui"`
+			} `json:"options"`
+		}
+		require.NoError(t, json.Unmarshal(data, &result))
+		require.Equal(t, code, result.Options.TUI.Language)
+	}
+	_, err := LoadShellConfig(t.Context(), filepath.Join(t.TempDir(), "atlasrc"), []byte("option ui language xx"))
+	require.Error(t, err)
+}
+
 func TestOption_Bool(t *testing.T) {
 	t.Parallel()
 

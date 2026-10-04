@@ -5,10 +5,12 @@ package computer
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
 	"log/slog"
+	"runtime"
 	"time"
 	"unicode/utf16"
 	"unsafe"
@@ -31,13 +33,13 @@ var (
 	procGetCursorPos     = modUser32.NewProc("GetCursorPos")
 	procSendInput        = modUser32.NewProc("SendInput")
 
-	procCreateCompatibleDC     = modGdi32.NewProc("CreateCompatibleDC")
-	procCreateCompatibleBitmap = modGdi32.NewProc("CreateCompatibleBitmap")
-	procSelectObject           = modGdi32.NewProc("SelectObject")
-	procBitBlt                 = modGdi32.NewProc("BitBlt")
-	procGetDIBits              = modGdi32.NewProc("GetDIBits")
-	procDeleteObject           = modGdi32.NewProc("DeleteObject")
-	procDeleteDC               = modGdi32.NewProc("DeleteDC")
+	procCreateCompatibleDC = modGdi32.NewProc("CreateCompatibleDC")
+	procCreateDIBSection   = modGdi32.NewProc("CreateDIBSection")
+	procSelectObject       = modGdi32.NewProc("SelectObject")
+	procBitBlt             = modGdi32.NewProc("BitBlt")
+	procGdiFlush           = modGdi32.NewProc("GdiFlush")
+	procDeleteObject       = modGdi32.NewProc("DeleteObject")
+	procDeleteDC           = modGdi32.NewProc("DeleteDC")
 )
 
 const (
@@ -102,7 +104,7 @@ func keyboardPayload(vk, scan uint16, flags uint32) [32]byte {
 }
 
 // bitmapInfoHeader mirrors BITMAPINFOHEADER; bitmapInfo adds the single
-// palette entry GetDIBits requires even for 32-bit captures.
+// palette entry used by BITMAPINFO even for 32-bit captures.
 type bitmapInfoHeader struct {
 	Size          uint32
 	Width         int32

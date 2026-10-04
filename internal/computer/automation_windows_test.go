@@ -94,7 +94,7 @@ func TestWindowsAutomationOwnForm(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	ready := filepath.Join(t.TempDir(), "ready.txt")
-	cmd := exec.CommandContext(ctx, "powershell.exe", "-STA", "-NoProfile", "-NonInteractive", "-Command", `Add-Type -AssemblyName PresentationFramework; $form=New-Object System.Windows.Window; $form.Title='Atlas automation fixture'; $form.ShowInTaskbar=$false; $form.Width=300; $form.Height=160; $form.Left=20; $form.Top=20; $panel=New-Object System.Windows.Controls.StackPanel; $input=New-Object System.Windows.Controls.TextBox; [System.Windows.Automation.AutomationProperties]::SetName($input,'Fixture input'); $button=New-Object System.Windows.Controls.Button; $button.Content='Fixture save'; $label=New-Object System.Windows.Controls.TextBlock; $label.Text='Waiting'; $button.Add_Click({$label.Text='Saved'}); $null=$panel.Children.Add($input); $null=$panel.Children.Add($button); $null=$panel.Children.Add($label); $form.Content=$panel; $form.Add_ContentRendered({$helper=New-Object System.Windows.Interop.WindowInteropHelper($form); [System.IO.File]::WriteAllText($env:ATLAS_FIXTURE_READY,[string]$helper.Handle.ToInt64())}); $app=New-Object System.Windows.Application; $null=$app.Run($form)`)
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-STA", "-NoProfile", "-NonInteractive", "-Command", `Add-Type -AssemblyName PresentationFramework; $form=New-Object System.Windows.Window; $form.Title='Atlas automation fixture'; $form.ShowInTaskbar=$false; $form.Width=300; $form.Height=160; $form.Left=20; $form.Top=20; $panel=New-Object System.Windows.Controls.StackPanel; $input=New-Object System.Windows.Controls.TextBox; [System.Windows.Automation.AutomationProperties]::SetName($input,'Fixture input'); $button=New-Object System.Windows.Controls.Button; $button.Content='Fixture save'; $label=New-Object System.Windows.Controls.TextBlock; $label.Text='Waiting'; $button.Add_Click({$label.Text='Saved'}); $null=$panel.Children.Add($input); $null=$panel.Children.Add($button); $null=$panel.Children.Add($label); $ghost=New-Object System.Windows.Controls.Button; $ghost.Content='Fixture save'; $ghost.Visibility=[System.Windows.Visibility]::Collapsed; $null=$panel.Children.Add($ghost); $rejectInput=New-Object System.Windows.Controls.TextBox; [System.Windows.Automation.AutomationProperties]::SetName($rejectInput,'Rejecting input'); $rejectInput.Add_TextChanged({if($rejectInput.Text.Length -gt 0){$rejectInput.Text=''}}); $null=$panel.Children.Add($rejectInput); $form.Content=$panel; $form.Add_ContentRendered({$null=$input.Focus();$helper=New-Object System.Windows.Interop.WindowInteropHelper($form); [System.IO.File]::WriteAllText($env:ATLAS_FIXTURE_READY,[string]$helper.Handle.ToInt64())}); $app=New-Object System.Windows.Application; $null=$app.Run($form)`)
 	cmd.Env = append(os.Environ(), "ATLAS_FIXTURE_READY="+ready)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	require.NoError(t, cmd.Start())
@@ -113,6 +113,20 @@ func TestWindowsAutomationOwnForm(t *testing.T) {
 		}
 	}
 	driver := &windowsBackend{}
+	windowsData, err := driver.Automation(ctx, AutomationRequest{Action: "windows"})
+	require.NoError(t, err)
+	require.Contains(t, string(windowsData), "Atlas automation fixture")
+	require.Contains(t, string(windowsData), `"foreground"`)
+	focused, err := driver.Automation(ctx, AutomationRequest{Action: "focus", WindowID: hwnd})
+	if err != nil {
+		// Windows may deny foreground activation while the user is active.
+		require.ErrorContains(t, err, "focus_denied")
+		require.Empty(t, focused)
+		t.Log("Foreground activation denied by Windows; no success reported")
+	} else {
+		require.Contains(t, string(focused), `"focused":true`)
+		require.Equal(t, hwnd, driver.ForegroundWindow())
+	}
 	run := func(p AutomationRequest) string {
 		t.Helper()
 		p.WindowID = hwnd
@@ -120,10 +134,40 @@ func TestWindowsAutomationOwnForm(t *testing.T) {
 		require.NoError(t, err)
 		return string(data)
 	}
-	require.Contains(t, run(AutomationRequest{Action: "inspect"}), "Fixture input")
+	inspection := run(AutomationRequest{Action: "inspect"})
+	require.Contains(t, inspection, "Fixture input")
+	require.Contains(t, inspection, "supported_patterns")
+	var observed struct {
+		Elements []struct {
+			ID   string `json:"element_id"`
+			Name string `json:"name"`
+		} `json:"elements"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(inspection), &observed))
+	// An incomplete name scan must not trigger an action on an unseen target.
+	_, incompleteErr := driver.Automation(ctx, AutomationRequest{Action: "invoke", WindowID: hwnd, Name: "Fixture save", MaxElements: 1})
+	require.ErrorContains(t, incompleteErr, "observation_incomplete")
+	_, rootPatternErr := driver.Automation(ctx, AutomationRequest{Action: "invoke", WindowID: hwnd, ElementID: observed.Elements[0].ID, MaxElements: 1})
+	require.ErrorContains(t, rootPatternErr, "unsupported_pattern")
+	require.Contains(t, run(AutomationRequest{Action: "inspect", MaxElements: 1}), `"truncated":true`)
+	_, patternErr := driver.Automation(ctx, AutomationRequest{Action: "invoke", WindowID: hwnd, Name: "Fixture input"})
+	require.ErrorContains(t, patternErr, "unsupported_pattern")
 	require.Contains(t, run(AutomationRequest{Action: "find", Name: "Fixture input"}), `"count":1`)
-	run(AutomationRequest{Action: "set_value", Name: "Fixture input", Text: "Örnek 123"})
+	valueResult := run(AutomationRequest{Action: "set_value", Name: "Fixture input", Text: "Örnek 123"})
+	require.Contains(t, valueResult, `"value_verified":true`)
+	require.Contains(t, valueResult, `"keyboard_focused":`)
 	require.Contains(t, run(AutomationRequest{Action: "assert", Name: "Fixture input", Condition: "value", Expected: "Örnek 123"}), `"passed":true`)
+	require.Contains(t, run(AutomationRequest{Action: "assert", Name: "Fixture save", Role: "ControlType.Button", Condition: "enabled"}), `"passed":true`)
+	if driver.ForegroundWindow() == hwnd {
+		require.NoError(t, driver.Hotkey([]string{"ctrl"}, "a"))
+		if driver.ForegroundWindow() == hwnd {
+			require.NoError(t, driver.TypeText("Shortcut verified"))
+			require.Contains(t, run(AutomationRequest{Action: "assert", Name: "Fixture input", Condition: "value", Expected: "Shortcut verified"}), `"passed":true`)
+			t.Log("Physical Ctrl+A replaced the entire owned fixture input")
+		}
+	} else {
+		t.Log("Owned fixture not foreground; physical keyboard test omitted")
+	}
 	run(AutomationRequest{Action: "invoke", Name: "Fixture save", Role: "ControlType.Button"})
 	require.Contains(t, run(AutomationRequest{Action: "assert", Name: "Saved", Condition: "visible"}), `"passed":true`)
 }

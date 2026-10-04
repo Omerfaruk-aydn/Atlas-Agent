@@ -30,6 +30,8 @@ jobs:
       - run: go mod tidy
       - run: git diff --exit-code
       - run: go build -race ./...
+      - name: Validate Windows speech installer routing
+        run: node npm/cli/scripts/speech-setup.test.js
       - name: Enable sandboxed Chrome user namespaces on Ubuntu runner
         if: runner.os == 'Linux'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0

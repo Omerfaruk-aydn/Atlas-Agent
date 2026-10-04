@@ -70,14 +70,14 @@ func NewFileDiff(com *common.Common, path, before, after string, additions, dele
 	h.Styles = com.Styles.DialogHelpStyles()
 	d.help = h
 
-	d.keyMap.Up = key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "scroll up"))
-	d.keyMap.Down = key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "scroll down"))
-	d.keyMap.PageUp = key.NewBinding(key.WithKeys("pgup", "b"), key.WithHelp("pgup", "page up"))
-	d.keyMap.PageDown = key.NewBinding(key.WithKeys("pgdown", "f", " "), key.WithHelp("pgdn", "page down"))
+	d.keyMap.Up = key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", com.Text("scroll up")))
+	d.keyMap.Down = key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", com.Text("scroll down")))
+	d.keyMap.PageUp = key.NewBinding(key.WithKeys("pgup", "b"), key.WithHelp("pgup", com.Text("page up")))
+	d.keyMap.PageDown = key.NewBinding(key.WithKeys("pgdown", "f", " "), key.WithHelp("pgdn", com.Text("page down")))
 	d.keyMap.Close = CloseKey
-	d.keyMap.Review = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "line feedback"))
-	d.keyMap.PreviousLine = key.NewBinding(key.WithKeys("["), key.WithHelp("[", "previous source line"))
-	d.keyMap.NextLine = key.NewBinding(key.WithKeys("]"), key.WithHelp("]", "next source line"))
+	d.keyMap.Review = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", com.Text("line feedback")))
+	d.keyMap.PreviousLine = key.NewBinding(key.WithKeys("["), key.WithHelp("[", com.Text("previous source line")))
+	d.keyMap.NextLine = key.NewBinding(key.WithKeys("]"), key.WithHelp("]", com.Text("next source line")))
 
 	return d
 }

@@ -113,18 +113,18 @@ func NewSnippets(com *common.Common, snippets []Snippet, draftText string) *Snip
 
 	d.nameInput = textinput.New()
 	d.nameInput.SetVirtualCursor(false)
-	d.nameInput.Placeholder = "Snippet name..."
+	d.nameInput.Placeholder = com.Text("Snippet name...")
 	d.nameInput.SetStyles(com.Styles.TextInput)
 
 	h := help.New()
 	h.Styles = com.Styles.DialogHelpStyles()
 	d.help = h
 
-	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", "next"))
-	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", "previous"))
+	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", com.Text("next")))
+	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", com.Text("previous")))
 	d.keyMap.Select = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "insert"))
-	d.keyMap.New = key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "save draft as snippet"))
-	d.keyMap.Delete = key.NewBinding(key.WithKeys("x", "ctrl+x"), key.WithHelp("x", "delete"))
+	d.keyMap.New = key.NewBinding(key.WithKeys("n"), key.WithHelp("n", com.Text("save draft as snippet")))
+	d.keyMap.Delete = key.NewBinding(key.WithKeys("x", "ctrl+x"), key.WithHelp("x", com.Text("delete")))
 	d.keyMap.Close = CloseKey
 
 	return d
@@ -231,15 +231,15 @@ func (d *Snippets) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	innerWidth := width - t.Dialog.View.GetHorizontalFrameSize()
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Snippets"
+	rc.Title = d.com.Text("Snippets")
 
 	if d.naming {
 		d.nameInput.SetWidth(max(0, innerWidth-1))
 		rc.AddPart(t.Dialog.InputPrompt.Render(d.nameInput.View()))
 	} else if len(d.list.FilteredItems()) == 0 {
-		msg := "No saved snippets yet."
+		msg := d.com.Text("No saved snippets yet.")
 		if d.draftText != "" {
-			msg += " Press n to save your current draft."
+			msg += d.com.Text(" Press n to save your current draft.")
 		}
 		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render(msg))
 	} else {

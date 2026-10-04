@@ -90,7 +90,7 @@ func NewPromptHistory(com *common.Common, messages []string) *PromptHistory {
 
 	d.input = textinput.New()
 	d.input.SetVirtualCursor(false)
-	d.input.Placeholder = "Type to search past prompts..."
+	d.input.Placeholder = com.Text("Type to search past prompts...")
 	d.input.SetStyles(com.Styles.TextInput)
 	d.input.Focus()
 
@@ -98,8 +98,8 @@ func NewPromptHistory(com *common.Common, messages []string) *PromptHistory {
 	h.Styles = com.Styles.DialogHelpStyles()
 	d.help = h
 
-	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", "next"))
-	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", "previous"))
+	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", com.Text("next")))
+	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", com.Text("previous")))
 	d.keyMap.Select = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "insert"))
 	d.keyMap.Close = CloseKey
 
@@ -173,11 +173,11 @@ func (d *PromptHistory) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	d.input.SetWidth(max(0, innerWidth-1))
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Prompt history"
+	rc.Title = d.com.Text("Prompt history")
 	rc.AddPart(t.Dialog.InputPrompt.Render(d.input.View()))
 
 	if len(d.list.FilteredItems()) == 0 {
-		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render("No matching prompts."))
+		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render(d.com.Text("No matching prompts.")))
 	} else {
 		listHeight, listTotalHeight, _ := sizeDialogList(t, d.list, innerWidth, height)
 		bodyView := t.Dialog.List.Height(d.list.Height()).Render(d.list.Render())

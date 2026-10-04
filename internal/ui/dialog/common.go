@@ -124,7 +124,12 @@ func applyInfoColumnVisibility(items []list.Item, rowWidth, maxPercent int) {
 // wraps or overflows the border, and never ends on a dangling separator.
 func renderDialogHelp(t *styles.Styles, h *help.Model, km help.KeyMap, contentWidth int) string {
 	textWidth := max(0, contentWidth-t.Dialog.HelpView.GetHorizontalFrameSize())
-	return t.Dialog.HelpView.Render(shortHelpLine(h, km.ShortHelp(), textWidth))
+	bindings := append([]key.Binding(nil), km.ShortHelp()...)
+	for i := range bindings {
+		help := bindings[i].Help()
+		bindings[i].SetHelp(help.Key, t.Text(help.Desc))
+	}
+	return t.Dialog.HelpView.Render(shortHelpLine(h, bindings, textWidth))
 }
 
 // shortHelpLine builds a single-line short help view truncated to width.

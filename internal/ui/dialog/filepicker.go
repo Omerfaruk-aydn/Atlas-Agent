@@ -73,19 +73,19 @@ func NewFilePicker(com *common.Common) (*FilePicker, tea.Cmd) {
 	)
 	f.km.Down = key.NewBinding(
 		key.WithKeys("down", "j"),
-		key.WithHelp("down/j", "move down"),
+		key.WithHelp("down/j", com.Text("move down")),
 	)
 	f.km.Up = key.NewBinding(
 		key.WithKeys("up", "k"),
-		key.WithHelp("up/k", "move up"),
+		key.WithHelp("up/k", com.Text("move up")),
 	)
 	f.km.Forward = key.NewBinding(
 		key.WithKeys("right", "l"),
-		key.WithHelp("right/l", "move forward"),
+		key.WithHelp("right/l", com.Text("move forward")),
 	)
 	f.km.Backward = key.NewBinding(
 		key.WithKeys("left", "h"),
-		key.WithHelp("left/h", "move backward"),
+		key.WithHelp("left/h", com.Text("move backward")),
 	)
 	f.km.Navigate = key.NewBinding(
 		key.WithKeys("right", "l", "left", "h", "up", "k", "down", "j"),
@@ -246,7 +246,7 @@ func (f *FilePicker) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 
 	rc := NewRenderContext(t, width)
 	rc.Gap = 1
-	rc.Title = "Add Image"
+	rc.Title = f.com.Text("Add Image")
 	rc.Help = renderDialogHelp(t, &f.help, f, innerWidth)
 
 	if imgPrevHeight > 0 {

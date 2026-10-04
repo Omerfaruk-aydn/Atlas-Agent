@@ -76,15 +76,15 @@ func NewArguments(com *common.Common, title, description string, arguments []com
 
 	a.keyMap.Confirm = key.NewBinding(
 		key.WithKeys("enter"),
-		key.WithHelp("enter", "confirm"),
+		key.WithHelp("enter", com.Text("confirm")),
 	)
 	a.keyMap.Next = key.NewBinding(
 		key.WithKeys("down", "tab"),
-		key.WithHelp("↓/tab", "next"),
+		key.WithHelp("↓/tab", com.Text("next")),
 	)
 	a.keyMap.Previous = key.NewBinding(
 		key.WithKeys("up", "shift+tab"),
-		key.WithHelp("↑/shift+tab", "previous"),
+		key.WithHelp("↑/shift+tab", com.Text("previous")),
 	)
 	a.keyMap.Close = CloseKey
 
@@ -219,7 +219,7 @@ func (a *Arguments) HandleMsg(msg tea.Msg) Action {
 				for i, arg := range a.arguments {
 					args[arg.ID] = a.inputs[i].Value()
 					if arg.Required && strings.TrimSpace(a.inputs[i].Value()) == "" {
-						warning = util.ReportWarn("Required argument '" + arg.Title + "' is missing.")
+						warning = util.ReportWarn(a.com.Text("Required argument '") + arg.Title + a.com.Text("' is missing."))
 						break
 					}
 				}
@@ -357,7 +357,7 @@ func (a *Arguments) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	// Use standard header
 	titleStyle := s.Dialog.Title
 
-	titleText := cmp.Or(a.title, "Arguments")
+	titleText := cmp.Or(a.title, a.com.Text("Arguments"))
 
 	header := common.DialogTitle(s, titleText, width)
 
@@ -370,7 +370,7 @@ func (a *Arguments) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 
 	helpView := renderDialogHelp(s, &a.help, a, width)
 	if a.loading {
-		helpView = s.Dialog.HelpView.Width(width).Render(a.spinner.View() + " Generating Prompt...")
+		helpView = s.Dialog.HelpView.Width(width).Render(a.spinner.View() + a.com.Text(" Generating Prompt..."))
 	}
 
 	availableHeight := area.Dy() - s.Dialog.View.GetVerticalFrameSize() - dialogContentStyle.GetVerticalFrameSize() - lipgloss.Height(header) - lipgloss.Height(description) - lipgloss.Height(helpView) - 2 // extra spacing

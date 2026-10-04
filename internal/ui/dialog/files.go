@@ -101,9 +101,9 @@ func NewFiles(com *common.Common, entries []FileDiffEntry) *Files {
 	d.list = list.NewFilterableList(items...)
 	d.list.Focus()
 
-	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", "next"))
-	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", "previous"))
-	d.keyMap.Select = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "view diff"))
+	d.keyMap.Next = key.NewBinding(key.WithKeys("down", "ctrl+n"), key.WithHelp("↓", com.Text("next")))
+	d.keyMap.Previous = key.NewBinding(key.WithKeys("up", "ctrl+p"), key.WithHelp("↑", com.Text("previous")))
+	d.keyMap.Select = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", com.Text("view diff")))
 	d.keyMap.Close = CloseKey
 
 	return d
@@ -184,10 +184,10 @@ func (d *Files) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	innerWidth := width - t.Dialog.View.GetHorizontalFrameSize()
 
 	rc := NewRenderContext(t, width)
-	rc.Title = "Modified Files"
+	rc.Title = d.com.Text("Modified Files")
 
 	if len(d.list.FilteredItems()) == 0 {
-		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render("No modified files in this session."))
+		rc.AddPart(t.Dialog.Sessions.RenamingingMessage.Render(d.com.Text("No modified files in this session.")))
 	} else {
 		listHeight, listTotalHeight, _ := sizeDialogList(t, d.list, innerWidth, height)
 		bodyView := t.Dialog.List.Height(d.list.Height()).Render(d.list.Render())

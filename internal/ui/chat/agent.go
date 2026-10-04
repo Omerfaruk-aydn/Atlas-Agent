@@ -127,7 +127,7 @@ type AgentToolRenderContext struct {
 func (r *AgentToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if !opts.ToolCall.Finished && !opts.IsCanceled() && len(r.agent.nestedTools) == 0 {
-		return pendingTool(sty, "Agent", opts.Anim, opts.Compact)
+		return pendingTool(sty, sty.Text("Agent"), opts.Anim, opts.Compact)
 	}
 
 	var params agent.AgentParams
@@ -138,13 +138,13 @@ func (r *AgentToolRenderContext) RenderTool(sty *styles.Styles, width int, opts 
 		prompt = strings.ReplaceAll(prompt, "\n", " ")
 	}
 
-	header := toolHeader(sty, opts.Status, "Agent", cappedWidth, opts)
+	header := toolHeader(sty, opts.Status, sty.Text("Agent"), cappedWidth, opts)
 	if opts.Compact {
 		return header
 	}
 
 	// Build the task tag and prompt.
-	taskTag := sty.Tool.AgentTaskTag.Render("Task")
+	taskTag := sty.Tool.AgentTaskTag.Render(sty.Text("Task"))
 	taskTagWidth := lipgloss.Width(taskTag)
 
 	// Calculate remaining width for prompt.
@@ -313,7 +313,7 @@ func (r *AgenticFetchToolRenderContext) RenderTool(sty *styles.Styles, width int
 	}
 
 	// Build the prompt tag.
-	promptTag := sty.Tool.AgenticFetchPromptTag.Render("Prompt")
+	promptTag := sty.Tool.AgenticFetchPromptTag.Render(sty.Text("Prompt"))
 	promptTagWidth := lipgloss.Width(promptTag)
 
 	// Calculate remaining width for prompt text.

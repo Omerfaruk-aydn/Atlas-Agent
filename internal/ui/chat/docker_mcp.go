@@ -173,7 +173,7 @@ func (d *DockerMCPToolRenderContext) renderMCPServers(sty *styles.Styles, opts *
 	}
 
 	if len(result.Servers) == 0 {
-		return sty.Tool.ResultEmpty.Render("No MCP servers found.")
+		return sty.Tool.ResultEmpty.Render(sty.Text("No MCP servers found."))
 	}
 
 	bodyWidth := min(120, width) - toolBodyLeftPaddingTotal
@@ -181,7 +181,7 @@ func (d *DockerMCPToolRenderContext) renderMCPServers(sty *styles.Styles, opts *
 	moreServers := ""
 	for i, server := range result.Servers {
 		if i > 9 {
-			moreServers = sty.Tool.ResultTruncation.Render(fmt.Sprintf("... and %d more", len(result.Servers)-10))
+			moreServers = sty.Tool.ResultTruncation.Render(fmt.Sprintf(sty.Text("... and %d more"), len(result.Servers)-10))
 			break
 		}
 		rows = append(rows, []string{sty.Tool.ResultItemName.Render(server.Name), sty.Tool.ResultItemDesc.Render(server.Description)})
@@ -233,12 +233,12 @@ func (d *DockerMCPToolRenderContext) formatToolName(sty *styles.Styles, tool str
 	case "mcp-config-set":
 		action = "Config Set"
 	case "mcp-find":
-		action = "Find"
+		action = sty.Text("Find")
 	case "mcp-add":
-		action = "Add"
+		action = sty.Text("Add")
 		actionStyle = sty.Tool.ActionCreate
 	case "mcp-remove":
-		action = "Remove"
+		action = sty.Text("Remove")
 		actionStyle = sty.Tool.ActionDestroy
 	case "code-mode":
 		action = "Code Mode"

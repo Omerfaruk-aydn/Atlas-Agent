@@ -34,7 +34,7 @@ func (b *MCPToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *T
 	cappedWidth := cappedMessageWidth(width)
 	toolNameParts := strings.SplitN(opts.ToolCall.Name, "_", 3)
 	if len(toolNameParts) != 3 {
-		return toolErrorContent(sty, &message.ToolResult{Content: "Invalid tool name"}, cappedWidth)
+		return toolErrorContent(sty, &message.ToolResult{Content: sty.Text("Invalid tool name")}, cappedWidth)
 	}
 	mcpName := humanizedToolName(toolNameParts[1])
 	toolName := humanizedToolName(toolNameParts[2])
@@ -50,7 +50,7 @@ func (b *MCPToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *T
 
 	var params map[string]any
 	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
-		return toolErrorContent(sty, &message.ToolResult{Content: "Invalid parameters"}, cappedWidth)
+		return toolErrorContent(sty, &message.ToolResult{Content: sty.Text("Invalid parameters")}, cappedWidth)
 	}
 
 	var toolParams []string

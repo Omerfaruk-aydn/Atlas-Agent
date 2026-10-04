@@ -35,16 +35,16 @@ type QuestionToolRenderContext struct{}
 func (q *QuestionToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *ToolRenderOpts) string {
 	cappedWidth := cappedMessageWidth(width)
 	if opts.IsPending() {
-		return pendingTool(sty, "Question", opts.Anim, opts.Compact)
+		return pendingTool(sty, sty.Text("Question"), opts.Anim, opts.Compact)
 	}
 
 	var params tools.QuestionParams
 	if err := json.Unmarshal([]byte(opts.ToolCall.Input), &params); err != nil {
-		return toolErrorContent(sty, &message.ToolResult{Content: "Invalid parameters"}, cappedWidth)
+		return toolErrorContent(sty, &message.ToolResult{Content: sty.Text("Invalid parameters")}, cappedWidth)
 	}
 
 	headerText := questionSummary(params)
-	header := toolHeader(sty, opts.Status, "Question", cappedWidth, opts, headerText)
+	header := toolHeader(sty, opts.Status, sty.Text("Question"), cappedWidth, opts, headerText)
 	if opts.Compact {
 		return header
 	}
@@ -217,9 +217,9 @@ func styleAnswer(sty *styles.Styles, answer string) string {
 func styleAnswerLine(sty *styles.Styles, answer string) string {
 	switch {
 	case answer == "User answered: yes":
-		return sty.Tool.TodoCompletedIcon.Render("Yes")
+		return sty.Tool.TodoCompletedIcon.Render(sty.Text("Yes"))
 	case answer == "User answered: no":
-		return sty.Tool.StateCancelled.Render("No")
+		return sty.Tool.StateCancelled.Render(sty.Text("No"))
 	case strings.HasPrefix(answer, "User selected:"):
 		selected := strings.TrimPrefix(answer, "User selected: ")
 		selected = strings.Trim(selected, "[]\"")
@@ -229,7 +229,7 @@ func styleAnswerLine(sty *styles.Styles, answer string) string {
 		text := strings.TrimPrefix(answer, "User provided: ")
 		return sty.Tool.ParamMain.Render(text)
 	case answer == "User skipped this question":
-		return sty.Tool.StateCancelled.Render("Skipped")
+		return sty.Tool.StateCancelled.Render(sty.Text("Skipped"))
 	default:
 		return answer
 	}

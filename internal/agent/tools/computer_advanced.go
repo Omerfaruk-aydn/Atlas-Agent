@@ -7,8 +7,10 @@ import (
 	"math"
 	"time"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 )
 
 func isComputerAutomationAction(action string) bool {
@@ -62,6 +64,17 @@ func (s *computerToolState) runAutomation(ctx context.Context, action string, p 
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		if action != "assert" {
+			if action == "invoke" && s.overlay && ctx.Err() == nil {
+				var confirmed struct {
+					ActionSent bool `json:"action_sent"`
+				}
+				e := activity.Default.Snapshot()
+				if json.Unmarshal(data, &confirmed) == nil && confirmed.ActionSent && e.Point && e.WindowID == request.WindowID && e.Session == engineering.GetScope(ctx, GetSessionFromContext(ctx)).SessionID && e.Resource == "desktop" {
+					if activity.Default.Pointer(e.ID, "click", e.X, e.Y) {
+						activity.Default.Present()
+					}
+				}
+			}
 			origin := driver.Origin()
 			imageOrigin := computer.Point{}
 			if action == "ocr" && (p.Width != 0 || p.Height != 0) {

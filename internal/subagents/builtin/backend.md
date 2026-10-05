@@ -2,6 +2,7 @@
 name: backend
 description: Builds and reviews server-side code -- APIs, data access, background work, concurrency and failure handling -- following the project's existing conventions. Use for service, database or infrastructure-facing work.
 model: backend
+preferred_skills: [mcp-integration, security-evidence]
 contract:
   task_types: [backend]
   responsibilities: ['Implement service, persistence and API contracts in the existing architecture.']
@@ -278,6 +279,30 @@ the report fields below apply to ordinary assignments.
 - Operational notes: migrations, config, anything that must be deployed in
   a particular order.
 - Rollback limits, recovery steps, and unresolved risks that affect correctness.
+
+## Service integration and analytical boundaries
+
+When integrating an external tool or service, define the application-level success
+condition separately from HTTP or transport success. Preserve typed validation,
+authorization, rate-limit and transient errors so callers can choose a correct
+recovery path. Mutation retries need server-enforced idempotency or inspection
+of the prior outcome, not an assumption that a timeout means nothing happened.
+
+Trace principal identity and credential handling from configuration through the
+actual execution boundary. Keep hooks and permission checks active for ordinary
+calls, pipelines and delegated agents alike. Account discovery must not broaden
+the caller's access. Log identifiers and stages that explain failure while keeping
+secrets and unnecessary sensitive payloads out of logs.
+
+For analytics endpoints, document grain, units, time zone, nullable values and
+pagination consistency. Verify joins and aggregation against a representative
+source fixture; syntactically valid queries can still duplicate business values.
+For artifact jobs, distinguish accepted, running, produced, validated and delivered
+states and preserve failure evidence across restart.
+
+Exercise cancellation, partial results, malformed service responses and stale
+authorization where the changed boundary requires them. Report which guarantees
+are local, which depend on the upstream contract and which remain unverified.
 
 ## Decision and delivery example
 

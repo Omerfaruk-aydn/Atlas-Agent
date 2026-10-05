@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
+
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/notify"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools/mcp"
@@ -816,6 +818,7 @@ func (app *App) Subscribe(program *tea.Program) {
 
 // Shutdown performs a graceful shutdown of the application.
 func (app *App) Shutdown() {
+	defer activity.Default.Close()
 	start := time.Now()
 	defer func() { slog.Debug("Shutdown took " + time.Since(start).String()) }()
 

@@ -43,6 +43,7 @@ type PromptDat struct {
 	GlobalContextFiles []ContextFile
 	ContextNotice      string
 	AvailSkillXML      string
+	RoleSkillGuidance  string
 	// ProjectMemory and UserMemory are the persistent stores, read once
 	// here and then frozen for the life of the session. See
 	// loadMemory for why they are not refreshed.
@@ -188,20 +189,22 @@ func (p *Prompt) promptData(ctx context.Context, provider, model string, store *
 	if len(allSkills) > 0 {
 		availSkillXML = skills.ToPromptXML(allSkills)
 	}
+	roleSkillGuidance := renderRoleSkills(ctx, allSkills)
 
 	isGit := isGitRepo(store.WorkingDir())
 	data := PromptDat{
-		TaskProtocols: guidance,
-		Provider:      provider,
-		Model:         model,
-		Config:        *cfg,
-		WorkingDir:    filepath.ToSlash(workingDir),
-		IsGitRepo:     isGit,
-		Platform:      platform,
-		Date:          p.now().Format("1/2/2006"),
-		AvailSkillXML: availSkillXML,
-		ProjectMemory: loadMemory(store, memory.ScopeProject),
-		UserMemory:    loadMemory(store, memory.ScopeUser),
+		TaskProtocols:     guidance,
+		Provider:          provider,
+		Model:             model,
+		Config:            *cfg,
+		WorkingDir:        filepath.ToSlash(workingDir),
+		IsGitRepo:         isGit,
+		Platform:          platform,
+		Date:              p.now().Format("1/2/2006"),
+		AvailSkillXML:     availSkillXML,
+		RoleSkillGuidance: roleSkillGuidance,
+		ProjectMemory:     loadMemory(store, memory.ScopeProject),
+		UserMemory:        loadMemory(store, memory.ScopeUser),
 	}
 	if isGit {
 		var err error

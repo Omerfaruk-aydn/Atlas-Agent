@@ -18,6 +18,7 @@ var builtinNames = []string{
 	"debug",
 	"docs",
 	"frontend",
+	"motion-designer",
 	"planner",
 	"product-designer",
 	"refactor",

@@ -89,7 +89,7 @@ type AgentParams struct {
 	RetryFailed    bool             `json:"retry_failed,omitempty" description:"Retry only failed rows; omit items to load the stored batch definition. Successful and interrupted rows are never replayed."`
 	Architect      string           `json:"architect,omitempty" description:"Named read-only architect for architect_edit mode."`
 	Editor         string           `json:"editor,omitempty" description:"Named editor for architect_edit mode."`
-	TaskType       string           `json:"task_type,omitempty" description:"Structured task type for automatic routing: frontend, backend, test, review, debug, security, architecture, planning, research, docs or refactor."`
+	TaskType       string           `json:"task_type,omitempty" description:"Structured task type for automatic routing: frontend, backend, test, review, debug, security, architecture, planning, research, docs, refactor, product-design, visual-quality, motion, desktop, browser, document, presentation, data-analysis, template, integration or operations."`
 	RequiredTools  []string         `json:"required_tools,omitempty" description:"Tool capabilities the selected specialist must support."`
 	ExpectedOutput string           `json:"expected_output,omitempty" description:"Required role output, e.g. implementation, findings, test-results or plan."`
 	QualityOnly    bool             `json:"quality_only,omitempty" description:"Run the named specialist with direct edits, MCP and delegation disabled for independent validation."`
@@ -436,26 +436,29 @@ func (c *coordinator) buildSubagentSessionAgent(ctx context.Context, taskCfg con
 		if enabled {
 			modelCfg, ok = measured, true
 		}
-		if !ok {
+		if !ok && !sub.InheritModel {
 			return nil, fmt.Errorf(
 				"subagent %q needs the %q model role assigned before it can run; call atlas_config with action \"set_role\" and role %q to assign it a provider and model",
 				sub.Name, sub.Model, config.StripRoleReference(sub.Model))
 		}
-		large, err = c.resolveModel(ctx, modelCfg, true)
-		if err != nil {
-			return nil, fmt.Errorf("subagent %q: resolving model role %q: %w", sub.Name, sub.Model, err)
+		if ok {
+			large, err = c.resolveModel(ctx, modelCfg, true)
+			if err != nil {
+				return nil, fmt.Errorf("subagent %q: resolving model role %q: %w", sub.Name, sub.Model, err)
+			}
+			// The role override's own fallback chain, if any, is not modeled
+			// here: Options.ModelFallbacks is keyed by "large"/"small", not by
+			// custom role name, so there is nothing to look up for it yet.
+			largeFallbacks = nil
 		}
-		// The role override's own fallback chain, if any, is not modeled
-		// here: Options.ModelFallbacks is keyed by "large"/"small", not by
-		// custom role name, so there is nothing to look up for it yet.
-		largeFallbacks = nil
 	}
 
 	taskSystemPrompt, err := taskPrompt(prompt.WithWorkingDir(c.cfg.WorkingDir()))
 	if err != nil {
 		return nil, err
 	}
-	systemPrompt, err := taskSystemPrompt.Build(prompt.WithProtocols(ctx, prompt.SelectProtocols("", sub.Name)), large.Model.Provider(), large.Model.Model(), c.cfg)
+	roleCtx := prompt.WithRoleSkills(prompt.WithProtocols(ctx, prompt.SelectProtocols("", sub.Name)), sub.PreferredSkills)
+	systemPrompt, err := taskSystemPrompt.Build(roleCtx, large.Model.Provider(), large.Model.Model(), c.cfg)
 	if err != nil {
 		return nil, err
 	}

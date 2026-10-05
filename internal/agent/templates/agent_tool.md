@@ -14,6 +14,14 @@ task hints and description overlap, with the generic agent as a fallback. The
 response reports the selected role and routing reason. Prefer an explicit named
 specialist when the assignment is already clear.
 
+Use product-design, visual-quality, motion, desktop, browser, document,
+presentation, data-analysis, template, integration and operations for the matching
+specialist tasks. Their contracts describe outputs and actual required tools.
+New specialists inherit the primary model only when inherit_model is true and no
+explicit role assignment exists; an invalid assigned provider still fails.
+preferred_skills selects bounded procedural guidance after user overrides and
+disabled-skill filtering. Skill names grant neither tools nor connected accounts.
+
 Use session_key with a named specialist to retain its conversation for later
 assignments in the same parent session, including after restarting Atlas. Use a
 separate key for a different workstream. Role, model, tools or ownership changes

@@ -5,8 +5,17 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/prompt"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/subagents"
 )
+
+// withModeSkills keeps startup, model switches and turns on one skill recipe.
+func (c *coordinator) withModeSkills(ctx context.Context) context.Context {
+	if mode, ok := c.sessionMode(); ok {
+		return prompt.WithRoleSkills(ctx, mode.PreferredSkills)
+	}
+	return ctx
+}
 
 // A session mode puts the main session itself into a specialty instead of
 // delegating to one: the mode's instructions are folded into the coder
@@ -56,8 +65,8 @@ func (c *coordinator) withSessionMode(systemPrompt string) string {
 // resolves its own "model" field. Returns false when no mode is active,
 // when no role of that name is configured -- a mode with no model
 // assigned still contributes its prompt, just on the session's own model
-// -- or when that role fails to build, which is logged rather than
-// failing the session outright.
+// -- or when a legacy role fails to build, which is logged. Measured roles and
+// roles opting into inheritance reject invalid explicit assignments.
 func (c *coordinator) sessionModeModel(ctx context.Context) (Model, bool, error) {
 	if c.cfg.Overrides().PreserveSelectedModel {
 		return Model{}, false, nil
@@ -83,7 +92,7 @@ func (c *coordinator) sessionModeModel(ctx context.Context) (Model, bool, error)
 	}
 	model, err := c.resolveModel(ctx, roleCfg, false)
 	if err != nil {
-		if enabled {
+		if enabled || mode.InheritModel {
 			return Model{}, false, err
 		}
 		slog.Warn("Session mode's model role failed to build; staying on the session's own model",

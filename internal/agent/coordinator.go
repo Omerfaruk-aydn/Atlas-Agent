@@ -881,7 +881,11 @@ func (c *coordinator) buildAgent(ctx context.Context, prompt *prompt.Prompt, age
 	initCtx := context.WithoutCancel(ctx)
 
 	c.readyWg.Go(func() error {
-		systemPrompt, err := prompt.Build(initCtx, large.Model.Provider(), large.Model.Model(), c.cfg)
+		promptCtx := initCtx
+		if !isSubAgent {
+			promptCtx = c.withModeSkills(promptCtx)
+		}
+		systemPrompt, err := prompt.Build(promptCtx, large.Model.Provider(), large.Model.Model(), c.cfg)
 		if err != nil {
 			return err
 		}
@@ -2275,7 +2279,7 @@ func (c *coordinator) UpdateModels(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	systemPrompt, err := coderSystemPrompt.Build(ctx, large.Model.Provider(), large.Model.Model(), c.cfg)
+	systemPrompt, err := coderSystemPrompt.Build(c.withModeSkills(ctx), large.Model.Provider(), large.Model.Model(), c.cfg)
 	if err != nil {
 		return err
 	}

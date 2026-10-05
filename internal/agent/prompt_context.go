@@ -25,6 +25,7 @@ func (c *coordinator) preparePromptContext(ctx context.Context, id, text string)
 	if c.cfg != nil {
 		if mode, ok := c.sessionMode(); ok {
 			role = mode.Name
+			ctx = prompt.WithRoleSkills(ctx, mode.PreferredSkills)
 		}
 	}
 	ids := prompt.SelectProtocols(text, role)

@@ -62,7 +62,8 @@ func (s *Subagent) RolePrompt() string {
 		return ""
 	}
 	data, _ := json.Marshal(s.Contract)
-	return "\n\n<role_contract>\n" + string(data) + "\nUse the assignment's owned paths and acceptance criteria as the task boundary. " +
+	bindings, _ := json.Marshal(s.PreferredSkills)
+	return "\n\n<role_contract>\n" + string(data) + "\nPreferred skill names: " + string(bindings) + ". Use selected role guidance when applicable; unavailable skills do not grant substitute capabilities.\nUse the assignment's owned paths and acceptance criteria as the task boundary. " +
 		"Missing inputs must be investigated or reported as blocked. Report actual checks and unresolved risks; do not infer successful execution. " +
 		"Decision rights describe routine choices inside the assignment; they do not grant new tool permissions or publication authority. Stop only the affected dependency and continue independent authorized work. " +
 		"For workflow assignments return only the requested JSON handoff. The coordinator independently integrates and verifies completion.\n</role_contract>"
@@ -154,6 +155,9 @@ var (
 
 func inferTaskType(prompt string) string {
 	words := strings.FieldsFunc(strings.ToLower(prompt), func(r rune) bool { return (r < 'a' || r > 'z') && r <= 127 })
+	if (slices.Contains(words, "visual") || slices.Contains(words, "görsel")) && (slices.Contains(words, "review") || slices.Contains(words, "kontrol") || slices.Contains(words, "incele")) {
+		return "visual-quality"
+	}
 	// Review and diagnosis take precedence over the subject being inspected.
 	for _, group := range []struct {
 		kind  string
@@ -165,6 +169,16 @@ func inferTaskType(prompt string) string {
 		{"security", []string{"security", "vulnerability", "güvenlik"}},
 		{"architecture", []string{"architecture", "architect", "mimari"}},
 		{"planning", []string{"plan", "planner", "planning", "planla"}},
+		{"template", []string{"template", "templates", "şablon", "şablonu"}},
+		{"presentation", []string{"presentation", "presentations", "slides", "pptx", "sunum", "slayt"}},
+		{"document", []string{"docx", "pdf", "document", "belge"}},
+		{"data-analysis", []string{"spreadsheet", "xlsx", "csv", "analytics", "istatistik", "tablo"}},
+		{"desktop", []string{"desktop", "masaüstü", "computer"}},
+		{"browser", []string{"browser", "tarayıcı", "tarayıcıda"}},
+		{"integration", []string{"mcp", "connector", "integration", "entegrasyon"}},
+		{"operations", []string{"slack", "calendar", "takvim", "toplantı", "scheduling"}},
+		{"motion", []string{"motion", "animation", "animasyon", "animasyonu"}},
+		{"product-design", []string{"figma", "tasarla", "tasarımı", "designer"}},
 		{"frontend", []string{"frontend", "ui", "ux", "responsive", "arayüz"}},
 		{"backend", []string{"backend", "api", "database", "veritabanı"}},
 		{"docs", []string{"documentation", "docs", "dokümantasyon"}},

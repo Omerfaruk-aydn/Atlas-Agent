@@ -9,12 +9,12 @@ import (
 	"unicode"
 )
 
-const ProtocolVersion = "atlas-prompt-v2"
+const ProtocolVersion = "atlas-prompt-v3"
 
 //go:embed protocols/*.md
 var protocols embed.FS
 
-var protocolOrder = []string{"large_project", "architecture", "migration", "debug", "research", "ui", "platform"}
+var protocolOrder = []string{"large_project", "architecture", "migration", "debug", "research", "ui", "automation", "artifacts", "data_analysis", "security", "integration", "operations", "platform"}
 
 type protocolKey struct{}
 
@@ -52,12 +52,18 @@ func SelectProtocols(task, role string) []string {
 		return false
 	}
 	selected := map[string]bool{
+		"automation":    has("desktop", "computer", "browser", "masaüstü", "tarayıcı"),
+		"artifacts":     has("documents", "document", "pdf", "docx", "presentations", "presentation", "pptx", "sunum", "belge", "template", "şablon"),
+		"data_analysis": has("analyst", "spreadsheet", "xlsx", "csv", "analytics", "istatistik"),
+		"security":      has("security", "vulnerability", "güvenlik"),
+		"integration":   has("integration", "mcp", "connector", "entegrasyon"),
+		"operations":    has("operations", "slack", "calendar", "takvim", "toplantı"),
 		"large_project": has("platform", "modules", "modüller", "modülleri", "orchestrate", "workflow", "planner", "planning", "roadmap", "mimari", "architect", "architecture") || len(task) > 1600,
 		"architecture":  has("architect", "architecture", "mimari", "mimarisini", "contract", "contracts", "sözleşme", "api", "backend"),
 		"migration":     has("migration", "migrate", "migrasyon", "schema", "şema", "backfill", "upgrade", "sqlite", "database", "veritabanı"),
 		"debug":         has("debug", "diagnose", "bug", "regression", "hata", "hatayı", "hataları", "deadlock", "race"),
 		"research":      has("research", "investigate", "araştır", "araştırma", "kaynak", "sources"),
-		"ui":            has("ui", "ux", "frontend", "tui", "arayüz", "arayüzü", "tasarım", "tasarımı", "responsive", "animation", "animasyon", "swiftui"),
+		"ui":            has("ui", "ux", "frontend", "tui", "arayüz", "arayüzü", "tasarım", "tasarımı", "responsive", "animation", "animasyon", "swiftui", "figma") || slices.Contains([]string{"product-designer", "visual-qa", "motion-designer"}, role),
 		"platform":      has("agent_jobs", "task_board", "source_memory", "tool_pipeline", "vault", "heartbeat", "cron", "kasa", "hedef", "goal", "pipeline"),
 	}
 	var out []string

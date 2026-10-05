@@ -26,6 +26,37 @@ func TestTaskProtocolsSelectIntentWithoutSubstringMatches(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestSpecialistProtocolsFollowRolesAndRemainSelective(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ role, protocol string }{
+		{"desktop-operator", "automation"},
+		{"browser-operator", "automation"},
+		{"documents", "artifacts"},
+		{"presentations", "artifacts"},
+		{"data-analyst", "data_analysis"},
+		{"integration-engineer", "integration"},
+		{"operations", "operations"},
+		{"security", "security"},
+		{"product-designer", "ui"},
+		{"motion-designer", "ui"},
+		{"visual-qa", "ui"},
+		{"template-builder", "artifacts"},
+	} {
+		t.Run(tc.role, func(t *testing.T) {
+			t.Parallel()
+			ids := SelectProtocols("", tc.role)
+			require.Contains(t, ids, tc.protocol)
+			body, err := RenderProtocols(ids)
+			require.NoError(t, err)
+			require.Contains(t, body, "<task_protocol name=\""+tc.protocol+"\">")
+			if tc.protocol != "automation" {
+				require.NotContains(t, ids, "automation")
+			}
+		})
+	}
+	require.Empty(t, SelectProtocols("Analysis of a punctuation typo", ""))
+}
+
 func TestBuiltPromptLoadsOnlySelectedGuidance(t *testing.T) {
 	root := t.TempDir()
 	store := newPromptTestConfig(t, root)

@@ -442,6 +442,8 @@ func (m *UI) handleSaveSubagentMeta(msg dialog.ActionSaveSubagentMeta) tea.Cmd {
 				sub.Tools = e.Tools
 				sub.ReadOnly = e.ReadOnly
 				sub.AllowCommands = e.AllowCommands
+				sub.PreferredSkills = e.PreferredSkills
+				sub.InheritModel = e.InheritModel
 				_, err = ws.SaveSubagent(context.Background(), sub, msg.UserScope)
 				return subagentSavedMsg{err: err}
 			}

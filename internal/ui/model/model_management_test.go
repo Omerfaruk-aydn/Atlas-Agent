@@ -269,7 +269,7 @@ func TestHandleSaveSubagentMetaNewGetsThePlaceholderTemplate(t *testing.T) {
 // user already wrote for it.
 func TestHandleSaveSubagentMetaEditingPreservesInstructions(t *testing.T) {
 	ws := &modelManagementWorkspace{subagentsList: []subagents.Subagent{
-		{Name: "research", Description: "old description", Instructions: "Dig deep before answering."},
+		{Name: "research", Description: "old description", Instructions: "Dig deep before answering.", PreferredSkills: []string{"research-evidence"}, InheritModel: true},
 	}}
 	m := newModelManagementTestUI(ws)
 
@@ -283,6 +283,8 @@ func TestHandleSaveSubagentMetaEditingPreservesInstructions(t *testing.T) {
 	require.Equal(t, "new description", ws.savedSubagent.Description)
 	require.Equal(t, "Dig deep before answering.", ws.savedSubagent.Instructions,
 		"editing metadata must not touch the instructions body")
+	require.Equal(t, []string{"research-evidence"}, ws.savedSubagent.PreferredSkills)
+	require.True(t, ws.savedSubagent.InheritModel)
 }
 
 func TestHandleSaveSubagentMetaSaveErrorIsReported(t *testing.T) {

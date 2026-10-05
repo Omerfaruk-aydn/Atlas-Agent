@@ -1416,6 +1416,16 @@
         "idle_timeout": {
           "type": "integer",
           "description": "How long an unused browser session is kept open before it is closed automatically"
+        },
+        "overlay": {
+          "type": "boolean",
+          "description": "Show a noninteractive Atlas activity overlay during tool execution.",
+          "default": true
+        },
+        "overlay_reduced_motion": {
+          "type": "boolean",
+          "description": "Disable animated activity effects.",
+          "default": false
         }
       },
       "additionalProperties": false,
@@ -1442,6 +1452,16 @@
         "action_timeout": {
           "type": "integer",
           "description": "How long a single computer action (screenshot"
+        },
+        "overlay": {
+          "type": "boolean",
+          "description": "Show a noninteractive Atlas activity overlay during tool execution.",
+          "default": true
+        },
+        "overlay_reduced_motion": {
+          "type": "boolean",
+          "description": "Disable animated activity effects.",
+          "default": false
         }
       },
       "additionalProperties": false,

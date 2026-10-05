@@ -1372,6 +1372,16 @@
     },
     "ToolBrowser": {
       "properties": {
+        "overlay": {
+          "type": "boolean",
+          "description": "Show a noninteractive Atlas activity overlay during tool execution.",
+          "default": true
+        },
+        "overlay_reduced_motion": {
+          "type": "boolean",
+          "description": "Disable animated activity effects.",
+          "default": false
+        },
         "enabled": {
           "type": "boolean",
           "description": "Turn on the browser tool so the agent can navigate / click / type / screenshot / run JavaScript in a real Chrome or Chromium instance. Requires a Chrome or Chromium install on PATH (or executable_path below).",
@@ -1416,16 +1426,6 @@
         "idle_timeout": {
           "type": "integer",
           "description": "How long an unused browser session is kept open before it is closed automatically"
-        },
-        "overlay": {
-          "type": "boolean",
-          "description": "Show a noninteractive Atlas activity overlay during tool execution.",
-          "default": true
-        },
-        "overlay_reduced_motion": {
-          "type": "boolean",
-          "description": "Disable animated activity effects.",
-          "default": false
         }
       },
       "additionalProperties": false,
@@ -1444,15 +1444,6 @@
     },
     "ToolComputer": {
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Turn on the computer-use tool so the agent can screenshot the screen and click / drag / scroll / type / press keys on the real desktop. When on",
-          "default": false
-        },
-        "action_timeout": {
-          "type": "integer",
-          "description": "How long a single computer action (screenshot"
-        },
         "overlay": {
           "type": "boolean",
           "description": "Show a noninteractive Atlas activity overlay during tool execution.",
@@ -1462,6 +1453,15 @@
           "type": "boolean",
           "description": "Disable animated activity effects.",
           "default": false
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Turn on the computer-use tool so the agent can screenshot the screen and click / drag / scroll / type / press keys on the real desktop. When on",
+          "default": false
+        },
+        "action_timeout": {
+          "type": "integer",
+          "description": "How long a single computer action (screenshot"
         }
       },
       "additionalProperties": false,

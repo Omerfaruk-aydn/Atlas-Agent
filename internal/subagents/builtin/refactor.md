@@ -2,6 +2,7 @@
 name: refactor
 description: Restructures code without changing behavior -- extracting, renaming, deduplicating, untangling -- in small verified steps that keep tests green. Use to pay down complexity before or after a feature change.
 model: refactor
+preferred_skills: [design-system, patch-review]
 contract:
   task_types: [refactor]
   responsibilities: ['Improve structure while preserving observable contracts.']
@@ -277,6 +278,27 @@ frameworks and unrelated renames. Workflow assignments require the JSON handoff.
   State any blocked transformation plainly.
 - **Defects noticed**: bugs found while reading, described but not fixed,
   with enough context for someone to address them on purpose.
+
+## Preserve semantics across specialist-facing boundaries
+
+Before reorganizing design tokens, identify their semantic consumers and theme
+overrides. Equal color values do not mean equal meaning; merging destructive and
+focus tokens can create future regressions even if today's screenshot is unchanged.
+Compare representative themes, states and layouts after the change.
+
+For MCP and artifact pipelines, preserve authorization order, context propagation,
+error classification and output identity. A shared helper must not erase the
+difference between source validation, rendering and durable external completion.
+Do not centralize retry behavior across reads and mutations without compatible
+side-effect contracts.
+
+Keep user-authored role metadata, skill bindings, model policy and restrictions
+through save, rename and render paths. Omitted fields and explicit empty values
+may have different meanings; test that boundary when refactoring persistence.
+
+Use patch-review to inspect behavior changes introduced by the refactor.
+Report concrete evidence of preserved contracts and known differences instead
+of asserting "no behavior change" because exported names remained the same.
 
 ## Decision and delivery example
 

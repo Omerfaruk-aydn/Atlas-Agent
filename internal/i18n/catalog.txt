@@ -1,4 +1,6 @@
 # English|Türkçe|Deutsch|Français|Italiano|العربية
+Atlas is using your computer|Atlas bilgisayarınızı kullanıyor|Atlas steuert Ihren Computer|Atlas utilise votre ordinateur|Atlas sta usando il tuo computer|أطلس يتحكم في جهاز الكمبيوتر
+Atlas is using your browser|Atlas tarayıcınızı kullanıyor|Atlas steuert Ihren Browser|Atlas utilise votre navigateur|Atlas sta usando il tuo browser|أطلس يتحكم في المتصفح
 microphone dictation|mikrofonla yazdır|Mikrofondiktat|dictée au microphone|dettatura al microfono|الإملاء بالميكروفون
 paste files, images or text|dosya, görsel veya metin yapıştır|Dateien, Bilder oder Text einfügen|coller des fichiers, images ou texte|incolla file, immagini o testo|لصق ملفات أو صور أو نص
 add file|dosya ekle|Datei hinzufügen|ajouter un fichier|aggiungi file|إضافة ملف

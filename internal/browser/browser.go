@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
@@ -29,7 +30,9 @@ import (
 // setting the user changes mid-session takes effect on the next launch
 // rather than at the next restart.
 type Options struct {
-	IsolateProfiles bool
+	OverlayDisabled      bool
+	OverlayReducedMotion bool
+	IsolateProfiles      bool
 	// ExecutablePath is the Chrome/Chromium binary to launch. Empty lets
 	// chromedp search the usual install locations.
 	ExecutablePath string
@@ -290,13 +293,22 @@ func SupportedKeys() []string {
 }
 
 type chromedpSession struct {
-	ctx           context.Context
-	rootCtx       context.Context
-	tabCancels    []context.CancelFunc
-	cancel        context.CancelFunc
-	actionTimeout time.Duration
-	closeOnce     sync.Once
-	ownedBrowser  bool
+	activityClosed        bool
+	activityManager       *activity.Manager
+	activityEnabled       bool
+	activityReducedMotion bool
+	activityStopOnce      sync.Once
+	activityStopWatch     func()
+	pointerHeld           bool
+	pointerDragged        bool
+	pointerX, pointerY    float64
+	ctx                   context.Context
+	rootCtx               context.Context
+	tabCancels            []context.CancelFunc
+	cancel                context.CancelFunc
+	actionTimeout         time.Duration
+	closeOnce             sync.Once
+	ownedBrowser          bool
 
 	// mu guards console and dialogs, which the CDP event listener
 	// (chromedp.ListenTarget's callback, invoked synchronously and
@@ -384,11 +396,13 @@ func newChromedpSessionContext(parent context.Context, opts Options) (Session, e
 	}
 
 	s := &chromedpSession{
-		ctx:           ctx,
-		rootCtx:       ctx,
-		cancel:        func() { cancel(); allocCancel() },
-		actionTimeout: opts.ActionTimeout,
-		ownedBrowser:  opts.RemoteURL == "",
+		ctx:                   ctx,
+		rootCtx:               ctx,
+		cancel:                func() { cancel(); allocCancel() },
+		actionTimeout:         opts.ActionTimeout,
+		ownedBrowser:          opts.RemoteURL == "",
+		activityEnabled:       !opts.OverlayDisabled && (!opts.Headless || opts.RemoteURL != ""),
+		activityReducedMotion: opts.OverlayReducedMotion,
 	}
 
 	// Runtime and Page must be explicitly enabled for their events
@@ -534,7 +548,9 @@ func (s *chromedpSession) Click(selector string) error {
 // pixels -- the coordinate fallback when a selector click fails but a
 // fresh snapshot still knows where the element is.
 func (s *chromedpSession) ClickAt(x, y float64) error {
-	return s.run(chromedp.ActionFunc(func(ctx context.Context) error {
+	m, id := s.pointerOwner()
+	presentPointer(m, id, "aim", x, y)
+	err := s.run(chromedp.ActionFunc(func(ctx context.Context) error {
 		press := input.DispatchMouseEvent(input.MousePressed, x, y).
 			WithButton(input.Left).
 			WithClickCount(1)
@@ -546,6 +562,10 @@ func (s *chromedpSession) ClickAt(x, y float64) error {
 			WithClickCount(1)
 		return release.Do(ctx)
 	}))
+	if err == nil {
+		presentPointer(m, id, "click", x, y)
+	}
+	return err
 }
 
 func (s *chromedpSession) Type(selector, text string) error {
@@ -588,6 +608,11 @@ func (s *chromedpSession) Eval(expression string) (string, error) {
 }
 
 func (s *chromedpSession) Text(selector string) (string, error) {
+	restore, hideErr := s.suspendActivity()
+	if hideErr != nil {
+		return "", hideErr
+	}
+	defer restore()
 	var result string
 	if err := s.run(chromedp.Text(selector, &result, chromedp.ByQuery)); err != nil {
 		return "", err
@@ -596,14 +621,26 @@ func (s *chromedpSession) Text(selector string) (string, error) {
 }
 
 func (s *chromedpSession) HTML(selector string) (string, error) {
+	restore, hideErr := s.suspendActivity()
+	if hideErr != nil {
+		return "", hideErr
+	}
+	defer restore()
 	var result string
-	if err := s.run(chromedp.OuterHTML(selector, &result, chromedp.ByQuery)); err != nil {
+	encodedSelector, _ := json.Marshal(selector)
+	script := fmt.Sprintf(`(() => { const e=document.querySelector(%s); if(!e)throw Error('target_missing: HTML target not found'); const clone=e.cloneNode(true); const host=window[Symbol.for('atlas.agent.activity.v1')]?.host; if(host===e)return ''; if(host&&e.contains(host)){const path=[];for(let n=host;n!==e;n=n.parentNode)path.unshift(Array.prototype.indexOf.call(n.parentNode.childNodes,n));let owned=clone;for(const i of path)owned=owned.childNodes[i];owned.remove();} return clone.outerHTML; })()`, encodedSelector)
+	if err := s.run(chromedp.Evaluate(script, &result)); err != nil {
 		return "", err
 	}
 	return result, nil
 }
 
 func (s *chromedpSession) Screenshot(fullPage bool) ([]byte, error) {
+	restore, hideErr := s.suspendActivity()
+	if hideErr != nil {
+		return nil, hideErr
+	}
+	defer restore()
 	var buf []byte
 	if fullPage {
 		if err := s.run(chromedp.FullScreenshot(&buf, 90)); err != nil {
@@ -651,6 +688,11 @@ func (s *chromedpSession) AnnotatedScreenshot(fullPage bool) ([]byte, error) {
 }
 
 func (s *chromedpSession) Snapshot(full bool) ([]SnapshotElement, error) {
+	restore, hideErr := s.suspendActivity()
+	if hideErr != nil {
+		return nil, hideErr
+	}
+	defer restore()
 	var raw string
 	if err := s.run(chromedp.Evaluate(fmt.Sprintf(snapshotScript, full), &raw)); err != nil {
 		return nil, err
@@ -663,6 +705,11 @@ func (s *chromedpSession) Snapshot(full bool) ([]SnapshotElement, error) {
 }
 
 func (s *chromedpSession) Images() ([]ImageInfo, error) {
+	restore, hideErr := s.suspendActivity()
+	if hideErr != nil {
+		return nil, hideErr
+	}
+	defer restore()
 	var raw string
 	if err := s.run(chromedp.Evaluate(imagesScript, &raw)); err != nil {
 		return nil, err
@@ -704,6 +751,18 @@ func (s *chromedpSession) HandleDialog(accept bool, promptText string) error {
 }
 
 func (s *chromedpSession) RawCDP(method string, params map[string]any) (map[string]any, error) {
+	m, pointerID := s.pointerOwner()
+	if method == "Input.dispatchMouseEvent" && (params["type"] == "mousePressed" || params["type"] == "mouseReleased") {
+		s.presentMouseAim(m, pointerID, params)
+	}
+	switch method {
+	case "Page.captureScreenshot", "DOM.getDocument", "DOM.getOuterHTML", "Accessibility.getFullAXTree":
+		restore, err := s.suspendActivity()
+		if err != nil {
+			return nil, err
+		}
+		defer restore()
+	}
 	var result map[string]any
 	err := s.run(chromedp.ActionFunc(func(ctx context.Context) error {
 		c := chromedp.FromContext(ctx)
@@ -715,11 +774,15 @@ func (s *chromedpSession) RawCDP(method string, params map[string]any) (map[stri
 	if err != nil {
 		return nil, err
 	}
+	if method == "Input.dispatchMouseEvent" {
+		s.presentMouseEvent(m, pointerID, params)
+	}
 	return result, nil
 }
 
 func (s *chromedpSession) Close() {
 	s.closeOnce.Do(func() {
+		_ = s.CloseActivity()
 		s.mu.Lock()
 		cancels := append([]context.CancelFunc(nil), s.tabCancels...)
 		current := s.ctx
@@ -834,6 +897,7 @@ func (m *Manager) setOptions(opts Options) {
 		return
 	}
 	relaunch := m.opts.Headless != opts.Headless ||
+		m.opts.OverlayDisabled != opts.OverlayDisabled || m.opts.OverlayReducedMotion != opts.OverlayReducedMotion ||
 		m.opts.ExecutablePath != opts.ExecutablePath ||
 		m.opts.UserDataDir != opts.UserDataDir ||
 		m.opts.RemoteURL != opts.RemoteURL ||

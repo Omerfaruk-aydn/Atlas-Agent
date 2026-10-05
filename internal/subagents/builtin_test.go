@@ -13,27 +13,10 @@ import (
 // also the model roles users assign models to, and a rename orphans a
 // user's configuration.
 var builtinNames = []string{
-	"architect",
-	"backend",
-	"browser-operator",
-	"data-analyst",
-	"debug",
-	"desktop-operator",
-	"docs",
-	"documents",
-	"frontend",
-	"integration-engineer",
-	"motion-designer",
-	"planner",
-	"presentations",
-	"product-designer",
-	"refactor",
-	"research",
-	"review",
-	"security",
-	"template-builder",
-	"test",
-	"visual-qa",
+	"architect", "backend", "browser-operator", "data-analyst", "debug",
+	"desktop-operator", "docs", "documents", "frontend", "integration-engineer",
+	"motion-designer", "operations", "planner", "presentations", "product-designer",
+	"refactor", "research", "review", "security", "template-builder", "test", "visual-qa",
 }
 
 func TestBuiltinShipsTheExpectedModes(t *testing.T) {

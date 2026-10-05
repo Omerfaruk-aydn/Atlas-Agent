@@ -25,6 +25,7 @@ var builtinNames = []string{
 	"review",
 	"security",
 	"test",
+	"visual-qa",
 }
 
 func TestBuiltinShipsTheExpectedModes(t *testing.T) {

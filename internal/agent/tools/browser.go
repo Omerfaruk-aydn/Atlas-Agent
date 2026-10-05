@@ -145,15 +145,17 @@ type browserSessions interface {
 
 func NewBrowserTool(permissions permission.Service, workingDir string, cfg config.ToolBrowser, stores ...*vault.Store) fantasy.AgentTool {
 	manager := browser.GetManager(browser.Options{
-		IsolateProfiles: true,
-		ExecutablePath:  cfg.ExecutablePath,
-		Headless:        cfg.IsHeadless(),
-		UserDataDir:     cfg.GetUserDataDir(),
-		UseRealProfile:  cfg.UsesRealProfile(),
-		RealProfilePin:  cfg.GetRealProfilePin(),
-		RemoteURL:       cfg.GetRemoteURL(),
-		ActionTimeout:   cfg.GetActionTimeout(),
-		IdleTimeout:     cfg.GetIdleTimeout(),
+		IsolateProfiles:      true,
+		OverlayDisabled:      cfg.Overlay != nil && !*cfg.Overlay,
+		OverlayReducedMotion: cfg.OverlayReducedMotion,
+		ExecutablePath:       cfg.ExecutablePath,
+		Headless:             cfg.IsHeadless(),
+		UserDataDir:          cfg.GetUserDataDir(),
+		UseRealProfile:       cfg.UsesRealProfile(),
+		RealProfilePin:       cfg.GetRealProfilePin(),
+		RemoteURL:            cfg.GetRemoteURL(),
+		ActionTimeout:        cfg.GetActionTimeout(),
+		IdleTimeout:          cfg.GetIdleTimeout(),
 	})
 	return newBrowserTool(permissions, workingDir, manager, browserDescription(cfg.UsesRealProfile()), stores...)
 }
@@ -288,6 +290,22 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 			}
 			if driver, ok := sess.(interface{ BindContext(context.Context) func() }); ok {
 				defer driver.BindContext(ctx)()
+			}
+			if visual, ok := sess.(interface {
+				BeginActivity(context.Context, string, string, string) func()
+			}); ok {
+				selector := params.Selector
+				if params.Ref != "" {
+					if resolved, err := resolveTargetSelector(action, params); err == nil {
+						selector = resolved
+					}
+				}
+				if selector == "" {
+					selector = params.Advanced.Selector
+				}
+				defer interaction.Default.StartActivity(controlID, func() func() {
+					return visual.BeginActivity(ctx, controlID, action, selector)
+				})()
 			}
 			recordImages := !vault.Sensitive("") && interaction.Default.Snapshot(controlID).RecordImages && recordableBrowserAction(action)
 			if recordImages {

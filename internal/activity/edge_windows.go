@@ -91,11 +91,12 @@ func (r *windowsRenderer) drawEdges(monitor uintptr, scale float64) {
 		elapsed = 0
 	}
 	// Preserve cursor > banner > smoke even between individual surface updates.
+	// While a request is open the island sits on top and owns that slot.
 	anchor := r.bannerWindow
 	if anchor == 0 {
 		anchor = r.windows[0]
-	} else {
-		overlayUser.NewProc("SetWindowPos").Call(anchor, r.windows[0], 0, 0, 0, 0, 0x0013)
+	} else if !r.island.open {
+		placeWindow(anchor, r.windows[0], 0x0013)
 	}
 	for i := range r.edges {
 		s := &r.edges[i]
@@ -111,8 +112,10 @@ func (r *windowsRenderer) drawEdges(monitor uintptr, scale float64) {
 			}
 			s.painted, s.reduced = true, r.event.ReducedMotion
 		}
-		// Show in place; ShowWindow can raise a strip over the banner.
-		overlayUser.NewProc("SetWindowPos").Call(hwnd, anchor, 0, 0, 0, 0, 0x0053)
+		// Show in place; ShowWindow can raise a strip over the banner. The
+		// strips form a chain so a settled stack is never reordered.
+		placeWindow(hwnd, anchor, 0x0053)
+		anchor = hwnd
 	}
 }
 

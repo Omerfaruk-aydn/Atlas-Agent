@@ -62,7 +62,13 @@ func TestPTYOutputLimitAndDeadlineStopOwnedTerminal(t *testing.T) {
 	for _, mode := range []string{"overflow", "deadline"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Parallel()
-			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+			completionTimeout := 15 * time.Second
+			if mode == "overflow" {
+				// ConPTY renders over 16 MiB before the transcript limit fires.
+				// Race instrumentation and shared CI CPUs slow that work down.
+				completionTimeout = time.Minute
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), completionTimeout)
 			defer cancel()
 			req := execution.Request{Root: t.TempDir(), Argv: []string{exe, "-test.run=^TestPTYChildFixture$"}, Env: append(os.Environ(), "ATLAS_PTY_TEST_CHILD=1", "ATLAS_PTY_TEST_CASE="+mode)}
 			if mode == "deadline" {

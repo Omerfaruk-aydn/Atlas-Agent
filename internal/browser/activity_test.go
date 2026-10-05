@@ -69,7 +69,7 @@ func TestActivityDoesNotPolluteInputExtractionOrCapture(t *testing.T) {
 	require.JSONEq(t, `{"height":38,"radius":"6px","pointer":true}`, strip)
 	s.updateActivityPoint(300, 200)
 	require.Eventually(t, func() bool {
-		v, _ := s.Eval(`window[Symbol.for('atlas.agent.activity.v1')].x===300 && window[Symbol.for('atlas.agent.activity.v1')].y===200`)
+		v, _ := s.Eval(`(()=>{const a=window[Symbol.for('atlas.agent.activity.v1')];return a.x===300&&a.y===200&&a.displayX===300&&a.displayY===200})()`)
 		return v == "true"
 	}, time.Second, 20*time.Millisecond)
 	var preview []byte
@@ -141,18 +141,23 @@ func TestActivityDoesNotPolluteInputExtractionOrCapture(t *testing.T) {
 	countWhileWaiting, err := s.Eval(`document.querySelectorAll('[data-atlas-activity]').length`)
 	require.NoError(t, err)
 	require.Equal(t, "1", countWhileWaiting)
-	_, err = s.Eval(`window.pointerSamples=[];window.samplePointer=true;(()=>{const frame=()=>{const a=window[Symbol.for('atlas.agent.activity.v1')];window.pointerSamples.push({x:a.displayX,y:a.displayY});if(window.samplePointer)requestAnimationFrame(frame)};requestAnimationFrame(frame)})();document.addEventListener('click',e=>{const a=window[Symbol.for('atlas.agent.activity.v1')];window.pointerAtClick={x:a.displayX,y:a.displayY,targetX:e.clientX,targetY:e.clientY}})`)
+	_, err = s.Eval(`window.pointerSamples=[];window.samplePointer=true;(()=>{const frame=()=>{const a=window[Symbol.for('atlas.agent.activity.v1')];const ring=a.edges.parentNode.querySelector('.cursor-click-ring');window.pointerSamples.push({x:a.displayX,y:a.displayY,ring:Number(ring.getAttribute('opacity'))});if(window.samplePointer)requestAnimationFrame(frame)};requestAnimationFrame(frame)})();document.addEventListener('click',e=>{const a=window[Symbol.for('atlas.agent.activity.v1')];window.pointerAtClick={x:a.displayX,y:a.displayY,targetX:e.clientX,targetY:e.clientY}})`)
 	require.NoError(t, err)
 	require.NoError(t, s.ClickAt(420, 300))
 	atClick, err := s.Eval(`window.pointerAtClick`)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"x":420,"y":300,"targetX":420,"targetY":300}`, atClick)
-	paintedSteps, err := s.Eval(`window.samplePointer=false;window.pointerSamples.filter(p=>p.x>50&&p.x<419).length`)
+	paintedSteps, err := s.Eval(`window.pointerSamples.filter(p=>p.x>50&&p.x<419).length`)
 	require.NoError(t, err)
 	require.NotEqual(t, "0", paintedSteps, "The real frame loop must show movement before the DOM click")
-	ring, err := s.Eval(`window[Symbol.for('atlas.agent.activity.v1')].edges.parentNode.querySelector('.cursor-click-ring').getAttribute('opacity')`)
+	// Record feedback on animation frames rather than sampling after CDP
+	// round trips, which can outlast the brief cue on a loaded runner.
+	require.Eventually(t, func() bool {
+		v, _ := s.Eval(`window.pointerSamples.some(p=>p.ring>0)`)
+		return v == "true"
+	}, 2*time.Second, 20*time.Millisecond)
+	_, err = s.Eval(`window.samplePointer=false`)
 	require.NoError(t, err)
-	require.NotEqual(t, `"0"`, ring)
 	require.NoError(t, s.ClickAt(420.25, 300.75))
 	atClick, err = s.Eval(`window.pointerAtClick`)
 	require.NoError(t, err)

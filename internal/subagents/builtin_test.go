@@ -19,6 +19,7 @@ var builtinNames = []string{
 	"debug",
 	"desktop-operator",
 	"docs",
+	"documents",
 	"frontend",
 	"motion-designer",
 	"planner",

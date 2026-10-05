@@ -17,8 +17,8 @@ These are always available without user configuration.
 - The tree is embedded at compile time via `//go:embed builtin/*` in
   `internal/skills/embed.go`.
 - `DiscoverBuiltin()` walks the embedded FS, parses each `SKILL.md`, and sets
-  paths with the `crush://skills/` prefix (e.g., `crush://skills/jq/SKILL.md`).
-- The View tool resolves `crush://` paths from the embedded FS, not disk.
+  paths with the `atlas://skills/` prefix (e.g., `atlas://skills/jq/SKILL.md`).
+- The View tool resolves `atlas://` paths from the embedded FS, not disk.
 - User skills with the same name override builtins (last occurrence wins in
   `Deduplicate()`).
 

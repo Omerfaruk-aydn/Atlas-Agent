@@ -123,12 +123,24 @@ type cursorOverride struct {
 	guard     *cursorGuard
 	heartbeat time.Time
 	disabled  bool
+	// shown means the saved cursors are temporarily back on screen while
+	// the guard keeps running, e.g. while the user answers a question.
+	shown bool
 }
 
 var systemCursorIDs = []uint32{32512, 32513, 32514, 32515, 32516, 32642, 32643, 32644, 32645, 32646, 32648, 32649, 32650, 32651}
 
 func (c *cursorOverride) hide() error {
-	if c.disabled || c.guard != nil {
+	if c.disabled {
+		return nil
+	}
+	if c.guard != nil {
+		if c.shown && !c.applyHidden() {
+			c.restore()
+			c.disabled = true
+			return fmt.Errorf("cannot hide system cursors again")
+		}
+		c.shown = false
 		return nil
 	}
 	guard, err := startCursorGuard()
@@ -148,6 +160,17 @@ func (c *cursorOverride) hide() error {
 		}
 		c.saved[id] = copy
 	}
+	if !c.applyHidden() {
+		c.restore()
+		c.disabled = true
+		return fmt.Errorf("cannot hide system cursors")
+	}
+	c.heartbeat = time.Now()
+	return nil
+}
+
+// applyHidden installs transparent cursors for every saved shape.
+func (c *cursorOverride) applyHidden() bool {
 	// Monochrome AND=1/XOR=0 produces a fully transparent cursor.
 	andMask, xorMask := make([]byte, 128), make([]byte, 128)
 	for i := range andMask {
@@ -156,20 +179,37 @@ func (c *cursorOverride) hide() error {
 	for _, id := range systemCursorIDs {
 		hidden, _, _ := overlayUser.NewProc("CreateCursor").Call(0, 0, 0, 32, 32, uintptr(unsafe.Pointer(&andMask[0])), uintptr(unsafe.Pointer(&xorMask[0])))
 		if hidden == 0 {
-			c.restore()
-			c.disabled = true
-			return fmt.Errorf("cannot create transparent cursor")
+			return false
 		}
 		ok, _, _ := overlayUser.NewProc("SetSystemCursor").Call(hidden, uintptr(id))
 		if ok == 0 {
 			overlayUser.NewProc("DestroyCursor").Call(hidden)
-			c.restore()
-			c.disabled = true
-			return fmt.Errorf("cannot hide system cursor %d", id)
+			return false
 		}
 	}
-	c.heartbeat = time.Now()
-	return nil
+	return true
+}
+
+// show puts the user's own cursors back without ending the guard, so a
+// later hide is immediate and never spawns another recovery process.
+func (c *cursorOverride) show() {
+	if c.guard == nil || c.shown {
+		return
+	}
+	for id, saved := range c.saved {
+		// SetSystemCursor consumes its handle; keep the saved copy.
+		copy, _, _ := overlayUser.NewProc("CopyImage").Call(saved, 2, 0, 0, 0)
+		if copy == 0 {
+			c.restore()
+			return
+		}
+		if ok, _, _ := overlayUser.NewProc("SetSystemCursor").Call(copy, uintptr(id)); ok == 0 {
+			overlayUser.NewProc("DestroyCursor").Call(copy)
+			c.restore()
+			return
+		}
+	}
+	c.shown = true
 }
 
 func (c *cursorOverride) restore() {
@@ -188,7 +228,7 @@ func (c *cursorOverride) restore() {
 		resetConfiguredCursors()
 	}
 	c.guard.stop(restored)
-	c.saved, c.guard = nil, nil
+	c.saved, c.guard, c.shown = nil, nil, false
 }
 
 func (c *cursorOverride) tick() {

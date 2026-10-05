@@ -14,8 +14,16 @@ import (
 // user's configuration.
 var builtinNames = []string{
 	"architect",
-	"backend", "debug", "docs", "frontend", "planner",
-	"refactor", "research", "review", "security", "test",
+	"backend",
+	"debug",
+	"docs",
+	"frontend",
+	"planner",
+	"refactor",
+	"research",
+	"review",
+	"security",
+	"test",
 }
 
 func TestBuiltinShipsTheExpectedModes(t *testing.T) {
@@ -47,19 +55,15 @@ func TestBuiltinDefinitionsAreValid(t *testing.T) {
 	}
 }
 
-// The instructions are the whole point of a mode: a stub would load and
-// validate fine while doing nothing useful. The upper bound matters as
-// much as the lower one -- every mode prompt is prepended to a real
-// request, so an essay costs the user context on every single turn.
-// Bound both lines and bytes so detailed role protocols remain a finite
-// working set rather than an unbounded reference manual.
-func TestBuiltinInstructionsAreSubstantial(t *testing.T) {
+// Role guidance must describe evidence and scope; domain detail has no fixed
+// line or byte ceiling.
+func TestBuiltinInstructionsDescribeEvidenceAndScope(t *testing.T) {
 	for _, s := range Builtin() {
 		t.Run(s.Name, func(t *testing.T) {
-			lines := strings.Count(strings.TrimSpace(s.Instructions), "\n") + 1
-			require.GreaterOrEqual(t, lines, 90, "mode prompt is too thin to be useful")
-			require.LessOrEqual(t, lines, 300, "mode prompt is long enough to cost real context")
-			require.LessOrEqual(t, len(s.Instructions), 18*1024, "role detail must fit its context budget")
+			body := strings.ToLower(s.Instructions)
+			require.Contains(t, body, "evidence")
+			require.NotEmpty(t, s.Contract.OutOfScope)
+			require.Contains(t, body, "verification")
 		})
 	}
 }

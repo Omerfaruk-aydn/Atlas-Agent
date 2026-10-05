@@ -29,8 +29,10 @@ var namePattern = regexp.MustCompile(`^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$`)
 
 // Subagent represents a parsed subagent definition file.
 type Subagent struct {
-	Contract *RoleContract `yaml:"contract,omitempty" json:"contract,omitempty"`
-	ReadOnly bool          `yaml:"read_only,omitempty" json:"read_only,omitempty"`
+	InheritModel    bool          `yaml:"inherit_model,omitempty" json:"inherit_model,omitempty"`
+	PreferredSkills []string      `yaml:"preferred_skills,omitempty" json:"preferred_skills,omitempty"`
+	Contract        *RoleContract `yaml:"contract,omitempty" json:"contract,omitempty"`
+	ReadOnly        bool          `yaml:"read_only,omitempty" json:"read_only,omitempty"`
 	// AllowCommands permits execution tools while retaining direct edit restrictions.
 	AllowCommands bool   `yaml:"allow_commands,omitempty" json:"allow_commands,omitempty"`
 	Name          string `yaml:"name" json:"name"`
@@ -62,6 +64,16 @@ type Subagent struct {
 // from (when it came from one), and a non-empty description.
 func (s *Subagent) Validate() error {
 	var errs []error
+	if len(s.PreferredSkills) > 8 {
+		errs = append(errs, errors.New("preferred_skills requires at most 8 names"))
+	}
+	seenSkills := make(map[string]bool)
+	for _, name := range s.PreferredSkills {
+		if len(name) > MaxNameLength || !namePattern.MatchString(name) || seenSkills[name] {
+			errs = append(errs, fmt.Errorf("invalid or duplicate preferred skill %q", name))
+		}
+		seenSkills[name] = true
+	}
 	if err := s.Contract.Validate(); err != nil {
 		errs = append(errs, err)
 	}

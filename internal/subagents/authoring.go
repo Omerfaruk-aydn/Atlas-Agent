@@ -15,13 +15,15 @@ import (
 // rather than a map so the field order in the written file is stable
 // (name, description, model) rather than YAML's alphabetical map order.
 type frontmatter struct {
-	Contract      *RoleContract `yaml:"contract,omitempty"`
-	ReadOnly      bool          `yaml:"read_only,omitempty"`
-	AllowCommands bool          `yaml:"allow_commands,omitempty"`
-	Tools         []string      `yaml:"tools,omitempty"`
-	Name          string        `yaml:"name"`
-	Description   string        `yaml:"description"`
-	Model         string        `yaml:"model,omitempty"`
+	InheritModel    bool          `yaml:"inherit_model,omitempty"`
+	PreferredSkills []string      `yaml:"preferred_skills,omitempty"`
+	Contract        *RoleContract `yaml:"contract,omitempty"`
+	ReadOnly        bool          `yaml:"read_only,omitempty"`
+	AllowCommands   bool          `yaml:"allow_commands,omitempty"`
+	Tools           []string      `yaml:"tools,omitempty"`
+	Name            string        `yaml:"name"`
+	Description     string        `yaml:"description"`
+	Model           string        `yaml:"model,omitempty"`
 }
 
 // Render turns a subagent back into the Markdown file it came from.
@@ -31,7 +33,7 @@ func Render(s *Subagent) ([]byte, error) {
 
 	enc := yaml.NewEncoder(&b)
 	enc.SetIndent(2)
-	if err := enc.Encode(frontmatter{Name: s.Name, Description: s.Description, Model: s.Model, ReadOnly: s.ReadOnly, AllowCommands: s.AllowCommands, Tools: s.Tools, Contract: s.Contract}); err != nil {
+	if err := enc.Encode(frontmatter{Name: s.Name, Description: s.Description, Model: s.Model, ReadOnly: s.ReadOnly, AllowCommands: s.AllowCommands, Tools: s.Tools, Contract: s.Contract, PreferredSkills: s.PreferredSkills, InheritModel: s.InheritModel}); err != nil {
 		return nil, fmt.Errorf("rendering frontmatter: %w", err)
 	}
 	if err := enc.Close(); err != nil {

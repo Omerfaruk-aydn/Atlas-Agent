@@ -61,6 +61,21 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 	if len(p.Selector) > 4096 || len(p.Name) > 4096 || len(p.Label) > 4096 || len(p.Expected) > 16384 || len(p.Text) > 1024*1024 || len(p.Paths) > 32 {
 		return nil, nil, errors.New("advanced action parameters exceed limits")
 	}
+	switch p.Action {
+	case "capture_region", "find", "assert", "text", "html", "accessibility", "inspect", "frames", "read", "snapshot":
+		restore, err := s.suspendActivity()
+		if err != nil {
+			return nil, nil, err
+		}
+		defer restore()
+	}
+	if p.Action == "tab_new" || p.Action == "tab_select" {
+		restore, err := s.suspendActivity(true)
+		if err != nil {
+			return nil, nil, err
+		}
+		defer restore()
+	}
 	timeout := 10 * time.Second
 	if p.TimeoutMS < 0 || p.TimeoutMS > 30000 {
 		return nil, nil, errors.New("timeout_ms must be 0-30000")
@@ -277,7 +292,13 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 				if err != nil {
 					return nil, nil, err
 				}
+				s.updateActivityPoint(int(x+dx), int(y+dy))
+				m, id := s.pointerOwner()
+				presentPointer(m, id, "aim", x+dx, y+dy)
 				err = chromedp.Run(ctx, chromedp.MouseClickXY(x+dx, y+dy))
+				if err == nil {
+					presentPointer(m, id, "click", x+dx, y+dy)
+				}
 				return finish(map[string]any{"action_sent": err == nil, "verify_required": true}, err)
 			}
 			_, err := s.command(ctx, "Input.insertText", map[string]any{"text": p.Text}, false)
@@ -307,6 +328,7 @@ const semanticScript = `(async()=>{const p=__PARAMS__;const roots=[document];let
 const name=e=>e.getAttribute('aria-label')||((e.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>document.getElementById(id)?.textContent||'').join(' ').trim())||(e.labels&&Array.from(e.labels).map(l=>l.textContent).join(' ').trim())||(e.innerText||'').trim()||e.getAttribute('title')||'';
 const role=e=>e.getAttribute('role')||({BUTTON:'button',A:'link',SELECT:'combobox',TEXTAREA:'textbox'}[e.tagName])||(e.tagName==='INPUT'?({checkbox:'checkbox',radio:'radio',submit:'button',button:'button'}[e.type]||'textbox'):'');
 let matches=p.selector?roots.flatMap(r=>Array.from(r.querySelectorAll(p.selector))):nodes.filter(e=>(!p.role||role(e)===p.role)&&(!p.name||name(e)===p.name)&&(!p.label||Array.from(e.labels||[]).some(l=>l.textContent.trim()===p.label)));
+matches=matches.filter(e=>e!==window[Symbol.for('atlas.agent.activity.v1')]?.host);
 const visible=e=>e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden';
 if(p.condition==='url'||p.condition==='title'){const actual=p.condition==='url'?location.href:document.title;return {passed:actual===p.expected,actual,count:0}}
 if(p.action==='find')return {count:matches.length,truncated:matches.length>100,matches:matches.slice(0,100).map(e=>({role:role(e),name:e.type==='password'?'[password]':name(e),visible:visible(e),disabled:!!e.disabled,tag:e.tagName,rect:(()=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()}))};

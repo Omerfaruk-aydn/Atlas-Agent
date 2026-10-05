@@ -95,3 +95,7 @@ checks. Supply `automation.window_id` for an accessibility check of that window.
 It reports independent statuses, timings, error categories and recovery hints;
 it does not focus, type, click, install anything or close applications. A listed
 window does not prove its pixels or accessibility provider are readable.
+
+During an active control run, screenshots may include the agent cursor and
+RGB screen-edge mist. These are activity indicators, not application content
+or interactive targets.

@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"unsafe"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 )
 
 type nativeWindowObservation struct {
@@ -39,6 +41,9 @@ var (
 )
 
 func observeNativeWindow(hwnd, token uintptr) uintptr {
+	if activity.IsOverlayWindow(hwnd) {
+		return 1
+	}
 	value, ok := nativeEnumerations.Load(token)
 	if !ok {
 		return 0

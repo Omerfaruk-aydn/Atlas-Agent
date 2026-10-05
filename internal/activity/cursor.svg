@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="112" height="112" viewBox="0 0 112 112">
+  <defs>
+    <filter id="atlas-cursor-shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="1.2" stdDeviation="1.1" flood-color="#000" flood-opacity=".24"/>
+    </filter>
+    <linearGradient id="atlas-cursor-fill" x1="0" y1="48" x2="0" y2="74" gradientUnits="userSpaceOnUse"><stop stop-color="#33424e"/><stop offset="1" stop-color="#25303b"/></linearGradient>
+    <radialGradient id="atlas-cursor-pink"><stop stop-color="#ff5a81" stop-opacity=".16"/><stop offset=".55" stop-color="#ff5a81" stop-opacity=".07"/><stop offset="1" stop-color="#ff5a81" stop-opacity="0"/></radialGradient>
+    <radialGradient id="atlas-cursor-cyan"><stop stop-color="#4aefff" stop-opacity=".16"/><stop offset=".55" stop-color="#4aefff" stop-opacity=".07"/><stop offset="1" stop-color="#4aefff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="atlas-cursor-amber"><stop stop-color="#ffc452" stop-opacity=".16"/><stop offset=".55" stop-color="#ffc452" stop-opacity=".07"/><stop offset="1" stop-color="#ffc452" stop-opacity="0"/></radialGradient>
+  </defs>
+  <g class="cursor-aura"><ellipse cx="53" cy="61" rx="24" ry="22" fill="url(#atlas-cursor-pink)"/><ellipse cx="66" cy="59" rx="24" ry="22" fill="url(#atlas-cursor-cyan)"/><ellipse cx="57" cy="72" rx="24" ry="22" fill="url(#atlas-cursor-amber)"/></g>
+  <path class="cursor-body" d="M48 48 L70.8 62.25 Q72 63 70.6 63.25 L61.7 64.87 Q61 65 60.65 65.6 L56.6 72.97 Q56 74 55.65 72.85 Z" fill="url(#atlas-cursor-fill)" stroke="#e6f2fa" stroke-width="1.5" stroke-linejoin="round" filter="url(#atlas-cursor-shadow)"/>
+  <circle class="cursor-click-ring" cx="60" cy="61" r="21" fill="none" stroke="#e6f2fa" stroke-width="1.8" opacity="0"/>
+</svg>

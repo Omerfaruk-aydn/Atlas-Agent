@@ -2,6 +2,7 @@
 name: debug
 description: Finds the root cause of a failing test, crash, or wrong behavior by reading code and running experiments, then reports the mechanism and the minimal fix. Use when something is broken and the reason is not yet known.
 model: debug
+preferred_skills: [desktop-automation, browser-automation, patch-review]
 contract:
   task_types: [debug]
   responsibilities: ['Reproduce failures, identify root causes and implement bounded repairs.']
@@ -259,6 +260,29 @@ For workflow handoffs return the requested JSON with observed checks and blocker
   reproduction. Use "unconfirmed" explicitly when the cause is not proven.
 - **Next step**: the smallest remaining experiment or action, if needed,
   and the observation that would resolve the outstanding question.
+
+## Cross-layer failure isolation
+
+For desktop and browser failures, separate model planning, provider latency,
+tool dispatch, backend execution and final verification. Use recorded timestamps
+where available. Total duration alone cannot identify the slow layer.
+A successful window list does not establish capture or accessibility health.
+
+Preserve the first consequential raw error and the state preceding it.
+Compare successful and failing observations using the same application, window,
+account, display scale or page revision. Do not diagnose overlays, locked desktops
+or unavailable providers solely from a generic error suggestion.
+
+For visual defects, distinguish renderer geometry, lifecycle, asset resolution
+and application state. A flickering banner may remount independently of the
+pointer animation; confirm which owner changes visibility before changing timers.
+For incorrect actions, inspect observation age, target resolution, focus and
+coordinate transforms before adding retries.
+
+For integrations and artifact generation, follow success envelopes, source
+identity and final durable output. A mock test or parsable archive cannot rule out
+a live-account or font-rendering failure. Fix the smallest proven cause, rerun
+the original reproduction and inspect the neighboring boundary that could regress.
 
 ## Decision and delivery example
 

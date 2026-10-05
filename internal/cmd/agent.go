@@ -57,6 +57,8 @@ func discoverConfiguredSubagents(cfg *config.ConfigStore) []*subagents.Subagent 
 
 // jsonSubagent is one subagent's wire form for --json.
 type jsonSubagent struct {
+	InheritModel      bool                    `json:"inherit_model,omitempty"`
+	PreferredSkills   []string                `json:"preferred_skills,omitempty"`
 	MeasuredSelection bool                    `json:"measured_selection,omitempty"`
 	SelectionError    string                  `json:"selection_error,omitempty"`
 	ResolvedModel     string                  `json:"resolved_model,omitempty"`
@@ -98,6 +100,9 @@ func listSubagents(cmd *cobra.Command, cfg *config.ConfigStore) error {
 		listed := make([]jsonSubagent, 0, len(all))
 		for _, s := range all {
 			_, resolves := cfg.Config().ResolveRole(s.Model)
+			if !resolves && s.InheritModel {
+				_, resolves = cfg.Config().Models[config.SelectedModelTypeLarge]
+			}
 			measured, enabled, selectionErr := cfg.ResolveMeasuredRole(s.Model)
 			var selectionError, resolvedModel string
 			if enabled {
@@ -109,6 +114,8 @@ func listSubagents(cmd *cobra.Command, cfg *config.ConfigStore) error {
 				}
 			}
 			listed = append(listed, jsonSubagent{
+				PreferredSkills:   s.PreferredSkills,
+				InheritModel:      s.InheritModel,
 				MeasuredSelection: enabled, SelectionError: selectionError, ResolvedModel: resolvedModel,
 				Contract: s.Contract, ReadOnly: s.ReadOnly, AllowCommands: s.AllowCommands,
 				Name:          s.Name,
@@ -139,7 +146,11 @@ func listSubagents(cmd *cobra.Command, cfg *config.ConfigStore) error {
 					model += " -> " + measured.Provider + "/" + measured.Model + " (measured)"
 				}
 			} else if _, ok := cfg.Config().ResolveRole(s.Model); !ok {
-				model += " (unresolved)"
+				if s.InheritModel {
+					model += " (inherits primary model until assigned)"
+				} else {
+					model += " (unresolved)"
+				}
 			}
 		}
 		fmt.Fprintf(out, "%s -- %s\n  %s\n", s.Name, model, s.Description)

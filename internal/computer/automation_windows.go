@@ -16,6 +16,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf16"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 )
 
 //go:embed automation.ps1
@@ -32,6 +34,9 @@ func (b *windowsBackend) ForegroundWindow() string {
 }
 
 func (b *windowsBackend) Automation(ctx context.Context, p AutomationRequest) (json.RawMessage, error) {
+	if hwnd, err := strconv.ParseUint(p.WindowID, 10, 64); err == nil && activity.IsOverlayWindow(uintptr(hwnd)) {
+		return nil, fmt.Errorf("invalid_target: activity overlay is not an automation target")
+	}
 	if err := ValidateAutomationRequest(p); err != nil {
 		return nil, err
 	}

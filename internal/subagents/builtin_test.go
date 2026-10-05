@@ -22,6 +22,7 @@ var builtinNames = []string{
 	"docs",
 	"documents",
 	"frontend",
+	"integration-engineer",
 	"motion-designer",
 	"planner",
 	"presentations",

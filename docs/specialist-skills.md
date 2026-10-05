@@ -68,7 +68,7 @@ patch risk, technical diagrams, research and animated mascots.
 The embedded artifact template catalog supplies all twenty reviewed structural
 categories with required sources and format-specific checks. These are original
 Atlas recipes, not copies of cached template artwork. User references retain
-precedence. Read `crush://skills/artifact-templates/TEMPLATES.md` through view.
+precedence. Read `atlas://skills/artifact-templates/TEMPLATES.md` through view.
 
 Figma, Slack, Calendar and live Excel operations require actual compatible
 connected tools and account access. Local Office authoring/rendering uses verified

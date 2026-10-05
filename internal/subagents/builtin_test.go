@@ -30,6 +30,7 @@ var builtinNames = []string{
 	"research",
 	"review",
 	"security",
+	"template-builder",
 	"test",
 	"visual-qa",
 }

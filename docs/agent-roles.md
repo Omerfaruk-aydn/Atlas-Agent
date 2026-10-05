@@ -1,11 +1,14 @@
 # Role contracts and measured model routing
 
-All eleven built-in roles have structured contracts separating responsibilities,
+All twenty-two built-in roles have structured contracts separating responsibilities,
 inputs, outputs, required tools and completion criteria from provider/model choice.
 They apply to delegated agents and session modes. Project/user definitions can
 override `.atlas/agents/<name>.md`. Old definitions without contracts remain valid.
 Save/list APIs preserve contracts, `atlas agent show` renders them, and
 `atlas agent list --json` exposes contracts and command flags.
+
+See [Specialist skills](specialist-skills.md) for the expanded catalog, inherited
+model behavior, preferred skill bindings and artifact workflows.
 
 ```yaml
 ---

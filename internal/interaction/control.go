@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 )
 
 // Entry contains execution metadata only, never typed text or credentials.
@@ -140,12 +142,28 @@ func (c *Controller) activeResources(id string) string {
 // Pause prevents subsequent actions; an in-flight action may still finish.
 func (c *Controller) Pause(id, reason string) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	s := c.states[id]
 	s.Paused = true
 	s.ControlRevision++
 	s.Reason = reason
 	c.states[id] = s
+	c.mu.Unlock()
+	activity.ClearSession(id)
+}
+
+// StartActivity invalidates visual starts that race with a control handoff.
+// The callback runs outside the controller lock so pause remains responsive.
+func (c *Controller) StartActivity(id string, begin func() func()) func() {
+	before := c.Snapshot(id)
+	if before.Paused {
+		return func() {}
+	}
+	finish := begin()
+	after := c.Snapshot(id)
+	if after.Paused || before.ControlRevision != after.ControlRevision {
+		activity.ClearSession(id)
+	}
+	return finish
 }
 
 // Resume returns control to automation after the user's explicit action.

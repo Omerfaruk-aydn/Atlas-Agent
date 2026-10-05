@@ -11,9 +11,12 @@ import (
 	"image/png"
 	"log/slog"
 	"runtime"
+	"sync/atomic"
 	"time"
 	"unicode/utf16"
 	"unsafe"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 
 	"golang.org/x/sys/windows"
 )
@@ -124,7 +127,10 @@ type bitmapInfo struct {
 	Colors uint32
 }
 
-type windowsBackend struct{}
+type windowsBackend struct {
+	pointerFeedback atomic.Pointer[pointerFeedback]
+	pointerHeld     atomic.Bool
+}
 
 func openPlatform() (Backend, error) {
 	// Use physical desktop pixels consistently on mixed-DPI displays.
@@ -150,6 +156,7 @@ func (b *windowsBackend) ScreenSize() (Size, error) {
 }
 
 func (b *windowsBackend) Screenshot() ([]byte, error) {
+	defer activity.Default.SuspendForObservation()()
 	// Screen DCs must be released on the thread that acquired them.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -303,6 +310,13 @@ func (b *windowsBackend) MoveTo(x, y int) error {
 	if err := ValidatePoint(x, y); err != nil {
 		return err
 	}
+	if b.pointerFeedback.Load() != nil && !b.pointerHeld.Load() {
+		if start, err := b.CursorPosition(); err == nil {
+			if err := b.presentPointer("origin", start.X, start.Y); err != nil {
+				return err
+			}
+		}
+	}
 	if err := setCursorPos(x, y); err != nil {
 		return err
 	}
@@ -316,6 +330,7 @@ func (b *windowsBackend) MoveTo(x, y int) error {
 		return err
 	}
 	if pos.X == x && pos.Y == y {
+		b.emitPointer("move", x, y)
 		return nil
 	}
 	if err := setCursorPos(x, y); err != nil {
@@ -331,6 +346,7 @@ func (b *windowsBackend) MoveTo(x, y int) error {
 			pos.X, pos.Y, x, y,
 		)
 	}
+	b.emitPointer("move", x, y)
 	return nil
 }
 
@@ -403,7 +419,14 @@ func (b *windowsBackend) Click(x, y int, button MouseButton) error {
 	}
 	// A beat between down and up: some targets ignore zero-width clicks.
 	time.Sleep(10 * time.Millisecond)
-	return sendInputs(mouseClick(button))
+	if err := b.aimPointer(x, y); err != nil {
+		return err
+	}
+	err := sendInputs(mouseClick(button))
+	if err == nil {
+		b.emitPointer("click", x, y)
+	}
+	return err
 }
 
 func (b *windowsBackend) DoubleClick(x, y int) error {
@@ -414,11 +437,18 @@ func (b *windowsBackend) DoubleClick(x, y int) error {
 		return err
 	}
 	time.Sleep(10 * time.Millisecond)
+	if err := b.aimPointer(x, y); err != nil {
+		return err
+	}
 	clicks := append(mouseClick(ButtonLeft), mouseClick(ButtonLeft)...)
-	return sendInputs(clicks)
+	err := sendInputs(clicks)
+	if err == nil {
+		b.emitPointer("click", x, y)
+	}
+	return err
 }
 
-func (b *windowsBackend) Drag(x, y, endX, endY int) error {
+func (b *windowsBackend) Drag(x, y, endX, endY int) (resultErr error) {
 	if err := ValidatePoint(x, y); err != nil {
 		return err
 	}
@@ -429,6 +459,9 @@ func (b *windowsBackend) Drag(x, y, endX, endY int) error {
 		return err
 	}
 	time.Sleep(10 * time.Millisecond)
+	if err := b.aimPointer(x, y); err != nil {
+		return err
+	}
 	// Press the button first: the down stroke must already be down
 	// while the pointer walks, or the target sees a click at the
 	// release point instead of a drag.
@@ -437,19 +470,36 @@ func (b *windowsBackend) Drag(x, y, endX, endY int) error {
 	}); err != nil {
 		return err
 	}
+	b.pointerHeld.Store(true)
+	b.emitPointer("drag", x, y)
+	lastX, lastY := x, y
+	defer func() {
+		releaseErr := sendInputs([]winInput{{Type: inputMouse, Payload: mousePayload(0, 0, 0, mouseLeftUp)}})
+		if releaseErr == nil {
+			b.pointerHeld.Store(false)
+			b.emitPointer("release", lastX, lastY)
+		}
+		resultErr = errors.Join(resultErr, releaseErr)
+	}()
 	// Walk the pointer in small steps so hover states track the drag.
 	const steps = 20
 	for i := 1; i <= steps; i++ {
+		if owner := b.pointerFeedback.Load(); owner != nil && owner.ctx.Err() != nil {
+			return owner.ctx.Err()
+		}
 		ix := x + (endX-x)*i/steps
 		iy := y + (endY-y)*i/steps
 		if err := b.MoveTo(ix, iy); err != nil {
 			return err
 		}
-		time.Sleep(time.Millisecond)
+		lastX, lastY = ix, iy
+		pace := time.Millisecond
+		if b.pointerFeedback.Load() != nil {
+			pace = 8 * time.Millisecond
+		}
+		time.Sleep(pace)
 	}
-	return sendInputs([]winInput{
-		{Type: inputMouse, Payload: mousePayload(0, 0, 0, mouseLeftUp)},
-	})
+	return nil
 }
 
 func (b *windowsBackend) Scroll(dx, dy int) error {

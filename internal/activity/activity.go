@@ -27,6 +27,18 @@ type Event struct {
 	PointerRevision    uint64
 	PointerAt          time.Time
 	PointerX, PointerY float64
+	Phase              Phase
+	PhaseAt            time.Time
+	// State is the owning run's work state; Phase is its expression.
+	State   RunState
+	StateAt time.Time
+	// RunStarted carries a monotonic reading from the run's start, so the
+	// elapsed time survives tools, tabs and questions. RunEnded freezes it.
+	RunStarted, RunEnded time.Time
+	// Prompt is the displayed pending request, shared read-only.
+	Prompt *Prompt
+	// AfterFailure marks an operation that follows a verified failure.
+	AfterFailure bool
 }
 
 // Renderer must render only metadata and tolerate an invisible event.
@@ -59,10 +71,34 @@ func ClearSession(session string) {
 	managers.Range(func(key, value any) bool { key.(*Manager).Clear(session); return true })
 }
 
+// CancelSession synchronously releases control owned by the cancelled session.
+// Other chats and their active flows retain their own indicators.
+func CancelSession(session string) {
+	managers.Range(func(key, value any) bool {
+		m := key.(*Manager)
+		m.mu.Lock()
+		f := m.flow
+		owned := m.event.Session == session
+		m.mu.Unlock()
+		if owned && f != nil {
+			f.finish(false)
+		} else if owned {
+			m.Clear(session)
+			m.Present()
+		}
+		return true
+	})
+}
+
 func New(r Renderer) *Manager {
 	m := &Manager{renderer: r, wake: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{})}
 	if aware, ok := r.(interface{ SetStopHandler(func(uint64) bool) }); ok {
 		aware.SetStopHandler(m.Stop)
+	}
+	if aware, ok := r.(interface {
+		SetRespondHandler(func(uint64, PromptResponse) error)
+	}); ok {
+		aware.SetRespondHandler(m.Respond)
 	}
 	managers.Store(m, true)
 	return m
@@ -111,19 +147,58 @@ func (m *Manager) StopRevision() uint64 {
 	return 0
 }
 
+// Operation is one visible tool action. Its recorded outcome, not model
+// text, drives the banner character.
+type Operation struct {
+	m   *Manager
+	id  uint64
+	end func()
+}
+
+// End is idempotent and safe on a zero Operation.
+func (o Operation) End() {
+	if o.end != nil {
+		o.end()
+	}
+}
+
+// Fail records a verified tool failure before the operation ends. It never
+// affects a newer operation or a cleared indicator.
+func (o Operation) Fail() {
+	if o.m == nil || o.id == 0 {
+		return
+	}
+	o.m.mu.Lock()
+	changed := o.m.event.ID == o.id && o.m.event.Visible
+	if changed {
+		changed = o.m.enterLocked(StateFailed)
+	}
+	o.m.mu.Unlock()
+	if changed {
+		o.m.signal()
+	}
+}
+
 // Begin returns an idempotent finish function scoped to this operation.
 func (m *Manager) Begin(ctx context.Context, e Event) func() {
+	return m.Start(ctx, e).End
+}
+
+// Start shows an operation and returns its handle.
+func (m *Manager) Start(ctx context.Context, e Event) Operation {
+	none := Operation{end: func() {}}
 	if ctx.Err() != nil {
-		return func() {}
+		return none
 	}
 	f, _ := ctx.Value(flowKey{}).(*flow)
 	if f != nil && f.session == e.Session {
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		if f.closed {
-			return func() {}
+		if f.closed || f.paused > 0 {
+			return none
 		}
 		e.Persistent = true
+		e.RunStarted = f.started
 		f.managers[m] = struct{}{}
 		for other := range f.managers {
 			if other == m {
@@ -146,7 +221,7 @@ func (m *Manager) Begin(ctx context.Context, e Event) func() {
 	m.mu.Lock()
 	if m.closed || ctx.Err() != nil {
 		m.mu.Unlock()
-		return func() {}
+		return none
 	}
 	if !m.started {
 		m.started = true
@@ -159,8 +234,28 @@ func (m *Manager) Begin(ctx context.Context, e Event) func() {
 	}
 	e.ID = m.next
 	e.Visible = true
+	if e.RunStarted.IsZero() {
+		e.RunStarted = time.Now()
+	}
+	previous := m.event.State
+	if m.flow != f || m.event.Session != e.Session {
+		previous = StateIdle
+	}
+	e.AfterFailure = previous == StateFailed && f != nil
+	e.State, e.StateAt, e.Phase, e.PhaseAt = previous, m.event.StateAt, m.event.Phase, m.event.PhaseAt
 	m.event = e
 	m.flow = f
+	if !m.enterLocked(StateTool) {
+		// An operation always runs as a tool, whatever came before it.
+		m.event.State = StateIdle
+		m.enterLocked(StateTool)
+	}
+	if f != nil {
+		// Start holds f.mu for its whole body.
+		if head, ok := f.headLocked(); ok {
+			m.showPromptLocked(head, true, 0)
+		}
+	}
 	m.mu.Unlock()
 	m.signal()
 	var once sync.Once
@@ -171,6 +266,11 @@ func (m *Manager) Begin(ctx context.Context, e Event) func() {
 			m.mu.Lock()
 			if m.event.ID == e.ID && m.event.Persistent {
 				m.event.Action = "wait"
+				// A recorded failure stays visible while the model reacts,
+				// and a pending request keeps the run waiting.
+				if m.event.State == StateTool {
+					m.enterLocked(StateThinking)
+				}
 				if m.event.PointerKind != "drag" && m.event.PointerKind != "drag_move" && m.event.PointerKind != "press" {
 					m.event.Point = false
 				}
@@ -193,7 +293,7 @@ func (m *Manager) Begin(ctx context.Context, e Event) func() {
 			}
 		}()
 	}
-	return end
+	return Operation{m: m, id: e.ID, end: end}
 }
 
 // Stop cancels only the run owning this exact visible banner revision.
@@ -206,11 +306,12 @@ func (m *Manager) Stop(id uint64) bool {
 		return false
 	}
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	if f.closed {
+		f.mu.Unlock()
 		return false
 	}
-	f.cancel()
+	f.mu.Unlock()
+	f.finish(false)
 	return true
 }
 

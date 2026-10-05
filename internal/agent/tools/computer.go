@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -78,7 +79,7 @@ func NewComputerTool(
 	backend computer.Backend,
 	enabled func() bool,
 ) fantasy.AgentTool {
-	return newComputerTool(permissions, workingDir, backend, enabled, computerDescription, cfg.GetActionTimeout())
+	return newComputerTool(permissions, workingDir, backend, enabled, computerDescription, cfg.GetActionTimeout(), cfg)
 }
 
 // computerToolState carries the tool's runtime dependencies plus the
@@ -86,12 +87,14 @@ func NewComputerTool(
 // captures) so validation helpers and the timeout wrapper share one
 // receiver.
 type computerToolState struct {
-	observations  desktopObservations
-	permissions   permission.Service
-	workingDir    string
-	backend       computer.Backend
-	enabled       func() bool
-	actionTimeout time.Duration
+	overlay              bool
+	overlayReducedMotion bool
+	observations         desktopObservations
+	permissions          permission.Service
+	workingDir           string
+	backend              computer.Backend
+	enabled              func() bool
+	actionTimeout        time.Duration
 }
 
 func newComputerTool(
@@ -101,6 +104,7 @@ func newComputerTool(
 	enabled func() bool,
 	description string,
 	actionTimeout time.Duration,
+	overlayConfig ...config.ToolComputer,
 ) fantasy.AgentTool {
 	state := &computerToolState{
 		permissions:   permissions,
@@ -108,6 +112,10 @@ func newComputerTool(
 		backend:       backend,
 		enabled:       enabled,
 		actionTimeout: actionTimeout,
+	}
+	if len(overlayConfig) > 0 {
+		state.overlay = overlayConfig[0].Overlay == nil || *overlayConfig[0].Overlay
+		state.overlayReducedMotion = overlayConfig[0].OverlayReducedMotion
 	}
 	return fantasy.NewAgentTool(
 		ComputerToolName,
@@ -214,6 +222,29 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 			return
 		}
 		defer release()
+		if s.overlay {
+			point := slices.Contains([]string{"click", "double_click", "right_click", "move", "drag"}, action)
+			feedback, supportsFeedback := s.backend.(interface {
+				BindPointerFeedback(context.Context, func(string, int, int)) func()
+			})
+			if supportsFeedback {
+				point = false
+			}
+			finish := interaction.Default.StartActivity(controlID, func() func() {
+				return activity.Default.Begin(ctx, activity.Event{Session: controlID, Resource: "desktop", Action: action, WindowID: params.Automation.WindowID, X: params.X, Y: params.Y, Point: point, ReducedMotion: s.overlayReducedMotion})
+			})
+			defer finish()
+			if supportsFeedback {
+				owner := activity.Default.Snapshot()
+				defer feedback.BindPointerFeedback(ctx, func(kind string, x, y int) {
+					if ctx.Err() == nil && owner.Session == controlID {
+						if activity.Default.Pointer(owner.ID, kind, x, y) && (kind == "origin" || kind == "aim" || kind == "click") {
+							activity.Default.Present()
+						}
+					}
+				})()
+			}
+		}
 		started := time.Now()
 		before, after := "", ""
 		recordImages := interaction.Default.Snapshot(controlID).RecordImages && recordableComputerAction(action)

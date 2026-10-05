@@ -7,6 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/google/uuid"
@@ -163,6 +166,9 @@ func (s *computerToolState) resolveObservation(ctx context.Context, action strin
 	n := current.Matches[0]
 	if n.ID != e.ID || n.Name != e.Name || n.Role != e.Role || n.ProcessID != e.ProcessID || n.AutomationID != e.AutomationID || n.Password || n.X != e.X || n.Y != e.Y || n.Width != e.Width || n.Height != e.Height || n.Offscreen != e.Offscreen || n.Enabled != e.Enabled {
 		return p, fmt.Errorf("stale_observation: target changed; observe again before input")
+	}
+	if s.overlay && n.Width > 0 && n.Height > 0 && !n.Offscreen {
+		activity.Default.Target(engineering.GetScope(ctx, GetSessionFromContext(ctx)).SessionID, o.WindowID, int(n.X+n.Width/2), int(n.Y+n.Height/2))
 	}
 	p.Automation.WindowID = o.WindowID
 	p.Automation.ElementID = e.ID

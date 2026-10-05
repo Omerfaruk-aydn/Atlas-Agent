@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/appenv"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/notify"
@@ -916,6 +917,13 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		return nil, engineeringErr
 	}
 	defer finishEngineering()
+	if a.taskContextConfig != nil {
+		if cfg := a.taskContextConfig.Config(); cfg.Options != nil && cfg.Options.TUI != nil {
+			genCtx = activity.WithLanguage(genCtx, cfg.Options.TUI.Language)
+		}
+	}
+	genCtx, finishActivity := activity.StartFlow(genCtx, engineering.GetScope(genCtx, call.SessionID).SessionID)
+	defer finishActivity()
 	agentTools := guardTools(a.tools.Copy(), a.engineering)
 	largeModel := a.largeModel.Get()
 	// chain starts on largeModel -- or on a sticky fallback still within

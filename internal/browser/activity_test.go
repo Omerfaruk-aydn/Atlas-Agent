@@ -17,6 +17,7 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/kb"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,6 +42,8 @@ func TestActivityDoesNotPolluteInputExtractionOrCapture(t *testing.T) {
 	defer session.Close()
 	s := session.(*chromedpSession)
 	s.activityEnabled = true
+	// Frame feedback assertions require the normal-motion presentation mode.
+	require.NoError(t, s.run(emulation.SetEmulatedMedia().WithFeatures([]*emulation.MediaFeature{{Name: "prefers-reduced-motion", Value: "no-preference"}})))
 	if os.Getenv("ATLAS_ACTIVITY_4K") == "1" {
 		require.NoError(t, s.run(emulation.SetDeviceMetricsOverride(1920, 1080, 2, false)))
 	}
@@ -68,10 +71,12 @@ func TestActivityDoesNotPolluteInputExtractionOrCapture(t *testing.T) {
 	require.NoError(t, err)
 	require.JSONEq(t, `{"height":38,"radius":"6px","pointer":true}`, strip)
 	s.updateActivityPoint(300, 200)
-	require.Eventually(t, func() bool {
-		v, _ := s.Eval(`(()=>{const a=window[Symbol.for('atlas.agent.activity.v1')];return a.x===300&&a.y===200&&a.displayX===300&&a.displayY===200})()`)
-		return v == "true"
-	}, time.Second, 20*time.Millisecond)
+	// Include asynchronous delivery and frame scheduling on loaded CI runners.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		state, err := s.Eval(`(()=>{const a=window[Symbol.for('atlas.agent.activity.v1')];return {x:a.x,y:a.y,displayX:a.displayX,displayY:a.displayY}})()`)
+		require.NoError(c, err)
+		require.JSONEq(c, `{"x":300,"y":200,"displayX":300,"displayY":200}`, state)
+	}, 3*time.Second, 20*time.Millisecond)
 	var preview []byte
 	require.NoError(t, s.run(chromedp.CaptureScreenshot(&preview)))
 	before, err := png.Decode(bytes.NewReader(baseline))

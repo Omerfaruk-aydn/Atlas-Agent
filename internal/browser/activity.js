@@ -63,22 +63,24 @@ function(event) {
     resizeEdges();
     window.addEventListener('resize',resizeEdges);
     state={host,edges,motion,bands:edges.querySelectorAll('.smoke-band'),id:0,timer:0,visible:false,x:innerWidth-48,y:innerHeight-48,
-      displayX:innerWidth-48,displayY:innerHeight-48,fromX:0,fromY:0,moveAt:0,pointerReady:false,pointerKind:'',pointerRevision:0,cueAt:0,
+      displayX:innerWidth-48,displayY:innerHeight-48,fromX:0,fromY:0,moveAt:0,pointerReady:false,pointerKind:'',pointerRevision:0,cueAt:0,cueToken:'',cuePending:false,
       frame:0,frames:0,last:0,epoch:performance.now(),reduced:false,
-      drawPointer(time){
+      drawPointer(time,painted=false){
         const reduced=this.reduced||motion.matches;
+        // Begin confirmed feedback on its first paint, even if delivery was late.
+        if(this.cuePending&&painted){this.cueAt=time;this.cuePending=false}
         const t=reduced?1:Math.min(1,Math.max(0,(time-this.moveAt)/180)),ease=1-Math.pow(1-t,3);
         this.displayX=this.fromX+(this.x-this.fromX)*ease;this.displayY=this.fromY+(this.y-this.fromY)*ease;
         const held=['press','drag','drag_move'].includes(this.pointerKind);
         const age=time-this.cueAt;
-        const press=this.pointerKind==='click'&&age>=0&&age<260?1-age/260:0;
+        const press=this.pointerKind==='click'&&!this.cuePending&&age>=0&&age<260?1-age/260:0;
         cursor.style.left=this.displayX+'px';cursor.style.top=this.displayY+'px';
         cursor.dataset.held=String(held);
         cursor.style.setProperty('--pointer-scale',reduced?'1':String(held?.97:1-.14*press));
         cursor.querySelector('.cursor-click-ring').setAttribute('opacity',reduced?'0':String(.75*press));
       },
       animate(time){this.frame=0;if(!this.visible||!host.isConnected)return;
-        this.drawPointer(time);
+        this.drawPointer(time,true);
         if(this.reduced||motion.matches){edges.style.filter='none';edges.style.opacity='1';
           this.bands.forEach((band,i)=>{band.removeAttribute('transform');band.setAttribute('opacity',i===0?'.44':'.30')});return}
         const interval=1000/60;
@@ -102,7 +104,11 @@ function(event) {
         const now=performance.now();
         if(!this.pointerReady){this.fromX=this.x;this.fromY=this.y;this.moveAt=now-180}
         if(previousID!==e.id||this.pointerRevision!==e.pointer_revision||this.pointerKind!==e.pointer_kind){
-          this.pointerKind=e.pointer_kind||'';this.pointerRevision=e.pointer_revision||0;this.cueAt=now-(e.pointer_age||0);
+          this.pointerKind=e.pointer_kind||'';this.pointerRevision=e.pointer_revision||0;
+          const token=e.pointer_stamp||e.id+':'+e.pointer_revision;
+          if(this.pointerKind==='click'){
+            if(this.cueToken!==token){this.cueToken=token;this.cuePending=!(this.reduced||motion.matches);this.cueAt=now}
+          }else{this.cuePending=false;this.cueAt=now-(e.pointer_age||0)}
         }
         if(e.Point){
           const snap=this.reduced||motion.matches||!['','move','drag_move','aim'].includes(this.pointerKind);

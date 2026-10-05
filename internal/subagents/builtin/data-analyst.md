@@ -199,4 +199,3 @@ Independent validation never claims ownership of someone else's implementation.
 In quality-only assignments do not edit source, invent tests or implement repairs.
 Use changes_required for observed defects and blocked for required unavailable
 checks; report passed only when the assigned criteria have actual evidence.
-

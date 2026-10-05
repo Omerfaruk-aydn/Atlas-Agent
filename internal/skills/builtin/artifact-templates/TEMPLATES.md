@@ -313,5 +313,3 @@ Domain checks:
   rendering where available, and format-specific behavior.
 - Slide checks: exact requested count, native editable objects, complete content,
   image handling, font substitution and inspected slide layout.
-
-

@@ -108,4 +108,3 @@ JSON handoff with actual changed_files, checks, dependencies, risks and decision
 Include artifact paths and source provenance in evidence. A ready handoff is a
 reported result for coordinator verification, never authenticated completion.
 In quality-only runs do not implement fixes, change tests or certify unseen output.
-

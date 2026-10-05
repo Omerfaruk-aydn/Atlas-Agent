@@ -109,4 +109,3 @@ atlas-agent agent show documents
 Choose a role through the existing mode/agent UI or select it with the agent tool.
 Assign a dedicated provider/model through the existing role dialog if desired.
 The new role descriptions use the existing six-language catalog.
-

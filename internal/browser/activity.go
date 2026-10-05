@@ -104,7 +104,8 @@ func (r browserActivityRenderer) Render(e activity.Event) {
 		PointerKind     string `json:"pointer_kind"`
 		PointerRevision uint64 `json:"pointer_revision"`
 		PointerAge      int64  `json:"pointer_age"`
-	}{activity.CursorSVG, activity.BannerPointerSVG, visible, e.ID, x, y, max(0, remaining), e.Point, e.Persistent, e.ReducedMotion, caption, stop, canStop, e.PointerKind, e.PointerRevision, max(0, time.Since(e.PointerAt).Milliseconds())})
+		PointerStamp    string `json:"pointer_stamp"`
+	}{activity.CursorSVG, activity.BannerPointerSVG, visible, e.ID, x, y, max(0, remaining), e.Point, e.Persistent, e.ReducedMotion, caption, stop, canStop, e.PointerKind, e.PointerRevision, max(0, time.Since(e.PointerAt).Milliseconds()), e.PointerAt.UTC().Format(time.RFC3339Nano)})
 
 	script := fmt.Sprintf("(%s)(%s)", activityScript, payload)
 	if e.PointerKind == "aim" {

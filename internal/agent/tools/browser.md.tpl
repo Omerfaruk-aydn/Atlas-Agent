@@ -50,3 +50,7 @@ Guidance:
 - `eval` runs arbitrary JavaScript with full page access — use it for reading page state (`document.title`, computed values) or triggering something no other action covers, not as a shortcut around `click`/`type` when those already do the job.
 - If a click or form submission seems to do nothing, check `console` before assuming the page is broken — a swallowed JavaScript error is a common, invisible cause.
 - A missing browser binary or a launch failure comes back as an error from the first call that needs a session; there is nothing to configure from your side beyond retrying, since this is a host environment issue.
+
+During an active control run, screenshots may include the agent cursor and
+RGB edge mist. These are activity indicators, not application content or
+interactive targets.

@@ -42,18 +42,19 @@ var atlasConfigDescription string
 
 // AtlasConfigParams is the tool's input.
 type AtlasConfigParams struct {
-	Action       string `json:"action"`
-	Scope        string `json:"scope,omitempty"`
-	Role         string `json:"role,omitempty"`
-	ModelType    string `json:"model_type,omitempty"`
-	Provider     string `json:"provider,omitempty"`
-	Model        string `json:"model,omitempty"`
-	Tool         string `json:"tool,omitempty"`
-	Key          string `json:"key,omitempty"`
-	Value        any    `json:"value,omitempty"`
-	Name         string `json:"name,omitempty"`
-	Description  string `json:"description,omitempty"`
-	Instructions string `json:"instructions,omitempty"`
+	Action          string    `json:"action"`
+	Scope           string    `json:"scope,omitempty"`
+	Role            string    `json:"role,omitempty"`
+	ModelType       string    `json:"model_type,omitempty"`
+	Provider        string    `json:"provider,omitempty"`
+	Model           string    `json:"model,omitempty"`
+	Tool            string    `json:"tool,omitempty"`
+	Key             string    `json:"key,omitempty"`
+	Value           any       `json:"value,omitempty"`
+	Name            string    `json:"name,omitempty"`
+	Description     string    `json:"description,omitempty"`
+	Instructions    string    `json:"instructions,omitempty"`
+	PreferredSkills *[]string `json:"preferred_skills,omitempty" description:"Skill names to associate with save_subagent; omitted preserves existing bindings, an empty list clears them."`
 }
 
 // AtlasConfigPermissionParams is what the permission prompt shows.
@@ -264,7 +265,11 @@ func atlasConfigList(store *config.ConfigStore) string {
 		roleNote := ""
 		if s.Model != "" {
 			if _, ok := cfg.ResolveRole(s.Model); !ok {
-				roleNote = fmt.Sprintf(" (needs the %q model role assigned -- set_role -- before it can run)", config.StripRoleReference(s.Model))
+				if s.InheritModel {
+					roleNote = " (inherits the primary model when no dedicated role is assigned)"
+				} else {
+					roleNote = fmt.Sprintf(" (needs the %q model role assigned -- set_role -- before it can run)", config.StripRoleReference(s.Model))
+				}
 			}
 		}
 		fmt.Fprintf(&b, "  %s: %s%s\n", s.Name, s.Description, roleNote)
@@ -458,6 +463,20 @@ func atlasConfigSaveSubagent(store *config.ConfigStore, workingDir string, scope
 		Description:  description,
 		Model:        strings.TrimSpace(p.Model),
 		Instructions: instructions,
+	}
+	if existing, ok := subagents.Find(subagents.Discover(subagentsPaths(store)), name); ok {
+		if strings.TrimSpace(p.Instructions) == "" {
+			sub.Instructions = existing.Instructions
+		}
+		sub.Contract = existing.Contract
+		sub.ReadOnly = existing.ReadOnly
+		sub.AllowCommands = existing.AllowCommands
+		sub.Tools = slices.Clone(existing.Tools)
+		sub.PreferredSkills = slices.Clone(existing.PreferredSkills)
+		sub.InheritModel = existing.InheritModel
+	}
+	if p.PreferredSkills != nil {
+		sub.PreferredSkills = slices.Clone(*p.PreferredSkills)
 	}
 	path, err := subagents.SaveNamed(subagentsPaths(store), workingDir, sub, scope == config.ScopeGlobal)
 	if err != nil {

@@ -11,7 +11,7 @@ Actions (set `action` to one of these):
 - `set_field` — anything the actions above do not cover: `key` is a dotted path into the config (`options.auto_summarize_at`, `options.tui.transparent`), `value` is what to set it to. The escape hatch, not the first choice: the named actions validate what they are given and this one cannot.
 - `get_field` — read one dotted path back.
 - `list_subagents` — every configured subagent by name and description. Call this before naming one to `agent`, `orchestrate`, `debate` or `delegate`, or before a subagent-creating request turns out to already be satisfied by one that exists.
-- `save_subagent` — create or update a subagent: `name`, `description` (what routes work to it -- required), `instructions` (its system prompt; a short default is generated if omitted), and optionally `model` (a role name from `<roles>` below, e.g. `"@research"`, run on the session's own model when empty). Editing a subagent that already exists keeps it wherever it already lives, regardless of `scope`; `scope` only chooses where a genuinely new one is created.
+- `save_subagent` — create or update a subagent: `name`, `description` (what routes work to it -- required), `instructions` (its system prompt; omission preserves an existing body or generates a default for a new name), and optionally `model` (a role name from `<roles>` below, e.g. `"@research"`, run on the session's own model when empty). Editing a subagent that already exists keeps it wherever it already lives, regardless of `scope`; `scope` only chooses where a genuinely new one is created.
 - `delete_subagent` — remove one by `name`.
 
 <scope>
@@ -40,3 +40,9 @@ Every other name is free-form: a role called `research` is what a subagent with 
 - Say back what you changed, including the scope, in one line. Configuration the user cannot see changing is configuration they will not trust.
 - A provider the user has not authenticated cannot be assigned. `list` shows what is actually configured; offering a model from anywhere else wastes a turn.
 </tips>
+# Specialist skill bindings
+
+For save_subagent, preferred_skills is an optional array of up to eight unique
+skill names. Omitting it preserves existing bindings; [] clears them. Existing
+contracts, tool restrictions, read-only policy and model inheritance are preserved
+when editing metadata. Role skills are procedural guidance, not new permissions.

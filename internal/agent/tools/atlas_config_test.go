@@ -124,6 +124,41 @@ func TestAtlasConfigSaveSubagentWritesAFileThatListSubagentsSees(t *testing.T) {
 	require.Contains(t, got, "flags security issues")
 }
 
+func TestAtlasConfigSaveSubagentPreservesPoliciesAndCanClearBindings(t *testing.T) {
+	dir := t.TempDir()
+	agentsDir := subagents.ProjectDir(dir)
+	store := config.NewTestStore(&config.Config{Options: &config.Options{SubagentsPaths: []string{agentsDir}}})
+	original, ok := subagents.Find(subagents.Builtin(), "review")
+	require.True(t, ok)
+	original.InheritModel = true
+	_, err := subagents.SaveNamed([]string{agentsDir}, dir, *original, false)
+	require.NoError(t, err)
+	params := AtlasConfigParams{Name: "review", Description: "Workspace review policy."}
+	resp, err := atlasConfigSaveSubagent(store, dir, config.ScopeWorkspace, "workspace", params)
+	require.NoError(t, err)
+	require.False(t, resp.IsError)
+	saved, ok := subagents.Find(subagents.Discover([]string{agentsDir}), "review")
+	require.True(t, ok)
+	require.False(t, saved.Builtin)
+	require.Equal(t, original.Instructions, saved.Instructions)
+	require.Equal(t, original.Contract, saved.Contract)
+	require.Equal(t, original.Tools, saved.Tools)
+	require.Equal(t, original.PreferredSkills, saved.PreferredSkills)
+	require.Equal(t, original.ReadOnly, saved.ReadOnly)
+	require.Equal(t, original.AllowCommands, saved.AllowCommands)
+	require.Equal(t, original.InheritModel, saved.InheritModel)
+	empty := []string{}
+	params.PreferredSkills = &empty
+	resp, err = atlasConfigSaveSubagent(store, dir, config.ScopeWorkspace, "workspace", params)
+	require.NoError(t, err)
+	require.False(t, resp.IsError)
+	saved, ok = subagents.Find(subagents.Discover([]string{agentsDir}), "review")
+	require.True(t, ok)
+	require.Empty(t, saved.PreferredSkills)
+	require.Equal(t, original.Contract, saved.Contract)
+	require.True(t, saved.ReadOnly)
+}
+
 func TestAtlasConfigSaveSubagentRequiresNameAndDescription(t *testing.T) {
 	dir := t.TempDir()
 	store := config.NewTestStore(&config.Config{Options: &config.Options{}})
@@ -171,6 +206,8 @@ func TestAtlasConfigListSurfacesSubagentsAndTheirMissingRoles(t *testing.T) {
 	require.Contains(t, got, "review")
 	require.Contains(t, got, "security")
 	require.Contains(t, got, `needs the "review" model role assigned`)
+	require.Contains(t, got, "inherits the primary model")
+	require.NotContains(t, got, `needs the "documents" model role assigned`)
 }
 
 func TestAtlasConfigListStopsFlaggingARoleOnceItIsAssigned(t *testing.T) {

@@ -78,6 +78,7 @@ type windowsRenderer struct {
 	cursorPressed []byte
 	cursorHeld    []byte
 	pointerMotion pointerMotion
+	pointerSource pointerInputSource
 	bitmap        uintptr
 	oldBitmap     uintptr
 	cursor        cursorOverride
@@ -91,9 +92,24 @@ type windowsRenderer struct {
 	lastPointer   overlayPoint
 	bannerWindow  uintptr
 	banner        nativeBanner
+	mascot        *Mascot
 	onStop        func(uint64) bool
 	keyboardHook  uintptr
 	escapeEvent   atomic.Pointer[Event]
+	// Control island: the banner window's interactive form, the live blur
+	// beneath it and the input queued by their window procedure.
+	onRespond         func(uint64, PromptResponse) error
+	island            nativeIsland
+	blurWindow        uintptr
+	blurLive          bool
+	status            statusPicker
+	bannerRun         time.Time
+	inputMu           sync.Mutex
+	inbox             []islandInput
+	islandInteractive atomic.Bool
+	stopClickable     atomic.Bool
+	islandCursor      atomic.Int32
+	stopPressed       bool
 }
 
 func (r *windowsRenderer) SetStopHandler(stop func(uint64) bool) {
@@ -103,7 +119,7 @@ func (r *windowsRenderer) SetStopHandler(stop func(uint64) bool) {
 }
 
 func newPlatformRenderer() Renderer {
-	return &windowsRenderer{stop: make(chan struct{}), done: make(chan struct{}), hide: make(chan chan struct{}), present: make(chan chan struct{})}
+	return &windowsRenderer{stop: make(chan struct{}), done: make(chan struct{}), hide: make(chan chan struct{}), present: make(chan chan struct{}), mascot: NewMascot()}
 }
 
 func (r *windowsRenderer) Render(e Event) {
@@ -141,6 +157,7 @@ func (r *windowsRenderer) Render(e Event) {
 	if !e.Visible && started {
 		r.mu.Lock()
 		r.pointerMotion = pointerMotion{}
+		r.pointerSource = pointerInputSource{}
 		r.mu.Unlock()
 		ack := make(chan struct{})
 		select {
@@ -199,11 +216,8 @@ func (r *windowsRenderer) loop() {
 		overlayUser.NewProc("SetWindowDisplayAffinity").Call(hwnd, 0x11)
 	}
 	if len(r.windows) == 5 {
-		r.bannerWindow, _, _ = overlayUser.NewProc("CreateWindowExW").Call(0x080800a8, uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(name)), 0x80000000, 0, 0, 1, 1, 0, 0, instance, 0)
-		if r.bannerWindow != 0 {
-			overlayWindows.Store(r.bannerWindow, true)
-			overlayUser.NewProc("SetWindowDisplayAffinity").Call(r.bannerWindow, 0x11)
-		}
+		// Classes unregister after the windows below are destroyed.
+		defer r.createIslandWindows(instance)()
 	}
 	r.mu.Unlock()
 	defer func() {
@@ -214,11 +228,7 @@ func (r *windowsRenderer) loop() {
 			overlayUser.NewProc("DestroyWindow").Call(w)
 		}
 		r.windows = nil
-		if r.bannerWindow != 0 {
-			overlayWindows.Delete(r.bannerWindow)
-			overlayUser.NewProc("DestroyWindow").Call(r.bannerWindow)
-			r.bannerWindow = 0
-		}
+		r.destroyIslandWindows()
 		r.banner.close()
 		r.onStop = nil
 		r.escapeEvent.Store(nil)
@@ -259,7 +269,7 @@ func (r *windowsRenderer) loop() {
 				pumpOverlayMessages()
 				r.mu.Lock()
 				r.draw()
-				moving := r.event.PointerKind == "aim" && !r.event.ReducedMotion && (math.Abs(r.pointerMotion.x-float64(r.event.X)) > .5 || math.Abs(r.pointerMotion.y-float64(r.event.Y)) > .5)
+				moving := r.event.PointerKind == "aim" && !r.event.ReducedMotion && !r.pointerSource.physical && (math.Abs(r.pointerMotion.x-float64(r.event.X)) > .5 || math.Abs(r.pointerMotion.y-float64(r.event.Y)) > .5)
 				overlayDWM.NewProc("DwmFlush").Call()
 				r.mu.Unlock()
 				if !moving || time.Now().After(deadline) {
@@ -279,7 +289,9 @@ func (r *windowsRenderer) loop() {
 				overlayUser.NewProc("ShowWindow").Call(w, 0)
 			}
 			overlayUser.NewProc("ShowWindow").Call(r.bannerWindow, 0)
+			r.resetIsland()
 			r.cursor.restore()
+			r.mascot.Reset()
 			overlayDWM.NewProc("DwmFlush").Call()
 			r.mu.Unlock()
 			close(ack)
@@ -317,13 +329,52 @@ func (r *windowsRenderer) draw() {
 			overlayUser.NewProc("ShowWindow").Call(w, 0)
 		}
 		overlayUser.NewProc("ShowWindow").Call(r.bannerWindow, 0)
+		r.resetIsland()
 	}
 	if !r.event.Visible || len(r.windows) == 0 || r.imageDC == 0 {
 		r.cursor.restore()
+		r.mascot.Reset()
+		if r.island.open || r.island.blurShown || r.island.motion.ready {
+			r.resetIsland()
+		}
+		return
+	}
+	if !r.event.Persistent && r.event.Phase == PhaseDone {
+		// The run already released control: only the banner settles.
+		r.cursor.restore()
+		for _, w := range r.windows {
+			overlayUser.NewProc("ShowWindow").Call(w, 0)
+		}
+		if r.island.open || r.island.blurShown || r.island.motion.ready {
+			r.resetIsland()
+		}
+		if r.edgeScale > 0 {
+			r.drawBanner(r.edgeScale, time.Since(r.epoch))
+			r.frames++
+		}
+		return
+	}
+	now := time.Now()
+	islandActive := r.islandWanted() || r.islandBusy(now)
+	if r.islandWanted() {
+		// While the user answers, their own cursor is the only cursor and
+		// the agent cursor returns at the physical position afterwards.
+		overlayUser.NewProc("ShowWindow").Call(r.windows[0], 0)
+		r.cursor.show()
+		r.pointerMotion, r.pointerSource = pointerMotion{}, pointerInputSource{}
+		monitor := r.islandMonitor()
+		_, scale, ok := monitorArea(monitor)
+		if ok {
+			r.drawEdges(monitor, scale)
+			r.drawIsland(monitor, now)
+			r.frames++
+		}
 		return
 	}
 	var point overlayPoint
-	overlayUser.NewProc("GetCursorPos").Call(uintptr(unsafe.Pointer(&point)))
+	observed, _, _ := overlayUser.NewProc("GetCursorPos").Call(uintptr(unsafe.Pointer(&point)))
+	physical := point
+	physicalOwns := r.pointerSource.physicalOwns(r.event, int(point.X), int(point.Y), observed != 0)
 	if r.event.Point {
 		point = overlayPoint{int32(r.event.X), int32(r.event.Y)}
 	}
@@ -342,11 +393,16 @@ func (r *windowsRenderer) draw() {
 		r.cursor.restore()
 		return
 	}
-	now := time.Now()
 	finishingMove := r.event.PointerKind == "move" && now.Sub(r.event.PointerAt) < pointerMoveDuration && int(point.X) == r.event.X && int(point.Y) == r.event.Y
 	snap := r.event.ReducedMotion || (!r.event.Point && !finishingMove) || (r.event.PointerKind != "" && r.event.PointerKind != "move" && r.event.PointerKind != "aim")
+	if physicalOwns && observed != 0 {
+		point, snap = physical, true
+	}
 	x, y := r.pointerMotion.position(float64(point.X), float64(point.Y), snap, now)
 	press, held := pointerCue(r.event, now)
+	if physicalOwns {
+		press, held = 0, false
+	}
 	source := r.cursorIdle
 	if held {
 		source = r.cursorHeld
@@ -372,9 +428,22 @@ func (r *windowsRenderer) draw() {
 		r.pointerFrames++
 		r.lastPointer = position
 	}
-	overlayUser.NewProc("SetWindowPos").Call(r.windows[0], ^uintptr(0), 0, 0, 0, 0, 0x0053)
-	r.drawEdges(monitor, scale)
-	r.drawBanner(scale, time.Since(r.epoch))
+	placeWindow(r.windows[0], ^uintptr(0), 0x0053)
+	if islandActive {
+		// The island is settling back into the strip on its own monitor.
+		island := r.islandMonitor()
+		_, islandScale, _ := monitorArea(island)
+		r.drawEdges(island, islandScale)
+		r.drawIsland(island, now)
+	} else {
+		if r.island.blurShown || r.island.interactive || r.island.motion.ready {
+			// Nothing may linger once the island is no longer drawn: a
+			// collapse that settled between frames is finished here.
+			r.resetIsland()
+		}
+		r.drawEdges(monitor, scale)
+		r.drawBanner(scale, time.Since(r.epoch))
+	}
 	r.frames++
 	if r.event.Persistent {
 		if err := r.cursor.hide(); err != nil {
@@ -382,6 +451,40 @@ func (r *windowsRenderer) draw() {
 		}
 	}
 }
+
+// placeWindow puts hwnd directly beneath after (or on top for
+// HWND_TOPMOST), touching the z-order only when the window is hidden or out
+// of place. Reordering every frame makes DWM recompose the blur and the
+// layered surfaces above it, which shows as flicker.
+func placeWindow(hwnd, after, flags uintptr) {
+	if hwnd == 0 {
+		return
+	}
+	visible, _, _ := overlayUser.NewProc("IsWindowVisible").Call(hwnd)
+	if visible != 0 || flags&0x0040 == 0 {
+		// Hidden windows never cover anything, and some cannot be passed:
+		// the island's own IME window always stays above its owner.
+		previous := hwnd
+		for range 64 {
+			previous, _, _ = overlayUser.NewProc("GetWindow").Call(previous, 3) // GW_HWNDPREV
+			if previous == 0 || previous == after {
+				break
+			}
+			if shown, _, _ := overlayUser.NewProc("IsWindowVisible").Call(previous); shown != 0 {
+				break
+			}
+		}
+		if (after == ^uintptr(0) && previous == 0) || (after != ^uintptr(0) && previous == after) {
+			return
+		}
+	}
+	zOrderChanges.Add(1)
+	overlayUser.NewProc("SetWindowPos").Call(hwnd, after, 0, 0, 0, 0, flags)
+}
+
+// zOrderChanges counts real reorders so tests can prove a settled overlay
+// stack stays still.
+var zOrderChanges atomic.Int64
 
 func (r *windowsRenderer) createCursorSurface(scale float64) bool {
 	dc, _, _ := overlayGDI.NewProc("CreateCompatibleDC").Call(0)
@@ -418,4 +521,20 @@ func (r *windowsRenderer) createCursorSurface(scale float64) bool {
 	r.cursorHeld = cursorStateImage(scale, false, true).Pix
 	r.cursorPixels = unsafe.Slice((*byte)(bits), len(r.cursorIdle))
 	return true
+}
+
+// islandMonitor is the controlled monitor: the verified target's, else the
+// one the island or edges already occupy. The user's mouse never moves it.
+func (r *windowsRenderer) islandMonitor() uintptr {
+	if r.event.Point {
+		packed := uintptr(uint32(r.event.X)) | uintptr(uint32(r.event.Y))<<32
+		monitor, _, _ := overlayUser.NewProc("MonitorFromPoint").Call(packed, 2)
+		return monitor
+	}
+	if r.island.monitor != 0 {
+		return r.island.monitor
+	}
+	area := r.edgeArea
+	monitor, _, _ := overlayUser.NewProc("MonitorFromRect").Call(uintptr(unsafe.Pointer(&area)), 2)
+	return monitor
 }

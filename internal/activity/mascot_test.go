@@ -39,3 +39,32 @@ func poseDelta(a, b mascotPose) float64 {
 		math.Abs(a.GazeY-b.GazeY)/4, math.Abs(a.Slant-b.Slant), math.Abs(a.Smile-b.Smile), math.Abs(a.ArcLift-b.ArcLift)/4,
 		math.Abs(a.ArcTilt-b.ArcTilt), math.Abs(a.Arm[0]-b.Arm[0])/4, math.Abs(a.Arm[1]-b.Arm[1])/4)
 }
+
+func TestMascotTransitionsStayContinuous(t *testing.T) {
+	t.Parallel()
+	start := time.Now()
+	var a mascotAnimator
+	frame := time.Second / 60
+	sequence := []Event{
+		{Visible: true, Action: "click", PhaseAt: start},
+		{Visible: true, Phase: PhaseThinking, PhaseAt: start},
+		{Visible: true, Phase: PhaseWaiting, PhaseAt: start},
+		{Visible: true, Action: "type", PhaseAt: start},
+		{Visible: true, Phase: PhaseFailed, PhaseAt: start},
+		{Visible: true, Action: "navigate", PhaseAt: start},
+		{Visible: true, Phase: PhaseDone, PhaseAt: start},
+	}
+	previous := a.step(sequence[0], start, Look{})
+	now := start
+	for i, e := range sequence {
+		e.PhaseAt = now
+		for range 40 {
+			now = now.Add(frame)
+			pose := a.step(e, now, Look{X: .4, Y: -.5})
+			require.Less(t, poseDelta(previous, pose), .35, "Frame jump entering %d", i)
+			require.GreaterOrEqual(t, pose.Open[0], .12, "Eyes never disappear")
+			require.GreaterOrEqual(t, pose.Open[1], .12, "Eyes never disappear")
+			previous = pose
+		}
+	}
+}

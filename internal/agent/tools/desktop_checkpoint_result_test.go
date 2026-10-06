@@ -37,3 +37,53 @@ func TestDesktopSequenceCheckpointResultUsesMultipleWindowsWithoutImages(t *test
 	require.Contains(t, r.Content, `"actual":"hello"`)
 	require.NotContains(t, r.Content, "snapshot_id")
 }
+
+func TestDesktopCheckpointResultStopsOnMissingReadbackOrChangedForeground(t *testing.T) {
+	for _, kind := range []string{"missing_actual", "truncated", "wrong_identity", "wrong_foreground", "focus_denied", "visual_conflict"} {
+		t.Run(kind, func(t *testing.T) {
+			var p DesktopWorkflowParams
+			require.NoError(t, json.Unmarshal([]byte(`{"mode":"sequence","result":"checkpoints","steps":[{"focus_window":true,"input":{"action":"type","text":"hello","automation":{"window_id":"11"}},"checkpoint":{"window_id":"11","name":"Field","condition":"value","expected":"hello"}}]}`), &p))
+			if kind == "visual_conflict" {
+				p.Observation = "visual"
+			}
+			var actions []string
+			r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+				var input ComputerParams
+				require.NoError(t, json.Unmarshal([]byte(c.Input), &input))
+				actions = append(actions, input.Action)
+				switch input.Action {
+				case "focus":
+					if kind == "focus_denied" {
+						return fantasy.NewTextErrorResponse("focus_denied: fixture"), nil
+					}
+					return fantasy.NewTextResponse(`{"result":{"focused":true}}`), nil
+				case "assert":
+					state := map[string]any{"passed": true, "window_id": "11", "actual": "hello"}
+					switch kind {
+					case "missing_actual":
+						delete(state, "actual")
+					case "truncated":
+						state["actual_truncated"] = true
+					case "wrong_identity":
+						state["window_id"] = "22"
+					}
+					data, _ := json.Marshal(state)
+					return fantasy.NewTextResponse(string(data)), nil
+				case "windows":
+					return fantasy.NewTextResponse(`{"result":[{"window_id":"22","foreground":true}]}`), nil
+				default:
+					return fantasy.NewTextResponse(`{}`), nil
+				}
+			})
+			require.NoError(t, err)
+			require.True(t, r.IsError, r.Content)
+			require.NotContains(t, actions, "observe")
+			if kind == "focus_denied" {
+				require.Equal(t, []string{"focus"}, actions)
+			}
+			if kind == "visual_conflict" {
+				require.Empty(t, actions)
+			}
+		})
+	}
+}

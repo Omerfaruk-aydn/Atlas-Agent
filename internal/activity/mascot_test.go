@@ -198,3 +198,21 @@ func TestMascotCompletionAndCancellation(t *testing.T) {
 	finish(false)
 	require.True(t, m.Snapshot().FinishedUntil.IsZero(), "A failed run ends without a success pose")
 }
+
+func TestMascotFollowsResourceHandoff(t *testing.T) {
+	t.Parallel()
+	desktop, browser := New(&testRenderer{}), New(&testRenderer{})
+	defer desktop.Close()
+	defer browser.Close()
+	ctx, end := StartFlow(t.Context(), "handoff")
+	defer end()
+	desktop.Begin(ctx, Event{Session: "handoff", Resource: "desktop", Action: "click"})()
+	browser.Begin(ctx, Event{Session: "handoff", Resource: "browser", Action: "navigate"})()
+	require.False(t, desktop.Snapshot().Visible, "One owner at a time")
+	require.True(t, browser.Snapshot().Visible)
+	var a mascotAnimator
+	pose := a.step(browser.Snapshot(), time.Now(), Look{})
+	require.True(t, pose.Browser, "The browser variant keeps the same character")
+	pose = a.step(Event{Visible: true, Resource: "desktop"}, time.Now(), Look{})
+	require.False(t, pose.Browser)
+}

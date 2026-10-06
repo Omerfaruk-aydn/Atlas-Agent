@@ -5,6 +5,7 @@ import (
 
 	"sync/atomic"
 	"testing"
+	"time"
 
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/stretchr/testify/require"
@@ -167,4 +168,41 @@ func TestGUIOnlyTaskRejectsShellAndFileEditsBeforeExecution(t *testing.T) {
 			require.Zero(t, inner.calls, "scope must be enforced before executing any command")
 		})
 	}
+}
+
+func TestGUIOnlyScopeSurvivesSuccessfulReadAndNestedPipeline(t *testing.T) {
+	t.Parallel()
+	ctx := WithDesktopTaskScope(guardCtx(t), "Use the desktop application to save the document.")
+	desktop := WithDesktopGuard(&scriptedTool{name: ComputerToolName})
+	_, _ = desktop.Run(ctx, computerCall(`{"action":"screen_size"}`))
+	shellInner := &scriptedTool{name: BashToolName}
+	shell := WithDesktopGuard(shellInner)
+	pipeline := WithDesktopGuard(NewToolPipeline(func(c context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return shell.Run(c, call)
+	}))
+	resp, err := pipeline.Run(ctx, fantasy.ToolCall{Name: "tool_pipeline", Input: `{"steps":[{"id":"shell","tool":"bash","arguments":{"command":"mkdir x"}}]}`})
+	require.NoError(t, err)
+	require.Contains(t, resp.Content, "task_scope_violation")
+	require.Zero(t, shellInner.calls)
+}
+
+func TestGuardObservedTargetsExpireAndEnumerationRemovesClosedWindows(t *testing.T) {
+	t.Parallel()
+	ctx := guardCtx(t)
+	inner := &scriptedTool{name: ComputerToolName}
+	tool := WithDesktopGuard(inner)
+	call := computerCall(`{"action":"focus","automation":{"window_id":"11"}}`)
+	resp, _ := tool.Run(ctx, call)
+	require.False(t, resp.IsError, resp.Content)
+	recordDesktopWindows(ctx, "windows", fantasy.NewTextResponse(`{"result":[]}`))
+	resp, _ = tool.Run(ctx, call)
+	require.Contains(t, resp.Content, "unobserved_target")
+	recordDesktopWindows(ctx, "windows", fantasy.NewTextResponse(`{"result":[{"window_id":"11"}]}`))
+	state := desktopGuardFor(GetSessionFromContext(ctx))
+	state.mu.Lock()
+	state.windows["11"] = time.Now().Add(-6 * time.Minute)
+	state.mu.Unlock()
+	resp, _ = tool.Run(ctx, call)
+	require.Contains(t, resp.Content, "unobserved_target")
+	require.EqualValues(t, 1, inner.calls)
 }

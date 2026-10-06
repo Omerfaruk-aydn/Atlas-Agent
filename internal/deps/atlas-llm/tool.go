@@ -3,6 +3,7 @@ package fantasy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -169,6 +170,11 @@ func (w *funcToolWrapper[TInput]) Info() ToolInfo {
 func (w *funcToolWrapper[TInput]) Run(ctx context.Context, params ToolCall) (ToolResponse, error) {
 	var input TInput
 	if err := json.Unmarshal([]byte(params.Input), &input); err != nil {
+		// Contract errors carry their own code-first, structured message.
+		var coded interface{ ContractCode() string }
+		if errors.As(err, &coded) {
+			return NewTextErrorResponse(err.Error()), nil
+		}
 		return NewTextErrorResponse(fmt.Sprintf("invalid parameters: %s", err)), nil
 	}
 

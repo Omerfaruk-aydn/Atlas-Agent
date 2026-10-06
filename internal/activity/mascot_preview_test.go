@@ -3,7 +3,9 @@ package activity
 import (
 	"image"
 	"image/color"
-
+	"image/color/palette"
+	"image/draw"
+	"image/gif"
 	"image/png"
 	"math"
 	"os"
@@ -146,4 +148,97 @@ func TestMascotPreviewSheets(t *testing.T) {
 			writePNG(t, filepath.Join(dir, "mascot-"+name+".png"), sheet)
 		}
 	}
+}
+
+// Set ATLAS_MASCOT_PREVIEW to write every gesture at its peak and a long
+// improvised recording of the character slot.
+func TestMascotGesturePreview(t *testing.T) {
+	dir := os.Getenv("ATLAS_MASCOT_PREVIEW")
+	if dir == "" {
+		t.Skip("Set ATLAS_MASCOT_PREVIEW to write gesture previews")
+	}
+	banner := color.RGBA{23, 25, 32, 255}
+	fillers, onsets := mascotLibrary()
+	gestures := append(append([]mascotGesture{}, fillers...), onsets...)
+	const scale, cols = 3.0, 8
+	w, h := int(MascotWidth*scale), int(MascotHeight*scale)
+	rows := (len(gestures) + cols - 1) / cols
+	sheet := image.NewRGBA(image.Rect(0, 0, w*cols, h*rows))
+	fill(sheet, sheet.Bounds(), banner)
+	moodEvent := map[mascotMood]Event{
+		moodIdle: {Action: "wait"}, moodThinking: {Phase: PhaseThinking}, moodWorking: {Action: "click"},
+		moodWaiting: {Phase: PhaseWaiting}, moodBlocked: {Phase: PhaseFailed}, moodDone: {Phase: PhaseDone},
+	}
+	for i, g := range gestures {
+		mood := moodIdle
+		for m := moodIdle; m <= moodDone; m++ {
+			if g.moods&(1<<m) != 0 {
+				mood = m
+				break
+			}
+		}
+		e := moodEvent[mood]
+		e.Visible = true
+		e.PhaseAt = time.Now().Add(-time.Hour)
+		if mood == moodBlocked || mood == moodDone {
+			e.PhaseAt = time.Now()
+		}
+		m := NewMascot()
+		m.anim.reset()
+		m.Advance(e, time.Now(), Look{})
+		m.pose = m.anim.step(e, time.Now(), Look{})
+		peak := .45
+		if g.name == "spin" || g.name == "joy-spin" {
+			peak = .35
+		}
+		g.play(peak, 1, 1).addTo(&m.pose, 1)
+		m.pose.Open = [2]float64{max(.12, m.pose.Open[0]), max(.12, m.pose.Open[1])}
+		pix := make([]byte, w*h*4)
+		require.NoError(t, m.Render(pix, w, h, scale))
+		compositeMascot(sheet, (i%cols)*w, (i/cols)*h, pix, w, h)
+	}
+	writePNG(t, filepath.Join(dir, "mascot-gestures.png"), sheet)
+
+	// Forty seconds of unscripted life across moods, slot only.
+	m := NewMascot()
+	m.anim.perf.seed = 2026
+	start := time.Now()
+	script := []struct {
+		at    time.Duration
+		event Event
+	}{
+		{0, Event{Action: "wait"}},
+		{14 * time.Second, Event{Action: "click", Point: true}},
+		{19 * time.Second, Event{Phase: PhaseThinking}},
+		{26 * time.Second, Event{Phase: PhaseWaiting}},
+		{33 * time.Second, Event{Action: "type"}},
+		{36 * time.Second, Event{Phase: PhaseFailed}},
+		{38 * time.Second, Event{Phase: PhaseDone}},
+	}
+	anim := &gif.GIF{}
+	frame := time.Second / 30
+	current := 0
+	var e Event
+	for d := time.Duration(0); d < 40*time.Second; d += frame {
+		for current < len(script) && script[current].at <= d {
+			e = script[current].event
+			e.Visible, e.PhaseAt = true, start.Add(script[current].at)
+			current++
+		}
+		m.Advance(e, start.Add(d-frame/2), Look{X: -.4, Y: -.5})
+		m.Advance(e, start.Add(d), Look{X: -.4, Y: -.5})
+		pix := make([]byte, w*h*4)
+		require.NoError(t, m.Render(pix, w, h, scale))
+		tile := image.NewRGBA(image.Rect(0, 0, w, h))
+		fill(tile, tile.Bounds(), banner)
+		compositeMascot(tile, 0, 0, pix, w, h)
+		frameImage := image.NewPaletted(tile.Rect, palette.Plan9)
+		draw.FloydSteinberg.Draw(frameImage, tile.Rect, tile, image.Point{})
+		anim.Image = append(anim.Image, frameImage)
+		anim.Delay = append(anim.Delay, 3)
+	}
+	f, err := os.Create(filepath.Join(dir, "mascot-improv.gif"))
+	require.NoError(t, err)
+	require.NoError(t, gif.EncodeAll(f, anim))
+	require.NoError(t, f.Close())
 }

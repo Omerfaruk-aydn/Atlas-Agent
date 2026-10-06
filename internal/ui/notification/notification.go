@@ -7,11 +7,14 @@
 //     falling back to OSC 777 (urxvt extension, widely supported). Used for SSH sessions.
 //   - BellBackend: Triggers the terminal bell character (\x07), causing an audible
 //     beep or visual flash. Works in virtually all terminals but provides no message text.
+//   - SoundBackend: Plays a distinct sound per event (permission, question,
+//     finished) on Windows, optionally from the user's own WAV files, and
+//     rings the terminal bell elsewhere.
 //   - NoopBackend: A no-op backend that silently discards notifications. Used when
 //     notifications are disabled or no suitable backend is available.
 //
 // Backend selection is based on terminal capabilities, environment, and user config:
-//   - Users can explicitly set notifications in atlas.json (auto/native/osc/bell/disabled)
+//   - Users can explicitly set notifications in atlas.json (auto/native/osc/bell/sound/disabled)
 //   - Auto mode: SSH sessions use OSC backend (auto-detects OSC 99 vs 777)
 //   - Auto mode: Local sessions use native OS notifications
 //   - If focus events are not supported in local sessions, notifications are disabled (NoopBackend)
@@ -23,6 +26,9 @@ import tea "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ui/v2"
 type Notification struct {
 	Title   string
 	Message string
+	// Kind names the event, so the sound backend can give each its own
+	// sound. Other backends ignore it.
+	Kind Kind
 }
 
 // Backend defines the interface for sending desktop notifications.

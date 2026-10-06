@@ -198,3 +198,25 @@ func TestCancelWhileWaitingTearsDownAndRejectsOldAnswers(t *testing.T) {
 		})
 	}
 }
+
+func TestPromptOfAnotherSessionLeavesOtherSurfacesAlone(t *testing.T) {
+	a := New(&testRenderer{})
+	defer a.Close()
+	b := New(&testRenderer{})
+	defer b.Close()
+	ctxA, endA := StartFlow(context.Background(), "session-a")
+	defer endA()
+	ctxB, endB := StartFlow(context.Background(), "session-b")
+	defer endB()
+	a.Begin(ctxA, Event{Session: "session-a"})()
+	b.Begin(ctxB, Event{Session: "session-b"})()
+	pending := AwaitPrompt(ctxA, questionFixture("a"), func(PromptResponse) bool { return true })
+	require.Nil(t, b.Snapshot().Prompt)
+	require.Equal(t, StateThinking, b.Snapshot().State)
+	require.False(t, PromptBlocks(ctxB, false), "Another run's browser input is independent")
+	require.True(t, PromptBlocks(ctxB, true), "The shared desktop waits for the displayed question")
+	CancelSession("session-a")
+	require.True(t, b.Snapshot().Visible, "Cancelling one run keeps the other's surface")
+	require.False(t, PromptBlocks(ctxB, true))
+	pending.Done(OutcomeCancelled)
+}

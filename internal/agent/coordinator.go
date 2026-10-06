@@ -68,6 +68,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/muse"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/openai"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/openaicompat"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/opencodecli"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/openrouter"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/vercel"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/windsurf"
@@ -695,7 +696,8 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 			string(catwalk.InferenceProviderXiaomiPlanAMS):
 			if _, configured := extraBody["thinking"]; !configured && model.CatwalkCfg.CanReason {
 				thinkingType := "disabled"
-				if model.ModelCfg.Think || reasoningEffort != "" && reasoningEffort != "none" {
+				// A selected effort takes precedence over the legacy thinking toggle.
+				if reasoningEffort != "" && reasoningEffort != "none" || reasoningEffort == "" && model.ModelCfg.Think {
 					thinkingType = "enabled"
 				}
 				extraBody["thinking"] = map[string]any{"type": thinkingType}
@@ -1081,6 +1083,27 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		allTools = append(allTools, tools.NewDebuggerTool(c.permissions, c.cfg.Config().Tools.Debugger))
 	}
 
+	dispatchComputer := func(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		for _, target := range c.filterTools(allTools, agent, c.hookRunner(hooks.EventPreToolUse), c.hookRunner(hooks.EventPostToolUse), isSubAgent) {
+			if target.Info().Name == call.Name {
+				info := target.Info()
+				encoded, _ := json.Marshal(map[string]any{"type": "object", "properties": info.Parameters, "required": info.Required})
+				var specification schema.Schema
+				if err := json.Unmarshal(encoded, &specification); err != nil {
+					return fantasy.ToolResponse{}, err
+				}
+				var arguments any
+				if err := json.Unmarshal([]byte(call.Input), &arguments); err != nil {
+					return fantasy.NewTextErrorResponse("Invalid pipeline arguments"), nil
+				}
+				if err := schema.ValidateAgainstSchema(arguments, specification); err != nil {
+					return tools.SchemaViolationResponse(call, err), nil
+				}
+				return (&guardedTool{AgentTool: target, store: c.engineering}).Run(ctx, call)
+			}
+		}
+		return fantasy.NewTextErrorResponse("Tool is disabled or unavailable: " + call.Name), nil
+	}
 	// Computer-use tool is opt-in: every action moves the user's real
 	// desktop. The backend reports unsupported platforms itself, so the
 	// tool registers wherever it is enabled and degrades to a clear
@@ -1092,6 +1115,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 			c.cfg.Config().Tools.Computer,
 			computer.OpenOrNil(),
 			func() bool { return c.cfg.Config().Tools.Computer.IsEnabled() },
+			dispatchComputer,
 		))
 	}
 
@@ -1244,27 +1268,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 	if c.stateStore() != nil {
 		allTools = append(allTools, tools.NewPlatformTools(c.stateStore(), c.cfg.WorkingDir(), c.platformScope(), c.permissions)...)
 	}
-	allTools = append(allTools, tools.NewToolPipeline(func(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
-		for _, target := range c.filterTools(allTools, agent, c.hookRunner(hooks.EventPreToolUse), c.hookRunner(hooks.EventPostToolUse), isSubAgent) {
-			if target.Info().Name == call.Name {
-				info := target.Info()
-				encoded, _ := json.Marshal(map[string]any{"type": "object", "properties": info.Parameters, "required": info.Required})
-				var specification schema.Schema
-				if err := json.Unmarshal(encoded, &specification); err != nil {
-					return fantasy.ToolResponse{}, err
-				}
-				var arguments any
-				if err := json.Unmarshal([]byte(call.Input), &arguments); err != nil {
-					return fantasy.NewTextErrorResponse("Invalid pipeline arguments"), nil
-				}
-				if err := schema.ValidateAgainstSchema(arguments, specification); err != nil {
-					return fantasy.NewTextErrorResponse(err.Error()), nil
-				}
-				return (&guardedTool{AgentTool: target, store: c.engineering}).Run(ctx, call)
-			}
-		}
-		return fantasy.NewTextErrorResponse("Tool is disabled or unavailable: " + call.Name), nil
-	}))
+	allTools = append(allTools, tools.NewToolPipeline(dispatchComputer, c.engineering))
 	return allTools, nil
 }
 
@@ -1326,6 +1330,13 @@ func (c *coordinator) filterTools(allTools []fantasy.AgentTool, agent config.Age
 	// tool that hangs, and the timeout should cover both.
 	filteredTools = wrapToolsWithTimeout(filteredTools,
 		time.Duration(c.cfg.Config().Options.ToolTimeout)*time.Second)
+
+	// Outermost, shared by the main agent, sub-agents and every nested
+	// computer/pipeline dispatch: failure classification, replay control for
+	// identical failed calls and visible GUI-to-shell fallback.
+	for i, tool := range filteredTools {
+		filteredTools[i] = tools.WithDesktopGuard(tool)
+	}
 
 	return filteredTools
 }
@@ -2038,6 +2049,9 @@ func (c *coordinator) buildProvider(providerCfg config.ProviderConfig, model con
 	if headers == nil {
 		headers = make(map[string]string)
 	}
+	if providerCfg.ID == string(catwalk.InferenceProviderOpenCodeGo) || providerCfg.ID == string(catwalk.InferenceProviderOpenCodeZen) {
+		headers = openCodeHeaders(headers)
+	}
 
 	// handle special headers for anthropic
 	if providerCfg.Type == anthropic.Name && c.isAnthropicThinking(model) {
@@ -2050,6 +2064,13 @@ func (c *coordinator) buildProvider(providerCfg config.ProviderConfig, model con
 
 	apiKey, _ := c.cfg.Resolve(c.pickAPIKey(providerCfg))
 	baseURL, _ := c.cfg.Resolve(providerCfg.BaseURL)
+	useCLI, err := useOpenCodeCLI(providerCfg, model.Model, baseURL)
+	if err != nil {
+		return nil, err
+	}
+	if useCLI {
+		return opencodecli.New(opencodecli.Options{ProviderName: providerCfg.ID, Executable: providerCfg.OpenCodeExecutable, Variant: model.ReasoningEffort})
+	}
 
 	switch providerCfg.ID {
 	case string(catwalk.InferenceProviderOpenCodeGo), string(catwalk.InferenceProviderOpenCodeZen):

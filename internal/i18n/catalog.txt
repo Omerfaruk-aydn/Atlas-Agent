@@ -965,3 +965,104 @@ Analyzes datasets and produces auditable calculations, spreadsheets and charts.|
 Creates reusable reference-backed templates with schemas, provenance and inspected sample outputs.|Şemaları, kaynak bilgileri ve incelenmiş örnek çıktıları olan tekrar kullanılabilir şablonlar oluşturur.|Erstellt wiederverwendbare Vorlagen mit Schema, Herkunft und geprüften Beispielausgaben.|Crée des modèles réutilisables avec schémas, provenance et exemples inspectés.|Crea modelli riutilizzabili con schemi, provenienza ed esempi verificati.|ينشئ قوالب قابلة لإعادة الاستخدام مع مخططات ومصادر ومخرجات نموذجية مفحوصة.
 Implements and verifies MCP and service integrations with explicit authentication and failure behavior.|Kimlik doğrulaması ve hata davranışı açıkça tanımlanmış MCP ve hizmet entegrasyonlarını uygular ve doğrular.|Implementiert und prüft MCP- und Dienstintegrationen mit klarer Authentifizierung und Fehlerbehandlung.|Implémente et vérifie les intégrations MCP et de services avec authentification et erreurs explicites.|Implementa e verifica integrazioni MCP e servizi con autenticazione e gestione degli errori esplicite.|ينفذ ويتحقق من تكاملات MCP والخدمات مع مصادقة وسلوك واضح للأخطاء.
 Organizes connected messages, meetings and tasks with source fidelity and explicit action authorization.|Kaynaklara bağlı kalarak ve işlem yetkisini gözeterek mesajları, toplantıları ve görevleri düzenler.|Organisiert Nachrichten, Besprechungen und Aufgaben mit Quellenbezug und ausdrücklicher Handlungsfreigabe.|Organise messages, réunions et tâches avec fidélité aux sources et autorisation explicite.|Organizza messaggi, riunioni e attività rispettando fonti e autorizzazioni esplicite.|ينظم الرسائل والاجتماعات والمهام مع الالتزام بالمصادر والتفويض الصريح للإجراءات.
+Working|Çalışıyor|Arbeitet|Au travail|Al lavoro|يعمل
+Working on it|Üzerinde çalışıyor|Arbeitet daran|S’en occupe|Ci sta lavorando|يعمل على ذلك
+Carrying on|Sürdürüyor|Macht weiter|Poursuit|Prosegue|يواصل
+Handling the step|Adımı yürütüyor|Führt den Schritt aus|Exécute l’étape|Esegue il passaggio|ينفّذ الخطوة
+Planning|Planlıyor|Plant|Planifie|Pianifica|يخطط
+Planning the next step|Sonraki adımı planlıyor|Plant den nächsten Schritt|Prépare l’étape suivante|Pianifica il prossimo passo|يخطط للخطوة التالية
+Considering options|Seçenekleri tartıyor|Wägt Optionen ab|Examine les options|Valuta le opzioni|يدرس الخيارات
+Preparing|Hazırlanıyor|Bereitet vor|Se prépare|Si prepara|يستعد
+Working it out|Çözümlüyor|Tüftelt|Cherche la solution|Ci ragiona|يتوصل إلى الحل
+Cooking|Pişiriyor|Kocht|Mijote|Cucina|يطبخ
+Brewing an idea|Fikir demliyor|Brütet eine Idee aus|Fait mûrir une idée|Fa maturare un’idea|تختمر لديه فكرة
+Opening the page|Sayfayı açıyor|Öffnet die Seite|Ouvre la page|Apre la pagina|يفتح الصفحة
+Loading the page|Sayfayı yüklüyor|Lädt die Seite|Charge la page|Carica la pagina|يحمّل الصفحة
+Going to the page|Sayfaya gidiyor|Geht zur Seite|Se rend sur la page|Va alla pagina|ينتقل إلى الصفحة
+Navigating|Geziniyor|Navigiert|Navigue|Naviga|يتنقل
+Opening the app|Uygulamayı açıyor|Öffnet die App|Ouvre l’application|Apre l’app|يفتح التطبيق
+Starting the app|Uygulamayı başlatıyor|Startet die App|Lance l’application|Avvia l’app|يشغّل التطبيق
+Bringing up the window|Pencereyi öne getiriyor|Holt das Fenster nach vorn|Affiche la fenêtre|Porta la finestra in primo piano|يُظهر النافذة
+Reading the content|İçeriği okuyor|Liest den Inhalt|Lit le contenu|Legge il contenuto|يقرأ المحتوى
+Looking at the page|Sayfaya bakıyor|Sieht sich die Seite an|Regarde la page|Guarda la pagina|ينظر إلى الصفحة
+Scanning the screen|Ekranı tarıyor|Erfasst den Bildschirm|Parcourt l’écran|Scansiona lo schermo|يفحص الشاشة
+Reviewing what is shown|Görüneni inceliyor|Prüft die Anzeige|Examine l’affichage|Esamina ciò che è mostrato|يراجع المعروض
+Observing again|Tekrar gözlemliyor|Beobachtet erneut|Observe à nouveau|Osserva di nuovo|يراقب مجددًا
+Taking another look|Yeniden bakıyor|Schaut noch einmal hin|Jette un autre coup d’œil|Dà un’altra occhiata|يلقي نظرة أخرى
+Re-reading the screen|Ekranı yeniden okuyor|Liest den Bildschirm erneut|Relit l’écran|Rilegge lo schermo|يعيد قراءة الشاشة
+Finding the target|Hedefi buluyor|Sucht das Ziel|Trouve la cible|Trova il bersaglio|يحدد الهدف
+Locating the element|Öğeyi konumluyor|Ortet das Element|Localise l’élément|Individua l’elemento|يحدد موضع العنصر
+Searching the page|Sayfada arıyor|Durchsucht die Seite|Cherche dans la page|Cerca nella pagina|يبحث في الصفحة
+Typing|Yazıyor|Tippt|Saisit|Digita|يكتب
+Entering text|Metin giriyor|Gibt Text ein|Saisit du texte|Inserisce testo|يُدخل النص
+Writing in the field|Alana yazıyor|Schreibt ins Feld|Écrit dans le champ|Scrive nel campo|يكتب في الحقل
+Filling in the form|Formu dolduruyor|Füllt das Formular aus|Remplit le formulaire|Compila il modulo|يملأ النموذج
+Setting the value|Değeri ayarlıyor|Setzt den Wert|Définit la valeur|Imposta il valore|يضبط القيمة
+Entering the value|Değeri giriyor|Gibt den Wert ein|Saisit la valeur|Inserisce il valore|يُدخل القيمة
+Choosing an option|Seçenek seçiyor|Wählt eine Option|Choisit une option|Sceglie un’opzione|يختار خيارًا
+Selecting from the list|Listeden seçiyor|Wählt aus der Liste|Sélectionne dans la liste|Seleziona dall’elenco|يختار من القائمة
+Clicking|Tıklıyor|Klickt|Clique|Fa clic|ينقر
+Selecting the target|Hedefi seçiyor|Wählt das Ziel aus|Sélectionne la cible|Seleziona il bersaglio|يختار الهدف
+Pressing|Basıyor|Drückt|Appuie|Preme|يضغط
+Scrolling|Kaydırıyor|Scrollt|Fait défiler|Scorre|يمرّر
+Moving through the page|Sayfada ilerliyor|Bewegt sich durch die Seite|Parcourt la page|Si sposta nella pagina|يتنقل عبر الصفحة
+Scrolling to the content|İçeriğe kaydırıyor|Scrollt zum Inhalt|Défile jusqu’au contenu|Scorre fino al contenuto|يمرّر إلى المحتوى
+Pressing keys|Tuşlara basıyor|Drückt Tasten|Appuie sur des touches|Preme dei tasti|يضغط على المفاتيح
+Sending a shortcut|Kısayol gönderiyor|Sendet ein Tastenkürzel|Envoie un raccourci|Invia una scorciatoia|يرسل اختصارًا
+Moving the pointer|İmleci taşıyor|Bewegt den Zeiger|Déplace le pointeur|Sposta il puntatore|يحرّك المؤشر
+Positioning the pointer|İmleci konumlandırıyor|Positioniert den Zeiger|Positionne le pointeur|Posiziona il puntatore|يضبط موضع المؤشر
+Dragging|Sürüklüyor|Zieht|Fait glisser|Trascina|يسحب
+Dragging the item|Öğeyi sürüklüyor|Zieht das Element|Fait glisser l’élément|Trascina l’elemento|يسحب العنصر
+Saving the file|Dosyayı kaydediyor|Speichert die Datei|Enregistre le fichier|Salva il file|يحفظ الملف
+Downloading|İndiriyor|Lädt herunter|Télécharge|Scarica|ينزّل
+Saving the download|İndirmeyi kaydediyor|Speichert den Download|Enregistre le téléchargement|Salva il download|يحفظ التنزيل
+Uploading the file|Dosyayı yüklüyor|Lädt die Datei hoch|Téléverse le fichier|Carica il file|يرفع الملف
+Attaching the file|Dosyayı ekliyor|Hängt die Datei an|Joint le fichier|Allega il file|يرفق الملف
+Verifying the result|Sonucu doğruluyor|Überprüft das Ergebnis|Vérifie le résultat|Verifica il risultato|يتحقق من النتيجة
+Checking the result|Sonucu kontrol ediyor|Kontrolliert das Ergebnis|Contrôle le résultat|Controlla il risultato|يفحص النتيجة
+Confirming the state|Durumu teyit ediyor|Bestätigt den Zustand|Confirme l’état|Conferma lo stato|يؤكد الحالة
+Waiting for the page|Sayfayı bekliyor|Wartet auf die Seite|Attend la page|Attende la pagina|ينتظر الصفحة
+Letting it load|Yüklenmesini bekliyor|Lässt es laden|Laisse charger|Lascia caricare|ينتظر التحميل
+Waiting for a change|Değişikliği bekliyor|Wartet auf eine Änderung|Attend un changement|Attende un cambiamento|ينتظر تغييرًا
+Managing tabs|Sekmeleri yönetiyor|Verwaltet Tabs|Gère les onglets|Gestisce le schede|يدير علامات التبويب
+Working with tabs|Sekmelerle çalışıyor|Arbeitet mit Tabs|Travaille avec les onglets|Lavora con le schede|يعمل على علامات التبويب
+Waiting for your answer|Yanıtını bekliyor|Wartet auf deine Antwort|Attend votre réponse|Attende la tua risposta|ينتظر إجابتك
+Your answer is needed|Yanıtın gerekiyor|Deine Antwort wird benötigt|Votre réponse est requise|Serve la tua risposta|إجابتك مطلوبة
+A question for you|Sana bir sorusu var|Eine Frage an dich|Une question pour vous|Una domanda per te|سؤال لك
+Waiting for your permission|İznini bekliyor|Wartet auf deine Erlaubnis|Attend votre autorisation|Attende il tuo permesso|ينتظر إذنك
+Needs your approval|Onayın gerekiyor|Braucht deine Zustimmung|A besoin de votre accord|Serve la tua approvazione|يحتاج موافقتك
+Paused for your decision|Kararın için durdu|Pausiert für deine Entscheidung|En pause pour votre décision|In pausa per la tua decisione|متوقف بانتظار قرارك
+Sending your answer|Yanıtını iletiyor|Übermittelt deine Antwort|Transmet votre réponse|Invia la tua risposta|يرسل إجابتك
+Delivering your decision|Kararını iletiyor|Übermittelt deine Entscheidung|Transmet votre décision|Trasmette la tua decisione|ينقل قرارك
+Continuing|Devam ediyor|Setzt fort|Continue|Continua|يتابع
+Resuming the task|Göreve devam ediyor|Nimmt die Aufgabe wieder auf|Reprend la tâche|Riprende l’attività|يستأنف المهمة
+Picking up where it left off|Kaldığı yerden sürdürüyor|Macht dort weiter, wo es aufgehört hat|Reprend là où il s’était arrêté|Riprende da dove si era fermato|يكمل من حيث توقف
+Permission declined|İzin reddedildi|Erlaubnis abgelehnt|Autorisation refusée|Permesso negato|رُفض الإذن
+Skipping the declined action|Reddedilen işlemi atlıyor|Überspringt die abgelehnte Aktion|Ignore l’action refusée|Salta l’azione negata|يتخطى الإجراء المرفوض
+Respecting your decision|Kararına uyuyor|Respektiert deine Entscheidung|Respecte votre décision|Rispetta la tua decisione|يحترم قرارك
+Investigating the problem|Sorunu inceliyor|Untersucht das Problem|Examine le problème|Analizza il problema|يحقق في المشكلة
+Looking into the error|Hataya bakıyor|Sieht sich den Fehler an|Analyse l’erreur|Esamina l’errore|يفحص الخطأ
+Checking what went wrong|Neyin ters gittiğine bakıyor|Prüft, was schiefging|Vérifie ce qui n’a pas marché|Verifica cosa è andato storto|يتحقق مما حدث من خطأ
+Done|Tamamlandı|Fertig|Terminé|Fatto|تم
+Finished|Bitti|Abgeschlossen|Fini|Finito|انتهى
+All done|Hepsi tamam|Alles erledigt|Tout est fait|Tutto fatto|اكتمل كل شيء
+Permission needed|İzin gerekiyor|Erlaubnis erforderlich|Autorisation requise|Permesso richiesto|الإذن مطلوب
+Question %d of %d|Soru %d / %d|Frage %d von %d|Question %d sur %d|Domanda %d di %d|السؤال %d من %d
+Submit|Gönder|Senden|Envoyer|Invia|إرسال
+Next|İleri|Weiter|Suivant|Avanti|التالي
+Back|Geri|Zurück|Retour|Indietro|رجوع
+Sending…|Gönderiliyor…|Wird gesendet…|Envoi…|Invio…|جارٍ الإرسال…
+Waiting %s|Bekleme %s|Wartet %s|Attente %s|Attesa %s|انتظار %s
+Run time %s|Çalışma %s|Laufzeit %s|Durée %s|Durata %s|مدة التشغيل %s
+Choose one|Birini seç|Eine auswählen|Choisissez-en une|Scegline una|اختر واحدًا
+Select all that apply|Uygun olanların hepsini seç|Alle zutreffenden auswählen|Sélectionnez tout ce qui s’applique|Seleziona tutte le opzioni pertinenti|اختر كل ما ينطبق
+Type your answer…|Yanıtını yaz…|Antwort eingeben…|Saisissez votre réponse…|Scrivi la tua risposta…|اكتب إجابتك…
+Typed content is hidden|Yazılan içerik gizlendi|Eingegebener Inhalt ist ausgeblendet|Le contenu saisi est masqué|Il contenuto digitato è nascosto|المحتوى المكتوب مخفي
+Action|İşlem|Aktion|Action|Azione|الإجراء
+Scope|Kapsam|Bereich|Portée|Ambito|النطاق
++%d more waiting|+%d istek daha bekliyor|+%d weitere warten|+%d autres en attente|+%d altre in attesa|+%d بانتظار الدور
+Answer in the terminal|Terminalden yanıtla|Im Terminal antworten|Répondez dans le terminal|Rispondi nel terminale|أجب في الطرفية
+Esc stops|Esc durdurur|Esc stoppt|Échap arrête|Esc ferma|Esc للإيقاف
+Enter to submit|Göndermek için Enter|Enter zum Senden|Entrée pour envoyer|Invio per inviare|Enter للإرسال
+Sound|Ses|Ton|Son|Suono|صوت
+Play a different sound for each event|Her olay için farklı ses çal|Für jedes Ereignis einen eigenen Ton abspielen|Jouer un son différent pour chaque événement|Riproduci un suono diverso per ogni evento|تشغيل صوت مختلف لكل حدث

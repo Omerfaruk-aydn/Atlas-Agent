@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/i18n"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
@@ -23,6 +24,23 @@ const (
 )
 
 type browserActivityRenderer struct{ session *chromedpSession }
+
+// SetRespondHandler lets the native control island answer the exact
+// request revision it displays. The page overlay never answers anything.
+func (r browserActivityRenderer) SetRespondHandler(respond func(uint64, activity.PromptResponse) error) {
+	if native, ok := r.session.activityNative.(interface {
+		SetRespondHandler(func(uint64, activity.PromptResponse) error)
+	}); ok {
+		native.SetRespondHandler(respond)
+	}
+}
+
+// SetStopHandler forwards the exact manager revision to the native overlay.
+func (r browserActivityRenderer) SetStopHandler(stop func(uint64) bool) {
+	if native, ok := r.session.activityNative.(interface{ SetStopHandler(func(uint64) bool) }); ok {
+		native.SetStopHandler(stop)
+	}
+}
 
 func (s *chromedpSession) ensureActivityStopWatcher() bool {
 	s.activityStopOnce.Do(func() {
@@ -80,10 +98,19 @@ func (s *chromedpSession) activityFocused() (bool, error) {
 }
 
 func (r browserActivityRenderer) Render(e activity.Event) {
+	if r.session.activityNative != nil {
+		r.session.activityNative.Render(e)
+		return
+	}
 	remaining := time.Until(e.FinishedUntil).Milliseconds()
 	visible := e.Visible || remaining > 0
-	caption, stop := activity.BannerText(e)
+	_, stop := activity.BannerText(e)
+	now := time.Now()
+	caption := r.session.activityStatus.Text(e, now)
 	canStop := e.CanStop && visible && r.session.ensureActivityStopWatcher()
+	// Page scripts can reach this overlay, so a pending request is only
+	// announced here and answered in Atlas, never from the page.
+	waiting := e.Prompt != nil && e.Visible
 	x, y := float64(e.X), float64(e.Y)
 	if e.PointerRevision != 0 {
 		x, y = e.PointerX, e.PointerY
@@ -105,7 +132,15 @@ func (r browserActivityRenderer) Render(e activity.Event) {
 		PointerRevision uint64 `json:"pointer_revision"`
 		PointerAge      int64  `json:"pointer_age"`
 		PointerStamp    string `json:"pointer_stamp"`
-	}{activity.CursorSVG, activity.BannerPointerSVG, visible, e.ID, x, y, max(0, remaining), e.Point, e.Persistent, e.ReducedMotion, caption, stop, canStop, e.PointerKind, e.PointerRevision, max(0, time.Since(e.PointerAt).Milliseconds()), e.PointerAt.UTC().Format(time.RFC3339Nano)})
+		Done            bool   `json:"done"`
+		Elapsed         int64  `json:"elapsed"`
+		Running         bool   `json:"running"`
+		Waiting         bool   `json:"waiting"`
+		WaitingHint     string `json:"waiting_hint"`
+	}{
+		activity.CursorSVG, activity.BannerMascotSVG, visible, e.ID, x, y, max(0, remaining), e.Point, e.Persistent, e.ReducedMotion, caption, stop, canStop, e.PointerKind, e.PointerRevision, max(0, time.Since(e.PointerAt).Milliseconds()), e.PointerAt.UTC().Format(time.RFC3339Nano), e.Phase == activity.PhaseDone && !e.Persistent,
+		e.Elapsed(now).Milliseconds(), !e.RunStarted.IsZero() && e.RunEnded.IsZero(), waiting, i18n.Text(e.Language, "Answer in the terminal"),
+	})
 
 	script := fmt.Sprintf("(%s)(%s)", activityScript, payload)
 	if e.PointerKind == "aim" {
@@ -127,18 +162,32 @@ func (r browserActivityRenderer) Render(e activity.Event) {
 	} else {
 		r.session.activityEval(script, nil)
 	}
+	r.session.activityMascot.update(e, visible, r.session.paintMascot)
 }
-func (r browserActivityRenderer) Close() { r.session.activityEval(activityRemove, nil) }
+
+func (r browserActivityRenderer) Close() {
+	if r.session.activityNative != nil {
+		r.session.activityNative.Close()
+		return
+	}
+	r.session.activityMascot.close()
+	r.session.activityEval(activityRemove, nil)
+}
 
 // BeginActivity is optional for non-chromedp and mock browser drivers.
 func (s *chromedpSession) BeginActivity(ctx context.Context, sessionID, action, selector string) func() {
+	return s.StartActivity(ctx, sessionID, action, selector).End
+}
+
+// StartActivity returns the visible operation so its outcome can be recorded.
+func (s *chromedpSession) StartActivity(ctx context.Context, sessionID, action, selector string) activity.Operation {
 	if !s.activityEnabled {
-		return func() {}
+		return activity.Operation{}
 	}
 	s.mu.Lock()
 	if s.activityClosed {
 		s.mu.Unlock()
-		return func() {}
+		return activity.Operation{}
 	}
 	if s.activityManager == nil {
 		s.activityManager = activity.New(browserActivityRenderer{s})
@@ -165,7 +214,7 @@ func (s *chromedpSession) BeginActivity(ctx context.Context, sessionID, action, 
 		s.activityEval(fmt.Sprintf(`(() => {try {const es=document.querySelectorAll(%s);if(es.length!==1)return {OK:false};const r=es[0].getBoundingClientRect();return {X:Math.round(r.x+r.width/2),Y:Math.round(r.y+r.height/2),OK:r.width>0&&r.height>0&&r.x>=0&&r.y>=0&&r.bottom<=innerHeight&&r.right<=innerWidth};}catch{return {OK:false}}})()`, value), &point)
 		e.X, e.Y, e.Point = point.X, point.Y, point.OK
 	}
-	return manager.Begin(ctx, e)
+	return manager.Start(ctx, e)
 }
 
 func (s *chromedpSession) activityEval(script string, result any) error {
@@ -189,6 +238,11 @@ func (s *chromedpSession) suspendActivity(force ...bool) (func(), error) {
 	if manager == nil {
 		return func() {}, nil
 	}
+	// CDP captures the document, not desktop windows. The native indicator
+	// cannot pollute this capture and must survive observations/navigation.
+	if s.activityNative != nil {
+		return func() {}, nil
+	}
 	if e := manager.Snapshot(); e.Persistent && e.Visible && (len(force) == 0 || !force[0]) {
 		return func() {}, nil
 	}
@@ -200,7 +254,7 @@ func (s *chromedpSession) suspendActivity(force ...bool) (func(), error) {
 	return func() { _ = s.activityEval(activityRestore, nil); resume() }, nil
 }
 
-// CloseActivity removes the page surface before a session is retired.
+// CloseActivity releases native or page surfaces before a session is retired.
 func (s *chromedpSession) CloseActivity() error {
 	s.activityStopOnce.Do(func() {})
 	if s.activityStopWatch != nil {
@@ -212,7 +266,13 @@ func (s *chromedpSession) CloseActivity() error {
 	s.mu.Unlock()
 	if manager != nil {
 		manager.Close()
+		if s.activityNative != nil {
+			return nil
+		}
 		return s.activityEval(activityRemove, nil)
+	}
+	if s.activityNative != nil {
+		s.activityNative.Close()
 	}
 	return nil
 }

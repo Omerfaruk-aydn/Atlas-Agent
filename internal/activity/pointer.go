@@ -52,6 +52,29 @@ type pointerMotion struct {
 	started                        time.Time
 }
 
+// pointerInputSource keeps one visible replacement responsive to physical
+// movement. A newly verified agent pointer event takes visual ownership back.
+// This affects presentation only; it never sends or authorizes input.
+type pointerInputSource struct {
+	ready, physical bool
+	lastX, lastY    int
+	agentAt         time.Time
+}
+
+func (p *pointerInputSource) physicalOwns(e Event, x, y int, observed bool) bool {
+	if !observed {
+		return p.physical
+	}
+	freshAgent := e.Point && e.PointerKind != "" && !e.PointerAt.IsZero() && e.PointerAt.After(p.agentAt)
+	if freshAgent {
+		p.agentAt, p.physical = e.PointerAt, false
+	} else if p.ready && (x != p.lastX || y != p.lastY) {
+		p.physical = true
+	}
+	p.ready, p.lastX, p.lastY = true, x, y
+	return p.physical
+}
+
 func (p *pointerMotion) position(x, y float64, snap bool, now time.Time) (float64, float64) {
 	if !p.ready || snap {
 		*p = pointerMotion{ready: true, x: x, y: y, fromX: x, fromY: y, aimX: x, aimY: y, started: now}

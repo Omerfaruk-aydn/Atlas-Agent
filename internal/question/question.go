@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
@@ -170,8 +171,9 @@ type Notification struct {
 	BatchID string `json:"batch_id"`
 }
 
-// Service manages the lifecycle of question requests. Only one
-// question can be pending at a time.
+// Service manages the lifecycle of question requests. Requests from
+// concurrent runs queue in arrival order: subscribers see the oldest
+// pending request, and each request resolves exactly once by its ID.
 type Service interface {
 	pubsub.Subscriber[Request]
 
@@ -183,21 +185,33 @@ type Service interface {
 	// or the context is cancelled.
 	Ask(ctx context.Context, req Request) ([]Answer, error)
 
-	// Answer resolves the pending question with the given answers.
+	// Answer resolves the pending request whose questions the answers
+	// belong to, or the displayed request when answers carry no IDs.
 	Answer(answers []Answer) bool
 
-	// Cancel cancels the pending question. Returns false if no
+	// AnswerRequest resolves exactly the pending request with this ID.
+	AnswerRequest(id string, answers []Answer) bool
+
+	// Cancel cancels the displayed request. Returns false if no
 	// question is pending.
 	Cancel() bool
+
+	// CancelRequest cancels exactly the pending request with this ID.
+	CancelRequest(id string) bool
+}
+
+type pendingBatch struct {
+	req       Request
+	answers   chan []Answer
+	cancelled chan struct{}
+	resolved  bool
 }
 
 type questionService struct {
 	broker             *pubsub.Broker[Request]
 	notificationBroker *pubsub.Broker[Notification]
 	mu                 sync.Mutex
-	pending            chan []Answer
-	cancelled          chan struct{}
-	pendingID          string
+	queue              []*pendingBatch
 }
 
 // NewService creates a new question service.
@@ -219,11 +233,20 @@ func (s *questionService) SubscribeNotifications(ctx context.Context) <-chan pub
 	return s.notificationBroker.Subscribe(ctx)
 }
 
-// Ask publishes a request and blocks until the user answers.
-func (s *questionService) Ask(ctx context.Context, req Request) ([]Answer, error) {
+type pendingHookKey struct{}
+
+// WithPendingHook runs hook with the request once Ask has registered it,
+// so another view can only answer a request that is already pending.
+func WithPendingHook(ctx context.Context, hook func(Request)) context.Context {
+	return context.WithValue(ctx, pendingHookKey{}, hook)
+}
+
+// Prepare assigns missing IDs and confirm defaults, then validates.
+func Prepare(req Request) (Request, error) {
 	if req.ID == "" {
 		req.ID = uuid.New().String()
 	}
+	req.Questions = append([]Question(nil), req.Questions...)
 	for i := range req.Questions {
 		if req.Questions[i].ID == "" {
 			req.Questions[i].ID = uuid.New().String()
@@ -239,79 +262,155 @@ func (s *questionService) Ask(ctx context.Context, req Request) ([]Answer, error
 			req.ConfirmDescription = "Review your answers above and confirm."
 		}
 	}
+	return req, req.Validate()
+}
 
-	if err := req.Validate(); err != nil {
+// Ask publishes a request and blocks until the user answers.
+func (s *questionService) Ask(ctx context.Context, req Request) ([]Answer, error) {
+	req, err := Prepare(req)
+	if err != nil {
 		return nil, err
 	}
 
+	batch := &pendingBatch{req: req, answers: make(chan []Answer, 1), cancelled: make(chan struct{})}
 	s.mu.Lock()
-	s.pending = make(chan []Answer, 1)
-	s.cancelled = make(chan struct{})
-	s.pendingID = req.ID
+	for _, other := range s.queue {
+		if other.req.ID == req.ID {
+			s.mu.Unlock()
+			return nil, fmt.Errorf("question request %s is already pending", req.ID)
+		}
+	}
+	s.queue = append(s.queue, batch)
+	head := len(s.queue) == 1
 	s.mu.Unlock()
 
-	defer func() {
-		s.mu.Lock()
-		s.pending = nil
-		s.cancelled = nil
-		s.pendingID = ""
-		s.mu.Unlock()
-	}()
+	defer s.withdraw(batch)
 
-	s.broker.Publish(pubsub.CreatedEvent, req)
+	if head {
+		s.broker.Publish(pubsub.CreatedEvent, req)
+	}
+	if hook, ok := ctx.Value(pendingHookKey{}).(func(Request)); ok && hook != nil {
+		hook(req)
+	}
 
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-s.cancelled:
+	case <-batch.cancelled:
 		return nil, ErrCancelled
-	case answers := <-s.pending:
+	case answers := <-batch.answers:
 		return answers, nil
 	}
 }
 
-// Answer resolves the pending question. Returns false if no
-// question is pending (already answered or cancelled).
-func (s *questionService) Answer(answers []Answer) bool {
+// withdraw removes a finished request and shows the next one. A request
+// abandoned by its run is withdrawn from every view.
+func (s *questionService) withdraw(batch *pendingBatch) {
 	s.mu.Lock()
-	batchID := s.pendingID
-	ch := s.pending
-	s.mu.Unlock()
-
-	if ch == nil {
-		return false
+	wasHead := len(s.queue) > 0 && s.queue[0] == batch
+	abandoned := !batch.resolved
+	batch.resolved = true
+	s.queue = slices.DeleteFunc(s.queue, func(b *pendingBatch) bool { return b == batch })
+	var next *Request
+	if wasHead && len(s.queue) > 0 {
+		req := s.queue[0].req
+		next = &req
 	}
-	ch <- answers
+	s.mu.Unlock()
+	if abandoned {
+		s.notificationBroker.Publish(pubsub.CreatedEvent, Notification{BatchID: batch.req.ID})
+	}
+	if next != nil {
+		s.broker.Publish(pubsub.CreatedEvent, *next)
+	}
+}
 
+// take marks one pending request resolved; the first caller wins.
+func (s *questionService) take(match func(*pendingBatch) bool) *pendingBatch {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, batch := range s.queue {
+		if !batch.resolved && match(batch) {
+			batch.resolved = true
+			return batch
+		}
+	}
+	return nil
+}
+
+func (s *questionService) resolved(batch *pendingBatch) {
 	// Publish a notification so non-answering clients can dismiss
 	// their open question forms.
-	if batchID != "" {
-		s.notificationBroker.Publish(pubsub.CreatedEvent, Notification{
-			BatchID: batchID,
-		})
+	s.notificationBroker.Publish(pubsub.CreatedEvent, Notification{BatchID: batch.req.ID})
+}
+
+// Answer resolves the pending request the answers belong to. Returns
+// false if it is no longer pending (already answered or cancelled).
+func (s *questionService) Answer(answers []Answer) bool {
+	ids := make(map[string]bool, len(answers))
+	for _, answer := range answers {
+		if answer.QuestionID != "" {
+			ids[answer.QuestionID] = true
+		}
 	}
+	first := true
+	batch := s.take(func(b *pendingBatch) bool {
+		if len(ids) == 0 {
+			// Legacy callers without IDs answer the displayed request.
+			matched := first
+			first = false
+			return matched
+		}
+		for _, q := range b.req.Questions {
+			if ids[q.ID] {
+				return true
+			}
+		}
+		return false
+	})
+	if batch == nil {
+		return false
+	}
+	batch.answers <- answers
+	s.resolved(batch)
 	return true
 }
 
-// Cancel cancels the pending question. Returns false if no
-// question is pending.
-func (s *questionService) Cancel() bool {
-	s.mu.Lock()
-	batchID := s.pendingID
-	cancelCh := s.cancelled
-	s.mu.Unlock()
-
-	if cancelCh == nil {
+// AnswerRequest resolves exactly the request with this ID.
+func (s *questionService) AnswerRequest(id string, answers []Answer) bool {
+	batch := s.take(func(b *pendingBatch) bool { return b.req.ID == id })
+	if batch == nil {
 		return false
 	}
-	close(cancelCh)
+	batch.answers <- answers
+	s.resolved(batch)
+	return true
+}
 
-	// Publish a notification so non-answering clients can dismiss
-	// their open question forms.
-	if batchID != "" {
-		s.notificationBroker.Publish(pubsub.CreatedEvent, Notification{
-			BatchID: batchID,
-		})
+// Cancel cancels the displayed request. Returns false if no
+// question is pending.
+func (s *questionService) Cancel() bool {
+	first := true
+	batch := s.take(func(*pendingBatch) bool {
+		matched := first
+		first = false
+		return matched
+	})
+	if batch == nil {
+		return false
 	}
+	close(batch.cancelled)
+	s.resolved(batch)
+	return true
+}
+
+// CancelRequest cancels exactly the request with this ID.
+func (s *questionService) CancelRequest(id string) bool {
+	batch := s.take(func(b *pendingBatch) bool { return b.req.ID == id })
+	if batch == nil {
+		return false
+	}
+	close(batch.cancelled)
+	s.resolved(batch)
 	return true
 }

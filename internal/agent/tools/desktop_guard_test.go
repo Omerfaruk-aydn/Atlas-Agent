@@ -206,3 +206,15 @@ func TestGuardObservedTargetsExpireAndEnumerationRemovesClosedWindows(t *testing
 	require.Contains(t, resp.Content, "unobserved_target")
 	require.EqualValues(t, 1, inner.calls)
 }
+
+func TestGuardEquivalentProviderEncodingsCannotBypassReplayBlock(t *testing.T) {
+	t.Parallel()
+	ctx := guardCtx(t)
+	inner := &scriptedTool{name: ComputerToolName, errs: []error{context.DeadlineExceeded}}
+	tool := WithDesktopGuard(inner)
+	_, err := tool.Run(ctx, computerCall(`{"action":"hotkey","key":"l","modifiers":"ctrl","automation":{"window_id":"11"}}`))
+	require.Error(t, err)
+	resp, _ := tool.Run(ctx, computerCall(`{"action":"hotkey","automation":{"window_id":"11","key":"l","modifiers":"ctrl"}}`))
+	require.Contains(t, resp.Content, "repeat_blocked")
+	require.EqualValues(t, 1, inner.calls)
+}

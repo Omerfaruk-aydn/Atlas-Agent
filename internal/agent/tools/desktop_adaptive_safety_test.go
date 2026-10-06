@@ -65,3 +65,51 @@ func TestDesktopAdaptiveRejectsWholeInvalidPlanBeforeDispatch(t *testing.T) {
 		})
 	}
 }
+
+func TestDesktopAdaptiveStopsBeforeUnsafeKeyboardMutation(t *testing.T) {
+	for _, kind := range []string{"password", "offscreen", "disabled", "zero_bounds", "truncated", "focus_false", "focus_denied", "wrong_assertion_window", "bad_assertion"} {
+		t.Run(kind, func(t *testing.T) {
+			e := desktopElement{ID: "field", Name: "Field", Role: "ControlType.Edit", Enabled: true, Width: 100, Height: 30}
+			switch kind {
+			case "password":
+				e.Password = true
+			case "offscreen":
+				e.Offscreen = true
+			case "disabled":
+				e.Enabled = false
+			case "zero_bounds":
+				e.Width = 0
+			}
+			var actions []string
+			r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "adaptive", AdaptiveSteps: []DesktopAdaptiveStep{adaptiveFixtureStep()}}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+				var p ComputerParams
+				require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+				actions = append(actions, p.Action)
+				if p.Action == "observe" {
+					return adaptiveFixtureObservation(e, kind == "truncated"), nil
+				}
+				if p.Action == "assert" {
+					switch kind {
+					case "focus_false":
+						return fantasy.NewTextResponse(`{"window_id":"11","passed":false}`), nil
+					case "focus_denied":
+						return fantasy.ToolResponse{Content: "permission_denied", IsError: true, StopTurn: true}, nil
+					case "wrong_assertion_window":
+						return fantasy.NewTextResponse(`{"window_id":"22","passed":true}`), nil
+					case "bad_assertion":
+						return fantasy.NewTextResponse(`{}`), nil
+					}
+				}
+				return fantasy.NewTextResponse(`{}`), nil
+			})
+			require.NoError(t, err)
+			require.True(t, r.IsError, r.Content)
+			require.NotContains(t, actions, "type")
+			require.NotContains(t, actions, "hotkey")
+			require.NotContains(t, actions, "set_value")
+			if kind == "focus_denied" {
+				require.True(t, r.StopTurn)
+			}
+		})
+	}
+}

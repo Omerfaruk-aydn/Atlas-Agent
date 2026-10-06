@@ -153,6 +153,11 @@ type ProviderConfig struct {
 
 	ProviderOptions map[string]any `json:"provider_options,omitempty" jsonschema:"description=Additional provider-specific options for this provider"`
 
+	// OpenCodeTransport selects direct API or genuine CLI inference for Zen.
+	// Auto uses CLI for free models at the official endpoint only.
+	OpenCodeTransport  string `json:"opencode_transport,omitempty" jsonschema:"enum=auto,enum=api,enum=cli,description=OpenCode Zen inference transport,default=auto"`
+	OpenCodeExecutable string `json:"opencode_executable,omitempty" jsonschema:"description=Optional native executable path for OpenCode CLI"`
+
 	// Used to pass extra parameters to the provider.
 	ExtraParams map[string]string `json:"-"`
 
@@ -628,9 +633,12 @@ type Options struct {
 	InitializeAs              string       `json:"initialize_as,omitempty" jsonschema:"description=Name of the context file to create/update during project initialization,default=AGENTS.md,example=AGENTS.md,example=ATLAS-AGENT.md,example=CLAUDE.md,example=docs/LLMs.md"`
 	AutoLSP                   *bool        `json:"auto_lsp,omitempty" jsonschema:"description=Automatically setup LSPs based on root markers,default=true"`
 	Progress                  *bool        `json:"progress,omitempty" jsonschema:"description=Show indeterminate progress updates during long operations,default=true"`
-	Notifications             string       `json:"notifications,omitempty" jsonschema:"description=Notification style to use. Options: auto (default)\\, native\\, osc\\, bell\\, disabled. Auto selects based on environment: native for local sessions\\, osc for SSH (with automatic OSC 99/777 detection).,enum=auto,enum=native,enum=osc,enum=bell,enum=disabled,default=auto"`
-	DisabledSkills            []string     `json:"disabled_skills,omitempty" jsonschema:"description=List of skill names to disable and hide from the agent,example=crush-config"`
-	Memory                    *Memory      `json:"memory,omitempty" jsonschema:"description=Bounds on the prose the agent carries between sessions"`
+	Notifications             string       `json:"notifications,omitempty" jsonschema:"description=Notification style to use. Options: auto (default)\\, native\\, osc\\, bell\\, sound\\, disabled. Auto selects based on environment: native for local sessions\\, osc for SSH (with automatic OSC 99/777 detection). Sound plays a distinct sound per event.,enum=auto,enum=native,enum=osc,enum=bell,enum=sound,enum=disabled,default=auto"`
+	// NotificationSounds replaces the sound style's built-in sounds with WAV
+	// files, keyed by event: permission, question or finished.
+	NotificationSounds map[string]string `json:"notification_sounds,omitempty" jsonschema:"description=WAV files that replace the built-in sounds of the sound notification style\\, keyed by event (permission\\, question\\, finished)"`
+	DisabledSkills     []string          `json:"disabled_skills,omitempty" jsonschema:"description=List of skill names to disable and hide from the agent,example=crush-config"`
+	Memory             *Memory           `json:"memory,omitempty" jsonschema:"description=Bounds on the prose the agent carries between sessions"`
 	// AgentModels overrides which model type (large or small) a built-in
 	// agent uses, keyed by agent ID (coder, task). An agent not named here
 	// keeps its default. Unknown agent IDs and invalid model types are

@@ -46,3 +46,10 @@ func TestDesktopPrepareReturnsVerifiedApplicationCapabilities(t *testing.T) {
 	require.False(t, r.IsError, r.Content)
 	require.Contains(t, r.Content, `"application_adapter":{"id":"notepad"`)
 }
+
+func TestDesktopAdapterCapabilitiesAreNotSharedMutableState(t *testing.T) {
+	w := desktopWindowInfo{ProcessName: "notepad.exe"}
+	a := desktopAdapterForWindow(w)
+	a.Methods[0] = "modified"
+	require.NotEqual(t, "modified", desktopAdapterForWindow(w).Methods[0])
+}

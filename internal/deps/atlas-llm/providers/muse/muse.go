@@ -93,6 +93,7 @@ func New(opts ...Option) (fantasy.Provider, error) {
 		anthropic.WithBaseURL(o.baseURL),
 		anthropic.WithSkipAuth(true),
 		anthropic.WithHeaders(headers),
+		anthropic.WithToolSchemaMaxDepth(10),
 	}
 	if o.httpClient != nil {
 		anthropicOpts = append(anthropicOpts, anthropic.WithHTTPClient(o.httpClient))

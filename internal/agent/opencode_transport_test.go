@@ -1,10 +1,11 @@
 package agent
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
-
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/catwalk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,4 +35,12 @@ func TestOpenCodeTransportRouting(t *testing.T) {
 			require.Equal(t, tc.cli, use)
 		})
 	}
+}
+
+func TestOpenCodeFreeModelBuildsCLIProvider(t *testing.T) {
+	coord := hermeticSubagentCoordinator(t)
+	p, err := coord.buildProvider(config.ProviderConfig{ID: "opencode-zen", Type: catwalk.TypeOpenAICompat, BaseURL: "https://opencode.ai/zen/v1"}, config.SelectedModel{Model: "mimo-v2.6-flash-free"}, false)
+	require.NoError(t, err)
+	require.Contains(t, fmt.Sprintf("%T", p), "opencodecli.provider")
+	require.Equal(t, "opencode-zen", p.Name())
 }

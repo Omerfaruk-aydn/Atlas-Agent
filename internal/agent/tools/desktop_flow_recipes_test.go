@@ -146,3 +146,40 @@ func TestDesktopFlowSupports64NodesAnd16Inputs(t *testing.T) {
 	require.False(t, r.IsError, r.Content)
 	require.Equal(t, 16, keys)
 }
+
+func TestDesktopFlowNewRecipeJournalRejectsInterruptedReplay(t *testing.T) {
+	for _, kind := range []string{"prepare", "rename", "close"} {
+		t.Run(kind, func(t *testing.T) {
+			p := desktopFlowTestPlan()
+			if kind == "prepare" {
+				p.Flow.Nodes = p.Flow.Nodes[:1]
+				p.Flow.Nodes[0].Kind, p.Flow.Nodes[0].Next = "prepare", ""
+			} else {
+				p.Flow.Nodes[1] = DesktopFlowNode{ID: "write", Kind: kind, WindowRef: "app"}
+				if kind == "rename" {
+					p.Flow.Nodes[1].Rename = &DesktopRenameParams{OldName: "hesap", NewName: "sonuc"}
+				}
+			}
+			p.Flow.RunID = "interrupted"
+			ctx := context.WithValue(t.Context(), desktopFlowStoreKey{}, t.TempDir())
+			ctx = context.WithValue(ctx, SessionIDContextKey, "session")
+			state, save, release, err := openDesktopFlow(ctx, *p.Flow)
+			require.NoError(t, err)
+			id := p.Flow.Nodes[len(p.Flow.Nodes)-1].ID
+			if kind != "prepare" {
+				state.Completed = []desktopFlowRecord{{ID: "app", Next: "write"}}
+			}
+			state.Next, state.Pending, state.Attempts[id] = id, id, 1
+			require.NoError(t, save(state))
+			release()
+			p.Flow.Resume = true
+			r, err := runDesktopWorkflow(ctx, p, fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+				t.Fatal("Interrupted effect dispatched a child")
+				return fantasy.ToolResponse{}, nil
+			})
+			require.NoError(t, err)
+			require.True(t, r.IsError)
+			require.Contains(t, r.Content, "uncertain_effect")
+		})
+	}
+}

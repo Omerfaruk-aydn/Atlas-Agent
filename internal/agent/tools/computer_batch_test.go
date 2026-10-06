@@ -91,6 +91,42 @@ func TestComputerBatchValidatesAllGroupsBeforeAnyInput(t *testing.T) {
 	}
 }
 
+func TestComputerBatchStopsAfterFailedCheckpointOrDeniedChild(t *testing.T) {
+	for _, kind := range []string{"checkpoint", "denial", "cancellation", "input_failure"} {
+		t.Run(kind, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			calls := 0
+			r, err := runComputerBatch(ctx, computerBatchTestParams(2, 1), fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+				calls++
+				var p ComputerParams
+				require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+				if p.Action == "assert" {
+					return fantasy.NewTextResponse(`{"window_id":"11","passed":false,"actual":"wrong"}`), nil
+				}
+				if kind == "denial" || kind == "input_failure" {
+					r := fantasy.NewTextErrorResponse("input failed")
+					r.StopTurn = kind == "denial"
+					return r, nil
+				}
+				if kind == "cancellation" {
+					cancel()
+				}
+				return fantasy.NewTextResponse(`{}`), nil
+			})
+			if kind == "cancellation" {
+				require.ErrorIs(t, err, context.Canceled)
+				require.Equal(t, 1, calls)
+			} else {
+				require.NoError(t, err)
+				require.True(t, r.IsError)
+				require.Equal(t, kind == "denial", r.StopTurn)
+				require.LessOrEqual(t, calls, 2)
+			}
+		})
+	}
+}
+
 type batchPermissionService struct {
 	mockPermissionService
 	actions []string

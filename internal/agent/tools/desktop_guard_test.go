@@ -218,3 +218,18 @@ func TestGuardEquivalentProviderEncodingsCannotBypassReplayBlock(t *testing.T) {
 	require.Contains(t, resp.Content, "repeat_blocked")
 	require.EqualValues(t, 1, inner.calls)
 }
+
+func TestGuardStructuredUnknownEffectCannotReplayAfterFocus(t *testing.T) {
+	t.Parallel()
+	ctx := guardCtx(t)
+	failed := failure("condition_timeout: postcondition unavailable")
+	failed.Metadata = `{"tool_contract":{"code":"condition_timeout","input_sent":true,"effect":"unknown"}}`
+	inner := &scriptedTool{name: ComputerToolName, replies: []fantasy.ToolResponse{failed}}
+	tool := WithDesktopGuard(inner)
+	call := computerCall(`{"action":"key","key":"enter","automation":{"window_id":"11"}}`)
+	_, _ = tool.Run(ctx, call)
+	_, _ = tool.Run(ctx, computerCall(`{"action":"focus","automation":{"window_id":"11"}}`))
+	resp, _ := tool.Run(ctx, call)
+	require.Contains(t, resp.Content, "repeat_blocked")
+	require.EqualValues(t, 2, inner.calls)
+}

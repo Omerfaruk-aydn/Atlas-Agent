@@ -58,6 +58,39 @@ func TestComputerBatchExecutesLongGroupsWithReadbacksWithoutImages(t *testing.T)
 	}
 }
 
+func TestComputerBatchValidatesAllGroupsBeforeAnyInput(t *testing.T) {
+	for _, kind := range []string{"empty", "group_limit", "input_limit", "call_budget", "bad_later_input", "wrong_checkpoint", "mixed_params", "no_dispatch"} {
+		t.Run(kind, func(t *testing.T) {
+			p := computerBatchTestParams(2, 2)
+			var invoke ComputerDispatcher = func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+				t.Fatal("Invalid batch executed a child")
+				return fantasy.ToolResponse{}, nil
+			}
+			switch kind {
+			case "empty":
+				p.Batch.Groups = nil
+			case "group_limit":
+				p = computerBatchTestParams(25, 1)
+			case "input_limit":
+				p = computerBatchTestParams(1, 17)
+			case "call_budget":
+				p = computerBatchTestParams(8, 16)
+			case "bad_later_input":
+				p.Batch.Groups[1].Inputs[1].Action = "batch"
+			case "wrong_checkpoint":
+				p.Batch.Groups[1].Checkpoint.WindowID = "22"
+			case "mixed_params":
+				p.Text = "unexpected"
+			case "no_dispatch":
+				invoke = nil
+			}
+			r, err := runComputerBatch(t.Context(), p, fantasy.ToolCall{}, invoke)
+			require.NoError(t, err)
+			require.True(t, r.IsError)
+		})
+	}
+}
+
 type batchPermissionService struct {
 	mockPermissionService
 	actions []string

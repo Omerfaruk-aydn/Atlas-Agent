@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"testing"
 
@@ -71,6 +72,24 @@ func TestComputerObservationDistinguishesDisplayPathFromExactValue(t *testing.T)
 	require.Equal(t, `Address: C:\Users\ÖmerCeylin\deneme`, result.Elements[0].Name)
 	require.Equal(t, `C:\Users\Ömer&Ceylin\deneme`, result.Elements[1].Value)
 	require.Zero(t, b.captures)
+}
+
+func TestComputerAutoObservationFallsBackWhenProviderUnavailable(t *testing.T) {
+	b := &observationModeBackend{efficientDesktopBackend: efficientDesktopBackend{fakeComputerBackend: fakeComputerBackend{size: computer.Size{Width: 40, Height: 40}, screenshot: testPNG(t, 40, 40)}}}
+	b.call = func(_ context.Context, p computer.AutomationRequest) (json.RawMessage, error) {
+		if p.Action == "inspect" {
+			return nil, errors.New("accessibility_unavailable: fixture provider")
+		}
+		return json.RawMessage(`[{"window_id":"11","foreground":true,"x":-100,"width":40,"height":40}]`), nil
+	}
+	s := &computerToolState{backend: b}
+	r, err := s.observe(t.Context(), ComputerParams{Observation: "auto", Automation: computer.AutomationRequest{WindowID: "11"}})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Equal(t, "image", r.Type)
+	require.Contains(t, r.Content, `"accessibility_status":"unavailable"`)
+	require.NotContains(t, r.Content, "snapshot_id")
+	require.Equal(t, 1, b.captures)
 }
 
 func (b *observationModeBackend) Screenshot() ([]byte, error) {

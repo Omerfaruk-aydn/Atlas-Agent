@@ -26,21 +26,24 @@ var computerDescription string
 
 // computerActions lists every value ComputerParams.Action accepts.
 var computerActions = []string{
+	"batch",
 	"launch_app",
 	"observe", "health",
 	"screenshot", "screen_size", "cursor_position", "move",
 	"click", "double_click", "right_click", "drag",
 	"scroll", "type", "key", "hotkey",
-	"windows", "focus", "inspect", "find", "invoke", "set_value", "assert", "monitors", "ocr", "capture_region", "capture_window", "handoff", "status", "trace", "trace_start", "trace_stop",
+	"windows", "focus", "inspect", "find", "select", "invoke", "set_value", "assert", "monitors", "ocr", "capture_region", "capture_window", "handoff", "status", "trace", "trace_start", "trace_stop",
 }
 
 type ComputerParams struct {
-	SnapshotID string                     `json:"snapshot_id,omitempty" description:"ID returned by observe; required with element."`
-	Element    int                        `json:"element,omitempty" description:"One-based numbered control from observe; supported for invoke/set_value/assert."`
-	Automation computer.AutomationRequest `json:"automation,omitempty" description:"Parameters for accessibility actions: window_id required except windows/monitors/ocr. Name, role or element_id select a fresh element."`
-	Width      int                        `json:"width,omitempty" description:"Native pixel width for capture_region."`
-	Height     int                        `json:"height,omitempty" description:"Native pixel height for capture_region."`
-	Action     string                     `json:"action" description:"Desktop action: launch_app/observe/health; screenshot/screen_size/cursor_position/move/click/double_click/right_click/drag/scroll/type/key/hotkey; windows/focus/inspect/find/invoke/set_value/assert/monitors/ocr/capture_region/capture_window; handoff/status/trace/trace_start/trace_stop. See tool description."`
+	Batch       *ComputerBatchParams       `json:"batch,omitempty" description:"For action batch: 1-24 groups of known inputs with mandatory checkpoints, processed in order in one call. Other actions must omit batch."`
+	Observation string                     `json:"observation,omitempty" description:"Observation mode for observe: visual (default), semantic (UIA text without a screenshot), or auto (semantic when usable, otherwise visual; small truncated scans may expand once to 150)."`
+	SnapshotID  string                     `json:"snapshot_id,omitempty" description:"ID returned by observe; required with element."`
+	Element     int                        `json:"element,omitempty" description:"One-based numbered control from observe; supported for invoke/set_value/assert."`
+	Automation  computer.AutomationRequest `json:"automation,omitempty" description:"Parameters for accessibility actions: window_id required except windows/monitors/ocr. Name, role or element_id select a fresh element."`
+	Width       int                        `json:"width,omitempty" description:"Native pixel width for capture_region and ocr regions. ocr needs x, y, width and height together at the top level, or none of them for the full screen."`
+	Height      int                        `json:"height,omitempty" description:"Native pixel height for capture_region and ocr regions; see width."`
+	Action      string                     `json:"action" enum:"batch,launch_app,observe,health,screenshot,screen_size,cursor_position,move,click,double_click,right_click,drag,scroll,type,key,hotkey,windows,focus,inspect,find,select,invoke,set_value,assert,monitors,ocr,capture_region,capture_window,handoff,status,trace,trace_start,trace_stop" description:"Desktop action: batch (multiple checkpointed input groups in one call); launch_app/observe/health; screenshot/screen_size/cursor_position/move/click/double_click/right_click/drag/scroll/type/key/hotkey; windows/focus/inspect/find/select/invoke/set_value/assert/monitors/ocr/capture_region/capture_window; handoff/status/trace/trace_start/trace_stop. See tool description."`
 	// X and Y are screen coordinates in physical pixels, matching the
 	// screenshot image 1:1. Required for move, click, double_click,
 	// right_click, and drag (start point).
@@ -78,8 +81,13 @@ func NewComputerTool(
 	cfg config.ToolComputer,
 	backend computer.Backend,
 	enabled func() bool,
+	dispatch ...ComputerDispatcher,
 ) fantasy.AgentTool {
-	return newComputerTool(permissions, workingDir, backend, enabled, computerDescription, cfg.GetActionTimeout(), cfg)
+	tool := newComputerTool(permissions, workingDir, backend, enabled, computerDescription, cfg.GetActionTimeout(), cfg)
+	if len(dispatch) > 0 && dispatch[0] != nil {
+		return &computerBatchDispatchTool{AgentTool: tool, invoke: dispatch[0]}
+	}
+	return tool
 }
 
 // computerToolState carries the tool's runtime dependencies plus the
@@ -122,8 +130,11 @@ func newComputerTool(
 		description,
 		func(ctx context.Context, params ComputerParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			action := strings.ToLower(strings.TrimSpace(params.Action))
+			if params.Batch != nil && action != "batch" {
+				return fantasy.NewTextErrorResponse("batch parameters require action batch"), nil
+			}
 			if !slices.Contains(computerActions, action) {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("unknown action %q, must be one of: %s", params.Action, strings.Join(computerActions, ", "))), nil
+				return unknownComputerAction(params.Action), nil
 			}
 
 			if state.enabled != nil && !state.enabled() {
@@ -135,6 +146,12 @@ func newComputerTool(
 				return fantasy.NewTextErrorResponse(
 					"computer-use is not available on this machine: " + computer.ErrUnsupportedPlatform.Error(),
 				), nil
+			}
+			// Recheck after hooks may have rewritten the outer call's target.
+			if getContextValue(ctx, desktopGuardContextKey{}, false) {
+				if err := requireObservedDesktopTarget(ctx, params); err != nil {
+					return contractResponse(err), nil
+				}
 			}
 
 			sessionID := GetSessionFromContext(ctx)
@@ -190,6 +207,10 @@ func newComputerTool(
 				}
 				return fantasy.NewTextResponse("Before/after image recording updated. Text-entry actions are omitted from image recording."), nil
 			}
+			if action == "batch" {
+				invoke, _ := ctx.Value(computerBatchDispatchKey{}).(ComputerDispatcher)
+				return runComputerBatch(ctx, params, call, invoke)
+			}
 			return state.runWithTimeout(ctx, action, params)
 		},
 	)
@@ -216,6 +237,7 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 	done := make(chan result, 1)
 	go func() {
 		controlID := engineering.GetScope(ctx, GetSessionFromContext(ctx)).SessionID
+		var operation activity.Operation
 		release, err := interaction.Default.Acquire(ctx, controlID, "desktop")
 		if err != nil {
 			done <- result{resp: fantasy.NewTextErrorResponse(err.Error())}
@@ -231,7 +253,8 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 				point = false
 			}
 			finish := interaction.Default.StartActivity(controlID, func() func() {
-				return activity.Default.Begin(ctx, activity.Event{Session: controlID, Resource: "desktop", Action: action, WindowID: params.Automation.WindowID, X: params.X, Y: params.Y, Point: point, ReducedMotion: s.overlayReducedMotion})
+				operation = activity.Default.Start(ctx, activity.Event{Session: controlID, Resource: "desktop", Action: action, WindowID: params.Automation.WindowID, X: params.X, Y: params.Y, Point: point, ReducedMotion: s.overlayReducedMotion})
+				return operation.End
 			})
 			defer finish()
 			if supportsFeedback {
@@ -252,6 +275,9 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 			before = captureComputerTrace(s.backend, s.workingDir, controlID)
 		}
 		resp, err := s.runComputerAction(ctx, action, params)
+		if getContextValue(ctx, desktopGuardContextKey{}, false) && err == nil && !resp.IsError && !resp.StopTurn && ctx.Err() == nil {
+			recordDesktopWindows(ctx, action, resp)
+		}
 		resp = withInteractionFailure(resp)
 		if recordImages {
 			after = captureComputerTrace(s.backend, s.workingDir, controlID)
@@ -259,6 +285,8 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 		status := "succeeded"
 		if err != nil || resp.IsError {
 			status = "failed"
+			// Only a verified failure earns the banner's blocked reaction.
+			operation.Fail()
 		}
 		if traceErr := interaction.Default.Record(s.workingDir, controlID, interaction.Entry{Time: started, Resource: "desktop", OwnerID: GetSessionFromContext(ctx), Before: before, After: after, Target: params.Automation.WindowID, Action: action, Status: status, DurationMS: time.Since(started).Milliseconds()}); traceErr != nil {
 			slog.Warn("Failed to persist interaction trace", "error", traceErr)
@@ -303,6 +331,8 @@ func ComputerPermissionsParams(params ComputerParams) map[string]any {
 
 func computerActionDescription(action string, params ComputerParams) string {
 	switch action {
+	case "batch":
+		return "Execute multiple desktop input groups with required result checkpoints"
 	case "screenshot":
 		return "Capture the screen"
 	case "screen_size":
@@ -449,7 +479,9 @@ func (s *computerToolState) runComputerAction(ctx context.Context, action string
 		if params.Text == "" {
 			return fantasy.NewTextErrorResponse("type needs text."), nil
 		}
-		if err := backend.TypeText(params.Text); err != nil {
+		// CRLF is one logical line break, not two keyboard input characters.
+		text := strings.ReplaceAll(params.Text, "\r\n", "\n")
+		if err := backend.TypeText(text); err != nil {
 			return fantasy.NewTextErrorResponse("type failed: " + err.Error()), nil
 		}
 		return fantasy.NewTextResponse("Typed the text."), nil

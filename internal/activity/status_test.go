@@ -26,3 +26,19 @@ func TestStatusCaptionsMatchRecordedEvents(t *testing.T) {
 		require.Equal(t, tc.want, statusCategoryFor(tc.event), tc.event)
 	}
 }
+
+func TestStatusCaptionsNeverClaimUnrecordedOutcomes(t *testing.T) {
+	outcomes := map[string]bool{"Done": true, "Finished": true, "All done": true}
+	progress := map[string]bool{"Continuing": true, "Resuming the task": true, "Picking up where it left off": true}
+	for category, phrases := range statusCatalog {
+		for _, phrase := range phrases {
+			if outcomes[phrase.text] {
+				require.Equal(t, statusDone, category, "%q requires a completed run", phrase.text)
+			}
+			if progress[phrase.text] {
+				require.Equal(t, statusResuming, category, "%q requires an accepted decision", phrase.text)
+			}
+		}
+	}
+	require.NotEqual(t, statusResuming, statusCategoryFor(Event{State: StateDenied}))
+}

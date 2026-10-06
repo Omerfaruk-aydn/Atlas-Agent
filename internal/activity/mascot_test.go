@@ -346,3 +346,41 @@ func TestMascotReactionsVaryPerOnset(t *testing.T) {
 	}
 	require.GreaterOrEqual(t, len(takes), 4, "Completion has several takes: %v", takes)
 }
+
+func TestMascotRenderFailureIsReported(t *testing.T) {
+	t.Parallel()
+	m := NewMascot()
+	m.Advance(Event{Visible: true}, time.Now(), Look{})
+	pix := make([]byte, MascotWidth*MascotHeight*4)
+	require.NoError(t, m.Render(pix, MascotWidth, MascotHeight, 1))
+	opaque := 0
+	for i := 3; i < len(pix); i += 4 {
+		if pix[i] == 255 {
+			opaque++
+		}
+		require.LessOrEqual(t, max(pix[i-3], pix[i-2], pix[i-1]), pix[i], "Premultiplied output")
+	}
+	require.Greater(t, opaque, 150, "The first frame is a complete character")
+	require.Zero(t, pix[3], "Corners stay transparent")
+	m.draw = func(*mascotFrame, []byte, int, int) { panic("broken") }
+	require.ErrorIs(t, m.Render(pix, MascotWidth, MascotHeight, 1), errMascotUnavailable)
+	require.ErrorIs(t, m.Render(pix, 0, 0, 1), errMascotUnavailable)
+	require.ErrorIs(t, m.Render(pix, MascotWidth, MascotHeight, math.NaN()), errMascotUnavailable)
+}
+
+func BenchmarkMascotRender(b *testing.B) {
+	for _, scale := range []float64{1, 2, 4} {
+		b.Run("scale"+string(rune('0'+int(scale))), func(b *testing.B) {
+			m := NewMascot()
+			now := time.Now()
+			m.Advance(Event{Visible: true, Action: "click"}, now, Look{X: .3})
+			w, h := int(math.Round(MascotWidth*scale)), int(math.Round(MascotHeight*scale))
+			pix := make([]byte, w*h*4)
+			b.ResetTimer()
+			for i := range b.N {
+				m.Advance(Event{Visible: true, Action: "click"}, now.Add(time.Duration(i)*time.Millisecond), Look{X: .3})
+				_ = m.Render(pix, w, h, scale)
+			}
+		})
+	}
+}

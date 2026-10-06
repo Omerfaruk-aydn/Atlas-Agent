@@ -95,3 +95,69 @@ func TestPermissionDecisionIsDeliveredOnceToTheDisplayedRequest(t *testing.T) {
 	require.Equal(t, DecisionDeny, got)
 	require.Equal(t, StateDenied, m.Snapshot().State, "A refusal never reads as continuing")
 }
+
+func TestPromptsQueueWithoutDroppingAndAnswerByRevision(t *testing.T) {
+	m := New(&testRenderer{})
+	defer m.Close()
+	ctx, end := StartFlow(context.Background(), "island-queue")
+	defer end()
+	m.Begin(ctx, Event{Session: "island-queue"})()
+
+	answered := map[string]int{}
+	respond := func(id string) PromptResponder {
+		return func(PromptResponse) bool { answered[id]++; return true }
+	}
+	first := AwaitPrompt(ctx, questionFixture("first"), respond("first"))
+	second := AwaitPrompt(ctx, permissionFixture("second"), respond("second"))
+	e := m.Snapshot()
+	require.Equal(t, "first", e.Prompt.ID)
+	require.Equal(t, 1, e.Prompt.Queued)
+	firstRevision := e.Prompt.Revision
+
+	// The terminal answers the first request: the island moves on and the
+	// old revision can no longer answer anything.
+	first.Done(OutcomeAnswered)
+	e = m.Snapshot()
+	require.Equal(t, "second", e.Prompt.ID)
+	require.Zero(t, e.Prompt.Queued)
+	require.Equal(t, StateAwaitPermission, e.State)
+	require.ErrorIs(t, m.Respond(firstRevision, pick("first")), ErrPromptStale)
+	require.ErrorIs(t, m.Respond(firstRevision, PromptResponse{Decision: DecisionAllowOnce}), ErrPromptStale)
+	require.NoError(t, m.Respond(e.Prompt.Revision, PromptResponse{Decision: DecisionAllowOnce}))
+	second.Done(OutcomeGranted)
+	require.Equal(t, map[string]int{"second": 1}, answered)
+	require.Nil(t, m.Snapshot().Prompt)
+}
+
+func TestQuestionResponseIsValidatedAgainstItsRequest(t *testing.T) {
+	p := questionFixture("v")
+	p.Questions = append(p.Questions,
+		PromptQuestion{ID: "yes", Type: QuestionYesNo},
+		PromptQuestion{ID: "multi", Type: QuestionMultiChoice, Choices: []PromptChoice{{ID: "x"}, {ID: "y"}}},
+		PromptQuestion{ID: "text", Type: QuestionFreeText},
+	)
+	yes := true
+	valid := PromptResponse{Answers: []PromptAnswer{
+		{QuestionID: "v-q", Selected: []string{"a"}},
+		{QuestionID: "yes", Yes: &yes},
+		{QuestionID: "multi", Selected: []string{"x", "y"}},
+		{QuestionID: "text", Text: "Merhaba dünya — çğıöşü 你好"},
+	}}
+	require.True(t, p.accepts(valid))
+	for name, mutate := range map[string]func(*PromptResponse){
+		"two picks for single": func(r *PromptResponse) { r.Answers[0].Selected = []string{"a", "b"} },
+		"unknown choice":       func(r *PromptResponse) { r.Answers[0].Selected = []string{"z"} },
+		"wrong question":       func(r *PromptResponse) { r.Answers[1].QuestionID = "other" },
+		"missing answer":       func(r *PromptResponse) { r.Answers = r.Answers[:3] },
+		"duplicate pick":       func(r *PromptResponse) { r.Answers[2].Selected = []string{"x", "x"} },
+		"oversized text":       func(r *PromptResponse) { r.Answers[3].Text = string(make([]rune, MaxPromptText+1)) },
+		"decision on question": func(r *PromptResponse) { r.Decision = DecisionAllowOnce },
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := valid
+			r.Answers = append([]PromptAnswer(nil), valid.Answers...)
+			mutate(&r)
+			require.False(t, p.accepts(r))
+		})
+	}
+}

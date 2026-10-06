@@ -3,7 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
-
+	"errors"
 	"testing"
 	"time"
 
@@ -45,4 +45,37 @@ func TestDesktopAssertionSubscribesBeforeReadAndVerifiesEvent(t *testing.T) {
 	require.Equal(t, 2, calls, "An event must cause an actual native read")
 	require.True(t, released)
 	require.Less(t, time.Since(started), 200*time.Millisecond)
+}
+
+func TestDesktopAssertionEventFailureFallsBackAndCancelsSubscription(t *testing.T) {
+	for _, supported := range []bool{false, true} {
+		t.Run(map[bool]string{true: "deadline", false: "fallback"}[supported], func(t *testing.T) {
+			b := &changingDesktopBackend{}
+			released, calls := false, 0
+			b.watch = func(context.Context, string) (<-chan struct{}, func(), error) {
+				cleanup := func() { released = true }
+				if !supported {
+					return nil, cleanup, errors.New("provider lacks event support")
+				}
+				return make(chan struct{}), cleanup, nil
+			}
+			b.call = func(context.Context, computer.AutomationRequest) (json.RawMessage, error) {
+				calls++
+				if !supported && calls == 2 {
+					return json.RawMessage(`{"passed":true}`), nil
+				}
+				return json.RawMessage(`{"passed":false}`), nil
+			}
+			wait := 500
+			if supported {
+				wait = 20
+			}
+			s := &computerToolState{backend: b}
+			r, err := s.runAutomation(t.Context(), "assert", ComputerParams{Automation: computer.AutomationRequest{WindowID: "11", WaitMS: wait}})
+			require.NoError(t, err)
+			require.Equal(t, supported, r.IsError)
+			require.True(t, released)
+			require.Equal(t, map[bool]int{true: 1, false: 2}[supported], calls)
+		})
+	}
 }

@@ -243,3 +243,91 @@ func TestMascotTapOnlyForConfirmedInput(t *testing.T) {
 	a.step(aim, settled.Add(4*time.Millisecond), Look{})
 	require.Greater(t, a.springs[chSquash].v, before-.5, "Aiming is not a click")
 }
+
+func TestMascotBlinksIndependentlyAndReducedMotionIsStill(t *testing.T) {
+	t.Parallel()
+	start := time.Now()
+	var a mascotAnimator
+	e := Event{Visible: true, Action: "wait", PhaseAt: start}
+	blinked, asymmetric := false, false
+	for d := time.Duration(0); d < 12*time.Second; d += time.Second / 60 {
+		p := a.step(e, start.Add(d), Look{})
+		if p.Open[0] < .5 {
+			blinked = true
+		}
+		if math.Abs(p.Open[0]-p.Open[1]) > .02 {
+			asymmetric = true
+		}
+	}
+	require.True(t, blinked, "Idle blinks at natural intervals")
+	require.True(t, asymmetric, "Each eye has its own lid")
+	var reduced mascotAnimator
+	e.ReducedMotion = true
+	first := reduced.step(e, start, Look{})
+	for d := time.Duration(0); d < 6*time.Second; d += time.Second / 30 {
+		require.Equal(t, first, reduced.step(e, start.Add(d), Look{}), "Reduced motion holds a still pose")
+	}
+}
+
+// Gestures must vary, never repeat back to back, and stay continuous over a
+// long idle stretch and across interruptions.
+func TestMascotImprovisesWithoutRepeating(t *testing.T) {
+	t.Parallel()
+	start := time.Now()
+	var a mascotAnimator
+	a.perf.seed = 12345
+	e := Event{Visible: true, Action: "wait", PhaseAt: start}
+	seen := map[string]int{}
+	last := ""
+	var previous mascotPose
+	for d := time.Duration(0); d < 90*time.Second; d += time.Second / 60 {
+		now := start.Add(d)
+		switch {
+		case d >= 60*time.Second && e.Action != "wait":
+			e = Event{Visible: true, Action: "wait", PhaseAt: now}
+		case d >= 46*time.Second && d < 60*time.Second && e.Phase != PhaseThinking:
+			e = Event{Visible: true, Phase: PhaseThinking, PhaseAt: now.Add(-time.Second)}
+		case d >= 40*time.Second && d < 46*time.Second && e.Action != "click":
+			// An interruption mid-gesture blends out instead of cutting.
+			e = Event{Visible: true, Action: "click", PhaseAt: now}
+		}
+		pose := a.step(e, now, Look{})
+		if d > 0 {
+			require.Less(t, poseDelta(previous, pose), .35, "Frame jump at %s during %q", d, a.perf.take.gesture)
+		}
+		previous = pose
+		if g := a.perf.take.gesture; g != nil && g.name != last {
+			seen[g.name]++
+			last = g.name
+		}
+	}
+	require.GreaterOrEqual(t, len(seen), 12, "A long session shows a varied repertoire: %v", seen)
+	// Back-to-back repeats are excluded by the recent list.
+	var b mascotAnimator
+	b.perf.seed = 99
+	order := []string{}
+	for d := time.Duration(0); d < 60*time.Second; d += time.Second / 30 {
+		b.step(Event{Visible: true, Action: "wait", PhaseAt: start}, start.Add(d), Look{})
+		if g := b.perf.take.gesture; g != nil && b.perf.take.start.Equal(start.Add(d)) {
+			order = append(order, g.name)
+		}
+	}
+	require.Greater(t, len(order), 10)
+	for i := 1; i < len(order); i++ {
+		require.NotEqual(t, order[i-1], order[i], "No gesture repeats immediately: %v", order)
+		if i > 1 {
+			require.NotEqual(t, order[i-2], order[i], "No gesture returns within three takes: %v", order)
+		}
+	}
+	// Different appearances improvise differently.
+	var c mascotAnimator
+	c.perf.seed = 100
+	other := []string{}
+	for d := time.Duration(0); d < 60*time.Second; d += time.Second / 30 {
+		c.step(Event{Visible: true, Action: "wait", PhaseAt: start}, start.Add(d), Look{})
+		if g := c.perf.take.gesture; g != nil && c.perf.take.start.Equal(start.Add(d)) {
+			other = append(other, g.name)
+		}
+	}
+	require.NotEqual(t, order, other)
+}

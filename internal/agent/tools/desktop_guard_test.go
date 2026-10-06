@@ -94,3 +94,48 @@ func TestGuardNeverReplaysArgumentErrors(t *testing.T) {
 	require.False(t, contractOf(t, blocked).FreshObservation)
 	require.EqualValues(t, 2, inner.calls)
 }
+
+func TestGuardDoesNotReplayUncertainMutationUntilStateIsRead(t *testing.T) {
+	t.Parallel()
+	inner := &scriptedTool{name: ComputerToolName, errs: []error{context.DeadlineExceeded}}
+	guarded := WithDesktopGuard(inner)
+	ctx := guardCtx(t)
+	typeCall := computerCall(`{"action":"type","text":"1234","automation":{"window_id":"11"}}`)
+	_, err := guarded.Run(ctx, typeCall)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	blocked, err := guarded.Run(ctx, typeCall)
+	require.NoError(t, err)
+	contract := contractOf(t, blocked)
+	require.Equal(t, "repeat_blocked", contract.Code)
+	require.Contains(t, contract.Message, "may or may not have taken effect")
+	require.True(t, contract.FreshObservation)
+	require.EqualValues(t, 1, inner.calls)
+
+	// Neither another mutation nor an inspect proves the original effect.
+	_, _ = guarded.Run(ctx, computerCall(`{"action":"key","key":"tab","automation":{"window_id":"11"}}`))
+	stillBlocked, _ := guarded.Run(ctx, typeCall)
+	require.Equal(t, "repeat_blocked", contractOf(t, stillBlocked).Code)
+	_, _ = guarded.Run(ctx, computerCall(`{"action":"inspect","automation":{"window_id":"11"}}`))
+	blockedAgain, _ := guarded.Run(ctx, typeCall)
+	require.Equal(t, "repeat_blocked", contractOf(t, blockedAgain).Code,
+		"even inspecting the same window does not prove whether typing took effect")
+}
+
+func TestGuardUnrelatedReadsCannotAuthorizeReplay(t *testing.T) {
+	t.Parallel()
+	for _, action := range []string{"screen_size", "status", "cursor_position", "windows"} {
+		t.Run(action, func(t *testing.T) {
+			t.Parallel()
+			inner := &scriptedTool{name: ComputerToolName, errs: []error{context.DeadlineExceeded}}
+			tool := WithDesktopGuard(inner)
+			ctx := guardCtx(t)
+			call := computerCall(`{"action":"type","text":"1234","automation":{"window_id":"11"}}`)
+			_, _ = tool.Run(ctx, call)
+			_, _ = tool.Run(ctx, computerCall(`{"action":"`+action+`"}`))
+			resp, _ := tool.Run(ctx, call)
+			require.True(t, resp.IsError, "unrelated read permitted duplicate input")
+			require.EqualValues(t, 2, inner.calls)
+		})
+	}
+}

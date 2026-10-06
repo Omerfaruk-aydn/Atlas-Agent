@@ -88,3 +88,31 @@ func TestBrowserPipelineDispatchesBoundIdentityAndInheritedVerification(t *testi
 	require.Equal(t, "observed-popup", calls[2].Advanced.ExpectedTabID)
 	require.Equal(t, "observed-popup", calls[3].Advanced.ExpectedTabID)
 }
+
+func TestBrowserWorkflowBindsPopupAndDownloadEvidence(t *testing.T) {
+	t.Parallel()
+	steps, err := compileBrowserWorkflow(BrowserWorkflowParams{Steps: []BrowserWorkflowStep{
+		{ID: "popup", Action: "popup_wait"},
+		{ID: "select", Action: "tab_select", Bindings: map[string]string{"advanced.tab_id": "popup#/tab_id"}},
+		{ID: "start", Action: "download_start", Target: browser.Request{Paths: []string{"downloads"}}},
+		{ID: "wait", Action: "download_wait", Target: browser.Request{Paths: []string{"downloads/report.txt"}}, Bindings: map[string]string{"advanced.newer_than": "start#/started_at"}},
+	}})
+	require.NoError(t, err)
+	outputs := map[string]json.RawMessage{"popup": json.RawMessage(`{"tab_id":"verified-tab"}`)}
+	require.NoError(t, bindPipelineArguments(steps[1].Arguments, steps[1].Bindings, outputs))
+	require.Equal(t, "verified-tab", steps[1].Arguments["advanced"].(map[string]any)["tab_id"])
+	require.Error(t, bindPipelineArguments(steps[1].Arguments, map[string]string{"script": "popup#/tab_id"}, outputs))
+}
+
+func TestBrowserWorkflowRejectsInvalidLaterStepBeforeAnyExecution(t *testing.T) {
+	t.Parallel()
+	_, err := compileBrowserWorkflow(BrowserWorkflowParams{Steps: []BrowserWorkflowStep{
+		{ID: "first", Action: "semantic_click", Target: browser.Request{Role: "button", Name: "Save"}},
+		{ID: "bad", Action: "assert", Target: browser.Request{Condition: "arbitrary_script"}},
+	}})
+	require.Error(t, err)
+	_, err = compileBrowserWorkflow(BrowserWorkflowParams{Steps: []BrowserWorkflowStep{{ID: "eval", Action: "eval"}}})
+	require.Error(t, err)
+	require.False(t, pipelineAssertionStep(PipelineStep{Tool: BrowserToolName, Arguments: map[string]any{"action": "semantic_click"}}))
+	require.True(t, pipelineAssertionStep(PipelineStep{Tool: BrowserToolName, Arguments: map[string]any{"action": "wait_for"}}))
+}

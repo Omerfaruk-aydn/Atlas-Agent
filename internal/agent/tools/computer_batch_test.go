@@ -163,6 +163,29 @@ func TestComputerBatchPublicToolRetainsPermissionsAndAtomicDispatch(t *testing.T
 	require.NoError(t, schema.ValidateAgainstSchema(arguments, specification), "Coordinator must accept the real public batch schema")
 }
 
+func TestPipelineSupportsExpandedBoundedCapacity(t *testing.T) {
+	for _, count := range []int{64, 128, 129} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			calls := 0
+			tool := NewToolPipeline(func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+				calls++
+				return fantasy.NewTextResponse("ok"), nil
+			})
+			params := PipelineParams{Steps: []PipelineStep{{ID: "read", Tool: "view", Items: make([]string, count)}}}
+			data, err := json.Marshal(params)
+			require.NoError(t, err)
+			r, err := tool.Run(t.Context(), fantasy.ToolCall{Input: string(data)})
+			require.NoError(t, err)
+			require.Equal(t, count > 128, r.IsError)
+			if count > 128 {
+				require.Zero(t, calls)
+			} else {
+				require.Equal(t, count, calls)
+			}
+		})
+	}
+}
+
 type batchPermissionService struct {
 	mockPermissionService
 	actions []string
@@ -172,4 +195,20 @@ type batchPermissionService struct {
 func (p *batchPermissionService) Request(_ context.Context, r permission.CreatePermissionRequest) (bool, error) {
 	p.actions = append(p.actions, r.Action)
 	return r.Action != p.deny, nil
+}
+
+func TestComputerBatchChildPermissionDenialStopsAtomicBackend(t *testing.T) {
+	permissions := &batchPermissionService{deny: "key"}
+	backend := &foregroundComputerBackend{foreground: "11"}
+	base := newComputerTool(permissions, t.TempDir(), backend, func() bool { return true }, "computer", time.Second)
+	tool := &computerBatchDispatchTool{AgentTool: base, invoke: base.Run}
+	data, err := json.Marshal(computerBatchTestParams(2, 1))
+	require.NoError(t, err)
+	ctx := context.WithValue(t.Context(), SessionIDContextKey, "batch-permission-denied")
+	r, err := tool.Run(ctx, fantasy.ToolCall{ID: "permission-batch", Input: string(data)})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.True(t, r.StopTurn)
+	require.Equal(t, []string{"batch", "key"}, permissions.actions)
+	require.Empty(t, backend.keys)
 }

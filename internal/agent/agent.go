@@ -79,7 +79,9 @@ var (
 type SessionAgentCall struct {
 	// SystemPrompt freezes request guidance across queue waits and retries.
 	// Empty uses the agent's configured default, as for specialist calls.
-	SystemPrompt      string
+	SystemPrompt string
+	// DesktopOnly requires application interaction and forbids shell substitution.
+	DesktopOnly       bool
 	IdleOnly          bool
 	QueueContinuation bool
 	SessionID         string
@@ -801,6 +803,12 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	if err := ValidateCall(call); err != nil {
 		return nil, err
 	}
+	// Task scope comes from the accepted request, before hook/advisor additions.
+	ctx = context.WithValue(ctx, tools.SessionIDContextKey, call.SessionID)
+	ctx = tools.WithDesktopTaskScope(ctx, call.Prompt)
+	if call.DesktopOnly {
+		ctx = tools.WithGUIOnlyDesktop(ctx)
+	}
 
 	prompt, err := a.applyPromptHooks(ctx, call)
 	if err != nil {
@@ -922,8 +930,9 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			genCtx = activity.WithLanguage(genCtx, cfg.Options.TUI.Language)
 		}
 	}
-	genCtx, finishActivity := activity.StartFlow(genCtx, engineering.GetScope(genCtx, call.SessionID).SessionID)
-	defer finishActivity()
+	genCtx, finishActivity := activity.StartRun(genCtx, engineering.GetScope(genCtx, call.SessionID).SessionID)
+	// Only a run that returns without error earns the completion motion.
+	defer func() { finishActivity(retErr == nil) }()
 	agentTools := guardTools(a.tools.Copy(), a.engineering)
 	largeModel := a.largeModel.Get()
 	// chain starts on largeModel -- or on a sticky fallback still within
@@ -2411,6 +2420,7 @@ func (a *sessionAgent) Cancel(sessionID string) {
 		slog.Debug("Request cancellation initiated", "session_id", sessionID)
 		ac.cancel()
 	}
+	activity.CancelSession(sessionID)
 
 	// Also check for summarize requests.
 	if ac, ok := a.activeRequests.Get(sessionID + "-summarize"); ok && ac != nil {

@@ -49,6 +49,30 @@ func TestComputerObservationRetainsFocusedControlBeyondTreeLimit(t *testing.T) {
 	}
 }
 
+func TestComputerObservationDistinguishesDisplayPathFromExactValue(t *testing.T) {
+	t.Parallel()
+	b := &observationModeBackend{}
+	b.call = func(_ context.Context, p computer.AutomationRequest) (json.RawMessage, error) {
+		if p.Action == "windows" {
+			return json.RawMessage(`[{"window_id":"11","foreground":true}]`), nil
+		}
+		return json.RawMessage(`{"elements":[{"element_id":"address-label","name":"Address: C:\\Users\\ÖmerCeylin\\deneme","role":"Pane"},{"element_id":"address-edit","name":"Address","role":"Edit","enabled":true,"value_available":true,"value":"C:\\Users\\Ömer&Ceylin\\deneme"}]}`), nil
+	}
+	s := &computerToolState{backend: b}
+	r, err := s.observe(t.Context(), ComputerParams{Observation: "semantic", Automation: computer.AutomationRequest{WindowID: "11"}})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	var result struct {
+		Warning  string           `json:"display_path_warning"`
+		Elements []desktopElement `json:"elements"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(r.Content), &result))
+	require.Contains(t, result.Warning, "ampersands")
+	require.Equal(t, `Address: C:\Users\ÖmerCeylin\deneme`, result.Elements[0].Name)
+	require.Equal(t, `C:\Users\Ömer&Ceylin\deneme`, result.Elements[1].Value)
+	require.Zero(t, b.captures)
+}
+
 func (b *observationModeBackend) Screenshot() ([]byte, error) {
 	b.captures++
 	return b.fakeComputerBackend.Screenshot()

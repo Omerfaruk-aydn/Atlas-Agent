@@ -88,3 +88,55 @@ func TestDesktopFlowStopsOnUnsafeFreshTarget(t *testing.T) {
 		})
 	}
 }
+
+func TestDesktopFlowRetriesReadsAndReconcilesAppliedReplacement(t *testing.T) {
+	p := desktopFlowTestPlan()
+	value, mutations, reads := "empty", 0, 0
+	base := desktopFlowFixture(t, &value, &mutations)
+	r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var input ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &input))
+		if input.Action == "find" {
+			reads++
+			if reads == 1 {
+				return fantasy.NewTextErrorResponse("accessibility_unavailable: transient"), nil
+			}
+		}
+		r, err := base(ctx, c)
+		if input.Action == "set_value" {
+			return fantasy.NewTextErrorResponse("provider reported error after applying value"), nil
+		}
+		return r, err
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Equal(t, 1, mutations)
+	require.Contains(t, r.Content, `"read_retries":1`)
+	require.Contains(t, r.Content, `"status":"verified"`)
+}
+
+func TestDesktopFlowDiagnosticCropPreservesVirtualOrigin(t *testing.T) {
+	w := desktopWindowInfo{ID: "11", ProcessID: 17, ProcessName: "Notepad.exe", WindowClass: "Notepad"}
+	q := computer.AutomationRequest{WindowID: "11", Name: "Field", Condition: "value", Expected: "text"}
+	cropped := false
+	r := desktopFlowFailureCrop(t.Context(), q, w, fantasy.NewTextErrorResponse("checkpoint failed"), func(_ context.Context, p ComputerParams) (fantasy.ToolResponse, error) {
+		switch p.Action {
+		case "find":
+			return fantasy.NewTextResponse(`{"screen_origin":{"x":-1920,"y":0},"result":{"matches":[{"element_id":"fresh","name":"Field","role":"ControlType.Edit","x":-1900,"y":10,"width":120,"height":40}]}}`), nil
+		case "windows":
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"11","process_id":17,"process_name":"Notepad.exe","class_name":"Notepad","foreground":true}]}`), nil
+		case "capture_region":
+			cropped = true
+			require.Equal(t, 20, p.X)
+			require.Equal(t, 10, p.Y)
+			require.Equal(t, 120, p.Width)
+			return fantasy.NewImageResponse(testPNG(t, 120, 40), "image/png"), nil
+		default:
+			t.Fatalf("Unexpected crop action %s", p.Action)
+			return fantasy.ToolResponse{}, nil
+		}
+	})
+	require.True(t, cropped)
+	require.True(t, r.IsError, "An image cannot turn a failed checkpoint into success")
+	require.Equal(t, "image", r.Type)
+}

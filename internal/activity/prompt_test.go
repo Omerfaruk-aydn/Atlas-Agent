@@ -2,7 +2,7 @@ package activity
 
 import (
 	"context"
-
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -60,4 +60,38 @@ func TestQuestionKeepsControlVisibleAndBlocksInput(t *testing.T) {
 	require.Nil(t, e.Prompt)
 	require.Equal(t, StateResuming, e.State)
 	require.Equal(t, stop.RunStarted, e.RunStarted, "Waiting must not restart the timer")
+}
+
+func TestPermissionDecisionIsDeliveredOnceToTheDisplayedRequest(t *testing.T) {
+	m := New(&testRenderer{})
+	defer m.Close()
+	ctx, end := StartFlow(context.Background(), "island-permission")
+	defer end()
+	m.Begin(ctx, Event{Session: "island-permission"})()
+
+	var calls atomic.Int32
+	var got PermissionDecision
+	resolved := make(chan struct{})
+	pending := AwaitPrompt(ctx, permissionFixture("p1"), func(r PromptResponse) bool {
+		calls.Add(1)
+		got = r.Decision
+		close(resolved)
+		return true
+	})
+	revision := m.Snapshot().Prompt.Revision
+	require.Equal(t, StateAwaitPermission, m.Snapshot().State)
+
+	require.ErrorIs(t, m.Respond(revision+1, PromptResponse{Decision: DecisionAllowOnce}), ErrPromptStale)
+	require.ErrorIs(t, m.Respond(revision, PromptResponse{Decision: DecisionNone}), ErrPromptInvalid)
+	require.Zero(t, calls.Load(), "Rejected responses must not reach the service")
+
+	require.NoError(t, m.Respond(revision, PromptResponse{Decision: DecisionDeny}))
+	<-resolved
+	require.Equal(t, StateDelivering, m.Snapshot().State)
+	require.ErrorIs(t, m.Respond(revision, PromptResponse{Decision: DecisionAllowOnce}), ErrPromptBusy, "A double click must not deliver twice")
+	pending.Done(OutcomeDenied)
+	require.ErrorIs(t, m.Respond(revision, PromptResponse{Decision: DecisionAllowOnce}), ErrPromptStale)
+	require.Equal(t, int32(1), calls.Load())
+	require.Equal(t, DecisionDeny, got)
+	require.Equal(t, StateDenied, m.Snapshot().State, "A refusal never reads as continuing")
 }

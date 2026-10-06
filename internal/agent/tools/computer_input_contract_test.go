@@ -1,9 +1,11 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
+	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/stretchr/testify/require"
 )
 
@@ -49,4 +51,33 @@ func TestComputerInputContractRejectsConflictsWithoutPartialAssignment(t *testin
 		require.Error(t, json.Unmarshal([]byte(input), &p))
 		require.Equal(t, "unchanged", p.Action)
 	}
+}
+
+func TestPipelineAcceptsMiMoKeyboardShapeThroughPublicTool(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	tool := NewToolPipeline(func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		calls++
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(call.Input), &p))
+		require.Equal(t, "11", p.Automation.WindowID)
+		switch p.Action {
+		case "key":
+			require.Equal(t, "esc", p.Key)
+		case "hotkey":
+			require.Equal(t, "n", p.Key)
+			require.Equal(t, "ctrl+shift", p.Modifiers)
+		case "windows":
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"11","foreground":true}]}`), nil
+		case "observe":
+			return fantasy.NewTextResponse(`{"window_id":"11","elements":[]}`), nil
+		default:
+			t.Fatalf("Unexpected action %s", p.Action)
+		}
+		return fantasy.NewTextResponse(`{}`), nil
+	})
+	r, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "mimo", Name: "tool_pipeline", Input: `{"desktop":{"mode":"act","observation":"semantic","inputs":[{"action":"key","automation":{"key":"escape","window_id":"11"}},{"action":"hotkey","automation":{"key":"n","modifiers":"ctrl+shift","window_id":"11"}}]}}`})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.GreaterOrEqual(t, calls, 3)
 }

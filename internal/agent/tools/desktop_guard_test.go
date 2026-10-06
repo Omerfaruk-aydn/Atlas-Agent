@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 
 	"sync/atomic"
 	"testing"
@@ -289,4 +290,40 @@ func TestGuardAllowsOneBoundedRetryForReadOnlyTransientFailure(t *testing.T) {
 	third, _ := guarded.Run(ctx, read)
 	require.Equal(t, "repeat_blocked", contractOf(t, third).Code)
 	require.EqualValues(t, 2, inner.calls)
+}
+
+func TestGuardDeniedAndHookBlockedCallsAreNotReplayed(t *testing.T) {
+	t.Parallel()
+	denied := fantasy.NewTextErrorResponse("User denied permission")
+	denied.StopTurn = true
+	inner := &scriptedTool{name: ComputerToolName, replies: []fantasy.ToolResponse{denied, failure("Tool call blocked by hook. Reason: policy")}}
+	guarded := WithDesktopGuard(inner)
+	ctx := guardCtx(t)
+	for _, input := range []string{`{"action":"click","x":1,"y":2}`, `{"action":"click","x":3,"y":4}`} {
+		call := computerCall(input)
+		first, _ := guarded.Run(ctx, call)
+		require.Contains(t, first.Metadata, `"class":"denied"`)
+		second, _ := guarded.Run(ctx, call)
+		require.Equal(t, "repeat_blocked", contractOf(t, second).Code)
+	}
+	require.EqualValues(t, 2, inner.calls)
+}
+
+func TestGuardClassifiesNativeAndModelErrorsSeparately(t *testing.T) {
+	t.Parallel()
+	for text, class := range map[string]string{
+		"invalid_target: window_id \"shell\"":        failureArgument,
+		"unsupported_pattern: Invoke on window":      failureTargetState,
+		"accessibility_unavailable: provider down":   failureNative,
+		"invalid parameters: json: cannot unmarshal": failureArgument,
+	} {
+		inner := &scriptedTool{name: ComputerToolName, replies: []fantasy.ToolResponse{failure(text)}}
+		ctx := context.WithValue(t.Context(), SessionIDContextKey, t.Name()+text)
+		resp, _ := WithDesktopGuard(inner).Run(ctx, computerCall(`{"action":"windows"}`))
+		var metadata struct {
+			Failure struct{ Class string } `json:"desktop_failure"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(resp.Metadata), &metadata))
+		require.Equal(t, class, metadata.Failure.Class, text)
+	}
 }

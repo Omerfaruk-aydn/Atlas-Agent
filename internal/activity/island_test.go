@@ -1,6 +1,7 @@
 package activity
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -79,4 +80,10 @@ func TestIslandMultiQuestionProgressAndAnswers(t *testing.T) {
 	require.False(t, *r.Answers[1].Yes)
 	require.Equal(t, "Merhaba, çğışöü — 日本語\nikinci satr", r.Answers[2].Text)
 	require.True(t, p.accepts(r), "The island only produces responses its request accepts")
+}
+
+func TestIslandTextRespectsAnswerLimit(t *testing.T) {
+	f, _ := formAt(Prompt{Kind: KindQuestion, Questions: []PromptQuestion{{ID: "t", Type: QuestionFreeText}}})
+	f.insert(strings.Repeat("ş", MaxPromptText+50))
+	require.Len(t, f.text[0], MaxPromptText)
 }

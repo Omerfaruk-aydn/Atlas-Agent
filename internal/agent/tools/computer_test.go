@@ -26,6 +26,18 @@ type foregroundComputerBackend struct {
 
 func (f *foregroundComputerBackend) ForegroundWindow() string { return f.foreground }
 
+func TestComputerTypingPreservesLogicalLineBreaks(t *testing.T) {
+	t.Parallel()
+	for _, text := range []string{"first\r\nsecond\r\nthird", "first\nsecond\nthird"} {
+		b := &foregroundComputerBackend{foreground: "11"}
+		s := &computerToolState{backend: b}
+		r, err := s.runComputerAction(t.Context(), "type", ComputerParams{Text: text, Automation: computer.AutomationRequest{WindowID: "11"}})
+		require.NoError(t, err)
+		require.False(t, r.IsError)
+		require.Equal(t, []string{"first\nsecond\nthird"}, b.typed)
+	}
+}
+
 func TestComputerKeyDoesNotReachWrongWindow(t *testing.T) {
 	t.Parallel()
 	b := &foregroundComputerBackend{foreground: "22"}
@@ -40,6 +52,15 @@ func TestComputerKeyDoesNotReachWrongWindow(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, response.IsError)
 	require.Equal(t, []string{"escape"}, b.keys)
+}
+
+func TestComputerSelectionDoesNotReachWrongWindow(t *testing.T) {
+	t.Parallel()
+	s := &computerToolState{backend: &foregroundComputerBackend{foreground: "22"}}
+	r, err := s.runComputerAction(t.Context(), "select", ComputerParams{Automation: computer.AutomationRequest{WindowID: "11", ElementID: "file"}})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.Contains(t, r.Content, "wrong_window")
 }
 
 // fakeComputerBackend records desktop calls so these tests exercise the

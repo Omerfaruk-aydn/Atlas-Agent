@@ -87,3 +87,54 @@ func TestDesktopAdaptiveKeepsVisualEvidenceWithoutBlindInput(t *testing.T) {
 		})
 	}
 }
+
+func TestDesktopAdaptiveKeyboardMethodsRequireSupportedRoles(t *testing.T) {
+	for _, kind := range []string{"button", "focused_button", "clear_edit", "unsupported"} {
+		input := ComputerParams{Action: "invoke", Automation: computer.AutomationRequest{WindowID: "11", ElementID: "target"}}
+		e := desktopElement{ID: "target", Role: "ControlType.Button", Enabled: true, X: 20, Y: 30, Width: 80, Height: 20}
+		if kind == "clear_edit" {
+			input.Action = "set_value"
+			e.Role = "ControlType.Edit"
+		}
+		if kind == "focused_button" {
+			e.KeyboardFocused = true
+		}
+		if kind == "unsupported" {
+			e.Role = "ControlType.Pane"
+		}
+		inputs, method, err := desktopAdaptiveMethod(desktopObservation{Elements: []desktopElement{e}}, input)
+		if kind == "unsupported" {
+			require.Error(t, err)
+			require.Empty(t, inputs)
+			continue
+		}
+		require.NoError(t, err)
+		if kind == "button" {
+			require.Equal(t, "pointer", method)
+			require.Len(t, inputs, 1)
+			require.Equal(t, "click", inputs[0].Action)
+			continue
+		}
+		require.Equal(t, "keyboard", method)
+		if kind == "focused_button" {
+			require.Equal(t, "assert", inputs[0].Action)
+		} else {
+			require.Equal(t, "assert", inputs[1].Action)
+		}
+		if kind == "clear_edit" {
+			require.Equal(t, "backspace", inputs[len(inputs)-1].Key)
+		} else {
+			require.Equal(t, "enter", inputs[len(inputs)-1].Key)
+		}
+	}
+}
+
+func TestDesktopAdaptiveUnreadablePredicateIsNotFalse(t *testing.T) {
+	o := desktopObservation{Elements: []desktopElement{{ID: "field", Name: "Field", Value: "partial", ValueAvailable: true, ValueTruncated: true}}}
+	passed, err := desktopAdaptiveCondition(o, computer.AutomationRequest{Name: "Field", Condition: "value", Expected: "other"})
+	require.Error(t, err)
+	require.False(t, passed)
+	passed, err = desktopAdaptiveCondition(desktopObservation{}, computer.AutomationRequest{Name: "missing", Condition: "hidden"})
+	require.NoError(t, err)
+	require.True(t, passed)
+}

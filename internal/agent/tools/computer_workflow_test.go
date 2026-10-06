@@ -61,6 +61,40 @@ func TestComputerHealthDoesNotInput(t *testing.T) {
 	require.Empty(t, b.typed)
 }
 
+func TestComputerObservationReportsForegroundDialog(t *testing.T) {
+	t.Parallel()
+	b := &efficientDesktopBackend{fakeComputerBackend: fakeComputerBackend{size: computer.Size{Width: 40, Height: 40}, screenshot: testPNG(t, 40, 40)}}
+	windowsCalls := 0
+	b.call = func(_ context.Context, p computer.AutomationRequest) (json.RawMessage, error) {
+		switch p.Action {
+		case "inspect":
+			return json.RawMessage(`{"elements":[]}`), nil
+		case "windows":
+			windowsCalls++
+			return json.RawMessage(`[{"window_id":"11","process_id":5,"x":-100,"y":0,"width":40,"height":40},{"window_id":"22","name":"Save As","process_id":5,"process_name":"Notepad.exe","owner_window_id":"11","foreground":true,"x":-100,"y":0,"width":40,"height":40}]`), nil
+		default:
+			t.Fatalf("Unexpected action %s", p.Action)
+			return nil, nil
+		}
+	}
+	s := &computerToolState{backend: b}
+	r, err := s.observe(t.Context(), ComputerParams{Automation: computer.AutomationRequest{WindowID: "11"}})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	var observed struct {
+		WindowID   string `json:"window_id"`
+		Foreground struct {
+			WindowID string `json:"window_id"`
+			Owner    string `json:"owner_window_id"`
+		} `json:"foreground_window"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(r.Content), &observed))
+	require.Equal(t, "11", observed.WindowID, "Foreground metadata must not retarget the requested observation")
+	require.Equal(t, "22", observed.Foreground.WindowID)
+	require.Equal(t, "11", observed.Foreground.Owner)
+	require.Equal(t, 1, windowsCalls, "Reuse the capture's window list")
+}
+
 func TestComputerObservationReturnsImageAndInvalidates(t *testing.T) {
 	ctx := context.WithValue(t.Context(), SessionIDContextKey, "owner")
 	b := &efficientDesktopBackend{fakeComputerBackend: fakeComputerBackend{size: computer.Size{Width: 40, Height: 40}, screenshot: testPNG(t, 40, 40)}}

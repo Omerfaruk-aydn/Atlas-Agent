@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"time"
 )
@@ -21,6 +22,20 @@ type pendingSession struct {
 // SessionContext creates one session per chat. Concurrent callers share the
 // same launch; cancellation cannot leave an untracked acknowledged session.
 func (m *Manager) SessionContext(ctx context.Context, id string) (Session, error) {
+	return m.sessionContext(ctx, id, "")
+}
+
+// SessionContextURL carries the first authorized URL into connection setup.
+// Existing sessions are returned unchanged and navigate through the tool.
+func (m *Manager) SessionContextURL(ctx context.Context, id, initialURL string) (Session, error) {
+	parsed, err := url.Parse(initialURL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil {
+		return nil, errors.New("initial browser URL must be an HTTP(S) destination without embedded credentials")
+	}
+	return m.sessionContext(ctx, id, initialURL)
+}
+
+func (m *Manager) sessionContext(ctx context.Context, id, initialURL string) (Session, error) {
 	if id == "" {
 		return nil, errors.New("browser session ID is required")
 	}
@@ -53,6 +68,7 @@ func (m *Manager) SessionContext(ctx context.Context, id string) (Session, error
 			return s, nil
 		}
 		opts, generation, epoch := m.opts, m.generation, m.epochs[id]
+		opts.initialURL = initialURL
 		waiting := &pendingSession{done: make(chan struct{})}
 		m.pending[id] = waiting
 		m.mu.Unlock()

@@ -183,3 +183,29 @@ func TestDesktopFlowNewRecipeJournalRejectsInterruptedReplay(t *testing.T) {
 		})
 	}
 }
+
+func TestDesktopFlowRenameUsesVerifiedRecipe(t *testing.T) {
+	p := DesktopWorkflowParams{Mode: "flow", Flow: &DesktopFlowParams{Nodes: []DesktopFlowNode{
+		{ID: "folder", Kind: "resolve", Application: "File Explorer", Next: "rename"},
+		{ID: "rename", Kind: "rename", WindowRef: "folder", Rename: &DesktopRenameParams{OldName: "hesap", NewName: "sonuc"}},
+	}}}
+	invoke, calls := renameFixture(t, nil)
+	r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var input ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &input))
+		if input.Action == "focus" {
+			return fantasy.NewTextResponse(`{"result":{"focused":true}}`), nil
+		}
+		return invoke(ctx, c)
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Contains(t, r.Content, `"actual_name":"sonuc"`)
+	keys := 0
+	for _, c := range *calls {
+		if c.Key == "f2" {
+			keys++
+		}
+	}
+	require.Equal(t, 1, keys)
+}

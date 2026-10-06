@@ -161,3 +161,40 @@ func TestQuestionResponseIsValidatedAgainstItsRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestCancelWhileWaitingTearsDownAndRejectsOldAnswers(t *testing.T) {
+	for _, during := range []string{"question", "permission"} {
+		t.Run(during, func(t *testing.T) {
+			m := New(&testRenderer{})
+			defer m.Close()
+			ctx, end := StartFlow(context.Background(), "island-cancel")
+			m.Begin(ctx, Event{Session: "island-cancel"})()
+			p := questionFixture("c")
+			if during == "permission" {
+				p = permissionFixture("c")
+			}
+			var calls atomic.Int32
+			pending := AwaitPrompt(ctx, p, func(PromptResponse) bool { calls.Add(1); return true })
+			revision := m.Snapshot().Prompt.Revision
+			CancelSession("island-cancel")
+			e := m.Snapshot()
+			require.False(t, e.Visible)
+			require.Nil(t, e.Prompt)
+			require.Equal(t, StateCancelled, e.State)
+			require.False(t, AwaitingUser(ctx), "A stopped run has nothing pending")
+			require.ErrorIs(t, m.Respond(revision, PromptResponse{Decision: DecisionAllowOnce}), ErrPromptStale)
+			require.Zero(t, calls.Load(), "A cancelled request is never approved")
+			pending.Done(OutcomeCancelled)
+			require.False(t, m.Snapshot().Visible, "A late resolution must not revive the surface")
+			end()
+
+			next, endNext := StartFlow(context.Background(), "island-cancel")
+			defer endNext()
+			m.Begin(next, Event{Session: "island-cancel"})()
+			e = m.Snapshot()
+			require.True(t, e.Visible, "A new task starts cleanly")
+			require.Nil(t, e.Prompt)
+			require.Equal(t, StateThinking, e.State)
+		})
+	}
+}

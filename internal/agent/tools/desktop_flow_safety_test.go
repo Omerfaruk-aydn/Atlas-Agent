@@ -48,3 +48,43 @@ func TestDesktopFlowBindsNewOwnedDialogBeforeFollowingOperation(t *testing.T) {
 	require.Equal(t, 2, mutations)
 	require.Contains(t, r.Content, `"window_id":"22"`)
 }
+
+func TestDesktopFlowStopsOnUnsafeFreshTarget(t *testing.T) {
+	for _, kind := range []string{"ambiguous", "truncated", "password", "offscreen", "wrong_foreground", "wrong_process", "read_denied"} {
+		t.Run(kind, func(t *testing.T) {
+			p := desktopFlowTestPlan()
+			value, mutations, lists := "empty", 0, 0
+			base := desktopFlowFixture(t, &value, &mutations)
+			r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+				var input ComputerParams
+				require.NoError(t, json.Unmarshal([]byte(c.Input), &input))
+				if input.Action == "windows" {
+					lists++
+					if lists == 2 && (kind == "wrong_foreground" || kind == "wrong_process") {
+						return fantasy.NewTextResponse(`{"result":[{"window_id":"11","process_id":99,"process_name":"other.exe","class_name":"Notepad"}]}`), nil
+					}
+				}
+				if input.Action == "find" {
+					if kind == "read_denied" {
+						r := fantasy.NewTextErrorResponse("denied")
+						r.StopTurn = true
+						return r, nil
+					}
+					e := desktopElement{ID: "fresh", Name: "Field", Role: "ControlType.Edit", Enabled: true, ValueAvailable: true}
+					e.Password, e.Offscreen = kind == "password", kind == "offscreen"
+					matches := []desktopElement{e}
+					if kind == "ambiguous" {
+						matches = append(matches, e)
+					}
+					data, _ := json.Marshal(map[string]any{"result": map[string]any{"matches": matches, "truncated": kind == "truncated"}})
+					return fantasy.NewTextResponse(string(data)), nil
+				}
+				return base(ctx, c)
+			})
+			require.NoError(t, err)
+			require.True(t, r.IsError, r.Content)
+			require.Zero(t, mutations)
+			require.Equal(t, kind == "read_denied", r.StopTurn)
+		})
+	}
+}

@@ -138,3 +138,63 @@ func TestMascotWaitingForUserRestoresThinking(t *testing.T) {
 	// Without a flow there is nothing to express.
 	AwaitUser(context.Background())()
 }
+
+func TestMascotFailureIsScopedToItsOperation(t *testing.T) {
+	t.Parallel()
+	m := New(&testRenderer{})
+	defer m.Close()
+	ctx, end := StartFlow(t.Context(), "fail")
+	defer end()
+	op := m.Start(ctx, Event{Session: "fail", Action: "click"})
+	op.Fail()
+	op.End()
+	e := m.Snapshot()
+	require.Equal(t, PhaseFailed, e.Phase, "Ending must not erase a recorded failure")
+	require.Equal(t, moodBlocked, mascotMoodFor(e, time.Now()))
+	require.Equal(t, moodThinking, mascotMoodFor(e, time.Now().Add(2*time.Second)), "The alert is brief")
+	retry := m.Start(ctx, Event{Session: "fail", Action: "click"})
+	require.Equal(t, PhaseWorking, m.Snapshot().Phase, "A retry returns to work")
+	op.Fail()
+	require.Equal(t, PhaseWorking, m.Snapshot().Phase, "A stale failure cannot touch the retry")
+	retry.End()
+	require.Equal(t, PhaseThinking, m.Snapshot().Phase)
+	Operation{}.Fail()
+	Operation{}.End()
+}
+
+func TestMascotCompletionAndCancellation(t *testing.T) {
+	t.Parallel()
+	m := New(&testRenderer{})
+	defer m.Close()
+	ctx, finish := StartRun(t.Context(), "done")
+	m.Begin(ctx, Event{Session: "done", Action: "click"})()
+	id := m.Snapshot().ID
+	nested, finishNested := StartRun(ctx, "done")
+	require.Equal(t, ctx, nested)
+	finishNested(true)
+	require.Equal(t, PhaseThinking, m.Snapshot().Phase, "A nested worker cannot conclude its parent")
+	finish(true)
+	e := m.Snapshot()
+	require.Equal(t, PhaseDone, e.Phase)
+	require.False(t, e.Visible)
+	require.False(t, e.Persistent, "Control and the system cursor are released at once")
+	require.False(t, e.CanStop)
+	require.WithinDuration(t, time.Now().Add(mascotDoneLinger), e.FinishedUntil, 100*time.Millisecond)
+	require.False(t, m.Stop(id), "A completed run has nothing to stop")
+	require.Zero(t, m.StopRevision())
+
+	parent, cancel := context.WithCancel(t.Context())
+	ctx, finish = StartRun(parent, "cancel")
+	m.Begin(ctx, Event{Session: "cancel", Action: "click"})()
+	cancel()
+	require.Eventually(t, func() bool { return !m.Snapshot().Visible }, time.Second, time.Millisecond)
+	finish(true)
+	e = m.Snapshot()
+	require.NotEqual(t, PhaseDone, e.Phase, "A cancelled run never shows completion")
+	require.True(t, e.FinishedUntil.IsZero(), "Cancellation keeps the immediate teardown")
+
+	ctx, finish = StartRun(t.Context(), "error")
+	m.Begin(ctx, Event{Session: "error"})()
+	finish(false)
+	require.True(t, m.Snapshot().FinishedUntil.IsZero(), "A failed run ends without a success pose")
+}

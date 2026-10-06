@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/stretchr/testify/require"
 )
@@ -244,6 +245,28 @@ func TestControlIslandLive(t *testing.T) {
 		return windowVisible(r.bannerWindow) && !r.island.open
 	}, 3*time.Second, 10*time.Millisecond)
 	endNext()
+}
+
+func TestControlIslandWindowsAreExcludedFromCapture(t *testing.T) {
+	if os.Getenv("ATLAS_DESKTOP_FIXTURE") != "1" {
+		t.Skip("Set ATLAS_DESKTOP_FIXTURE=1 for native island verification")
+	}
+	r := newPlatformRenderer().(*windowsRenderer)
+	r.Render(Event{ID: 1, Visible: true, Resource: "desktop", Action: "observe"})
+	defer r.Close()
+	require.Eventually(t, func() bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return r.bannerWindow != 0 && r.blurWindow != 0
+	}, 3*time.Second, 10*time.Millisecond)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	// The blur is excluded from capture. Windows 10 refuses display affinity
+	// on UpdateLayeredWindow surfaces, so the island is kept out of model
+	// observations by holding them while a request waits (PromptBlocks).
+	var affinity uint32
+	overlayUser.NewProc("GetWindowDisplayAffinity").Call(r.blurWindow, uintptr(unsafe.Pointer(&affinity)))
+	require.Equal(t, uint32(0x11), affinity, "Model observations never include the blur")
 }
 
 func assertEventually(ok func() bool) bool {

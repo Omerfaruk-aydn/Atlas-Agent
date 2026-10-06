@@ -58,6 +58,11 @@ func (h *hookedTool) SetProviderOptions(opts fantasy.ProviderOptions) {
 }
 
 func (h *hookedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	canonical, normalizeErr := tools.NormalizeComputerCall(call)
+	if normalizeErr != nil {
+		return fantasy.NewTextErrorResponse(normalizeErr.Error()), nil
+	}
+	call = canonical
 	sessionID := tools.GetSessionFromContext(ctx)
 
 	var result hooks.AggregateResult

@@ -3,12 +3,13 @@ package tools
 import (
 	"context"
 	"encoding/json"
-
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
-
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 	"github.com/stretchr/testify/require"
 )
 
@@ -107,4 +108,56 @@ func TestDesktopFlowValidatesEveryNodeBeforeDispatch(t *testing.T) {
 			require.True(t, r.IsError)
 		})
 	}
+}
+
+func TestDesktopFlowDurableResumeReconcilesReplacementWithoutReplay(t *testing.T) {
+	ctx := context.WithValue(t.Context(), SessionIDContextKey, "session")
+	dir := t.TempDir()
+	store := engineering.NewStore(dir)
+	p := desktopFlowTestPlan()
+	p.Flow.RunID = "document"
+	value, mutations := "empty", 0
+	base := desktopFlowFixture(t, &value, &mutations)
+	tool := NewToolPipeline(func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		r, err := base(ctx, c)
+		var input ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &input))
+		if input.Action == "set_value" {
+			return fantasy.NewTextErrorResponse("provider disconnected after input"), nil
+		}
+		if input.Action == "assert" {
+			return fantasy.NewTextErrorResponse("read unavailable"), nil
+		}
+		return r, err
+	}, store)
+	run := func(tool fantasy.AgentTool) fantasy.ToolResponse {
+		data, err := json.Marshal(PipelineParams{Desktop: &p})
+		require.NoError(t, err)
+		r, err := tool.Run(ctx, fantasy.ToolCall{Input: string(data)})
+		require.NoError(t, err)
+		return r
+	}
+	r := run(tool)
+	require.True(t, r.IsError)
+	require.Equal(t, 1, mutations)
+	files, err := filepath.Glob(filepath.Join(store.Dir(), "desktop-runs", "*.json"))
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	saved, err := os.ReadFile(files[0])
+	require.NoError(t, err)
+	require.NotContains(t, string(saved), "private document")
+	require.NotContains(t, string(saved), "Notepad")
+	require.Contains(t, string(saved), `"pending":"write"`)
+	p.Flow.Resume = true
+	r = run(NewToolPipeline(base, store))
+	require.False(t, r.IsError, r.Content)
+	require.Equal(t, 1, mutations)
+	require.Contains(t, r.Content, "replacement_already_verified")
+	r = run(NewToolPipeline(base, store))
+	require.False(t, r.IsError, r.Content)
+	require.Equal(t, 1, mutations)
+	p.Flow.Nodes[1].Checkpoint.Expected = "changed"
+	r = run(NewToolPipeline(base, store))
+	require.True(t, r.IsError)
+	require.Contains(t, r.Content, "invalid_journal")
 }

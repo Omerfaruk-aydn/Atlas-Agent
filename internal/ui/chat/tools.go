@@ -17,6 +17,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/fsext"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/hooks"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/skills"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/stringext"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/anim"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/common"
@@ -1163,7 +1164,7 @@ func (t *baseToolMessageItem) formatParametersForCopy() string {
 		var params tools.ViewParams
 		if json.Unmarshal([]byte(t.toolCall.Input), &params) == nil {
 			var parts []string
-			parts = append(parts, fmt.Sprintf(t.sty.Text("**File:** %s"), fsext.PrettyPath(params.FilePath)))
+			parts = append(parts, fmt.Sprintf(t.sty.Text("**File:** %s"), fsext.PrettyPath(skills.CanonicalBuiltinPath(params.FilePath))))
 			if params.Limit > 0 {
 				parts = append(parts, fmt.Sprintf(t.sty.Text("**Limit:** %d"), params.Limit))
 			}

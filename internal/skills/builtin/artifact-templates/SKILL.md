@@ -50,7 +50,7 @@ The role's preferred skill binding is a starting recipe, not additional access.
 
 ## Choose a recipe and define the input contract
 
-Read crush://skills/artifact-templates/TEMPLATES.md through view for the requested
+Read atlas://skills/artifact-templates/TEMPLATES.md through view for the requested
 category. Choose it by deliverable purpose, then adapt to the user's actual
 reference. The catalog provides original structural recipes, not copied artwork
 or an automatic authoring backend.

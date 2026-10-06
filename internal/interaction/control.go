@@ -79,18 +79,32 @@ func (c *Controller) Acquire(ctx context.Context, id, resource string, observe .
 		c.leases[key] = lease
 	}
 	c.mu.Unlock()
-	select {
-	case lease <- struct{}{}:
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-	if err := ctx.Err(); err != nil {
+	observation := len(observe) > 0 && observe[0]
+	shared := resource == "desktop" || strings.HasPrefix(resource, "shared/")
+	for {
+		// New input and observation wait while a run awaits the user's
+		// answer, so no capture can include the island. The wait happens
+		// before the lease so the user's own input is never held.
+		if err := activity.WaitForPrompts(ctx, shared); err != nil {
+			return nil, err
+		}
+		select {
+		case lease <- struct{}{}:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		if err := ctx.Err(); err != nil {
+			<-lease
+			return nil, err
+		}
+		if !activity.PromptBlocks(ctx, shared) {
+			break
+		}
+		// A request appeared while the lease was contended.
 		<-lease
-		return nil, err
 	}
 	c.mu.Lock()
 	s := c.states[id]
-	observation := len(observe) > 0 && observe[0]
 	if !observation && (resource == "desktop" || strings.HasPrefix(resource, "shared/")) {
 		for other, state := range c.states {
 			if other != id && state.Paused {

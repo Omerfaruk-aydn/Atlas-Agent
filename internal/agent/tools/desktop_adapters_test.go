@@ -1,8 +1,11 @@
 package tools
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 
+	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,4 +24,25 @@ func TestDesktopAdaptersRequireObservedIdentity(t *testing.T) {
 	} {
 		require.Equal(t, tc.expected, desktopAdapterForWindow(tc.window).ID)
 	}
+}
+
+func TestDesktopPrepareReturnsVerifiedApplicationCapabilities(t *testing.T) {
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "prepare", Application: "Not Defteri"}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+		switch p.Action {
+		case "windows":
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"11","name":"Document","process_name":"notepad.exe","foreground":true}]}`), nil
+		case "focus":
+			return fantasy.NewTextResponse(`{"result":{"focused":true}}`), nil
+		case "observe":
+			return fantasy.NewTextResponse(`{"window_id":"11","foreground_window":{"window_id":"11","process_name":"notepad.exe","foreground":true},"elements":[{"role":"ControlType.Edit"}]}`), nil
+		default:
+			t.Fatalf("Unexpected action %s", p.Action)
+			return fantasy.ToolResponse{}, nil
+		}
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Contains(t, r.Content, `"application_adapter":{"id":"notepad"`)
 }

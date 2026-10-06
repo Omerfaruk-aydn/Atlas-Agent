@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
 	"github.com/google/uuid"
@@ -365,10 +366,30 @@ func (s *permissionService) Request(ctx context.Context, opts CreatePermissionRe
 	// Publish the request
 	s.Publish(pubsub.CreatedEvent, permission)
 
+	// The control island is a second view of this pending request. Its
+	// decisions resolve through the same first-wins path as the terminal.
+	pending := activity.AwaitPrompt(ctx, islandPrompt(permission), func(r activity.PromptResponse) bool {
+		switch r.Decision {
+		case activity.DecisionAllowOnce:
+			return s.Grant(permission)
+		case activity.DecisionAllowSession:
+			return s.GrantPersistent(permission)
+		case activity.DecisionDeny:
+			return s.Deny(permission)
+		}
+		return false
+	})
+
 	select {
 	case <-ctx.Done():
+		pending.Done(activity.OutcomeCancelled)
 		return false, ctx.Err()
 	case granted := <-respCh:
+		if granted {
+			pending.Done(activity.OutcomeGranted)
+		} else {
+			pending.Done(activity.OutcomeDenied)
+		}
 		return granted, nil
 	}
 }

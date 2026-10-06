@@ -2,7 +2,9 @@ package browser
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -10,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -40,20 +43,20 @@ const launchTimeout = 20 * time.Second
 // ensureRemoteBrowser makes the DevTools endpoint at opts.RemoteURL
 // answer, launching a browser against it if nothing does yet, and returns
 // once it does.
-func ensureRemoteBrowser(opts Options) error {
+func ensureRemoteBrowser(opts Options) (string, error) {
 	if remoteAlive(opts.RemoteURL) {
-		return nil
+		return "", nil
 	}
 
 	port, err := remotePort(opts.RemoteURL)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	exe := opts.ExecutablePath
 	if exe == "" {
 		if exe = findChrome(); exe == "" {
-			return fmt.Errorf("no Chrome or Chromium found to open %s with; set tools.browser.executable_path", opts.RemoteURL)
+			return "", fmt.Errorf("no Chrome or Chromium found to open %s with; set tools.browser.executable_path", opts.RemoteURL)
 		}
 	}
 
@@ -65,14 +68,14 @@ func ensureRemoteBrowser(opts Options) error {
 		dir = defaultProfileDir()
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create browser profile directory: %w", err)
+		return "", fmt.Errorf("create browser profile directory: %w", err)
 	}
 
 	profile := ""
 	if opts.UseRealProfile {
 		var err error
 		if profile, err = snapshotRealProfile(dir, opts.RealProfilePin); err != nil {
-			return err
+			return "", err
 		}
 	}
 
@@ -84,7 +87,12 @@ func ensureRemoteBrowser(opts Options) error {
 		// the first thing the agent sees.
 		"--no-first-run",
 		"--no-default-browser-check",
-		"about:blank",
+	}
+	if opts.initialURL != "" {
+		// Open the authorized destination and adopt its startup tab.
+		args = append(args, opts.initialURL)
+	} else {
+		args = append(args, "about:blank")
 	}
 	if profile != "" {
 		args = append([]string{"--profile-directory=" + profile}, args...)
@@ -95,7 +103,7 @@ func ensureRemoteBrowser(opts Options) error {
 
 	cmd := exec.CommandContext(context.Background(), exe, args...)
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("launch browser for %s: %w", opts.RemoteURL, err)
+		return "", fmt.Errorf("launch browser for %s: %w", opts.RemoteURL, err)
 	}
 	// The browser is deliberately not tied to this process: it holds the
 	// user's signed-in profile, and closing Atlas should not sign them
@@ -105,11 +113,48 @@ func ensureRemoteBrowser(opts Options) error {
 	deadline := time.Now().Add(launchTimeout)
 	for time.Now().Before(deadline) {
 		if remoteAlive(opts.RemoteURL) {
-			return nil
+			if opts.initialURL == "" {
+				return "", nil
+			}
+			id, err := launchedPageID(opts.RemoteURL)
+			if err == nil && id != "" {
+				return id, nil
+			}
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return fmt.Errorf("browser started but %s never answered; another Chrome may already hold %s", opts.RemoteURL, dir)
+	return "", fmt.Errorf("browser started but %s did not provide a unique startup page; another Chrome may already hold %s", opts.RemoteURL, dir)
+}
+
+// launchedPageID resolves the sole startup page of a newly launched browser.
+// Ambiguous pages are never adopted as an agent-owned task tab.
+func launchedPageID(endpoint string) (string, error) {
+	client := &http.Client{Timeout: probeTimeout}
+	response, err := client.Get(strings.TrimRight(endpoint, "/") + "/json/list")
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("browser page discovery returned %d", response.StatusCode)
+	}
+	var pages []struct {
+		ID   string `json:"id"`
+		Type string `json:"type"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1024*1024)).Decode(&pages); err != nil {
+		return "", err
+	}
+	id := ""
+	for _, page := range pages {
+		if page.Type == "page" {
+			if id != "" {
+				return "", fmt.Errorf("multiple startup pages; cannot safely adopt a task tab")
+			}
+			id = page.ID
+		}
+	}
+	return id, nil
 }
 
 // remoteAlive reports whether something is serving the DevTools protocol

@@ -48,7 +48,40 @@ The role's preferred skill binding is a starting recipe, not additional access.
 
 12. Report tool calls, recovery steps, elapsed time, observed final state and blockers. Atlas uses its own computer backend; this skill does not install @oai/sky.
 
-## Observation-to-action checklist
+## Choose the smallest complete recipe
+
+Use actual current tool schemas. Known inputs belong in a single bounded call,
+with checkpoints at state changes rather than a model turn for each keystroke.
+
+- Calculator arithmetic: one `desktop.mode:sequence` with a checkpoint for each
+  requested result. Prefer `result:checkpoints` when controls are already resolved.
+- Notepad: type the known document and open Save in one scoped input group. Use
+  `transition` at the Save dialog boundary; verify the saved document afterward.
+- Explorer rename: use `desktop.mode:rename`, `window_id`, and
+  `rename:{old_name:"EXACT_OBSERVED_LABEL",new_name:"REPLACEMENT_LABEL"}`.
+  It selects exactly one item, verifies the inline editor and replacement text,
+  submits once and checks that the editor closed and the new item exists.
+  Use the observed extension visibility policy for both names. Never send F2
+  before selecting the exact file, and never use invoke as a selection operation.
+- Reuse verified `explorer_location.path`; do not open the address bar just to
+  discover a folder already returned by the native provider.
+- For several known operations, prefer one `desktop.mode:flow` rather than a
+  separate tool/model turn for each action. `prepare` nodes bind current
+  applications after find/launch/focus; `resolve` nodes bind open windows and
+  exact owned dialogs. Operations use their earlier node's `window_ref`, with
+  mandatory checkpoints and up to 16 known inputs. Branches remain grounded.
+  `rename` verifies exact Explorer names; `close` automatically focuses only
+  its bound window, sends Alt+F4 once and proves absence. A close-blocking dialog
+  stops the flow for a fresh decision. Never send Alt+F4 to a background window.
+  The flow supports 64 nodes within its child-call and five-minute bounds.
+
+Successful rename returns semantic evidence without a screenshot. A failed
+selection, name conflict, unavailable pattern or unverified editor stops the
+recipe. Inspect the returned failure once before choosing another strategy; do
+not replay the whole recipe or claim it succeeded. Do not use shell/file tools
+to replace application steps when the user requested desktop-only execution.
+
+## Ground uncertain boundaries
 
 For each uncertain boundary, establish:
 1. Approved application and current window identity.

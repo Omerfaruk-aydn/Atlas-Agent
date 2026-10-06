@@ -11,6 +11,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/browser"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -50,6 +51,7 @@ func browserDescription(realProfile bool) string {
 
 // browserActions lists every value BrowserParams.Action accepts.
 var browserActions = []string{
+	"wait_for", "popup_wait", "dialog_wait", "dialog_handle",
 	"navigate", "back", "forward", "click", "type", "key", "scroll", "eval",
 	"text", "html", "snapshot", "images", "console", "dialog", "cdp",
 	"screenshot", "url", "close", "export_test", "trace_start", "trace_stop",
@@ -63,6 +65,7 @@ var browserActions = []string{
 // read-only command allowlist, so ModeAutoAcceptEdits doesn't stop to ask
 // about them while ModePlan still denies the tool outright.
 var browserReadOnlyActions = map[string]bool{
+	"wait_for": true, "popup_wait": true, "dialog_wait": true,
 	"vault_list": true,
 	"scroll":     true,
 	"text":       true,
@@ -78,9 +81,9 @@ var browserReadOnlyActions = map[string]bool{
 
 type BrowserParams struct {
 	CredentialID string          `json:"credential_id,omitempty" description:"Saved vault handle for vault_fill. Never supply passwords in tool arguments."`
-	Advanced     browser.Request `json:"advanced,omitempty" description:"Parameters for find/assert/semantic input/tabs/frames/network/capture_region/upload/download actions. Action is taken from the outer action field."`
+	Advanced     browser.Request `json:"advanced,omitempty" description:"Parameters for semantic targets/scope, document/tab/origin guards, conditions, tabs/popups/dialogs, frames, upload/download. Action is taken from the outer action field."`
 	SecretEnv    string          `json:"secret_env,omitempty" description:"For auth_code: environment variable containing an authorized TOTP seed; never supply the seed itself."`
-	Action       string          `json:"action" description:"Browser action: navigate/back/forward/click/type/key/scroll/eval/text/html/snapshot/images/console/dialog/cdp/screenshot/url/close, find/assert/semantic_click/semantic_type, tabs/tab_new/tab_select/tab_close/frames/network/capture_region/upload/download_start/download_wait, handoff/status/trace/trace_start/trace_stop/export_test/auth_code/vault_list/vault_fill. See tool description."`
+	Action       string          `json:"action" description:"Browser action: navigate/back/forward/click/type/key/scroll/eval/text/html/snapshot/images/console/dialog/cdp/screenshot/url/close, find/assert/wait_for/semantic_click/semantic_type, tabs/tab_new/tab_select/tab_close/popup_wait/dialog_wait/dialog_handle/frames/network/capture_region/upload/download_start/download_wait, handoff/status/trace/trace_start/trace_stop/export_test/auth_code/vault_list/vault_fill. See tool description."`
 	// URL is required for navigate.
 	URL string `json:"url,omitempty" description:"Destination for the navigate action. Must start with http:// or https://."`
 	// Selector is an alternative to Ref for click, type, text, and html.
@@ -278,7 +281,13 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 			}
 
 			var sess browser.Session
-			if manager, ok := sessions.(interface {
+			bootstrap, canBootstrap := sessions.(interface {
+				SessionContextURL(context.Context, string, string) (browser.Session, error)
+			})
+			unguarded := params.Advanced.ExpectedTabID == "" && params.Advanced.ExpectedOrigin == "" && params.Advanced.DocumentID == ""
+			if canBootstrap && action == "navigate" && unguarded && !interaction.Default.Snapshot(controlID).RecordImages {
+				sess, err = bootstrap.SessionContextURL(ctx, sessionID, params.URL)
+			} else if manager, ok := sessions.(interface {
 				SessionContext(context.Context, string) (browser.Session, error)
 			}); ok {
 				sess, err = manager.SessionContext(ctx, sessionID)
@@ -291,6 +300,18 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 			if driver, ok := sess.(interface{ BindContext(context.Context) func() }); ok {
 				defer driver.BindContext(ctx)()
 			}
+			if params.Advanced.ExpectedTabID != "" || params.Advanced.ExpectedOrigin != "" || params.Advanced.DocumentID != "" {
+				guard, ok := sess.(interface {
+					CheckDocument(context.Context, browser.Request) error
+				})
+				if !ok {
+					return fantasy.NewTextErrorResponse("Browser driver cannot enforce the requested tab/document/origin guard"), nil
+				}
+				if err := guard.CheckDocument(ctx, params.Advanced); err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+			}
+			var operation activity.Operation
 			if visual, ok := sess.(interface {
 				BeginActivity(context.Context, string, string, string) func()
 			}); ok {
@@ -304,6 +325,12 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 					selector = params.Advanced.Selector
 				}
 				defer interaction.Default.StartActivity(controlID, func() func() {
+					if outcome, ok := visual.(interface {
+						StartActivity(context.Context, string, string, string) activity.Operation
+					}); ok {
+						operation = outcome.StartActivity(ctx, controlID, action, selector)
+						return operation.End
+					}
 					return visual.BeginActivity(ctx, controlID, action, selector)
 				})()
 			}
@@ -324,6 +351,9 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 			}
 			if err == nil && !response.IsError {
 				status = "succeeded"
+			} else {
+				// Only a verified failure earns the banner's blocked reaction.
+				operation.Fail()
 			}
 			if recordImages {
 				after = captureBrowserTrace(ctx, sess, workingDir, controlID)

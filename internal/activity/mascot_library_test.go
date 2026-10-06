@@ -99,6 +99,29 @@ func countSpecs(specs []mascotGestureSpec, onset bool) int {
 	return n
 }
 
+func TestMascotGestureLibraryRejectsUnsafeCurves(t *testing.T) {
+	t.Parallel()
+	base := mascotGestureSpec{Name: "x", Moods: []string{"idle"}, Weight: 1, Seconds: 1}
+	cases := map[string]map[string][][2]float64{
+		"residual pose":   {"yaw": {{0, 0}, {.5, .3}, {1, .1}}},
+		"jump at start":   {"yaw": {{0, .2}, {.5, .3}, {1, 0}}},
+		"out of range":    {"roll": {{0, 0}, {.5, 2}, {1, 0}}},
+		"unknown channel": {"teleport": {{0, 0}, {.5, 1}, {1, 0}}},
+		"time reversed":   {"yaw": {{0, 0}, {.6, .1}, {.4, .1}, {1, 0}}},
+	}
+	for name, tracks := range cases {
+		s := base
+		s.Tracks = tracks
+		_, err := compileMascotGesture(s)
+		require.Error(t, err, name)
+	}
+	s := base
+	s.Tracks = map[string][][2]float64{"yaw": {{0, 0}, {.5, .3}, {1, 0}}}
+	s.Only = true
+	_, err := compileMascotGesture(s)
+	require.Error(t, err, "Only without contexts would never play")
+}
+
 // firstGestureWith runs the animator and returns the first gesture begun
 // after from whose contexts match. Onsets may be anchored slightly before
 // the frame that starts them, so a new take is detected by its identity.

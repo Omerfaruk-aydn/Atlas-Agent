@@ -20,3 +20,11 @@ func TestPhysicalMouseRemainsVisibleDuringAgentWaits(t *testing.T) {
 	require.False(t, source.physicalOwns(e, 120, 130, true), "A fresh agent target resumes the agent animation")
 	require.True(t, source.physicalOwns(e, 125, 130, true))
 }
+
+func TestFailedPhysicalReadDoesNotFabricateMouseMovement(t *testing.T) {
+	t.Parallel()
+	var source pointerInputSource
+	require.False(t, source.physicalOwns(Event{}, 100, 100, true))
+	require.False(t, source.physicalOwns(Event{}, 0, 0, false))
+	require.False(t, source.physicalOwns(Event{}, 100, 100, true))
+}

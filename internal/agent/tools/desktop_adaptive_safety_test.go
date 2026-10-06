@@ -3,7 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
-
+	"errors"
 	"testing"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
@@ -110,6 +110,52 @@ func TestDesktopAdaptiveStopsBeforeUnsafeKeyboardMutation(t *testing.T) {
 			if kind == "focus_denied" {
 				require.True(t, r.StopTurn)
 			}
+		})
+	}
+}
+
+func TestDesktopAdaptivePreservesProgressWithoutReplaying(t *testing.T) {
+	for _, kind := range []string{"checkpoint", "mutation", "cancel"} {
+		t.Run(kind, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			mutations := 0
+			r, err := runDesktopWorkflow(ctx, DesktopWorkflowParams{Mode: "adaptive", AdaptiveSteps: []DesktopAdaptiveStep{adaptiveFixtureStep(), adaptiveFixtureStep(), adaptiveFixtureStep()}}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+				var p ComputerParams
+				require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+				switch p.Action {
+				case "observe":
+					return adaptiveFixtureObservation(desktopElement{ID: "field", Name: "Field", Role: "ControlType.Edit", Enabled: true, Patterns: []string{"Value"}}, false), nil
+				case "set_value":
+					mutations++
+					if mutations == 2 && kind == "mutation" {
+						return fantasy.NewTextErrorResponse("operation_failed: ambiguous execution"), nil
+					}
+					if mutations == 2 && kind == "cancel" {
+						cancel()
+						return fantasy.ToolResponse{}, context.Canceled
+					}
+					return fantasy.NewTextResponse(`{}`), nil
+				case "assert":
+					if mutations == 2 && kind == "checkpoint" {
+						return fantasy.NewTextResponse(`{"window_id":"11","passed":false}`), nil
+					}
+					return fantasy.NewTextResponse(`{"window_id":"11","passed":true}`), nil
+				default:
+					t.Fatalf("Unexpected action %s", p.Action)
+					return fantasy.ToolResponse{}, nil
+				}
+			})
+			if kind == "cancel" {
+				require.True(t, errors.Is(err, context.Canceled))
+			} else {
+				require.NoError(t, err)
+				require.True(t, r.IsError)
+			}
+			require.Equal(t, 2, mutations)
+			require.Contains(t, r.Content, `"status":"verified"`)
+			require.Contains(t, r.Content, `"input_replayed":false`)
+			require.Contains(t, r.Metadata, "adaptive_progress")
 		})
 	}
 }

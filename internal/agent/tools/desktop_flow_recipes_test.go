@@ -209,3 +209,48 @@ func TestDesktopFlowRenameUsesVerifiedRecipe(t *testing.T) {
 	}
 	require.Equal(t, 1, keys)
 }
+
+func TestDesktopFlowCloseStopsBeforeInputOnFocusOrPermissionFailure(t *testing.T) {
+	for _, action := range []string{"focus", "hotkey"} {
+		p := desktopFlowTestPlan()
+		p.Flow.Nodes[1] = DesktopFlowNode{ID: "write", Kind: "close", WindowRef: "app"}
+		value, mutations, blocked, keys := "empty", 0, false, 0
+		base := desktopFlowFixture(t, &value, &mutations)
+		r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			require.False(t, blocked, "Child dispatched after denial")
+			var input ComputerParams
+			require.NoError(t, json.Unmarshal([]byte(c.Input), &input))
+			if input.Action == "hotkey" {
+				keys++
+			}
+			if input.Action == action {
+				blocked = true
+				r := fantasy.NewTextErrorResponse("denied")
+				r.StopTurn = true
+				return r, nil
+			}
+			return base(ctx, c)
+		})
+		require.NoError(t, err)
+		require.True(t, r.IsError)
+		require.True(t, r.StopTurn)
+		if action == "focus" {
+			require.Zero(t, keys)
+		} else {
+			require.Equal(t, 1, keys)
+		}
+	}
+}
+
+func TestDesktopFlowNewNodesRejectInvalidPlansBeforeDispatch(t *testing.T) {
+	for _, kind := range []string{"prepare", "rename", "close"} {
+		p := desktopFlowTestPlan()
+		p.Flow.Nodes[1] = DesktopFlowNode{ID: "write", Kind: kind, WindowRef: "app", Checkpoint: computer.AutomationRequest{Name: "Field", Condition: "visible"}}
+		r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			t.Fatal("Invalid plan dispatched")
+			return fantasy.ToolResponse{}, nil
+		})
+		require.NoError(t, err)
+		require.True(t, r.IsError)
+	}
+}

@@ -17,17 +17,25 @@ function(event) {
       .cursor[data-held="true"] .cursor-body{fill:#435661;stroke:#f4f8fb;stroke-width:1.7}
       .edges{position:absolute;inset:0;isolation:isolate}
       .edges svg{display:block;width:100%;height:100%}
-      .control-banner{position:absolute;top:20px;left:50%;transform:translateX(-50%);max-width:calc(100% - 32px);height:38px;display:flex;align-items:center;gap:12px;padding:0 16px;border:1px solid transparent;border-radius:6px;background:linear-gradient(#171920,#171920) padding-box,linear-gradient(100deg,#ff5a81,#ffc452,#80ff9a,#4aefff,#7a93ff,#e76fff) border-box;color:#ebf4fa;font:600 13px/18px "Segoe UI",system-ui,sans-serif;white-space:nowrap;box-shadow:0 3px 12px #0003}
-      .banner-icon{display:block;flex:none;width:18px;height:20px}
-      .banner-icon svg{display:block;width:100%;height:100%}
+      .control-banner{position:absolute;top:20px;left:50%;transform:translateX(-50%);max-width:calc(100% - 32px);height:38px;display:flex;align-items:center;gap:12px;padding:0 16px 0 5px;border:1px solid transparent;border-radius:6px;background:linear-gradient(#171920,#171920) padding-box,linear-gradient(100deg,#ff5a81,#ffc452,#80ff9a,#4aefff,#7a93ff,#e76fff) border-box;color:#ebf4fa;font:600 13px/18px "Segoe UI",system-ui,sans-serif;white-space:nowrap;box-shadow:0 3px 12px #0003}
+      .banner-icon{position:relative;display:block;flex:none;width:36px;height:36px;margin-right:-8px}
+      .banner-icon svg,.banner-icon canvas{position:absolute;inset:0;display:block;width:100%;height:100%}
+      .banner-icon [hidden]{display:none}
       .caption{min-width:0;overflow:hidden;text-overflow:ellipsis}
+      .timer{flex:none;min-width:44px;text-align:right;font-weight:500;font-variant-numeric:tabular-nums;opacity:.6}
+      .timer:empty{display:none}
+      .waiting-hint{flex:none;font-weight:500;opacity:.72;padding-left:12px;border-left:1px solid #ffffff24}
+      .waiting-hint[hidden]{display:none}
+      .control-banner.waiting .caption::before{content:"";display:inline-block;width:7px;height:7px;margin:0 8px 1px 0;border-radius:50%;background:#ffc452;vertical-align:middle}
       .stop-hint{display:flex;flex:none;align-items:center;gap:10px;padding-left:12px;border-left:1px solid #ffffff24;font-weight:500}
       .stop-hint[hidden]{display:none}
+      .stop-hint.inactive{opacity:.4}
       kbd{display:flex;flex:none;align-items:center;justify-content:center;width:30px;height:22px;font:600 11px/16px "Segoe UI",system-ui,sans-serif;border:1px solid #ffffff35;border-radius:4px;background:#ffffff0b}
-    </style><div class="edges"></div><div class="control-banner"><span class="banner-icon">${event.banner_icon}</span><span class="caption"></span><span class="stop-hint"><kbd>Esc</kbd><span class="stop-label"></span></span></div><div class="cursor">${event.cursor}</div>`;
+    </style><div class="edges"></div><div class="control-banner"><span class="banner-icon"><span class="mascot-static">${event.banner_icon}</span><canvas class="mascot-live" hidden></canvas></span><span class="caption"></span><span class="timer"></span><span class="waiting-hint" hidden></span><span class="stop-hint"><kbd>Esc</kbd><span class="stop-label"></span></span></div><div class="cursor">${event.cursor}</div>`;
     const cursor=root.querySelector('.cursor');
     const edges=root.querySelector('.edges');
     const banner=root.querySelector('.control-banner');
+    const mascotStatic=root.querySelector('.mascot-static'),mascotCanvas=root.querySelector('.mascot-live');
     const motion=matchMedia('(prefers-reduced-motion: reduce)');
     function resizeEdges(){
       const w=Math.max(1,innerWidth),h=Math.max(1,innerHeight),d=Math.min(112,w/2,h/2);
@@ -95,11 +103,37 @@ function(event) {
         this.frame=requestAnimationFrame(t=>this.animate(t));
       },
       start(){if(!this.frame)this.frame=requestAnimationFrame(t=>this.animate(t))},
-      remove(){cancelAnimationFrame(this.frame);this.frame=0;host.remove()},
+      remove(){cancelAnimationFrame(this.frame);this.frame=0;clearInterval(this.clock);this.clock=0;host.remove();mascotCanvas.hidden=true;mascotStatic.hidden=false},
+      // The run timer counts from Atlas's monotonic elapsed time.
+      tick(){const t=banner.querySelector('.timer');if(this.elapsedAt===undefined){t.textContent='';return}
+        const ms=this.elapsed+(this.running?performance.now()-this.elapsedAt:0),s=Math.max(0,Math.floor(ms/1000)),h=Math.floor(s/3600),m=Math.floor(s/60)%60,p=n=>String(n).padStart(2,'0');
+        const text=h?`${h}:${p(m)}:${p(s%60)}`:`${p(m)}:${p(s%60)}`;if(t.textContent!==text)t.textContent=text},
+      // Paints a frame rendered by Atlas's Go character engine.
+      mascot(w,h,data){
+        if(!this.visible)return null;
+        const ctx=this.mascotContext||(this.mascotContext=mascotCanvas.getContext&&mascotCanvas.getContext('2d'));
+        if(!ctx)return null;
+        if(mascotCanvas.width!==w||mascotCanvas.height!==h){mascotCanvas.width=w;mascotCanvas.height=h}
+        const bytes=atob(data),image=ctx.createImageData(w,h),px=image.data;
+        if(bytes.length!==px.length)return null;
+        for(let i=0;i<px.length;i++)px[i]=bytes.charCodeAt(i);
+        ctx.putImageData(image,0,0);
+        if(mascotCanvas.hidden){mascotCanvas.hidden=false;mascotStatic.hidden=true}
+        return [devicePixelRatio||1,innerWidth,innerHeight];
+      },
       restore(){if(this.visible){if(!host.isConnected)document.documentElement.append(host);this.start()}},
       update(e){const previousID=this.id;this.id=e.id;this.visible=e.visible;clearTimeout(this.timer);if(!e.visible){this.pointerReady=false;this.remove();return}
         this.canStop=!!e.can_stop;banner.querySelector('.caption').textContent=e.caption;
-        banner.querySelector('.stop-label').textContent=e.stop;banner.querySelector('.stop-hint').hidden=!this.canStop;
+        banner.classList.toggle('waiting',!!e.waiting);
+        const waitingHint=banner.querySelector('.waiting-hint');waitingHint.textContent=e.waiting?e.waiting_hint||'':'';waitingHint.hidden=!e.waiting;
+        this.elapsed=e.elapsed||0;this.running=!!e.running;this.elapsedAt=e.elapsed>0||e.running?performance.now():undefined;this.tick();
+        if(!this.clock)this.clock=setInterval(()=>this.tick(),1000);
+        // A completed run releases control at once; only the banner settles,
+        // keeping its stop area in place but inactive.
+        const done=!!e.done,hint=banner.querySelector('.stop-hint');
+        banner.querySelector('.stop-label').textContent=e.stop;hint.hidden=!this.canStop&&!(done&&!hint.hidden);
+        hint.classList.toggle('inactive',!this.canStop);
+        cursor.style.display=done?'none':'';edges.style.display=done?'none':'';nativeCursorStyle.disabled=done;
         this.reduced=!!e.reduced;
         const now=performance.now();
         if(!this.pointerReady){this.fromX=this.x;this.fromY=this.y;this.moveAt=now-180}

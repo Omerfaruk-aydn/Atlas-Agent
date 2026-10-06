@@ -139,3 +139,16 @@ func TestGuardUnrelatedReadsCannotAuthorizeReplay(t *testing.T) {
 		})
 	}
 }
+
+func TestGuardRequiresObservedWindowBeforeMutation(t *testing.T) {
+	t.Parallel()
+	inner := &scriptedTool{name: ComputerToolName}
+	tool := WithDesktopGuard(inner)
+	ctx := guardCtx(t)
+	call := computerCall(`{"action":"focus","automation":{"window_id":"987654"}}`)
+	resp, err := tool.Run(ctx, call)
+	require.NoError(t, err)
+	require.True(t, resp.IsError, "a guessed numeric handle reached the native tool")
+	require.Contains(t, resp.Content, "unobserved_target")
+	require.Zero(t, inner.calls)
+}

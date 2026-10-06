@@ -676,6 +676,9 @@ func selectNotificationBackend(caps common.Capabilities, cfg *config.Config) not
 		case "bell":
 			slog.Debug("Using bell backend (user preference)")
 			return notification.NewBellBackend()
+		case "sound":
+			slog.Debug("Using sound backend (user preference)", "supported", notification.SoundSupported)
+			return notification.NewSoundBackend(cfg.Options.NotificationSounds)
 		case "disabled":
 			slog.Debug("Notifications disabled (user preference)")
 			return notification.NoopBackend{}
@@ -1177,6 +1180,7 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd := m.sendNotification(notification.Notification{
 			Title:   m.com.Text("ATLAS-AGENT is waiting..."),
 			Message: fmt.Sprintf(m.com.Text("Permission required to execute \"%s\""), msg.Payload.ToolName),
+			Kind:    notification.KindPermission,
 		}); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -1190,6 +1194,7 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd := m.sendNotification(notification.Notification{
 			Title:   m.com.Text("ATLAS-AGENT is waiting..."),
 			Message: fmt.Sprintf(m.com.Text("%d questions need your input"), len(msg.Payload.Questions)),
+			Kind:    notification.KindQuestion,
 		}); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -5781,12 +5786,11 @@ func (m *UI) openBatchFormDialog(batch question.Request) {
 	m.updateLayoutAndSize()
 }
 
-// handleQuestionNotification dismisses an open question form when
-// any client resolved the pending batch. Only one question can be
-// pending at a time, so any notification means the current form
-// is stale regardless of BatchID.
-func (m *UI) handleQuestionNotification(_ question.Notification) {
-	if _, ok := m.activeInline.(*dialog.QuestionForm); ok {
+// handleQuestionNotification dismisses the open question form when
+// any client, including the desktop control island, resolved its batch.
+// Requests queue, so a notification for another batch leaves the form.
+func (m *UI) handleQuestionNotification(n question.Notification) {
+	if qf, ok := m.activeInline.(*dialog.QuestionForm); ok && (n.BatchID == "" || qf.BatchID == n.BatchID) {
 		m.activeInline = nil
 		m.textarea.Focus()
 		m.updateLayoutAndSize()
@@ -5852,6 +5856,7 @@ func (m *UI) handleAgentNotification(n notify.Notification) tea.Cmd {
 		cmds = append(cmds, m.sendNotification(notification.Notification{
 			Title:   m.com.Text("ATLAS-AGENT is waiting..."),
 			Message: fmt.Sprintf(m.com.Text("Agent's turn completed in \"%s\""), n.SessionTitle),
+			Kind:    notification.KindFinished,
 		}))
 	case notify.TypeAgentError:
 		if n.SessionID == m.currentSessionID() {

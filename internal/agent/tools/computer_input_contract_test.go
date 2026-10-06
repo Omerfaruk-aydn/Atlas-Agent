@@ -34,3 +34,19 @@ func TestComputerInputContractEquivalentKeyboardEncodings(t *testing.T) {
 	require.Equal(t, "key", literal.Action)
 	require.Equal(t, "+", literal.Key)
 }
+
+func TestComputerInputContractRejectsConflictsWithoutPartialAssignment(t *testing.T) {
+	t.Parallel()
+	for _, input := range []string{
+		`{"action":"key","key":"enter","automation":{"key":"escape"}}`,
+		`{"action":"hotkey","key":"ctrl+n","modifiers":"alt"}`,
+		`{"action":"key","key":"bogus+n"}`,
+		`{"action":"key","automation":{"key":12}}`,
+		`{"action":"key","automation":{"key":null}}`,
+		`{"action":"invoke","automation":{"key":"enter"}}`,
+	} {
+		p := ComputerParams{Action: "unchanged"}
+		require.Error(t, json.Unmarshal([]byte(input), &p))
+		require.Equal(t, "unchanged", p.Action)
+	}
+}

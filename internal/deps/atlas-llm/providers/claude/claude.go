@@ -306,11 +306,44 @@ func (m *preambleModel) Provider() string { return m.inner.Provider() }
 func (m *preambleModel) Model() string    { return m.inner.Model() }
 
 func (m *preambleModel) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
-	return m.inner.Generate(ctx, m.decorate(call))
+	bindings := claudeToolBindings(call.Tools)
+	r, err := m.inner.Generate(ctx, m.decorate(call))
+	if err != nil || r == nil {
+		return r, err
+	}
+	for i, content := range r.Content {
+		if c, ok := content.(fantasy.ToolCallContent); ok && !c.ProviderExecuted {
+			if binding, exists := bindings[c.ToolName]; exists {
+				c.ToolName = binding.name
+				c.Input = normalizeClaudeArguments(c.Input, binding.schema)
+				r.Content[i] = c
+			}
+		}
+	}
+	return r, nil
 }
 
 func (m *preambleModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
-	return m.inner.Stream(ctx, m.decorate(call))
+	bindings := claudeToolBindings(call.Tools)
+	stream, err := m.inner.Stream(ctx, m.decorate(call))
+	if err != nil {
+		return nil, err
+	}
+	return func(yield func(fantasy.StreamPart) bool) {
+		for part := range stream {
+			if !part.ProviderExecuted {
+				if binding, exists := bindings[part.ToolCallName]; exists {
+					part.ToolCallName = binding.name
+					if part.Type == fantasy.StreamPartTypeToolCall {
+						part.ToolCallInput = normalizeClaudeArguments(part.ToolCallInput, binding.schema)
+					}
+				}
+			}
+			if !yield(part) {
+				return
+			}
+		}
+	}, nil
 }
 
 func (m *preambleModel) GenerateObject(ctx context.Context, call fantasy.ObjectCall) (*fantasy.ObjectResponse, error) {
@@ -332,6 +365,7 @@ func (m *preambleModel) StreamObject(ctx context.Context, call fantasy.ObjectCal
 func (m *preambleModel) decorate(call fantasy.Call) fantasy.Call {
 	firstUserText := firstUserText(call.Prompt)
 	call.Prompt = withFingerprint(call.Prompt, firstUserText)
+	call.Prompt = claudeToolHistory(call.Prompt, call.Tools)
 	m.setSession()
 	enrichProviderOptions(&call, m.userID())
 	call.Headers = mergeHeaders(call.Headers, map[string]string{
@@ -347,6 +381,15 @@ func (m *preambleModel) decorate(call fantasy.Call) fantasy.Call {
 			rewritten[i] = renameTool(t, claudeToolPrefix+t.GetName())
 		}
 		call.Tools = rewritten
+	}
+	if call.ToolChoice != nil {
+		for _, t := range call.Tools {
+			if _, ok := t.(fantasy.FunctionTool); ok && t.GetName() == claudeToolPrefix+string(*call.ToolChoice) {
+				choice := fantasy.SpecificToolChoice(t.GetName())
+				call.ToolChoice = &choice
+				break
+			}
+		}
 	}
 	return call
 }

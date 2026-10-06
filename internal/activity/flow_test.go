@@ -94,3 +94,86 @@ func TestBannerStopCancelsOnlyItsOwnedRun(t *testing.T) {
 	require.Eventually(t, func() bool { return !m.Snapshot().Visible }, time.Second, time.Millisecond)
 	require.Zero(t, m.StopRevision())
 }
+
+func TestPausedFlowDoesNotRestoreStaleActivity(t *testing.T) {
+	m := New(&testRenderer{})
+	defer m.Close()
+	ctx, end := StartFlow(t.Context(), "paused-flow")
+	defer end()
+	m.Begin(ctx, Event{Session: "paused-flow"})()
+	oldID := m.Snapshot().ID
+	resume := PauseFlow(ctx, "paused-flow")
+	resumeNested := PauseFlow(ctx, "paused-flow")
+	require.False(t, m.Snapshot().Visible)
+	require.False(t, m.Stop(oldID))
+	require.False(t, m.Pointer(oldID, "click", 20, 30))
+	resume()
+	resume()
+	m.Begin(ctx, Event{Session: "paused-flow"})()
+	require.False(t, m.Snapshot().Visible, "A second unanswered question keeps the flow paused")
+	resumeNested()
+	require.False(t, m.Snapshot().Visible)
+	m.Begin(ctx, Event{Session: "paused-flow"})()
+	require.True(t, m.Snapshot().Visible)
+	resumeLate := PauseFlow(ctx, "paused-flow")
+	end()
+	resumeLate()
+	m.Begin(ctx, Event{Session: "paused-flow"})()
+	require.False(t, m.Snapshot().Visible, "A cancelled flow cannot regain control")
+}
+
+func TestPauseFlowPreservesOtherRunOwnership(t *testing.T) {
+	m := New(&testRenderer{})
+	defer m.Close()
+	old, endOld := StartFlow(t.Context(), "same-owner")
+	defer endOld()
+	m.Begin(old, Event{Session: "same-owner"})()
+	current, endCurrent := StartFlow(t.Context(), "same-owner")
+	defer endCurrent()
+	m.Begin(current, Event{Session: "same-owner"})()
+	currentID := m.Snapshot().ID
+	resume := PauseFlow(old, "same-owner")
+	defer resume()
+	require.True(t, m.Snapshot().Visible)
+	require.Equal(t, currentID, m.Snapshot().ID)
+}
+
+func TestCancelSessionFlushesSurfacesAndRejectsLateActivity(t *testing.T) {
+	r := &testRenderer{}
+	m := New(r)
+	defer m.Close()
+	ctx, finish := StartRun(t.Context(), "cancel-surface")
+	defer finish(false)
+	op := m.Start(ctx, Event{Session: "cancel-surface", Resource: "browser", Point: true})
+	m.Present()
+	oldID := m.Snapshot().ID
+	other := New(&testRenderer{})
+	defer other.Close()
+	otherCtx, endOther := StartFlow(t.Context(), "other-surface")
+	defer endOther()
+	other.Begin(otherCtx, Event{Session: "other-surface"})()
+	CancelSession("cancel-surface")
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+	require.False(t, r.last().Visible, "Cancellation must flush the renderer before returning")
+	require.False(t, r.last().CanStop)
+	require.False(t, r.last().Persistent)
+	require.Zero(t, m.StopRevision())
+	require.False(t, m.Pointer(oldID, "click", 10, 20))
+	op.End()
+	m.Start(ctx, Event{Session: "cancel-surface"}).End()
+	require.False(t, m.Snapshot().Visible)
+	require.True(t, other.Snapshot().Visible)
+}
+
+func TestBannerStopFlushesRendererBeforeReturning(t *testing.T) {
+	r := &testRenderer{}
+	m := New(r)
+	defer m.Close()
+	ctx, finish := StartFlow(t.Context(), "stop-flush")
+	defer finish()
+	m.Begin(ctx, Event{Session: "stop-flush"})()
+	m.Present()
+	require.True(t, m.Stop(m.Snapshot().ID))
+	require.False(t, r.last().Visible)
+	require.True(t, r.last().FinishedUntil.IsZero())
+}

@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
-
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/schema"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 	"github.com/stretchr/testify/require"
 )
@@ -125,6 +126,41 @@ func TestComputerBatchStopsAfterFailedCheckpointOrDeniedChild(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestComputerBatchPublicToolRetainsPermissionsAndAtomicDispatch(t *testing.T) {
+	base := newComputerTool(&mockPermissionService{}, t.TempDir(), &fakeComputerBackend{}, func() bool { return true }, "computer", time.Second)
+	calls := 0
+	tool := &computerBatchDispatchTool{AgentTool: base, invoke: func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		calls++
+		var input ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &input))
+		if input.Action == "assert" {
+			return fantasy.NewTextResponse(`{"window_id":"11","passed":true,"actual":"done"}`), nil
+		}
+		if input.Action == "windows" {
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"11","foreground":true}]}`), nil
+		}
+		return fantasy.NewTextResponse(`{}`), nil
+	}}
+	data, err := json.Marshal(computerBatchTestParams(1, 2))
+	require.NoError(t, err)
+	ctx := context.WithValue(t.Context(), SessionIDContextKey, "batch-public-test")
+	r, err := tool.Run(ctx, fantasy.ToolCall{ID: "public", Input: string(data)})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Equal(t, 4, calls)
+	info, err := json.Marshal(tool.Info())
+	require.NoError(t, err)
+	require.Contains(t, string(info), `"batch"`)
+	toolInfo := tool.Info()
+	spec, err := json.Marshal(map[string]any{"type": "object", "properties": toolInfo.Parameters, "required": toolInfo.Required})
+	require.NoError(t, err)
+	var specification schema.Schema
+	require.NoError(t, json.Unmarshal(spec, &specification))
+	var arguments any
+	require.NoError(t, json.Unmarshal(data, &arguments))
+	require.NoError(t, schema.ValidateAgainstSchema(arguments, specification), "Coordinator must accept the real public batch schema")
 }
 
 type batchPermissionService struct {

@@ -41,3 +41,42 @@ func TestIslandIgnoresKeysInFlightWhenItOpens(t *testing.T) {
 	c, _ := f.focused()
 	require.Equal(t, DecisionDeny, c.decision, "The first focus stop is the safe decision")
 }
+
+func TestIslandMultiQuestionProgressAndAnswers(t *testing.T) {
+	p := Prompt{Kind: KindQuestion, ID: "batch", Questions: []PromptQuestion{
+		{ID: "pick", Type: QuestionMultiChoice, Choices: []PromptChoice{{ID: "x"}, {ID: "y"}, {ID: "z"}}},
+		{ID: "ok", Type: QuestionYesNo},
+		{ID: "why", Type: QuestionFreeText},
+	}}
+	f, now := formAt(p)
+	require.False(t, f.enabled(islandControl{kind: controlNext}), "Next waits for an answer")
+	f.key(keySpace, now)
+	f.key(keyDown, now)
+	f.key(keyDown, now)
+	f.key(keySpace, now)
+	require.True(t, f.isSelected("x"))
+	require.True(t, f.isSelected("z"))
+	f.focusPrimary()
+	f.key(keyEnter, now)
+	require.Equal(t, 1, f.page)
+	f.key(keyDown, now)
+	f.key(keyEnter, now)
+	require.False(t, *f.yes[1])
+	f.key(keyEnter, now)
+	require.Equal(t, 2, f.page)
+	for _, c := range f.controls() {
+		require.NotEqual(t, controlNext, c.kind, "The last page submits")
+	}
+	f.focus = 0
+	f.insert("Merhaba, çğışöü — 日本語\r\nikinci satır\x07")
+	f.key(keyLeft, now)
+	f.key(keyBackspace, now)
+	require.Equal(t, "Merhaba, çğışöü — 日本語\nikinci satr", string(f.text[2]))
+	f.key(keyEnter, now)
+	r, sent := f.key(keyEnter, now)
+	require.True(t, sent)
+	require.Equal(t, []string{"x", "z"}, r.Answers[0].Selected)
+	require.False(t, *r.Answers[1].Yes)
+	require.Equal(t, "Merhaba, çğışöü — 日本語\nikinci satr", r.Answers[2].Text)
+	require.True(t, p.accepts(r), "The island only produces responses its request accepts")
+}

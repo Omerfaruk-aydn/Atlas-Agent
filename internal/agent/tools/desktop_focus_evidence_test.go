@@ -51,3 +51,25 @@ func TestDesktopFocusEvidenceRejectsInvalidOrExcessiveLists(t *testing.T) {
 		require.Equal(t, r, desktopFocusEvidence(r, "11", listed))
 	}
 }
+
+func TestDesktopPrepareStopsIfFocusRecoveryReadDenied(t *testing.T) {
+	var actions []string
+	lists := 0
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "prepare", WindowID: "11"}, fantasy.ToolCall{}, func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(call.Input), &p))
+		actions = append(actions, p.Action)
+		if p.Action == "windows" {
+			lists++
+			if lists == 1 {
+				return fantasy.NewTextResponse(`{"result":[{"window_id":"11"}]}`), nil
+			}
+			return fantasy.ToolResponse{Content: "permission_denied", IsError: true, StopTurn: true}, nil
+		}
+		return fantasy.NewTextErrorResponse("focus_denied: fixture"), nil
+	})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.True(t, r.StopTurn)
+	require.Equal(t, []string{"windows", "focus", "windows"}, actions)
+}

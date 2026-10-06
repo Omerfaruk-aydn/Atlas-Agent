@@ -3,6 +3,7 @@ package activity
 import (
 	"testing"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/i18n"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,4 +42,20 @@ func TestStatusCaptionsNeverClaimUnrecordedOutcomes(t *testing.T) {
 		}
 	}
 	require.NotEqual(t, statusResuming, statusCategoryFor(Event{State: StateDenied}))
+}
+
+func TestStatusCatalogIsBroadAndTranslated(t *testing.T) {
+	total := 0
+	for _, phrases := range statusCatalog {
+		total += len(phrases)
+		for _, phrase := range phrases {
+			require.Positive(t, phrase.weight)
+			for _, language := range i18n.Languages() {
+				if language.Code != "en" {
+					require.True(t, i18n.Has(language.Code, phrase.text), "%s lacks %q", language.Code, phrase.text)
+				}
+			}
+		}
+	}
+	require.GreaterOrEqual(t, total, 60)
 }

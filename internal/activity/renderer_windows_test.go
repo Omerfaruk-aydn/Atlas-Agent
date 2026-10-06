@@ -237,3 +237,79 @@ func TestSuspendedPersistentOverlayRestoresSystemCursor(t *testing.T) {
 	r.mu.Unlock()
 	require.True(t, guardReleased, "A hidden replacement must release system cursor suppression")
 }
+
+// The banner character on a real desktop: frame rate, a stable banner
+// rectangle, the banner-only completion and leak-free teardown. It uses a
+// standalone operation so the user's system cursors are never replaced.
+func TestWindowsBannerMascotFixture(t *testing.T) {
+	if os.Getenv("ATLAS_DESKTOP_FIXTURE") != "1" {
+		t.Skip("Set ATLAS_DESKTOP_FIXTURE=1 for native overlay verification")
+	}
+	baseline := runtime.NumGoroutine()
+	r := newPlatformRenderer().(*windowsRenderer)
+	now := time.Now()
+	r.Render(Event{ID: 1, Visible: true, Resource: "desktop", Action: "click", Point: true, X: 300, Y: 500, PhaseAt: now})
+	require.Eventually(t, func() bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return r.mascot.Frames > 3 && r.bannerWindow != 0
+	}, 3*time.Second, 10*time.Millisecond)
+	r.mu.Lock()
+	badge, cursor := r.bannerWindow, r.windows[0]
+	startFrames, startMascot, scale := r.frames, r.mascot.Frames, r.scale
+	r.mu.Unlock()
+	var first overlayRect
+	overlayUser.NewProc("GetWindowRect").Call(badge, uintptr(unsafe.Pointer(&first)))
+	start := time.Now()
+	moods := []Event{
+		{ID: 1, Visible: true, Action: "click", Point: true, X: 300, Y: 500, PointerKind: "click", PointerAt: time.Now()},
+		{ID: 1, Visible: true, Phase: PhaseThinking, PhaseAt: time.Now().Add(-time.Second)},
+		{ID: 1, Visible: true, Phase: PhaseFailed, PhaseAt: time.Now()},
+		{ID: 1, Visible: true, Action: "type"},
+	}
+	for i := 0; time.Since(start) < 2*time.Second; i++ {
+		if i%400 == 0 {
+			e := moods[(i/400)%len(moods)]
+			e.Resource = "desktop"
+			r.Render(e)
+		}
+		var rect overlayRect
+		overlayUser.NewProc("GetWindowRect").Call(badge, uintptr(unsafe.Pointer(&rect)))
+		require.Equal(t, first, rect, "The banner rectangle stays fixed while the character animates")
+		time.Sleep(time.Millisecond)
+	}
+	r.mu.Lock()
+	elapsed := time.Since(start).Seconds()
+	fps, mascotFPS := float64(r.frames-startFrames)/elapsed, float64(r.mascot.Frames-startMascot)/elapsed
+	r.mu.Unlock()
+	t.Logf("Monitor scale %.2f: %.1f presented frames/s, %.1f character frames/s", scale, fps, mascotFPS)
+	require.Greater(t, mascotFPS, 50.0)
+
+	// Completion keeps only the banner, then removes it.
+	finished := time.Now()
+	r.Render(Event{ID: 2, Resource: "desktop", Phase: PhaseDone, PhaseAt: finished, FinishedUntil: finished.Add(mascotDoneLinger)})
+	time.Sleep(120 * time.Millisecond)
+	v, _, _ := overlayUser.NewProc("IsWindowVisible").Call(cursor)
+	require.Zero(t, v, "The agent cursor leaves as soon as the run completes")
+	v, _, _ = overlayUser.NewProc("IsWindowVisible").Call(badge)
+	require.NotZero(t, v, "The banner stays for the completion motion")
+	var done overlayRect
+	overlayUser.NewProc("GetWindowRect").Call(badge, uintptr(unsafe.Pointer(&done)))
+	require.Equal(t, first, done, "Completion does not resize the banner")
+	require.Eventually(t, func() bool {
+		v, _, _ := overlayUser.NewProc("IsWindowVisible").Call(badge)
+		return v == 0
+	}, 2*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return !r.mascot.anim.ready
+	}, time.Second, 10*time.Millisecond, "A hidden banner forgets its pose")
+
+	r.Render(Event{ID: 3, Visible: true, Resource: "desktop", Action: "observe"})
+	r.Close()
+	require.False(t, IsOverlayWindow(badge))
+	v, _, _ = overlayUser.NewProc("IsWindow").Call(badge)
+	require.Zero(t, v)
+	require.Eventually(t, func() bool { return runtime.NumGoroutine() <= baseline+1 }, 2*time.Second, 10*time.Millisecond, "No goroutine outlives the renderer")
+}

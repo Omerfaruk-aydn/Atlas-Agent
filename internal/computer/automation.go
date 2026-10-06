@@ -8,16 +8,17 @@ import (
 	"image"
 	"image/png"
 	"os"
+	"strings"
 )
 
 // AutomationRequest targets a fresh accessibility element in one window.
 type AutomationRequest struct {
 	Focus       bool   `json:"focus,omitempty" description:"For set_value: focus the field and require verified keyboard focus before changing its value."`
-	Action      string `json:"action"`
+	Action      string `json:"action,omitempty" description:"Optional nested action; the computer tool supplies its top-level action."`
 	WindowID    string `json:"window_id,omitempty"`
 	ElementID   string `json:"element_id,omitempty"`
 	Name        string `json:"name,omitempty"`
-	Role        string `json:"role,omitempty"`
+	Role        string `json:"role,omitempty" description:"UI Automation control type, e.g. ControlType.ListItem, ControlType.Button, ControlType.Edit, ControlType.Window. Case-insensitive names without the ControlType. prefix are accepted; any other value is rejected as invalid_role."`
 	Text        string `json:"text,omitempty"`
 	Condition   string `json:"condition,omitempty"`
 	Expected    string `json:"expected,omitempty"`
@@ -28,6 +29,15 @@ type AutomationRequest struct {
 
 // ValidateAutomationRequest rejects unbounded provider work before dispatch.
 func ValidateAutomationRequest(p AutomationRequest) error {
+	if err := ValidateWindowID(p.WindowID); err != nil {
+		return err
+	}
+	if _, err := NormalizeRole(p.Role); err != nil {
+		return err
+	}
+	if p.Condition == "text" && p.Name != "" && !strings.EqualFold(p.Name, p.Expected) {
+		return fmt.Errorf("inconsistent_text_checkpoint: name selects the exact UIA label but expected requests a different label. Use the fresh observed element_id without name for changing text, or value/document_text for field content. No input sent")
+	}
 	if p.MaxElements < 0 || p.MaxElements > 500 || p.WaitMS < 0 || p.WaitMS > 15000 {
 		return fmt.Errorf("invalid_request: max_elements must be 0-500 and wait_ms must be 0-15000")
 	}
@@ -38,6 +48,12 @@ func ValidateAutomationRequest(p AutomationRequest) error {
 type AutomationBackend interface {
 	Automation(context.Context, AutomationRequest) (json.RawMessage, error)
 	Origin() Point
+}
+
+// ChangeBackend subscribes before a condition read to avoid a missed wakeup.
+// Notifications are hints; callers must read the actual state after every wake.
+type ChangeBackend interface {
+	WatchChanges(context.Context, string) (<-chan struct{}, func(), error)
 }
 
 // CropScreenshot returns native pixels and rejects any out-of-bounds rectangle.

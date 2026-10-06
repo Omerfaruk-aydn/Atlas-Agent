@@ -6,58 +6,85 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 )
 
 //go:embed tool_pipeline.md
 var pipelineDescription string
 
 type PipelineStep struct {
-	RequirePassed   bool           `json:"require_passed,omitempty" description:"Require a computer assert response with passed:true before continuing."`
-	ObservationFrom string         `json:"observation_from,omitempty" description:"Earlier computer observe step supplying snapshot_id for this computer call."`
-	ID              string         `json:"id"`
-	Tool            string         `json:"tool"`
-	Arguments       map[string]any `json:"arguments"`
-	Items           []string       `json:"items,omitempty"`
-	IfSuccess       string         `json:"if_success,omitempty"`
+	Bindings        map[string]string `json:"bindings,omitempty" description:"Copy a scalar JSON result into an argument path. Example advanced.tab_id: popup#/tab_id. Sources must be earlier steps; items cannot be combined."`
+	RequirePassed   bool              `json:"require_passed,omitempty" description:"Require passed:true from computer assert or browser assert/wait_for/download_wait/popup_wait/dialog_wait before continuing."`
+	ObservationFrom string            `json:"observation_from,omitempty" description:"Earlier computer observe step supplying snapshot_id for this computer call."`
+	ID              string            `json:"id"`
+	Tool            string            `json:"tool"`
+	Arguments       map[string]any    `json:"arguments"`
+	Items           []string          `json:"items,omitempty"`
+	IfSuccess       string            `json:"if_success,omitempty"`
 }
 type (
 	PipelineParams struct {
-		Desktop *DesktopWorkflowParams `json:"desktop,omitempty" description:"Use a bounded desktop recipe instead of steps. Preferred for prepare, input plus observation, or verified field submission."`
+		Browser *BrowserWorkflowParams `json:"browser,omitempty" description:"Sequential browser workflow with semantic targets, ownership guards, waits and optional DOM postconditions. Each step uses the ordinary hooked browser tool. Stops at the first failure; no mutation replay."`
+		Desktop *DesktopWorkflowParams `json:"desktop,omitempty" description:"Bounded desktop recipe instead of steps: observe, prepare, rename, sequence, adaptive, transition or flow. Flow composes up to 64 prepare/resolve/branch/operation/verify/rename/close nodes, 16 inputs per operation, fresh window bindings and optional session-scoped durable resume. Rename verifies Explorer selection/editor/committed name; close focuses and proves absence."`
 		Steps   []PipelineStep         `json:"steps,omitempty"`
 		Return  []string               `json:"return,omitempty"`
 	}
 	PipelineResult struct {
-		ID            string `json:"id"`
-		Iteration     int    `json:"iteration"`
-		IsError       bool   `json:"is_error"`
-		Content       string `json:"content"`
-		Metadata      string `json:"metadata,omitempty"`
-		MediaType     string `json:"media_type,omitempty"`
-		ImageAttached bool   `json:"image_attached,omitempty"`
-		ImageOmitted  bool   `json:"image_omitted,omitempty"`
+		DesktopState  *DesktopEvidence `json:"desktop_state,omitempty"`
+		ID            string           `json:"id"`
+		Iteration     int              `json:"iteration"`
+		IsError       bool             `json:"is_error"`
+		Content       string           `json:"content"`
+		Metadata      string           `json:"metadata,omitempty"`
+		MediaType     string           `json:"media_type,omitempty"`
+		ImageAttached bool             `json:"image_attached,omitempty"`
+		ImageOmitted  bool             `json:"image_omitted,omitempty"`
 	}
 )
 
-func NewToolPipeline(invoke func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error)) fantasy.AgentTool {
+func NewToolPipeline(invoke func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error), stores ...*engineering.Store) fantasy.AgentTool {
 	return fantasy.NewAgentTool("tool_pipeline", pipelineDescription, func(ctx context.Context, p PipelineParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		if p.Browser != nil {
+			if p.Desktop != nil || len(p.Steps) > 0 {
+				return fantasy.NewTextErrorResponse("browser workflow cannot be combined with desktop or steps"), nil
+			}
+			var err error
+			p.Steps, err = compileBrowserWorkflow(*p.Browser)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+		}
+		if len(stores) > 0 && stores[0] != nil {
+			ctx = context.WithValue(ctx, desktopFlowStoreKey{}, stores[0].Dir())
+		}
 		if p.Desktop != nil {
 			if len(p.Steps) > 0 || len(p.Return) > 0 {
 				return fantasy.NewTextErrorResponse("desktop recipes cannot be combined with steps or return"), nil
 			}
 			return runDesktopWorkflow(ctx, *p.Desktop, call, invoke)
 		}
-		if len(p.Steps) < 1 || len(p.Steps) > 32 {
-			return fantasy.NewTextErrorResponse("pipeline requires 1-32 steps"), nil
+		if len(p.Steps) < 1 || len(p.Steps) > 64 {
+			return fantasy.NewTextErrorResponse("pipeline requires 1-64 steps"), nil
 		}
 		seen := map[string]bool{}
 		observations := map[string]bool{}
 		count := 0
 		for _, s := range p.Steps {
-			if s.RequirePassed && (s.Tool != ComputerToolName || s.Arguments["action"] != "assert") {
-				return fantasy.NewTextErrorResponse("require_passed requires a computer assert step"), nil
+			for path, source := range s.Bindings {
+				id, _, ok := strings.Cut(source, "#/")
+				if !ok || !seen[id] || len(s.Items) > 0 || !validPipelineBindingPath(path) {
+					return fantasy.NewTextErrorResponse("invalid binding: use an earlier step#/field and a supported argument path"), nil
+				}
+			}
+			if resp, blocked := desktopScopeViolation(ctx, s.Tool); blocked {
+				return resp, nil
+			}
+			if s.RequirePassed && !pipelineAssertionStep(s) {
+				return fantasy.NewTextErrorResponse("require_passed requires a computer assert or browser assert/wait/download/popup/dialog condition"), nil
 			}
 			if s.ObservationFrom != "" && (s.Tool != ComputerToolName || !observations[s.ObservationFrom] || len(s.Items) > 0) {
 				return fantasy.NewTextErrorResponse("observation_from requires an earlier single computer observe step"), nil
@@ -72,8 +99,8 @@ func NewToolPipeline(invoke func(context.Context, fantasy.ToolCall) (fantasy.Too
 			observations[s.ID] = s.Tool == ComputerToolName && s.Arguments["action"] == "observe" && len(s.Items) == 0
 			count += max(1, len(s.Items))
 		}
-		if count > 64 {
-			return fantasy.NewTextErrorResponse("pipeline is limited to 64 invocations"), nil
+		if count > 128 {
+			return fantasy.NewTextErrorResponse("pipeline is limited to 128 invocations"), nil
 		}
 		for _, id := range p.Return {
 			if !seen[id] {
@@ -88,6 +115,8 @@ func NewToolPipeline(invoke func(context.Context, fantasy.ToolCall) (fantasy.Too
 		imageIndex := -1
 		success := map[string]bool{}
 		snapshots := map[string]string{}
+		outputs := map[string]json.RawMessage{}
+		var closing []string
 		for _, s := range p.Steps {
 			if s.IfSuccess != "" && !success[s.IfSuccess] {
 				continue
@@ -102,6 +131,9 @@ func NewToolPipeline(invoke func(context.Context, fantasy.ToolCall) (fantasy.Too
 					return fantasy.ToolResponse{}, err
 				}
 				arguments := substitutePipeline(s.Arguments, item)
+				if err := bindPipelineArguments(arguments, s.Bindings, outputs); err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
 				if s.ObservationFrom != "" {
 					id := snapshots[s.ObservationFrom]
 					if id == "" {
@@ -123,6 +155,16 @@ func NewToolPipeline(invoke func(context.Context, fantasy.ToolCall) (fantasy.Too
 				response, err := invoke(ctx, fantasy.ToolCall{ID: fmt.Sprintf("%s/%s/%d", call.ID, s.ID, i), Name: s.Tool, Input: string(encoded)})
 				if err != nil {
 					return fantasy.ToolResponse{}, err
+				}
+				var desktopState *DesktopEvidence
+				if s.Tool == ComputerToolName && !response.IsError && !response.StopTurn {
+					var input ComputerParams
+					if json.Unmarshal(encoded, &input) == nil {
+						if input.Action == "hotkey" && strings.EqualFold(strings.TrimSpace(input.Modifiers), "alt") && strings.EqualFold(strings.TrimSpace(input.Key), "f4") && input.Automation.WindowID != "" && !slices.Contains(closing, input.Automation.WindowID) {
+							closing = append(closing, input.Automation.WindowID)
+						}
+						desktopState = summarizeDesktopEvidence(input.Action, response.Content, closing)
+					}
 				}
 				if !response.IsError && observations[s.ID] {
 					var snapshot struct {
@@ -148,7 +190,7 @@ func NewToolPipeline(invoke func(context.Context, fantasy.ToolCall) (fantasy.Too
 				if len(metadata) > 4000 {
 					metadata = "[metadata omitted: exceeds 4 KiB]"
 				}
-				results = append(results, PipelineResult{ID: s.ID, Iteration: i, IsError: response.IsError, Content: content, Metadata: metadata})
+				results = append(results, PipelineResult{ID: s.ID, Iteration: i, IsError: response.IsError, Content: content, Metadata: metadata, DesktopState: desktopState})
 				if response.Type == "image" && len(response.Data) > 0 {
 					index := len(results) - 1
 					results[index].MediaType = response.MediaType
@@ -163,6 +205,9 @@ func NewToolPipeline(invoke func(context.Context, fantasy.ToolCall) (fantasy.Too
 				}
 				if response.IsError {
 					success[s.ID] = false
+				}
+				if !response.IsError && json.Valid([]byte(response.Content)) && len(response.Content) <= 64*1024 {
+					outputs[s.ID] = json.RawMessage(response.Content)
 				}
 				if response.StopTurn {
 					return response, nil

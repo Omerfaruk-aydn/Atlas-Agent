@@ -21,6 +21,7 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
+	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/kb"
 )
@@ -30,6 +31,8 @@ import (
 // setting the user changes mid-session takes effect on the next launch
 // rather than at the next restart.
 type Options struct {
+	// initialURL is a one-launch navigation intent, never a persistent setting.
+	initialURL           string
 	OverlayDisabled      bool
 	OverlayReducedMotion bool
 	IsolateProfiles      bool
@@ -295,10 +298,16 @@ func SupportedKeys() []string {
 type chromedpSession struct {
 	activityClosed        bool
 	activityManager       *activity.Manager
+	activityNative        activity.Renderer
+	observedTabs          map[string]bool
+	downloads             map[string]browserDownload
+	downloadFrames        map[string]bool
 	activityEnabled       bool
 	activityReducedMotion bool
 	activityStopOnce      sync.Once
+	activityStatus        activity.StatusPicker
 	activityStopWatch     func()
+	activityMascot        mascotStream
 	pointerHeld           bool
 	pointerDragged        bool
 	pointerX, pointerY    float64
@@ -313,12 +322,15 @@ type chromedpSession struct {
 	// mu guards console and dialogs, which the CDP event listener
 	// (chromedp.ListenTarget's callback, invoked synchronously and
 	// concurrently with whatever action is in flight) appends to.
-	mu          sync.Mutex
-	console     []ConsoleEntry
-	dialogs     []DialogInfo
-	network     []NetworkEntry
-	requests    map[string]time.Time
-	callContext context.Context
+	mu                        sync.Mutex
+	console                   []ConsoleEntry
+	dialogs                   []DialogInfo
+	network                   []NetworkEntry
+	requests                  map[string]time.Time
+	requestTrackingIncomplete bool
+	activityEndpoint          string
+	initialNavigation         string
+	callContext               context.Context
 }
 
 func newChromedpSession(opts Options) (Session, error) {
@@ -332,6 +344,7 @@ func newChromedpSessionContext(parent context.Context, opts Options) (Session, e
 	var (
 		allocCtx    context.Context
 		allocCancel context.CancelFunc
+		startupTab  string
 	)
 	if opts.RemoteURL != "" {
 		u, err := url.Parse(opts.RemoteURL)
@@ -339,7 +352,8 @@ func newChromedpSessionContext(parent context.Context, opts Options) (Session, e
 			return nil, errors.New("invalid remote browser endpoint")
 		}
 		if u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost" || u.Hostname() == "::1") {
-			if err := ensureRemoteBrowser(opts); err != nil {
+			startupTab, err = ensureRemoteBrowser(opts)
+			if err != nil {
 				return nil, err
 			}
 		}
@@ -371,7 +385,11 @@ func newChromedpSessionContext(parent context.Context, opts Options) (Session, e
 		}
 		allocCtx, allocCancel = chromedp.NewExecAllocator(context.Background(), allocOpts...)
 	}
-	ctx, cancel := chromedp.NewContext(allocCtx)
+	var contextOptions []chromedp.ContextOption
+	if startupTab != "" {
+		contextOptions = append(contextOptions, chromedp.WithTargetID(target.ID(startupTab)))
+	}
+	ctx, cancel := chromedp.NewContext(allocCtx, contextOptions...)
 	timeout := opts.ActionTimeout
 	if timeout <= 0 {
 		timeout = 30 * time.Second
@@ -381,20 +399,6 @@ func newChromedpSessionContext(parent context.Context, opts Options) (Session, e
 	defer stopParent()
 	defer launchTimer.Stop()
 
-	// Launch now so a missing browser binary or launch failure surfaces
-	// here, at session creation, instead of on the caller's first action.
-	if err := chromedp.Run(ctx); err != nil {
-		cancel()
-		allocCancel()
-		if parent.Err() != nil {
-			return nil, parent.Err()
-		}
-		if opts.RemoteURL != "" {
-			return nil, errors.New("failed to attach remote browser; check the endpoint and session expiry")
-		}
-		return nil, fmt.Errorf("failed to launch browser: %w", err)
-	}
-
 	s := &chromedpSession{
 		ctx:                   ctx,
 		rootCtx:               ctx,
@@ -403,28 +407,65 @@ func newChromedpSessionContext(parent context.Context, opts Options) (Session, e
 		ownedBrowser:          opts.RemoteURL == "",
 		activityEnabled:       !opts.OverlayDisabled && (!opts.Headless || opts.RemoteURL != ""),
 		activityReducedMotion: opts.OverlayReducedMotion,
+		activityEndpoint:      opts.RemoteURL,
+		initialNavigation:     opts.initialURL,
 	}
 
-	// Runtime and Page must be explicitly enabled for their events
-	// (console calls, exceptions, dialog-opening) to fire at all --
-	// enabling is otherwise implicit only for the actions (Navigate,
-	// Click, ...) that need it internally.
-	if err := s.run(runtime.Enable(), page.Enable(), network.Enable()); err != nil {
+	// Register reporting before the first destination loads, so startup
+	// requests, console messages and dialogs remain observable.
+	initialActions := []chromedp.Action{
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			s.listenBrowserTarget(ctx)
+			chromedp.ListenBrowser(ctx, s.handleDownloadEvent)
+			return nil
+		}),
+		runtime.Enable(), page.Enable(), network.Enable(),
+	}
+	if opts.initialURL != "" && startupTab == "" {
+		initialActions = append(initialActions, chromedp.Navigate(opts.initialURL))
+	} else if startupTab != "" {
+		initialActions = append(initialActions, chromedp.ActionFunc(waitInitialDestination))
+	}
+	if err := chromedp.Run(ctx, initialActions...); err != nil {
 		s.cancel()
-		if opts.RemoteURL != "" {
-			return nil, errors.New("failed to initialize remote browser event reporting")
+		if parent.Err() != nil {
+			return nil, parent.Err()
 		}
-		return nil, fmt.Errorf("failed to enable browser event reporting: %w", err)
+		if opts.RemoteURL != "" {
+			return nil, fmt.Errorf("failed to initialize remote browser or load its initial destination: %w", err)
+		}
+		return nil, fmt.Errorf("failed to initialize browser: %w", err)
 	}
-
-	// Registered once, for the session's whole lifetime: chromedp
-	// requires this run synchronously and non-blocking (see
-	// ListenTarget's doc), so it only ever appends to the buffers below
-	// -- the actual HandleJavaScriptDialog response happens later, in
-	// its own ordinary s.run call triggered by the dialog tool action.
-	chromedp.ListenTarget(ctx, s.handleTargetEvent)
+	if s.activityEnabled {
+		s.activityNative = newNativeBrowserActivity(s)
+		if s.activityNative != nil {
+			// A reused attached page may carry an older document indicator.
+			// Native ownership must never leave a second page cursor behind.
+			_ = s.activityEval(activityRemove, nil)
+		}
+	}
 
 	return s, nil
+}
+
+// waitInitialDestination tolerates execution-context replacement during the
+// launcher's navigation. Only this read is retried; no navigation is repeated.
+func waitInitialDestination(ctx context.Context) error {
+	for {
+		var ready bool
+		err := chromedp.Evaluate(`(location.protocol === 'http:' || location.protocol === 'https:') && document.readyState === 'complete'`, &ready).Do(ctx)
+		if err == nil && ready {
+			return nil
+		}
+		if err != nil && !strings.Contains(err.Error(), "Execution context was destroyed") && !strings.Contains(err.Error(), "Cannot find context") {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
 }
 
 // handleTargetEvent is chromedp's synchronous, non-blocking event
@@ -440,6 +481,13 @@ func (s *chromedpSession) handleTargetEvent(ev any) {
 		}
 	case *network.EventLoadingFailed:
 		s.appendNetwork(NetworkEntry{RequestID: string(ev.RequestID), Failed: true, Time: time.Now()})
+		s.mu.Lock()
+		delete(s.requests, string(ev.RequestID))
+		s.mu.Unlock()
+	case *network.EventLoadingFinished:
+		s.mu.Lock()
+		delete(s.requests, string(ev.RequestID))
+		s.mu.Unlock()
 	case *runtime.EventConsoleAPICalled:
 		s.appendConsole(ConsoleEntry{Type: string(ev.Type), Text: formatConsoleArgs(ev.Args), Time: time.Now()})
 	case *runtime.EventExceptionThrown:
@@ -509,6 +557,15 @@ func (s *chromedpSession) run(actions ...chromedp.Action) error {
 }
 
 func (s *chromedpSession) Navigate(url string) error {
+	s.mu.Lock()
+	initial := s.initialNavigation
+	s.initialNavigation = ""
+	s.mu.Unlock()
+	if initial != "" && initial == url {
+		// Startup already completed this exact authorized navigation, including
+		// redirects. Do not issue it a second time through the ordinary action.
+		return nil
+	}
 	return s.run(chromedp.Navigate(url))
 }
 
@@ -739,15 +796,23 @@ func (s *chromedpSession) HandleDialog(accept bool, promptText string) error {
 		s.mu.Unlock()
 		return errors.New("no pending dialog to handle")
 	}
-	// FIFO: dialogs are answered in the order they opened, matching how
-	// the page actually processes them (a second alert() does not open
-	// until the first is dismissed).
-	s.dialogs = s.dialogs[1:]
+	first := s.dialogs[0]
 	s.mu.Unlock()
 
-	return s.run(chromedp.ActionFunc(func(ctx context.Context) error {
+	err := s.run(chromedp.ActionFunc(func(ctx context.Context) error {
 		return page.HandleJavaScriptDialog(accept).WithPromptText(promptText).Do(ctx)
 	}))
+	if err != nil {
+		return err
+	}
+	// Failed dispatch leaves the dialog observable. A newly opened dialog
+	// cannot be accidentally removed in place of the one just handled.
+	s.mu.Lock()
+	if len(s.dialogs) > 0 && s.dialogs[0] == first {
+		s.dialogs = s.dialogs[1:]
+	}
+	s.mu.Unlock()
+	return nil
 }
 
 func (s *chromedpSession) RawCDP(method string, params map[string]any) (map[string]any, error) {

@@ -88,7 +88,7 @@ func ReadContent(active []*Skill, skillPaths []string, workingDir string, skillI
 	}
 
 	if skill.Builtin {
-		embeddedPath := "builtin/" + strings.TrimPrefix(skill.SkillFilePath, BuiltinPrefix)
+		embeddedPath := "builtin/" + strings.TrimPrefix(CanonicalBuiltinPath(skill.SkillFilePath), BuiltinPrefix)
 		content, err := BuiltinFS().ReadFile(embeddedPath)
 		if err != nil {
 			return nil, SkillReadResult{}, fmt.Errorf("read builtin skill %q: %w", skillID, err)

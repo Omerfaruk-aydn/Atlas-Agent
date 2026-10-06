@@ -152,3 +152,19 @@ func TestGuardRequiresObservedWindowBeforeMutation(t *testing.T) {
 	require.Contains(t, resp.Content, "unobserved_target")
 	require.Zero(t, inner.calls)
 }
+
+func TestGUIOnlyTaskRejectsShellAndFileEditsBeforeExecution(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{BashToolName, WriteToolName, EditToolName, MultiEditToolName} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			inner := &scriptedTool{name: name}
+			ctx := WithDesktopTaskScope(guardCtx(t), "Bu işlemi computer use ile masaüstü uygulamasından yap.")
+			resp, err := WithDesktopGuard(inner).Run(ctx, fantasy.ToolCall{Name: name, Input: `{"command":"python -c 'print(123)'"}`})
+			require.NoError(t, err)
+			require.True(t, resp.IsError)
+			require.Contains(t, resp.Content, "task_scope_violation")
+			require.Zero(t, inner.calls, "scope must be enforced before executing any command")
+		})
+	}
+}

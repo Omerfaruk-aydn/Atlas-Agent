@@ -32,3 +32,22 @@ func TestBashCommandNotFoundIsAnError(t *testing.T) {
 	require.Contains(t, resp.Content, "was not performed")
 	require.Contains(t, resp.Content, "not retried or rewritten")
 }
+
+// Exit codes keep their caller-defined meaning; stderr alone is not failure.
+func TestBashOrdinaryNonZeroExitAndStderrAreNotRewritten(t *testing.T) {
+	t.Parallel()
+	tool := newBashToolForTest(t.TempDir())
+	ctx := context.WithValue(t.Context(), SessionIDContextKey, "test-session")
+
+	resp := runBashTool(t, tool, ctx, BashParams{Description: "grep style exit", Command: "exit 1"})
+	require.False(t, resp.IsError, resp.Content)
+	meta := bashMetadata(t, resp)
+	require.Equal(t, "exited_nonzero", meta.Status)
+	require.Equal(t, 1, *meta.ExitCode)
+
+	resp = runBashTool(t, tool, ctx, BashParams{Description: "stderr with success", Command: "echo warning 1>&2; exit 0"})
+	require.False(t, resp.IsError, resp.Content)
+	meta = bashMetadata(t, resp)
+	require.Equal(t, "succeeded", meta.Status)
+	require.Equal(t, 0, *meta.ExitCode)
+}

@@ -2,6 +2,7 @@ package activity
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/i18n"
 	"github.com/stretchr/testify/require"
@@ -58,4 +59,28 @@ func TestStatusCatalogIsBroadAndTranslated(t *testing.T) {
 		}
 	}
 	require.GreaterOrEqual(t, total, 60)
+}
+
+func TestStatusPickerHoldsAndNeverRepeatsBackToBack(t *testing.T) {
+	var p statusPicker
+	now := time.Unix(1000, 0)
+	e := Event{State: StateThinking, Language: "en"}
+	first := p.text(e, now)
+	require.Equal(t, "Thinking", first, "A new category starts plainly")
+	require.Equal(t, first, p.text(e, now.Add(time.Second)), "Captions do not flicker")
+	previous := first
+	for i := 1; i <= 50; i++ {
+		next := p.text(e, now.Add(time.Duration(i)*statusDwell))
+		require.NotEqual(t, previous, next)
+		previous = next
+	}
+	// A state change updates immediately.
+	require.Equal(t, "Waiting for your answer", p.text(Event{State: StateAwaitQuestion, Language: "en"}, now.Add(51*statusDwell+time.Millisecond)))
+}
+
+func TestFormatElapsed(t *testing.T) {
+	require.Equal(t, "00:12", FormatElapsed(12*time.Second))
+	require.Equal(t, "01:48", FormatElapsed(108*time.Second+400*time.Millisecond))
+	require.Equal(t, "1:02:03", FormatElapsed(time.Hour+2*time.Minute+3*time.Second))
+	require.Equal(t, "00:00", FormatElapsed(-time.Second))
 }

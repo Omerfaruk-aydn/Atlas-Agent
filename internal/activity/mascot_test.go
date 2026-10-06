@@ -331,3 +331,18 @@ func TestMascotImprovisesWithoutRepeating(t *testing.T) {
 	}
 	require.NotEqual(t, order, other)
 }
+
+func TestMascotReactionsVaryPerOnset(t *testing.T) {
+	t.Parallel()
+	start := time.Now()
+	takes := map[string]bool{}
+	for seed := uint32(1); seed <= 40; seed++ {
+		var a mascotAnimator
+		a.perf.seed = seed
+		a.step(Event{Visible: true, Action: "click", PhaseAt: start}, start, Look{})
+		a.step(Event{Visible: true, Phase: PhaseDone, PhaseAt: start}, start.Add(time.Millisecond), Look{})
+		require.NotNil(t, a.perf.take.gesture, "Completion always reacts")
+		takes[a.perf.take.gesture.name] = true
+	}
+	require.GreaterOrEqual(t, len(takes), 4, "Completion has several takes: %v", takes)
+}

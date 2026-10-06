@@ -260,3 +260,17 @@ func TestDesktopScopePersistsForUserContinuationButEndsForNewTask(t *testing.T) 
 	_, blocked = desktopScopeViolation(ctx, BashToolName)
 	require.False(t, blocked, "an unrelated new task must not inherit stale GUI scope")
 }
+
+func TestGUIOnlyPipelineCannotBypassScopeWithCustomDispatcher(t *testing.T) {
+	t.Parallel()
+	ctx := WithGUIOnlyDesktop(guardCtx(t))
+	calls := 0
+	pipeline := NewToolPipeline(func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		calls++
+		return fantasy.NewTextResponse("executed"), nil
+	})
+	resp, err := pipeline.Run(ctx, fantasy.ToolCall{Name: "tool_pipeline", Input: `{"steps":[{"id":"b","tool":"bash","arguments":{"command":"mkdir x"}}]}`})
+	require.NoError(t, err)
+	require.Contains(t, resp.Content, "task_scope_violation")
+	require.Zero(t, calls)
+}

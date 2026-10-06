@@ -19,6 +19,8 @@ import (
 
 func isAdvancedBrowserAction(action string) bool {
 	switch action {
+	case "wait_for", "popup_wait", "dialog_wait", "dialog_handle":
+		return true
 	case "find", "assert", "semantic_click", "semantic_type", "tabs", "tab_new", "tab_select", "tab_close", "frames", "network", "capture_region", "upload", "download_start", "download_wait":
 		return true
 	}

@@ -848,10 +848,18 @@
             "native",
             "osc",
             "bell",
+            "sound",
             "disabled"
           ],
-          "description": "Notification style to use. Options: auto (default), native, osc, bell, disabled. Auto selects based on environment: native for local sessions, osc for SSH (with automatic OSC 99/777 detection).",
+          "description": "Notification style to use. Options: auto (default), native, osc, bell, sound, disabled. Auto selects based on environment: native for local sessions, osc for SSH (with automatic OSC 99/777 detection). Sound plays a distinct sound per event.",
           "default": "auto"
+        },
+        "notification_sounds": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object",
+          "description": "WAV files that replace the built-in sounds of the sound notification style, keyed by event (permission, question, finished)"
         },
         "disabled_skills": {
           "items": {
@@ -1040,6 +1048,16 @@
         "provider_options": {
           "type": "object",
           "description": "Additional provider-specific options for this provider"
+        },
+        "opencode_transport": {
+          "type": "string",
+          "enum": ["auto", "api", "cli"],
+          "description": "OpenCode Zen inference transport",
+          "default": "auto"
+        },
+        "opencode_executable": {
+          "type": "string",
+          "description": "Optional native executable path for OpenCode CLI"
         },
         "aws_auth_refresh": {
           "type": "string",

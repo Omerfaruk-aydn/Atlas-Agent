@@ -140,7 +140,8 @@ type options struct {
 	useBedrock    bool
 	bedrockRegion string
 
-	objectMode fantasy.ObjectMode
+	objectMode         fantasy.ObjectMode
+	toolSchemaMaxDepth int
 }
 
 type provider struct {
@@ -735,6 +736,9 @@ func (a languageModel) toTools(tools []fantasy.Tool, toolChoice *fantasy.ToolCho
 				anthropicTool.CacheControl = anthropic.NewCacheControlEphemeralParam()
 			}
 			raw, err := json.Marshal(anthropic.ToolUnionParam{OfTool: &anthropicTool})
+			if err == nil && a.options.toolSchemaMaxDepth > 0 {
+				raw, err = boundToolJSON(raw, a.options.toolSchemaMaxDepth)
+			}
 			if err != nil {
 				warnings = append(warnings, fantasy.CallWarning{
 					Type:    fantasy.CallWarningTypeOther,

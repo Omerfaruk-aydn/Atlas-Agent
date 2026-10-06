@@ -5,11 +5,28 @@ import (
 	"io/fs"
 	"log/slog"
 	"path/filepath"
+	"strings"
 )
 
 // BuiltinPrefix is the path prefix for builtin skill files. It is used by
 // the View tool to distinguish embedded files from disk files.
-const BuiltinPrefix = "crush://skills/"
+const BuiltinPrefix = "atlas://skills/"
+
+// LegacyBuiltinPrefix keeps saved conversations and external references readable.
+const LegacyBuiltinPrefix = "crush://skills/"
+
+// IsBuiltinPath recognizes canonical and legacy embedded skill addresses.
+func IsBuiltinPath(path string) bool {
+	return strings.HasPrefix(path, BuiltinPrefix) || strings.HasPrefix(path, LegacyBuiltinPrefix)
+}
+
+// CanonicalBuiltinPath normalizes embedded addresses without changing disk paths.
+func CanonicalBuiltinPath(path string) string {
+	if strings.HasPrefix(path, LegacyBuiltinPrefix) {
+		return BuiltinPrefix + strings.TrimPrefix(path, LegacyBuiltinPrefix)
+	}
+	return path
+}
 
 //go:embed builtin/*
 var builtinFS embed.FS
@@ -56,7 +73,7 @@ func DiscoverBuiltinWithStates() ([]*Skill, []*SkillState) {
 
 		// Set paths using the Atlas-Agent prefix. Strip the leading "builtin/"
 		// so the path is relative to the embedded root
-		// (e.g., "crush://skills/atlas-config/SKILL.md").
+		// (e.g., "atlas://skills/atlas-config/SKILL.md").
 		relPath, _ := filepath.Rel("builtin", path)
 		relPath = filepath.ToSlash(relPath)
 		skill.SkillFilePath = BuiltinPrefix + relPath

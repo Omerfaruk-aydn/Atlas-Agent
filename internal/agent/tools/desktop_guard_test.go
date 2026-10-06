@@ -80,3 +80,17 @@ func TestGuardBlocksIdenticalFailedCallUntilStateChanges(t *testing.T) {
 	after, _ := guarded.Run(ctx, key)
 	require.False(t, after.IsError, after.Content)
 }
+
+func TestGuardNeverReplaysArgumentErrors(t *testing.T) {
+	t.Parallel()
+	inner := &scriptedTool{name: ComputerToolName, replies: []fantasy.ToolResponse{failure("invalid_role: bad")}}
+	guarded := WithDesktopGuard(inner)
+	ctx := guardCtx(t)
+	call := computerCall(`{"action":"find","automation":{"window_id":"11","role":"x"}}`)
+	_, _ = guarded.Run(ctx, call)
+	_, _ = guarded.Run(ctx, computerCall(`{"action":"focus","automation":{"window_id":"11"}}`)) // State change does not matter.
+	blocked, _ := guarded.Run(ctx, call)
+	require.Equal(t, "repeat_blocked", contractOf(t, blocked).Code)
+	require.False(t, contractOf(t, blocked).FreshObservation)
+	require.EqualValues(t, 2, inner.calls)
+}

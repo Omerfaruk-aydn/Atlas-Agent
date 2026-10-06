@@ -161,3 +161,57 @@ func TestDesktopFlowDurableResumeReconcilesReplacementWithoutReplay(t *testing.T
 	require.True(t, r.IsError)
 	require.Contains(t, r.Content, "invalid_journal")
 }
+
+func TestDesktopFlowUncertainEffectAndDenialNeverReplay(t *testing.T) {
+	for _, denial := range []bool{false, true} {
+		t.Run(map[bool]string{true: "denial", false: "failure"}[denial], func(t *testing.T) {
+			ctx := context.WithValue(t.Context(), SessionIDContextKey, "session")
+			ctx = context.WithValue(ctx, desktopFlowStoreKey{}, t.TempDir())
+			p := desktopFlowTestPlan()
+			p.Flow.RunID = "effect"
+			p.Flow.Nodes[1].Input = ComputerParams{Action: "key", Key: "enter"}
+			value, mutations := "empty", 0
+			base := desktopFlowFixture(t, &value, &mutations)
+			invoke := func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+				var input ComputerParams
+				require.NoError(t, json.Unmarshal([]byte(c.Input), &input))
+				if input.Action == "key" {
+					mutations++
+					r := fantasy.NewTextErrorResponse("uncertain native error")
+					r.StopTurn = denial
+					return r, nil
+				}
+				return base(ctx, c)
+			}
+			r, err := runDesktopWorkflow(ctx, p, fantasy.ToolCall{}, invoke)
+			require.NoError(t, err)
+			require.True(t, r.IsError)
+			require.Equal(t, denial, r.StopTurn)
+			p.Flow.Resume = true
+			r, err = runDesktopWorkflow(ctx, p, fantasy.ToolCall{}, invoke)
+			require.NoError(t, err)
+			require.True(t, r.IsError)
+			require.Contains(t, r.Content, "uncertain_effect")
+			require.Equal(t, 1, mutations)
+		})
+	}
+}
+
+func TestDesktopFlowJournalLockAndCorruptionStopBeforeInput(t *testing.T) {
+	ctx := context.WithValue(t.Context(), SessionIDContextKey, "session")
+	ctx = context.WithValue(ctx, desktopFlowStoreKey{}, t.TempDir())
+	f := *desktopFlowTestPlan().Flow
+	f.RunID = "locked"
+	_, _, release, err := openDesktopFlow(ctx, f)
+	require.NoError(t, err)
+	defer release()
+	f.Resume = true
+	_, _, _, err = openDesktopFlow(ctx, f)
+	require.ErrorContains(t, err, "active")
+	release()
+	dir := ctx.Value(desktopFlowStoreKey{}).(string)
+	path := filepath.Join(dir, "desktop-runs", engineering.Hash("session\x00locked")+".json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"version":1,"next":"write","pending":"write"}`), 0o600))
+	_, _, _, err = openDesktopFlow(ctx, f)
+	require.ErrorContains(t, err, "invalid_journal")
+}

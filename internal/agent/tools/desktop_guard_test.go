@@ -233,3 +233,30 @@ func TestGuardStructuredUnknownEffectCannotReplayAfterFocus(t *testing.T) {
 	require.Contains(t, resp.Content, "repeat_blocked")
 	require.EqualValues(t, 2, inner.calls)
 }
+
+func TestDesktopTaskScopeDoesNotTreatFeatureDevelopmentAsGUIExecution(t *testing.T) {
+	t.Parallel()
+	for _, prompt := range []string{"computer use sistemini geliştir", "Fix GUI rendering in the code", "Implement desktop automation support"} {
+		ctx := WithDesktopTaskScope(guardCtx(t), prompt)
+		_, blocked := desktopScopeViolation(ctx, BashToolName)
+		require.False(t, blocked, prompt)
+	}
+	ctx := WithGUIOnlyDesktop(guardCtx(t))
+	ctx = WithDesktopTaskScope(ctx, "Use bash instead")
+	_, blocked := desktopScopeViolation(ctx, BashToolName)
+	require.True(t, blocked, "a specialist prompt cannot widen inherited scope")
+}
+
+func TestDesktopScopePersistsForUserContinuationButEndsForNewTask(t *testing.T) {
+	t.Parallel()
+	base := guardCtx(t)
+	ctx := WithDesktopTaskScope(base, "Use the desktop application to save the document.")
+	_, blocked := desktopScopeViolation(ctx, BashToolName)
+	require.True(t, blocked)
+	ctx = WithDesktopTaskScope(base, "devam et")
+	_, blocked = desktopScopeViolation(ctx, BashToolName)
+	require.True(t, blocked)
+	ctx = WithDesktopTaskScope(base, "Now run go test for the repository.")
+	_, blocked = desktopScopeViolation(ctx, BashToolName)
+	require.False(t, blocked, "an unrelated new task must not inherit stale GUI scope")
+}

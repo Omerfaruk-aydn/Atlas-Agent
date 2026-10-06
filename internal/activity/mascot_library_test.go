@@ -3,7 +3,7 @@ package activity
 import (
 	"encoding/json"
 	"math"
-
+	"strings"
 	"testing"
 	"time"
 
@@ -122,6 +122,54 @@ func TestMascotGestureLibraryRejectsUnsafeCurves(t *testing.T) {
 	require.Error(t, err, "Only without contexts would never play")
 }
 
+func TestMascotContextFlagsFollowVerifiedEvents(t *testing.T) {
+	t.Parallel()
+	start := time.Now()
+	at := func(d time.Duration) time.Time { return start.Add(d) }
+	var c mascotContext
+	require.NotZero(t, c.flags(moodWorking, start, start, at(time.Second))&ctxHello)
+	require.Zero(t, c.flags(moodWorking, start, start, at(4*time.Second))&ctxHello)
+
+	// Four quick successful operations make a streak; a failure ends it.
+	for i := range 4 {
+		d := time.Duration(i) * 2 * time.Second
+		c.observe(Event{PhaseAt: at(d), Action: "click"}, moodWorking, at(d))
+		c.observe(Event{PhaseAt: at(d), Action: "click"}, moodWorking, at(d+time.Second/2))
+	}
+	now := at(7 * time.Second)
+	require.NotZero(t, c.flags(moodWorking, start, start, now)&ctxStreak)
+	c.observe(Event{Phase: PhaseFailed, PhaseAt: at(8 * time.Second)}, moodBlocked, at(8*time.Second))
+	require.Zero(t, c.flags(moodBlocked, start, start, at(8500*time.Millisecond))&ctxStreak)
+	require.Zero(t, c.flags(moodBlocked, start, start, at(8500*time.Millisecond))&ctxFrustrated, "One failure is not frustration")
+
+	// Work resuming after the failure is a recovery.
+	c.observe(Event{PhaseAt: at(10 * time.Second), Action: "type"}, moodWorking, at(10*time.Second))
+	require.NotZero(t, c.flags(moodWorking, start, start, at(11*time.Second))&ctxRecovered)
+	require.Zero(t, c.flags(moodWorking, start, start, at(30*time.Second))&ctxRecovered)
+
+	// A second failure, observed repeatedly as the same event, frustrates.
+	second := Event{Phase: PhaseFailed, PhaseAt: at(20 * time.Second)}
+	for range 5 {
+		c.observe(second, moodBlocked, at(20*time.Second))
+	}
+	require.NotZero(t, c.flags(moodBlocked, start, start, at(21*time.Second))&ctxFrustrated)
+	require.Zero(t, c.flags(moodWorking, start, start, at(70*time.Second))&ctxFrustrated, "Frustration fades")
+
+	// Duration-based contexts.
+	require.NotZero(t, c.flags(moodThinking, start, at(time.Minute), at(time.Minute+6*time.Second))&ctxLongThink)
+	require.Zero(t, c.flags(moodThinking, start, at(time.Minute), at(time.Minute+2*time.Second))&ctxLongThink)
+	require.NotZero(t, c.flags(moodWaiting, start, at(time.Minute), at(time.Minute+8*time.Second))&ctxLongWait)
+
+	// Typing survives provider waits but not other work.
+	var typing mascotContext
+	typing.observe(Event{Action: "type"}, moodWorking, at(0))
+	typing.observe(Event{Phase: PhaseThinking}, moodThinking, at(time.Second))
+	typing.observe(Event{Action: "type"}, moodWorking, at(4*time.Second))
+	require.NotZero(t, typing.flags(moodWorking, start, start, at(4*time.Second))&ctxLongType)
+	typing.observe(Event{Action: "click"}, moodWorking, at(5*time.Second))
+	require.Zero(t, typing.flags(moodWorking, start, start, at(5*time.Second))&ctxLongType)
+}
+
 // firstGestureWith runs the animator and returns the first gesture begun
 // after from whose contexts match. Onsets may be anchored slightly before
 // the frame that starts them, so a new take is detected by its identity.
@@ -138,4 +186,52 @@ func firstGestureWith(a *mascotAnimator, events func(time.Duration) Event, start
 		}
 	}
 	return ""
+}
+
+func TestMascotContextSteersThePerformance(t *testing.T) {
+	t.Parallel()
+	start := time.Now()
+
+	// Appearing, Atlas greets first.
+	var hello mascotAnimator
+	hello.perf.seed = 11
+	work := func(time.Duration) Event { return Event{Visible: true, Action: "type", PhaseAt: start} }
+	name := firstGestureWith(&hello, work, start, 0, 3*time.Second, ctxHello)
+	require.True(t, strings.HasPrefix(name, "hello-"), "Got %q", name)
+
+	// Two failures in a row: frustration shows within seconds.
+	for _, seed := range []uint32{3, 17, 29} {
+		var a mascotAnimator
+		a.perf.seed = seed
+		failing := func(d time.Duration) Event {
+			switch {
+			case d < 2*time.Second:
+				return Event{Visible: true, Action: "click", PhaseAt: start}
+			case d < 4*time.Second:
+				return Event{Visible: true, Phase: PhaseFailed, PhaseAt: start.Add(2 * time.Second)}
+			case d < 5*time.Second:
+				return Event{Visible: true, Action: "click", PhaseAt: start.Add(4 * time.Second)}
+			}
+			return Event{Visible: true, Phase: PhaseFailed, PhaseAt: start.Add(5 * time.Second)}
+		}
+		require.NotEmpty(t, firstGestureWith(&a, failing, start, 5*time.Second, 12*time.Second, ctxFrustrated), "Seed %d", seed)
+	}
+
+	// A long wait for the user brings attention-seeking gestures.
+	var waiting mascotAnimator
+	waiting.perf.seed = 5
+	ask := func(time.Duration) Event { return Event{Visible: true, Phase: PhaseWaiting, PhaseAt: start} }
+	require.NotEmpty(t, firstGestureWith(&waiting, ask, start, 7*time.Second, 14*time.Second, ctxLongWait))
+
+	// Context-only gestures never play without their context.
+	var calm mascotAnimator
+	calm.perf.seed = 23
+	idle := func(time.Duration) Event { return Event{Visible: true, Action: "wait", PhaseAt: start} }
+	for d := time.Duration(0); d <= 60*time.Second; d += time.Second / 60 {
+		now := start.Add(d)
+		calm.step(idle(d), now, Look{})
+		if g := calm.perf.take.gesture; g != nil && g.only && d > mascotHelloWindow+5*time.Second {
+			require.Fail(t, "Context-only gesture without its context", g.name)
+		}
+	}
 }

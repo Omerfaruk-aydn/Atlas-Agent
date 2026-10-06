@@ -29,3 +29,15 @@ func TestIslandSelectionIsSeparateFromSubmission(t *testing.T) {
 	_, clicked := f.activate(islandControl{kind: controlSubmit})
 	require.False(t, clicked, "A double click never sends twice")
 }
+
+func TestIslandIgnoresKeysInFlightWhenItOpens(t *testing.T) {
+	p := permissionFixture("guard")
+	f, now := formAt(p)
+	_, sent := f.key(keyEnter, now.Add(-time.Millisecond))
+	require.False(t, sent)
+	_, sent = f.key(keyEnter, now)
+	require.False(t, sent, "Nothing is focused on a permission, so Enter cannot approve")
+	f.key(keyTab, now)
+	c, _ := f.focused()
+	require.Equal(t, DecisionDeny, c.decision, "The first focus stop is the safe decision")
+}

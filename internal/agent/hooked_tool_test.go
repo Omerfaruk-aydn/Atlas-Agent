@@ -70,6 +70,18 @@ func TestHookedTool_AllowStampsHookApproval(t *testing.T) {
 	require.True(t, granted, "hook allow should bypass the permission prompt")
 }
 
+func TestHookedComputerSeesCanonicalKeyboardBeforeDenial(t *testing.T) {
+	t.Parallel()
+	inner := &fakeTool{name: "computer", resp: fantasy.NewTextResponse("unexpected")}
+	runner := newRunner(t, `read -r payload; case "$payload" in *'"action":"hotkey"'*'"key":"n"'*) echo '{"decision":"deny","reason":"Canonical shortcut denied"}' ;; esac`)
+	tool := newHookedTool(inner, runner, nil)
+	r, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "keyboard", Name: "computer", Input: `{"action":"key","automation":{"window_id":"11","key":"ctrl+shift+n"}}`})
+	require.NoError(t, err)
+	require.True(t, r.IsError, r.Content)
+	require.Contains(t, r.Content, "Canonical shortcut denied")
+	require.False(t, inner.called)
+}
+
 func TestHookedTool_SilentDoesNotStampApproval(t *testing.T) {
 	t.Parallel()
 

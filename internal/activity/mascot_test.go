@@ -68,3 +68,48 @@ func TestMascotTransitionsStayContinuous(t *testing.T) {
 		}
 	}
 }
+
+func TestMascotMotionIsFrameRateIndependent(t *testing.T) {
+	t.Parallel()
+	start := time.Now()
+	run := func(step time.Duration) mascotPose {
+		var a mascotAnimator
+		a.step(Event{Visible: true, Action: "wait", PhaseAt: start}, start, Look{})
+		a.blink.next = start.Add(time.Hour)
+		e := Event{Visible: true, Phase: PhaseDone, PhaseAt: start}
+		var p mascotPose
+		for d := step; d <= 700*time.Millisecond; d += step {
+			p = a.step(e, start.Add(d), Look{})
+		}
+		return p
+	}
+	fast, slow := run(time.Second/120), run(time.Second/30)
+	require.Less(t, poseDelta(fast, slow), .05, "Speed must depend on monotonic time, not frame count")
+}
+
+func TestMascotRepeatedWorkDoesNotRestart(t *testing.T) {
+	t.Parallel()
+	m := New(&testRenderer{})
+	defer m.Close()
+	ctx, end := StartFlow(t.Context(), "repeat")
+	defer end()
+	var a mascotAnimator
+	now := time.Now()
+	var previous mascotPose
+	for i := range 30 {
+		// Back-to-back tools: begin, finish, next begin a few ms later.
+		finish := m.Begin(ctx, Event{Session: "repeat", Action: "click"})
+		for range 3 {
+			now = now.Add(time.Second / 60)
+			pose := a.step(m.Snapshot(), now, Look{})
+			if i > 0 {
+				require.Less(t, poseDelta(previous, pose), .35)
+			}
+			previous = pose
+		}
+		finish()
+		require.Equal(t, moodWorking, mascotMoodFor(m.Snapshot(), time.Now()), "Short gaps must not flicker into thinking")
+	}
+	require.Equal(t, moodWorking, a.mood)
+	require.True(t, a.ready, "New events never reset the animator")
+}

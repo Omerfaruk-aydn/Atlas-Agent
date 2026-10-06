@@ -34,6 +34,8 @@ import (
 //	option metrics false
 //	option debug true
 //	option auto-lsp false
+//	option notifications sound
+//	option notification-sound finished ~/sounds/done.wav
 //
 // Boolean shortcuts: for boolean fields, omitting the value sets it to true.
 func handleOption(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
@@ -82,6 +84,19 @@ func handleOption(ctx context.Context, args []string, stdin io.Reader, stdout, s
 	}
 	if key == "execution" {
 		return optionExecution(ctx, o, args, stderr)
+	}
+	if key == "notification-sound" {
+		if len(args) != 4 {
+			return usage(stderr, "usage: option notification-sound <permission|question|finished> <file.wav>")
+		}
+		switch args[2] {
+		case "permission", "question", "finished":
+		default:
+			return usage(stderr, "option notification-sound expects permission, question or finished")
+		}
+		childMap(o, "notification_sounds")[args[2]] = args[3]
+		slog.Info("Option set in shell config", "key", key, "event", args[2], "value", args[3])
+		return nil
 	}
 
 	// "option reset <key>" wipes a list back to empty. Because the builder

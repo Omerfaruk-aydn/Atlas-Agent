@@ -274,3 +274,19 @@ func TestGUIOnlyPipelineCannotBypassScopeWithCustomDispatcher(t *testing.T) {
 	require.Contains(t, resp.Content, "task_scope_violation")
 	require.Zero(t, calls)
 }
+
+func TestGuardAllowsOneBoundedRetryForReadOnlyTransientFailure(t *testing.T) {
+	t.Parallel()
+	inner := &scriptedTool{name: ComputerToolName, replies: []fantasy.ToolResponse{
+		failure("accessibility_unavailable: busy"), failure("accessibility_unavailable: busy"),
+	}}
+	guarded := WithDesktopGuard(inner)
+	ctx := guardCtx(t)
+	read := computerCall(`{"action":"inspect","automation":{"window_id":"11"}}`)
+	_, _ = guarded.Run(ctx, read)
+	retry, _ := guarded.Run(ctx, read)
+	require.Contains(t, retry.Content, "accessibility_unavailable", "one read-only retry is allowed")
+	third, _ := guarded.Run(ctx, read)
+	require.Equal(t, "repeat_blocked", contractOf(t, third).Code)
+	require.EqualValues(t, 2, inner.calls)
+}

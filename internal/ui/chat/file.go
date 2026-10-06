@@ -8,6 +8,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/fsext"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/skills"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/styles"
 )
 
@@ -47,7 +48,7 @@ func (v *ViewToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *
 		return toolErrorContent(sty, &message.ToolResult{Content: sty.Text("Invalid parameters")}, cappedWidth)
 	}
 
-	file := fsext.PrettyPath(params.FilePath)
+	file := fsext.PrettyPath(skills.CanonicalBuiltinPath(params.FilePath))
 	toolParams := []string{file}
 	if params.Limit != 0 {
 		toolParams = append(toolParams, "limit", fmt.Sprintf("%d", params.Limit))

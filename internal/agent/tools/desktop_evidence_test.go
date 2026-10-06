@@ -25,3 +25,12 @@ func TestDesktopEvidenceNeverInfersClosureFromIncompleteData(t *testing.T) {
 	require.NotNil(t, e)
 	require.Empty(t, e.AbsentClosed, "A successful close shortcut does not prove disappearance")
 }
+
+func TestDesktopEvidencePreservesObservationTargetAcrossDialog(t *testing.T) {
+	t.Parallel()
+	e := summarizeDesktopEvidence("observe", `{"window_id":"11","foreground_window":{"window_id":"22","owner_window_id":"11"}}`, nil)
+	require.NotNil(t, e)
+	require.Equal(t, "11", e.WindowID)
+	require.Equal(t, "22", e.Foreground)
+	require.Empty(t, e.AbsentClosed)
+}

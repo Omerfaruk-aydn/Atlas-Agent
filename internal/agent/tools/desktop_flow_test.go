@@ -75,3 +75,36 @@ func TestDesktopFlowBranchesWithinOneCallWithoutImages(t *testing.T) {
 		})
 	}
 }
+
+func TestDesktopFlowValidatesEveryNodeBeforeDispatch(t *testing.T) {
+	for _, kind := range []string{"cycle", "missing_edge", "duplicate", "unbound", "mixed", "checkpoint", "too_many", "branch_wait"} {
+		t.Run(kind, func(t *testing.T) {
+			p := desktopFlowTestPlan()
+			switch kind {
+			case "cycle":
+				p.Flow.Nodes[1].Next = "app"
+			case "missing_edge":
+				p.Flow.Nodes[1].Next = "missing"
+			case "duplicate":
+				p.Flow.Nodes[1].ID = "app"
+			case "unbound":
+				p.Flow.Nodes[1].Input.Automation.WindowID = "11"
+			case "mixed":
+				p.Result = "checkpoints"
+			case "checkpoint":
+				p.Flow.Nodes[1].Checkpoint.Condition = ""
+			case "too_many":
+				p.Flow.Nodes = make([]DesktopFlowNode, 65)
+			case "branch_wait":
+				p.Flow.Nodes[1].Kind, p.Flow.Nodes[1].Input = "branch", ComputerParams{}
+				p.Flow.Nodes[1].Checkpoint.WaitMS = 500
+			}
+			r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+				t.Fatal("Invalid plan dispatched a child")
+				return fantasy.ToolResponse{}, nil
+			})
+			require.NoError(t, err)
+			require.True(t, r.IsError)
+		})
+	}
+}

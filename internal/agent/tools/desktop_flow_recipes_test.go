@@ -3,9 +3,10 @@ package tools
 import (
 	"context"
 	"encoding/json"
-
+	"fmt"
 	"testing"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/stretchr/testify/require"
 )
@@ -84,4 +85,64 @@ func TestDesktopFlowCloseActivatesEachWindowAndProvesAbsence(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, r.IsError, r.Content)
 	require.Equal(t, []string{"11", "12"}, closed)
+}
+
+func TestDesktopFlowCloseStopsAtOwnedUnsavedDialog(t *testing.T) {
+	p := desktopFlowTestPlan()
+	p.Flow.Nodes[1] = DesktopFlowNode{ID: "close", Kind: "close", WindowRef: "app"}
+	p.Flow.Nodes[0].Next = "close"
+	value, mutations, keys := "empty", 0, 0
+	base := desktopFlowFixture(t, &value, &mutations)
+	r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var input ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &input))
+		if input.Action == "hotkey" {
+			keys++
+			return fantasy.NewTextResponse("Sent"), nil
+		}
+		if keys > 0 && input.Action == "windows" {
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"11","process_id":17},{"window_id":"22","name":"Save changes","process_id":17,"owner_window_id":"11","foreground":true}]}`), nil
+		}
+		return base(ctx, c)
+	})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.Contains(t, r.Content, "close_blocked")
+	require.Equal(t, 1, keys)
+}
+
+func TestDesktopFlowSupports64NodesAnd16Inputs(t *testing.T) {
+	p := desktopFlowTestPlan()
+	p.Flow.Nodes = p.Flow.Nodes[:1]
+	for i := 1; i < 64; i++ {
+		id := fmt.Sprintf("verify%d", i)
+		p.Flow.Nodes[len(p.Flow.Nodes)-1].Next = id
+		p.Flow.Nodes = append(p.Flow.Nodes, DesktopFlowNode{ID: id, Kind: "verify", WindowRef: "app", Checkpoint: computer.AutomationRequest{Name: "Field", Condition: "value", Expected: "empty"}})
+	}
+	value, mutations := "empty", 0
+	r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, desktopFlowFixture(t, &value, &mutations))
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Contains(t, r.Content, "verify63")
+	p = desktopFlowTestPlan()
+	p.Flow.Nodes[1].Input = ComputerParams{}
+	for range 16 {
+		p.Flow.Nodes[1].Inputs = append(p.Flow.Nodes[1].Inputs, ComputerParams{Action: "key", Key: "enter"})
+	}
+	p.Flow.Nodes[1].Checkpoint.Expected = "empty"
+	keys := 0
+	base := desktopFlowFixture(t, &value, &mutations)
+	r, err = runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var input ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &input))
+		if input.Action == "key" {
+			require.Equal(t, "11", input.Automation.WindowID)
+			keys++
+			return fantasy.NewTextResponse("Sent"), nil
+		}
+		return base(ctx, c)
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Equal(t, 16, keys)
 }

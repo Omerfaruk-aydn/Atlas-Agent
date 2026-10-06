@@ -87,3 +87,42 @@ func TestIslandTextRespectsAnswerLimit(t *testing.T) {
 	f.insert(strings.Repeat("ş", MaxPromptText+50))
 	require.Len(t, f.text[0], MaxPromptText)
 }
+
+func TestIslandMotionIsTimeBasedAndInterruptible(t *testing.T) {
+	compact := islandRect{CX: 960, Top: 20, W: 300, H: 38, R: 6}
+	expanded := islandRect{CX: 960, Top: 20, W: 560, H: 420, R: 18}
+	var m islandMotion
+	m.snap(compact)
+	start := time.Unix(0, 0)
+	m.retarget(expanded, start, true, false)
+	mid, done := m.at(start.Add(120 * time.Millisecond))
+	require.False(t, done)
+	require.Greater(t, mid.H, compact.H)
+	require.Less(t, mid.H, expanded.H*1.01, "No visible overshoot")
+	// The same elapsed time gives the same frame at any refresh rate.
+	again, _ := m.at(start.Add(120 * time.Millisecond))
+	require.Equal(t, mid, again)
+	// Cancel mid-flight: the collapse starts from the visible geometry.
+	m.retarget(compact, start.Add(120*time.Millisecond), false, false)
+	first, _ := m.at(start.Add(120 * time.Millisecond))
+	require.InDelta(t, mid.H, first.H, .001)
+	end, done := m.at(start.Add(120*time.Millisecond + islandClose))
+	require.True(t, done)
+	require.Equal(t, compact, end)
+	for _, tick := range []time.Duration{0, 50, 100, 200, 300, 340} {
+		frame, _ := (&islandMotion{from: compact, to: expanded, start: start, duration: islandOpen, omega: islandOpenOmega, ready: true}).at(start.Add(tick * time.Millisecond))
+		require.LessOrEqual(t, frame.H, expanded.H*1.005)
+		require.GreaterOrEqual(t, frame.H, compact.H)
+	}
+}
+
+func TestIslandContentOrder(t *testing.T) {
+	compact, expanded := islandOpacities(0)
+	require.Equal(t, 1.0, compact)
+	require.Zero(t, expanded)
+	compact, expanded = islandOpacities(.4)
+	require.Zero(t, compact, "Compact content is gone before expanded content arrives")
+	require.Zero(t, expanded)
+	_, expanded = islandOpacities(1)
+	require.Equal(t, 1.0, expanded)
+}

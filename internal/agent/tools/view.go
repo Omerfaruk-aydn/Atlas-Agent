@@ -107,8 +107,8 @@ func NewViewTool(
 				return fantasy.NewTextErrorResponse("file_path is required"), nil
 			}
 
-			// Handle builtin skill files (crush://skills/ prefix).
-			if strings.HasPrefix(params.FilePath, skills.BuiltinPrefix) {
+			// Handle embedded skills, including legacy conversation references.
+			if skills.IsBuiltinPath(params.FilePath) {
 				resp, err := readBuiltinFile(params, skillTracker)
 				return resp, err
 			}
@@ -477,6 +477,7 @@ func isInSkillsPath(filePath string, skillsPaths []string) bool {
 
 // readBuiltinFile reads a file from the embedded builtin skills filesystem.
 func readBuiltinFile(params ViewParams, skillTracker *skills.Tracker) (fantasy.ToolResponse, error) {
+	params.FilePath = skills.CanonicalBuiltinPath(params.FilePath)
 	embeddedPath := "builtin/" + strings.TrimPrefix(params.FilePath, skills.BuiltinPrefix)
 	builtinFS := skills.BuiltinFS()
 

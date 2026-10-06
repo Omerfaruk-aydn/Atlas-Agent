@@ -60,3 +60,31 @@ func TestBrowserPipelineStopsBeforeDependentInput(t *testing.T) {
 		})
 	}
 }
+
+func TestBrowserPipelineDispatchesBoundIdentityAndInheritedVerification(t *testing.T) {
+	t.Parallel()
+	var calls []BrowserParams
+	tool := NewToolPipeline(func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p BrowserParams
+		require.NoError(t, json.Unmarshal([]byte(call.Input), &p))
+		calls = append(calls, p)
+		if p.Action == "popup_wait" {
+			return fantasy.NewTextResponse(`{"passed":true,"tab_id":"observed-popup"}`), nil
+		}
+		return fantasy.NewTextResponse(`{"passed":true}`), nil
+	})
+	p := PipelineParams{Browser: &BrowserWorkflowParams{Steps: []BrowserWorkflowStep{
+		{ID: "popup", Action: "popup_wait"},
+		{ID: "select", Action: "tab_select", Bindings: map[string]string{"advanced.tab_id": "popup#/tab_id"}},
+		{ID: "fill", Action: "semantic_type", Text: "Atlas", Target: browser.Request{Selector: "#name"}, Bindings: map[string]string{"advanced.expected_tab_id": "popup#/tab_id"}, Verify: &browser.Request{Selector: "#name", Condition: "value", Expected: "Atlas"}},
+	}}}
+	encoded, err := json.Marshal(p)
+	require.NoError(t, err)
+	result, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "workflow", Input: string(encoded)})
+	require.NoError(t, err)
+	require.False(t, result.IsError)
+	require.Len(t, calls, 4)
+	require.Equal(t, "observed-popup", calls[1].Advanced.TabID)
+	require.Equal(t, "observed-popup", calls[2].Advanced.ExpectedTabID)
+	require.Equal(t, "observed-popup", calls[3].Advanced.ExpectedTabID)
+}

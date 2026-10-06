@@ -1,6 +1,7 @@
 package activity
 
 import (
+	"context"
 	"math"
 	"testing"
 	"time"
@@ -112,4 +113,28 @@ func TestMascotRepeatedWorkDoesNotRestart(t *testing.T) {
 	}
 	require.Equal(t, moodWorking, a.mood)
 	require.True(t, a.ready, "New events never reset the animator")
+}
+
+func TestMascotWaitingForUserRestoresThinking(t *testing.T) {
+	t.Parallel()
+	m := New(&testRenderer{})
+	defer m.Close()
+	ctx, end := StartFlow(t.Context(), "await")
+	defer end()
+	m.Begin(ctx, Event{Session: "await", Action: "click"})()
+	resume := AwaitUser(ctx)
+	require.Equal(t, PhaseWaiting, m.Snapshot().Phase)
+	require.True(t, m.Snapshot().Visible, "Waiting keeps the banner instead of hiding it")
+	resume()
+	require.Equal(t, PhaseThinking, m.Snapshot().Phase)
+	finish := m.Begin(ctx, Event{Session: "await", Action: "type"})
+	require.Equal(t, PhaseWorking, m.Snapshot().Phase)
+	// A late restore from an older prompt cannot overwrite newer work.
+	stale := AwaitUser(ctx)
+	finish()
+	m.Begin(ctx, Event{Session: "await", Action: "scroll"})
+	stale()
+	require.Equal(t, PhaseWorking, m.Snapshot().Phase)
+	// Without a flow there is nothing to express.
+	AwaitUser(context.Background())()
 }

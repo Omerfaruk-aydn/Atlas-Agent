@@ -31,7 +31,6 @@ func (s *chromedpSession) appendNetwork(entry NetworkEntry) {
 	defer s.mu.Unlock()
 	if started, ok := s.requests[entry.RequestID]; ok {
 		entry.DurationMS = time.Since(started).Milliseconds()
-		delete(s.requests, entry.RequestID)
 	}
 	s.network = append(s.network, entry)
 	if len(s.network) > 200 {
@@ -46,6 +45,7 @@ func (s *chromedpSession) startRequest(id string) {
 		s.requests = map[string]time.Time{}
 	}
 	if len(s.requests) >= 500 {
+		s.requestTrackingIncomplete = true
 		for key := range s.requests {
 			delete(s.requests, key)
 			break

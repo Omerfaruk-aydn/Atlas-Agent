@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/question"
 )
@@ -121,7 +122,25 @@ func NewQuestionTool(svc question.Service) fantasy.AgentTool {
 				ConfirmDescription: params.ConfirmDescription,
 			}
 
-			answers, err := svc.Ask(ctx, req)
+			req, err := question.Prepare(req)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			// The run keeps its control surfaces while it waits. The island
+			// is another view of this same pending request and answers it
+			// by ID through the service, exactly like the terminal form.
+			var pending *activity.PendingPrompt
+			askCtx := question.WithPendingHook(ctx, func(registered question.Request) {
+				pending = activity.AwaitPrompt(ctx, questionPrompt(registered), func(r activity.PromptResponse) bool {
+					return svc.AnswerRequest(registered.ID, questionAnswers(r))
+				})
+			})
+			answers, err := svc.Ask(askCtx, req)
+			outcome := activity.OutcomeAnswered
+			if err != nil {
+				outcome = activity.OutcomeCancelled
+			}
+			pending.Done(outcome)
 			if err != nil {
 				if errors.Is(err, question.ErrCancelled) {
 					resp := fantasy.NewTextErrorResponse("User cancelled this question")
@@ -134,6 +153,28 @@ func NewQuestionTool(svc question.Service) fantasy.AgentTool {
 			return formatAnswers(answers, questions)
 		},
 	)
+}
+
+// questionPrompt is the island's read-only view of a registered request.
+func questionPrompt(req question.Request) activity.Prompt {
+	p := activity.Prompt{Kind: activity.KindQuestion, ID: req.ID, ConfirmTitle: req.ConfirmTitle, ConfirmDescription: req.ConfirmDescription}
+	for _, q := range req.Questions {
+		item := activity.PromptQuestion{ID: q.ID, Type: string(q.Type), Label: q.Label, Text: q.Text, Description: q.Description}
+		for _, c := range q.Choices {
+			item.Choices = append(item.Choices, activity.PromptChoice{ID: c.ID, Label: c.Label, Description: c.Description})
+		}
+		p.Questions = append(p.Questions, item)
+	}
+	return p
+}
+
+// questionAnswers converts a validated island response to service answers.
+func questionAnswers(r activity.PromptResponse) []question.Answer {
+	answers := make([]question.Answer, len(r.Answers))
+	for i, a := range r.Answers {
+		answers[i] = question.Answer{QuestionID: a.QuestionID, SelectedIDs: append([]string(nil), a.Selected...), FillInText: a.Text, Yes: a.Yes}
+	}
+	return answers
 }
 
 func convertChoices(in []QuestionChoice) []question.Choice {

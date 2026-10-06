@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
@@ -191,6 +192,73 @@ func TestXiaomiExplicitThinkingOptions(t *testing.T) {
 	require.Equal(t, true, options.ExtraBody["custom"])
 }
 
+func TestXiaomiSelectedEffortOverridesLegacyThinkingToggle(t *testing.T) {
+	t.Parallel()
+	for _, provider := range []string{"xiaomi", "xiaomi-token-plan-cn", "xiaomi-token-plan-sgp", "xiaomi-token-plan-ams"} {
+		for _, effort := range []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"} {
+			model := Model{CatwalkCfg: catwalk.Model{ID: "mimo-v2.6-pro", CanReason: true, ReasoningLevels: []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}}, ModelCfg: config.SelectedModel{Think: true, ReasoningEffort: effort}}
+			options := getProviderOptions(model, config.ProviderConfig{ID: provider, Type: catwalk.TypeOpenAICompat})[openaicompat.Name].(*openaicompat.ProviderOptions)
+			require.Nil(t, options.ReasoningEffort, "Chat Completions uses thinking.type")
+			want := "enabled"
+			if effort == "none" {
+				want = "disabled"
+			}
+			require.Equal(t, want, options.ExtraBody["thinking"].(map[string]any)["type"], "%s/%s", provider, effort)
+		}
+	}
+}
+
+func TestXiaomiEffortReachesChatCompletionRequest(t *testing.T) {
+	for _, providerID := range []string{"xiaomi", "xiaomi-token-plan-cn", "xiaomi-token-plan-sgp", "xiaomi-token-plan-ams"} {
+		t.Run(providerID, func(t *testing.T) {
+			coord := hermeticSubagentCoordinator(t)
+			var selected catwalk.Model
+			for _, provider := range embedded.GetAll() {
+				if string(provider.ID) == providerID {
+					for _, model := range provider.Models {
+						if model.ID == "mimo-v2.6-pro" {
+							selected = model
+						}
+					}
+				}
+			}
+			require.NotEmpty(t, selected.ID)
+			requests := make(chan map[string]any, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/v1/chat/completions" {
+					http.Error(w, "incorrect path", http.StatusBadRequest)
+					return
+				}
+				var body map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					http.Error(w, "invalid body", http.StatusBadRequest)
+					return
+				}
+				requests <- body
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"id":"fixture","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"OK"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+			}))
+			defer server.Close()
+			cfg := config.ProviderConfig{ID: providerID, Type: catwalk.TypeOpenAICompat, BaseURL: server.URL + "/v1", APIKey: "test-key"}
+			provider, err := coord.buildProvider(cfg, config.SelectedModel{Model: selected.ID}, false)
+			require.NoError(t, err)
+			lm, err := provider.LanguageModel(t.Context(), selected.ID)
+			require.NoError(t, err)
+			for _, effort := range []string{"none", "high"} {
+				_, err = lm.Generate(t.Context(), fantasy.Call{Prompt: fantasy.Prompt{{Role: fantasy.MessageRoleUser, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "Hello"}}}}, ProviderOptions: getProviderOptions(Model{CatwalkCfg: selected, ModelCfg: config.SelectedModel{Think: true, ReasoningEffort: effort}}, cfg)})
+				require.NoError(t, err)
+				request := <-requests
+				want := "enabled"
+				if effort == "none" {
+					want = "disabled"
+				}
+				require.Equal(t, want, request["thinking"].(map[string]any)["type"])
+				require.NotContains(t, request, "reasoning_effort")
+			}
+		})
+	}
+}
+
 func TestAlibabaPlanThinkingUsesEnableThinking(t *testing.T) {
 	t.Parallel()
 	for _, provider := range []string{"alibaba-coding-cn", "alibaba-token-plan-sgp", "alibaba-token-plan-cn", "alibaba-token-plan-team-sgp", "alibaba-token-plan-team-cn"} {
@@ -248,11 +316,17 @@ func TestOpenCodeResponsesReasoningRequest(t *testing.T) {
 		t.Run(modelID, func(t *testing.T) {
 			coord := hermeticSubagentCoordinator(t)
 			requests := make(chan map[string]any, 1)
+			sessions := make(chan string, 3)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path != "/zen/v1/responses" {
 					http.Error(w, "incorrect model protocol", http.StatusBadRequest)
 					return
 				}
+				if r.Header.Get("x-opencode-session") == "" || !strings.HasPrefix(r.UserAgent(), "ATLAS-AGENT/") {
+					http.Error(w, "missing coding agent identity", http.StatusBadRequest)
+					return
+				}
+				sessions <- r.Header.Get("x-opencode-session")
 				var body map[string]any
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 					http.Error(w, "invalid request", http.StatusBadRequest)
@@ -280,6 +354,17 @@ func TestOpenCodeResponsesReasoningRequest(t *testing.T) {
 			reasoning, ok := request["reasoning"].(map[string]any)
 			require.True(t, ok, "selected reasoning effort must reach the API")
 			require.Equal(t, "low", reasoning["effort"])
+			firstSession := <-sessions
+			for _, headers := range []map[string]string{nil, {"x-opencode-session": "conversation-override"}} {
+				_, err = lm.Generate(t.Context(), fantasy.Call{Headers: headers, Prompt: fantasy.Prompt{fantasy.NewUserMessage("Hello again")}})
+				require.NoError(t, err)
+				<-requests
+				if headers == nil {
+					require.Equal(t, firstSession, <-sessions)
+				} else {
+					require.Equal(t, "conversation-override", <-sessions)
+				}
+			}
 		})
 	}
 }

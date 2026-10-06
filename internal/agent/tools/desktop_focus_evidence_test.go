@@ -3,7 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
-
+	"strings"
 	"testing"
 
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -42,5 +42,12 @@ func TestDesktopPrepareReturnsFreshEvidenceAfterFocusDenied(t *testing.T) {
 			require.Contains(t, r.Metadata, `"original":"retained"`)
 			require.Contains(t, r.Metadata, `"input_replayed":false`)
 		})
+	}
+}
+
+func TestDesktopFocusEvidenceRejectsInvalidOrExcessiveLists(t *testing.T) {
+	for _, listed := range []string{`{`, `{"result":null}`, strings.Repeat("x", 32*1024+1)} {
+		r := fantasy.ToolResponse{Content: "focus_denied: fixture", IsError: true, Metadata: `{"original":"retained"}`}
+		require.Equal(t, r, desktopFocusEvidence(r, "11", listed))
 	}
 }

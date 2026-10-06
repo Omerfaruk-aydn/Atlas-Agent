@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -13,24 +14,30 @@ import (
 	"unsafe"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
+	"golang.org/x/sys/windows"
 )
 
 type nativeWindowObservation struct {
-	ID         string `json:"window_id"`
-	Name       string `json:"name"`
-	ProcessID  uint32 `json:"process_id"`
-	Foreground bool   `json:"foreground"`
-	Minimized  bool   `json:"minimized"`
-	X          int32  `json:"x"`
-	Y          int32  `json:"y"`
-	Width      int32  `json:"width"`
-	Height     int32  `json:"height"`
+	ID             string `json:"window_id"`
+	Name           string `json:"name"`
+	ProcessID      uint32 `json:"process_id"`
+	ProcessName    string `json:"process_name,omitempty"`
+	ClassName      string `json:"class_name"`
+	Owner          string `json:"owner_window_id"`
+	OwnerProcessID uint32 `json:"owner_process_id,omitempty"`
+	Foreground     bool   `json:"foreground"`
+	Minimized      bool   `json:"minimized"`
+	X              int32  `json:"x"`
+	Y              int32  `json:"y"`
+	Width          int32  `json:"width"`
+	Height         int32  `json:"height"`
 }
 
 type nativeWindowEnumeration struct {
 	ctx        context.Context
 	foreground string
 	windows    []nativeWindowObservation
+	processes  map[uint32]string
 }
 
 var (
@@ -63,12 +70,24 @@ func observeNativeWindow(hwnd, token uintptr) uintptr {
 	}
 	var title [512]uint16
 	_, _, _ = modUser32.NewProc("GetWindowTextW").Call(hwnd, uintptr(unsafe.Pointer(&title[0])), uintptr(len(title)))
+	var className [256]uint16
+	_, _, _ = modUser32.NewProc("GetClassNameW").Call(hwnd, uintptr(unsafe.Pointer(&className[0])), uintptr(len(className)))
 	var pid uint32
 	_, _, _ = modUser32.NewProc("GetWindowThreadProcessId").Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+	processName, found := enumeration.processes[pid]
+	if !found {
+		processName = nativeProcessName(pid)
+		enumeration.processes[pid] = processName
+	}
+	owner, _, _ := modUser32.NewProc("GetWindow").Call(hwnd, 4) // GW_OWNER.
+	var ownerPID uint32
+	if owner != 0 {
+		_, _, _ = modUser32.NewProc("GetWindowThreadProcessId").Call(owner, uintptr(unsafe.Pointer(&ownerPID)))
+	}
 	minimized, _, _ := modUser32.NewProc("IsIconic").Call(hwnd)
 	id := strconv.FormatUint(uint64(hwnd), 10)
 	enumeration.windows = append(enumeration.windows, nativeWindowObservation{
-		ID: id, Name: syscall.UTF16ToString(title[:]), ProcessID: pid,
+		ID: id, Name: syscall.UTF16ToString(title[:]), ProcessID: pid, ProcessName: processName, ClassName: syscall.UTF16ToString(className[:]), Owner: strconv.FormatUint(uint64(owner), 10), OwnerProcessID: ownerPID,
 		Foreground: id == enumeration.foreground, Minimized: minimized != 0,
 		X: rect.Left, Y: rect.Top, Width: rect.Right - rect.Left, Height: rect.Bottom - rect.Top,
 	})
@@ -80,7 +99,7 @@ func (b *windowsBackend) listNativeWindows(ctx context.Context) (json.RawMessage
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	enumeration := &nativeWindowEnumeration{ctx: ctx, foreground: b.ForegroundWindow(), windows: []nativeWindowObservation{}}
+	enumeration := &nativeWindowEnumeration{ctx: ctx, foreground: b.ForegroundWindow(), windows: []nativeWindowObservation{}, processes: make(map[uint32]string)}
 	token := uintptr(nativeEnumerationID.Add(1))
 	nativeEnumerations.Store(token, enumeration)
 	defer nativeEnumerations.Delete(token)
@@ -92,4 +111,19 @@ func (b *windowsBackend) listNativeWindows(ctx context.Context) (json.RawMessage
 		return nil, fmt.Errorf("window_observation_failed: EnumWindows: %v", callErr)
 	}
 	return json.Marshal(enumeration.windows)
+}
+
+// nativeProcessName reads the image identity without starting a shell or UIA.
+func nativeProcessName(pid uint32) string {
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return ""
+	}
+	defer windows.CloseHandle(handle)
+	var path [32768]uint16
+	length := uint32(len(path))
+	if windows.QueryFullProcessImageName(handle, 0, &path[0], &length) != nil {
+		return ""
+	}
+	return filepath.Base(windows.UTF16ToString(path[:length]))
 }

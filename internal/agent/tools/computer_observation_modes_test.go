@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-
+	"strings"
 	"testing"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
@@ -90,6 +90,42 @@ func TestComputerAutoObservationFallsBackWhenProviderUnavailable(t *testing.T) {
 	require.Contains(t, r.Content, `"accessibility_status":"unavailable"`)
 	require.NotContains(t, r.Content, "snapshot_id")
 	require.Equal(t, 1, b.captures)
+}
+
+func TestComputerSemanticObservationRedactionAndBounds(t *testing.T) {
+	t.Parallel()
+	b := &observationModeBackend{}
+	b.call = func(_ context.Context, p computer.AutomationRequest) (json.RawMessage, error) {
+		if p.Action == "windows" {
+			return json.RawMessage(`[{"window_id":"11","foreground":true},{"window_id":"22","owner_window_id":"11"}]`), nil
+		}
+		return json.Marshal(map[string]any{"elements": []any{
+			map[string]any{"element_id": "1", "role": "Edit", "password": true, "value": "secret", "text": "secret", "value_available": true, "text_available": true},
+			map[string]any{"element_id": "2", "role": "Document", "text": strings.Repeat("é", 5000), "text_available": true},
+		}})
+	}
+	s := &computerToolState{backend: b}
+	r, err := s.observe(t.Context(), ComputerParams{Observation: "semantic", Automation: computer.AutomationRequest{WindowID: "11"}})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.NotContains(t, r.Content, "secret")
+	var result struct {
+		Elements []struct {
+			Value          string `json:"value"`
+			Text           string `json:"text"`
+			ValueAvailable bool   `json:"value_available"`
+			TextAvailable  bool   `json:"text_available"`
+			TextTruncated  bool   `json:"text_truncated"`
+		} `json:"elements"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(r.Content), &result))
+	require.Equal(t, "[password]", result.Elements[0].Value)
+	require.Equal(t, "[password]", result.Elements[0].Text)
+	require.False(t, result.Elements[0].ValueAvailable)
+	require.False(t, result.Elements[0].TextAvailable)
+	require.Len(t, []rune(result.Elements[1].Text), 4096)
+	require.True(t, result.Elements[1].TextTruncated)
+	require.Zero(t, b.captures)
 }
 
 func (b *observationModeBackend) Screenshot() ([]byte, error) {

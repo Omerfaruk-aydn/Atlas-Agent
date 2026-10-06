@@ -220,3 +220,31 @@ func TestPromptOfAnotherSessionLeavesOtherSurfacesAlone(t *testing.T) {
 	require.False(t, PromptBlocks(ctxB, true))
 	pending.Done(OutcomeCancelled)
 }
+
+func TestElapsedSurvivesToolsAndRestartsWithNewRun(t *testing.T) {
+	m := New(&testRenderer{})
+	defer m.Close()
+	ctx, end := StartFlow(context.Background(), "timer")
+	m.Begin(ctx, Event{Session: "timer", Action: "navigate"})()
+	started := m.Snapshot().RunStarted
+	time.Sleep(5 * time.Millisecond)
+	m.Begin(ctx, Event{Session: "timer", Action: "click"})()
+	require.Equal(t, started, m.Snapshot().RunStarted)
+	require.GreaterOrEqual(t, m.Snapshot().Elapsed(time.Now()), 5*time.Millisecond)
+	end()
+	next, endNext := StartFlow(context.Background(), "timer")
+	defer endNext()
+	m.Begin(next, Event{Session: "timer"})()
+	require.True(t, m.Snapshot().RunStarted.After(started), "A new run starts its own timer")
+}
+
+func TestRunStateTransitions(t *testing.T) {
+	require.True(t, CanTransition(StateTool, StateAwaitPermission))
+	require.True(t, CanTransition(StateAwaitPermission, StateDelivering))
+	require.True(t, CanTransition(StateDelivering, StateResuming))
+	require.True(t, CanTransition(StateAwaitQuestion, StateCancelled))
+	require.False(t, CanTransition(StateAwaitPermission, StateTool), "Waiting never silently resumes work")
+	require.False(t, CanTransition(StateAwaitQuestion, StateDone), "An unanswered question is not completion")
+	require.False(t, CanTransition(StateDenied, StateResuming), "A refusal is not presented as continuing")
+	require.False(t, CanTransition(StateCancelled, StateResuming))
+}

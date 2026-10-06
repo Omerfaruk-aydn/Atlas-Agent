@@ -216,3 +216,30 @@ func TestMascotFollowsResourceHandoff(t *testing.T) {
 	pose = a.step(Event{Visible: true, Resource: "desktop"}, time.Now(), Look{})
 	require.False(t, pose.Browser)
 }
+
+func TestMascotTapOnlyForConfirmedInput(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	var a mascotAnimator
+	base := Event{Visible: true, Action: "click", PhaseAt: now}
+	a.step(base, now, Look{})
+	a.blink.next = now.Add(time.Hour)
+	settled := now
+	for range 60 {
+		settled = settled.Add(time.Second / 60)
+		a.step(base, settled, Look{})
+	}
+	quiet := a.springs[chSquash].v
+	clicked := base
+	clicked.PointerKind, clicked.PointerAt = "click", settled
+	a.step(clicked, settled.Add(time.Millisecond), Look{})
+	require.Less(t, a.springs[chSquash].v, quiet-1, "Confirmed input earns one tap")
+	tapVelocity := a.springs[chSquash].v
+	a.step(clicked, settled.Add(2*time.Millisecond), Look{})
+	require.Greater(t, a.springs[chSquash].v, tapVelocity-.5, "The same input never taps twice")
+	aim := base
+	aim.PointerKind, aim.PointerAt = "aim", settled.Add(3*time.Millisecond)
+	before := a.springs[chSquash].v
+	a.step(aim, settled.Add(4*time.Millisecond), Look{})
+	require.Greater(t, a.springs[chSquash].v, before-.5, "Aiming is not a click")
+}

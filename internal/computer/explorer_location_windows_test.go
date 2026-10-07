@@ -3,9 +3,11 @@
 package computer
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -45,4 +47,40 @@ ConvertTo-Json -InputObject $results -Depth 8 -Compress
 	for _, result := range got[1:] {
 		require.Nil(t, result)
 	}
+}
+
+func TestExplorerCurrentFolderLiveReadDoesNotChangeFocus(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	b := &windowsBackend{}
+	before := b.ForegroundWindow()
+	listed, err := b.listNativeWindows(ctx)
+	require.NoError(t, err)
+	var windows []nativeWindowObservation
+	require.NoError(t, json.Unmarshal(listed, &windows))
+	for _, w := range windows {
+		if w.ClassName != "CabinetWClass" {
+			continue
+		}
+		data, err := b.Automation(ctx, AutomationRequest{Action: "inspect", WindowID: w.ID, MaxElements: 10})
+		require.NoError(t, err)
+		var o struct {
+			Location *struct {
+				Path     string `json:"path"`
+				ID       string `json:"window_id"`
+				Verified bool   `json:"verified"`
+			} `json:"explorer_location"`
+		}
+		require.NoError(t, json.Unmarshal(data, &o))
+		if o.Location == nil {
+			continue
+		}
+		require.Equal(t, w.ID, o.Location.ID)
+		require.True(t, o.Location.Verified)
+		require.NotEmpty(t, o.Location.Path)
+		require.Equal(t, before, b.ForegroundWindow(), "Read must not activate the Explorer window")
+		t.Log("Exact shell folder returned without changing foreground")
+		return
+	}
+	t.Skip("No readable filesystem Explorer window is currently available")
 }

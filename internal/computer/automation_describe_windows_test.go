@@ -95,3 +95,56 @@ function Mock-Element($mode) {
 	require.Equal(t, false, elements[4]["value_available"])
 	require.Equal(t, false, elements[4]["text_available"])
 }
+
+func TestWindowsTraversalMarksChangingProviderIncomplete(t *testing.T) {
+	start := strings.Index(automationScript, "while ($queue.Count")
+	end := start + strings.Index(automationScript[start:], "if ($p.action -eq 'inspect') {")
+	require.Greater(t, end, start)
+	fixture := `$ErrorActionPreference='Stop';$p=@{};$limit=10;$truncated=$false;$clock=[System.Diagnostics.Stopwatch]::StartNew();$queue=[System.Collections.Generic.Queue[object]]::new();$queue.Enqueue([pscustomobject]@{});$elements=[System.Collections.Generic.List[object]]::new();$walker=[pscustomobject]@{};$walker|Add-Member ScriptMethod GetFirstChild {param($e) throw 'Provider changed during rename'};`
+	output := runMockedAutomationScript(t, fixture+automationScript[start:end]+`@{truncated=$truncated;count=$elements.Count}|ConvertTo-Json -Compress`, "")
+	var result struct {
+		Truncated bool `json:"truncated"`
+		Count     int  `json:"count"`
+	}
+	require.NoError(t, json.Unmarshal(output, &result), string(output))
+	require.True(t, result.Truncated)
+	require.Equal(t, 1, result.Count)
+}
+
+func TestWindowsFocusedObservationRejectsForeignAncestry(t *testing.T) {
+	start := strings.Index(automationScript, "function Describe-Focused")
+	end := strings.Index(automationScript, "if ($p.action -eq 'windows')")
+	require.Greater(t, end, start)
+	fixture := `
+$ErrorActionPreference='Stop'
+function Mock-Focus($id,$parent,$hasFocus) {
+    $e=[pscustomobject]@{Id=$id;Parent=$parent;Current=[pscustomobject]@{HasKeyboardFocus=$hasFocus}}
+    $e|Add-Member ScriptMethod GetRuntimeId { @($this.Id) }
+    return $e
+}
+$script:reads=0
+function Describe($e) { $script:reads++; @{element_id=[string]$e.Id;value='exact address'} }
+$root=Mock-Focus 11 $null $false
+$owned=Mock-Focus 12 $root $true
+$foreign=Mock-Focus 22 $null $true
+$unfocused=Mock-Focus 13 $root $false
+$cycle=Mock-Focus 14 $null $true
+$cycle.Parent=$cycle
+$walker=[pscustomobject]@{}
+$walker|Add-Member ScriptMethod GetParent { param($e) $e.Parent }
+`
+	output := runMockedAutomationScript(t, fixture+automationScript[start:end]+`@{owned=(Describe-Focused $root $owned $walker);foreign=(Describe-Focused $root $foreign $walker);unfocused=(Describe-Focused $root $unfocused $walker);cycle=(Describe-Focused $root $cycle $walker);reads=$script:reads}|ConvertTo-Json -Depth 5 -Compress`, "")
+	var result struct {
+		Owned     map[string]any `json:"owned"`
+		Foreign   any            `json:"foreign"`
+		Unfocused any            `json:"unfocused"`
+		Cycle     any            `json:"cycle"`
+		Reads     int            `json:"reads"`
+	}
+	require.NoError(t, json.Unmarshal(output, &result), string(output))
+	require.Equal(t, "12", result.Owned["element_id"])
+	require.Nil(t, result.Foreign)
+	require.Nil(t, result.Unfocused)
+	require.Nil(t, result.Cycle)
+	require.Equal(t, 1, result.Reads, "Foreign or unverified control content must not be read")
+}

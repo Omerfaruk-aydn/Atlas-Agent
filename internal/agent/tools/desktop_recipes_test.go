@@ -47,3 +47,29 @@ func TestDesktopTransitionGroupedSaveReturnsApplicationReadback(t *testing.T) {
 	require.Equal(t, []string{"windows", "type", "key", "windows", "observe"}, actions)
 	require.Contains(t, r.Content, "verified")
 }
+
+func TestDesktopTransitionGroupRejectsBadScopeAndStopsOnDenial(t *testing.T) {
+	for _, badScope := range []bool{false, true} {
+		inputs := []ComputerParams{{Action: "type", Text: "file", Automation: computer.AutomationRequest{WindowID: "11"}}, {Action: "key", Key: "enter", Automation: computer.AutomationRequest{WindowID: "11"}}}
+		if badScope {
+			inputs[1].Automation.WindowID = "22"
+		}
+		var actions []string
+		r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "transition", Inputs: inputs, Transition: &DesktopTransitionParams{ExpectedApplication: "Notepad"}}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			var p ComputerParams
+			require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+			actions = append(actions, p.Action)
+			if p.Action == "windows" {
+				return fantasy.NewTextResponse(`{"result":[{"window_id":"11","foreground":true}]}`), nil
+			}
+			return fantasy.NewTextErrorResponse("permission_denied: fixture"), nil
+		})
+		require.NoError(t, err)
+		require.True(t, r.IsError)
+		if badScope {
+			require.Empty(t, actions)
+		} else {
+			require.Equal(t, []string{"windows", "type"}, actions)
+		}
+	}
+}

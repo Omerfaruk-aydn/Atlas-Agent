@@ -3,7 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
-
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -338,4 +338,47 @@ func TestGuardSuccessClearsRecordAndSessionsAreIsolated(t *testing.T) {
 	recordDesktopWindows(other, "windows", fantasy.NewTextResponse(`{"result":[{"window_id":"11"}]}`))
 	resp, _ := guarded.Run(other, call)
 	require.False(t, resp.IsError, "a different session has its own history")
+}
+
+func TestPipelineChildrenShareTheGuard(t *testing.T) {
+	t.Parallel()
+	inner := &scriptedTool{name: ComputerToolName, replies: []fantasy.ToolResponse{failure("target_missing: window disappeared")}}
+	guarded := WithDesktopGuard(inner)
+	ctx := guardCtx(t)
+	dispatch := func(c context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return guarded.Run(c, call)
+	}
+	pipeline := WithDesktopGuard(NewToolPipeline(dispatch))
+	step := `{"steps":[{"id":"a","tool":"computer","arguments":{"action":"focus","automation":{"window_id":"11"}}}]}`
+	first, _ := pipeline.Run(ctx, fantasy.ToolCall{ID: "p", Name: "tool_pipeline", Input: step})
+	require.NotNil(t, first)
+	// The same child through a direct computer call is the same call to the guard.
+	direct, _ := guarded.Run(ctx, computerCall(`{"action":"focus","automation":{"window_id":"11"}}`))
+	require.Equal(t, "repeat_blocked", contractOf(t, direct).Code)
+	require.EqualValues(t, 1, inner.calls)
+}
+
+func TestShellSubstitutionDuringGUIFailureIsVisible(t *testing.T) {
+	t.Parallel()
+	desktop := WithDesktopGuard(&scriptedTool{name: ComputerToolName, replies: []fantasy.ToolResponse{failure("target_missing: gone")}})
+	shell := WithDesktopGuard(&scriptedTool{name: BashToolName, replies: []fantasy.ToolResponse{
+		fantasy.NewTextResponse("ok"), fantasy.NewTextResponse("ok"), fantasy.NewTextResponse("ok"),
+	}})
+	ctx := guardCtx(t)
+	run := func(command string) fantasy.ToolResponse {
+		input, _ := json.Marshal(map[string]string{"command": command})
+		resp, err := shell.Run(ctx, fantasy.ToolCall{ID: "b", Name: BashToolName, Input: string(input)})
+		require.NoError(t, err)
+		return resp
+	}
+	// No desktop failure yet: shell is untouched.
+	require.NotContains(t, run(`mkdir C:\x`).Content, "GUI fallback")
+
+	_, _ = desktop.Run(ctx, computerCall(`{"action":"focus","automation":{"window_id":"11"}}`))
+	require.Contains(t, run(`New-Item -ItemType Directory C:\x`).Content, "GUI fallback notice")
+	require.NotContains(t, run(`ls C:\x`).Content, "GUI fallback", "read-only verification is not a substitution")
+
+	// Desktop recovery clears the state.
+	_, _ = desktop.Run(ctx, computerCall(`{"action":"windows"}`))
+	require.False(t, strings.Contains(run(`mkdir C:\y`).Content, "GUI fallback"))
 }

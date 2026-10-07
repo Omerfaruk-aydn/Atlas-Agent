@@ -134,6 +134,31 @@ func TestComputerRejectsMalformedProviderShapesBeforeInput(t *testing.T) {
 	}
 }
 
+func TestComputerExamplesAreNeverRunnableTargets(t *testing.T) {
+	t.Parallel()
+	for _, input := range []string{`{"action":"prepare"}`, `{"action":"ocr","x":1,"y":1}`, `{"action":"find","automation":{"role":"x"}}`, `{"action":"key","automation":{"window_id":"shell"}}`} {
+		b := newContractBackend(t)
+		contract := contractOf(t, runRaw(t, b, input))
+		if contract.Example == "" {
+			continue
+		}
+		var example struct {
+			Action     string `json:"action"`
+			Automation struct {
+				WindowID string `json:"window_id"`
+			} `json:"automation"`
+		}
+		_ = json.Unmarshal([]byte(contract.Example), &example)
+		require.False(t, numericWindowIDPattern(example.Automation.WindowID), "example %s carries a numeric window id", contract.Example)
+		// A copied example must itself be rejected, never executed.
+		if strings.Contains(contract.Example, "<") && example.Automation.WindowID != "" {
+			replay := runRaw(t, b, contract.Example)
+			require.True(t, replay.IsError)
+			require.Empty(t, b.native)
+		}
+	}
+}
+
 func numericWindowIDPattern(id string) bool {
 	return id != "" && strings.Trim(id, "0123456789") == ""
 }

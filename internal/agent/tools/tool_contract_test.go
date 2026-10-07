@@ -274,3 +274,13 @@ func TestObservationSeparatesObservedFromForegroundWindow(t *testing.T) {
 	require.Equal(t, "yes", observed.Target.Foreground)
 	require.True(t, observed.Target.InputReady)
 }
+
+func TestKeyboardToBackgroundWindowIsRefusedWithoutInput(t *testing.T) {
+	t.Parallel()
+	b := newContractBackend(t)
+	b.foreground = "22"
+	resp := runRaw(t, b, `{"action":"hotkey","key":"l","modifiers":"ctrl","automation":{"window_id":"11"}}`)
+	require.True(t, resp.IsError)
+	require.Contains(t, resp.Content, "wrong_window")
+	require.Zero(t, atomic.LoadInt32(&b.inputs))
+}

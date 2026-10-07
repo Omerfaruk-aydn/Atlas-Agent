@@ -349,3 +349,96 @@ func TestKnownGoodShapesStillDecode(t *testing.T) {
 	var wp DesktopWorkflowParams
 	require.NoError(t, json.Unmarshal([]byte(`{"mode":"act","window_id":"11","focus_window":true,"input":{"action":"key","key":"enter","automation":{"window_id":"11"}}}`), &wp))
 }
+
+// Compatibility matrix: provider differences end at the tool-call boundary.
+// Whatever a provider emits, the call reaches the tools as an input string, and
+// every execution path below must apply the same contract to it.
+func TestEveryExecutionPathAppliesTheSameContract(t *testing.T) {
+	t.Parallel()
+	b := newContractBackend(t)
+	ctx := context.WithValue(t.Context(), SessionIDContextKey, t.Name())
+	base := newComputerTool(permission.NewPermissionService(t.TempDir(), true, nil), t.TempDir(), b, func() bool { return true }, "computer", 0)
+	var dispatch ComputerDispatcher
+	computerTool := &computerBatchDispatchTool{AgentTool: WithDesktopGuard(base), invoke: func(c context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return dispatch(c, call)
+	}}
+	dispatch = func(c context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return computerTool.Run(c, call)
+	}
+	pipeline := WithDesktopGuard(NewToolPipeline(dispatch))
+
+	paths := map[string]func() fantasy.ToolResponse{
+		"direct computer": func() fantasy.ToolResponse {
+			r, _ := computerTool.Run(ctx, computerCall(`{"action":"key","key":"f1","automation":{"window_id":"shell"}}`))
+			return r
+		},
+		"computer batch": func() fantasy.ToolResponse {
+			r, _ := computerTool.Run(ctx, computerCall(`{"action":"batch","batch":{"groups":[{"inputs":[{"action":"key","key":"f2","automation":{"window_id":"shell"}}],"checkpoint":{"window_id":"11","name":"x","condition":"visible"}}]}}`))
+			return r
+		},
+		"pipeline steps": func() fantasy.ToolResponse {
+			r, _ := pipeline.Run(ctx, fantasy.ToolCall{ID: "p", Name: "tool_pipeline", Input: `{"steps":[{"id":"a","tool":"computer","arguments":{"action":"key","key":"f3","automation":{"window_id":"shell"}}}]}`})
+			return r
+		},
+		"pipeline desktop act": func() fantasy.ToolResponse {
+			r, _ := pipeline.Run(ctx, fantasy.ToolCall{ID: "p", Name: "tool_pipeline", Input: `{"desktop":{"mode":"act","input":{"action":"key","key":"f4","automation":{"window_id":"shell"}}}}`})
+			return r
+		},
+		"pipeline desktop sequence": func() fantasy.ToolResponse {
+			r, _ := pipeline.Run(ctx, fantasy.ToolCall{ID: "p", Name: "tool_pipeline", Input: `{"desktop":{"mode":"sequence","steps":[{"input":{"action":"key","key":"f5","automation":{"window_id":"shell"}},"checkpoint":{"window_id":"shell","name":"x","condition":"visible"}}]}}`})
+			return r
+		},
+	}
+	for name, run := range paths {
+		resp := run()
+		require.True(t, resp.IsError, name)
+		require.Contains(t, resp.Content, "invalid_target", name)
+		require.Contains(t, resp.Content, "native window handle", name)
+	}
+	require.Empty(t, b.native, "no path may reach the native layer")
+	require.Zero(t, atomic.LoadInt32(&b.inputs))
+
+	// The nested dispatcher's schema layer yields the same structured shape.
+	// The captured MiMo shape: the root cause (wrong tool) is reported before
+	// the field-level symptom (automation.application).
+	violation := SchemaViolationResponse(computerCall(`{"action":"prepare","automation":{"application":"x"}}`), nil)
+	require.Equal(t, "wrong_tool", contractOf(t, violation).Code)
+	violation = SchemaViolationResponse(computerCall(`{"action":"windows","automation":{"application":"x"}}`), nil)
+	require.Equal(t, "unknown_field", contractOf(t, violation).Code)
+	violation = SchemaViolationResponse(fantasy.ToolCall{Name: "tool_pipeline", Input: `{"desktop":{"mode":"click"}}`}, nil)
+	require.Equal(t, "invalid_mode", contractOf(t, violation).Code)
+}
+
+// Shapes other providers emit for the same arguments.
+func TestProviderArgumentVariantsConvergeOnOneContract(t *testing.T) {
+	t.Parallel()
+	same := []string{
+		`{"action":"ocr","x":10,"y":20,"width":60,"height":40}`,
+		`{"action":"ocr","x":"10","y":"20","width":"60","height":"40"}`,
+		`{"action":"ocr","automation":{"x":10,"y":20,"width":60,"height":40}}`,
+		`{"action":"OCR","x":10,"y":20,"width":60,"height":40}`,
+	}
+	var want ComputerParams
+	for i, input := range same {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(input), &p), input)
+		if i == 0 {
+			want = p
+		}
+		require.Equal(t, want, p, input)
+	}
+	// Keyboard encodings.
+	var first ComputerParams
+	for i, input := range []string{
+		`{"action":"hotkey","key":"l","modifiers":"ctrl","automation":{"window_id":"11"}}`,
+		`{"action":"key","key":"Ctrl+L","automation":{"window_id":"11"}}`,
+		`{"action":"key","automation":{"window_id":"11","key":"l","modifiers":"ctrl"}}`,
+	} {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(input), &p), input)
+		if i == 0 {
+			first = p
+		}
+		require.Equal(t, first, p, input)
+	}
+}

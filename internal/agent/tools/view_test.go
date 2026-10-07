@@ -345,6 +345,12 @@ var _ filetracker.Service = mockFileTracker{}
 
 func TestReadBuiltinFile(t *testing.T) {
 	t.Parallel()
+	t.Run("canonical Atlas address", func(t *testing.T) {
+		resp, err := readBuiltinFile(ViewParams{FilePath: "atlas://skills/atlas-config/SKILL.md"}, nil)
+		require.NoError(t, err)
+		require.False(t, resp.IsError, resp.Content)
+		require.Contains(t, resp.Content, "ATLAS-AGENT Configuration")
+	})
 
 	t.Run("reads atlas-config skill", func(t *testing.T) {
 		t.Parallel()

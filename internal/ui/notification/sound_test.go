@@ -25,3 +25,24 @@ func TestBuiltinSoundsAreDistinctShortWAVs(t *testing.T) {
 	}
 	require.Equal(t, BuiltinSound(KindFinished), BuiltinSound(KindGeneric))
 }
+
+func TestSoundBackendPlaysEachKindWithItsOwnFile(t *testing.T) {
+	t.Parallel()
+	if !SoundSupported {
+		t.Skip("Atlas plays its own sounds only on Windows")
+	}
+	b := NewSoundBackend(map[string]string{"permission": `C:\Sesler\izin.wav`, "question": ""})
+	type played struct {
+		kind Kind
+		path string
+	}
+	var got []played
+	b.SetPlayFunc(func(kind Kind, path string) error {
+		got = append(got, played{kind, path})
+		return nil
+	})
+	for _, kind := range []Kind{KindPermission, KindQuestion, KindFinished} {
+		require.Nil(t, b.Send(Notification{Title: "t", Kind: kind})())
+	}
+	require.Equal(t, []played{{KindPermission, `C:\Sesler\izin.wav`}, {KindQuestion, ""}, {KindFinished, ""}}, got)
+}

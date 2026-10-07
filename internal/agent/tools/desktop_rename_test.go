@@ -159,3 +159,54 @@ func TestDesktopRenameEditorRejectsForeignFieldAndWrongReadback(t *testing.T) {
 		require.False(t, desktopRenameEditor(&e, item, "hesap", ""))
 	}
 }
+
+func TestDesktopRenameConflictAndNoOpNeverSendKeys(t *testing.T) {
+	for _, noOp := range []bool{false, true} {
+		p := renameParams()
+		if noOp {
+			p.Rename.NewName = p.Rename.OldName
+		}
+		invoke, calls := renameFixture(t, func(c ComputerParams, r fantasy.ToolResponse) fantasy.ToolResponse {
+			if !noOp && c.Action == "find" && c.Automation.Name == "sonuc" {
+				return fantasy.NewTextResponse(`{"result":{"matches":[{"element_id":"existing","name":"sonuc"}],"truncated":false}}`)
+			}
+			return r
+		})
+		r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, invoke)
+		require.NoError(t, err)
+		require.Equal(t, !noOp, r.IsError, r.Content)
+		for _, c := range *calls {
+			require.False(t, desktopMutation(c.Action), c.Action)
+		}
+	}
+}
+
+func TestDesktopRenameDoesNotSubmitUnverifiedReplacementOrOpenEditor(t *testing.T) {
+	for _, badInspection := range []int{2, 3} {
+		seen := 0
+		invoke, calls := renameFixture(t, func(c ComputerParams, r fantasy.ToolResponse) fantasy.ToolResponse {
+			if c.Action == "inspect" {
+				seen++
+				if seen == badInspection {
+					return fantasy.NewTextResponse(`{"result":{"window_id":"11","focused_element":{"element_id":"editor","name":"wrong","role":"ControlType.Pane","process_id":7,"enabled":true,"keyboard_focused":true,"x":110,"y":202,"width":90,"height":25}}}`)
+				}
+			}
+			return r
+		})
+		r, err := runDesktopWorkflow(t.Context(), renameParams(), fantasy.ToolCall{}, invoke)
+		require.NoError(t, err)
+		require.True(t, r.IsError)
+		enters := 0
+		for _, c := range *calls {
+			if c.Key == "enter" {
+				enters++
+			}
+		}
+		if badInspection == 2 {
+			require.Zero(t, enters)
+		} else {
+			require.Equal(t, 1, enters)
+		}
+		require.Equal(t, "inspect", (*calls)[len(*calls)-1].Action)
+	}
+}

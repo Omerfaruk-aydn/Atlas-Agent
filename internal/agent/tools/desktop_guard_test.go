@@ -327,3 +327,15 @@ func TestGuardClassifiesNativeAndModelErrorsSeparately(t *testing.T) {
 		require.Equal(t, class, metadata.Failure.Class, text)
 	}
 }
+
+func TestGuardSuccessClearsRecordAndSessionsAreIsolated(t *testing.T) {
+	t.Parallel()
+	inner := &scriptedTool{name: ComputerToolName, replies: []fantasy.ToolResponse{failure("target_missing: gone")}}
+	guarded := WithDesktopGuard(inner)
+	call := computerCall(`{"action":"focus","automation":{"window_id":"11"}}`)
+	_, _ = guarded.Run(guardCtx(t), call)
+	other := context.WithValue(t.Context(), SessionIDContextKey, "another-session")
+	recordDesktopWindows(other, "windows", fantasy.NewTextResponse(`{"result":[{"window_id":"11"}]}`))
+	resp, _ := guarded.Run(other, call)
+	require.False(t, resp.IsError, "a different session has its own history")
+}

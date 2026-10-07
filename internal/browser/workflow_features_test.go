@@ -1,6 +1,8 @@
 package browser
 
 import (
+	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -73,4 +75,24 @@ func TestResponseHeadersDoNotEndNetworkWait(t *testing.T) {
 	require.Contains(t, s.requests, "loading")
 	s.handleTargetEvent(&network.EventLoadingFinished{RequestID: network.RequestID("loading")})
 	require.NotContains(t, s.requests, "loading")
+}
+
+func TestNetworkTrackingOverflowIsExplicit(t *testing.T) {
+	t.Parallel()
+	s := &chromedpSession{}
+	for i := 0; i < 501; i++ {
+		s.startRequest(strconv.Itoa(i))
+	}
+	require.Len(t, s.requests, 500)
+	require.True(t, s.requestTrackingIncomplete, "Dropped requests must not become false idle evidence")
+}
+
+func TestMissingFrameAndCanceledPoll(t *testing.T) {
+	t.Parallel()
+	tree := map[string]any{"frameTree": map[string]any{"frame": map[string]any{"id": "main", "loaderId": "one"}, "childFrames": []any{map[string]any{"frame": map[string]any{"id": "child", "loaderId": "two"}}}}}
+	require.Equal(t, "two", browserFrameInfo(tree, "child")["loaderId"])
+	require.Nil(t, browserFrameInfo(tree, "gone"))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	require.ErrorIs(t, browserPoll(ctx), context.Canceled)
 }

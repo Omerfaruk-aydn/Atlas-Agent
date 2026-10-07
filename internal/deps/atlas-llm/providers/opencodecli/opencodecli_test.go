@@ -1,8 +1,12 @@
 package opencodecli
 
 import (
+	"context"
+	"os"
+
 	"strings"
 	"testing"
+	"time"
 
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/stretchr/testify/require"
@@ -68,4 +72,41 @@ func TestIsolatedConfiguration(t *testing.T) {
 	call.Prompt[0].Content = append(call.Prompt[0].Content, fantasy.FilePart{Data: []byte("image"), MediaType: "image/png"})
 	_, err = requestPrompt(call)
 	require.ErrorContains(t, err, "attachments")
+}
+
+func TestLiveOpenCodeCLI(t *testing.T) {
+	if os.Getenv("ATLAS_TEST_OPENCODE_CLI") != "1" {
+		t.Skip("Opt-in live free-model test")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	defer cancel()
+	p, err := New(Options{})
+	require.NoError(t, err)
+	m, err := p.LanguageModel(ctx, "mimo-v2.6-flash-free")
+	require.NoError(t, err)
+	r, err := m.Generate(ctx, fantasy.Call{Prompt: fantasy.Prompt{fantasy.NewUserMessage("Reply only OK; do not use tools.")}})
+	require.NoError(t, err)
+	require.Equal(t, "OK", strings.TrimSpace(r.Content.Text()))
+	call := testCall()
+	choice := fantasy.SpecificToolChoice("view")
+	call.ToolChoice = &choice
+	call.Prompt = fantasy.Prompt{fantasy.NewUserMessage("Request the supplied view tool with path demo.go. Do not claim you already read it.")}
+	r, err = m.Generate(ctx, call)
+	require.NoError(t, err)
+	require.Len(t, r.Content.ToolCalls(), 1)
+	require.JSONEq(t, `{"path":"demo.go"}`, r.Content.ToolCalls()[0].Input)
+
+	count := 0
+	type echoInput struct {
+		Value string `json:"value"`
+	}
+	tool := fantasy.NewAgentTool("atlas_echo", "Return an authoritative test value", func(_ context.Context, input echoInput, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		count++
+		return fantasy.NewTextResponse("verified-" + input.Value), nil
+	})
+	agent := fantasy.NewAgent(m, fantasy.WithTools(tool), fantasy.WithStopConditions(fantasy.StepCountIs(3)))
+	agentResult, err := agent.Generate(ctx, fantasy.AgentCall{Prompt: "Call atlas_echo once with value bridge-test. After its result, reply only with the actual returned value. Do not invent the result."})
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+	require.Contains(t, agentResult.Response.Content.Text(), "verified-bridge-test")
 }

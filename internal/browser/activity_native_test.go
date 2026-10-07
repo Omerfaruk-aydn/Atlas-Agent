@@ -38,6 +38,20 @@ func TestBrowserDesktopCoordinatesRespectZoomAndDPI(t *testing.T) {
 	}
 }
 
+func TestBrowserDesktopNavigationRetainsLastPositionWithoutStaleClick(t *testing.T) {
+	t.Parallel()
+	e := activity.Event{ID: 9, Visible: true, Persistent: true, Resource: "browser", Action: "navigate", Point: true, X: 40, Y: 50, PointerKind: "click"}
+	got := desktopBrowserEvent(e, browserScreenTransform{}, false, 1700, 930, true)
+	require.True(t, got.Visible)
+	require.True(t, got.Point)
+	require.Equal(t, 1700, got.X)
+	require.Equal(t, 930, got.Y)
+	require.Empty(t, got.PointerKind, "A target lost during navigation cannot click at its old desktop position")
+	got = desktopBrowserEvent(e, browserScreenTransform{}, false, 0, 0, false)
+	require.False(t, got.Point, "CSS coordinates must never be treated as desktop pixels")
+	require.Empty(t, got.PointerKind)
+}
+
 type nativeActivityRecorder struct {
 	mu     sync.Mutex
 	events []activity.Event

@@ -88,3 +88,24 @@ func TestDesktopRenameVerifiesSelectionEditorAndCommit(t *testing.T) {
 	require.Equal(t, []string{"windows", "find", "find", "windows", "select", "key", "inspect", "hotkey", "type", "inspect", "key", "inspect", "assert", "assert", "windows"}, actions)
 	require.Equal(t, []string{"f2", "enter"}, keys)
 }
+
+func TestDesktopRenameStopsAtEveryChildFailure(t *testing.T) {
+	for fail := 1; fail <= 15; fail++ {
+		t.Run(string(rune('A'+fail)), func(t *testing.T) {
+			count := 0
+			invoke, calls := renameFixture(t, func(_ ComputerParams, r fantasy.ToolResponse) fantasy.ToolResponse {
+				count++
+				if count == fail {
+					r = fantasy.NewTextErrorResponse("permission_denied: fixture")
+					r.StopTurn = true
+				}
+				return r
+			})
+			r, err := runDesktopWorkflow(t.Context(), renameParams(), fantasy.ToolCall{}, invoke)
+			require.NoError(t, err)
+			require.True(t, r.IsError)
+			require.True(t, r.StopTurn)
+			require.Len(t, *calls, fail)
+		})
+	}
+}

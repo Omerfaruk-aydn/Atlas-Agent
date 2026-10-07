@@ -62,6 +62,25 @@ func TestVoskVoiceOptions(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestNotificationSoundOptions(t *testing.T) {
+	t.Parallel()
+	data, err := LoadShellConfig(t.Context(), filepath.Join(t.TempDir(), "atlasrc"), []byte("option notifications sound\noption notification-sound permission 'C:/Sesler/izin.wav'\noption notification-sound finished 'C:/Sesler/bitti.wav'"))
+	require.NoError(t, err)
+	var result struct {
+		Options struct {
+			Notifications      string            `json:"notifications"`
+			NotificationSounds map[string]string `json:"notification_sounds"`
+		} `json:"options"`
+	}
+	require.NoError(t, json.Unmarshal(data, &result))
+	require.Equal(t, "sound", result.Options.Notifications)
+	require.Equal(t, map[string]string{"permission": "C:/Sesler/izin.wav", "finished": "C:/Sesler/bitti.wav"}, result.Options.NotificationSounds)
+	for _, script := range []string{"option notification-sound error x.wav", "option notification-sound finished", "option notification-sound"} {
+		_, err := LoadShellConfig(t.Context(), filepath.Join(t.TempDir(), "atlasrc"), []byte(script))
+		require.Error(t, err, script)
+	}
+}
+
 func TestOption_Bool(t *testing.T) {
 	t.Parallel()
 

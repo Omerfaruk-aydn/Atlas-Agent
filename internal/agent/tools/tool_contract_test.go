@@ -212,6 +212,17 @@ func TestRoleAliasesNormalizeOnlyExactNames(t *testing.T) {
 	require.Contains(t, resp.Content, `"count":0`)
 }
 
+func TestComputerNormalizesQuotedScalarsAndKeepsRealErrors(t *testing.T) {
+	t.Parallel()
+	b := newContractBackend(t)
+	resp := runRaw(t, b, `{"action":"click","x":"12","y":"34"}`)
+	require.False(t, resp.IsError, resp.Content)
+	require.Equal(t, computer.Point{X: 12, Y: 34}, b.clicked[0])
+	resp = runRaw(t, b, `{"action":"click","x":"left","y":1}`)
+	require.True(t, resp.IsError)
+	require.Len(t, b.clicked, 1)
+}
+
 type computerError string
 
 func (e computerError) Error() string { return string(e) }

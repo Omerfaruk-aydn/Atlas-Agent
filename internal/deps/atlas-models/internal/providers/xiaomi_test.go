@@ -33,7 +33,8 @@ func TestXiaomiCatalog(t *testing.T) {
 			require.Positive(t, m.ContextWindow)
 			require.Positive(t, m.DefaultMaxTokens)
 			require.True(t, m.CanReason)
-			require.Empty(t, m.ReasoningLevels, "MiMo exposes a thinking toggle, not effort levels")
+			require.Equal(t, []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}, m.ReasoningLevels)
+			require.Equal(t, "high", m.DefaultReasoningEffort)
 			if p.ID != catwalk.InferenceProviderXiaomi {
 				require.Zero(t, m.CostPer1MIn)
 				require.Zero(t, m.CostPer1MOut)

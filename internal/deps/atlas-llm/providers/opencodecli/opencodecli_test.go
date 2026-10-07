@@ -52,3 +52,20 @@ func TestCLIEvents(t *testing.T) {
 		require.Error(t, err)
 	}
 }
+
+func TestIsolatedConfiguration(t *testing.T) {
+	t.Parallel()
+	env := bridgeEnvironment([]string{"OPENCODE_CONFIG_CONTENT=unsafe", "xdg_config_home=unsafe", "KEEP=value"}, "isolated", "isolated/config.json", bridgeConfig())
+	joined := strings.Join(env, "\n")
+	require.NotContains(t, joined, "unsafe")
+	require.Contains(t, joined, "KEEP=value")
+	require.Contains(t, joined, `"*":"ask"`)
+	prompt, err := requestPrompt(testCall())
+	require.NoError(t, err)
+	require.Contains(t, prompt, "Find a file")
+	require.Contains(t, prompt, "input_schema")
+	call := testCall()
+	call.Prompt[0].Content = append(call.Prompt[0].Content, fantasy.FilePart{Data: []byte("image"), MediaType: "image/png"})
+	_, err = requestPrompt(call)
+	require.ErrorContains(t, err, "attachments")
+}

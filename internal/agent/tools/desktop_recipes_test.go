@@ -159,3 +159,58 @@ func TestDesktopSequenceFailedGateStopsNextInput(t *testing.T) {
 	require.Equal(t, []string{"key", "assert"}, actions)
 	require.Contains(t, r.Content, `"actual":"wrong"`)
 }
+
+func TestDesktopSequenceKeepsCompletedEvidenceWhenLaterGateFails(t *testing.T) {
+	inputs := 0
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "sequence", Steps: calculationSteps(), Observation: "semantic"}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+		switch p.Action {
+		case "key":
+			inputs++
+		case "assert":
+			if inputs == 1 {
+				return fantasy.NewTextResponse(`{"passed":true,"actual":"69104"}`), nil
+			}
+			return fantasy.NewTextResponse(`{"passed":false,"actual":"Unexpected"}`), nil
+		case "observe":
+			return fantasy.NewTextResponse(`{"window_id":"11","snapshot_id":"first","elements":[]}`), nil
+		}
+		return fantasy.NewTextResponse(`{}`), nil
+	})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.Equal(t, 2, inputs)
+	require.Contains(t, r.Content, "69104")
+	require.Contains(t, r.Content, "Unexpected")
+	var metadata struct {
+		Completed []any `json:"completed_checkpoints"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(r.Metadata), &metadata))
+	require.Len(t, metadata.Completed, 1)
+}
+
+func TestDesktopTransitionObservesOwnedDialog(t *testing.T) {
+	var actions []string
+	lists := 0
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "transition", Observation: "semantic", Input: ComputerParams{Action: "hotkey", Key: "s", Modifiers: "ctrl", Automation: computer.AutomationRequest{WindowID: "11"}}, Transition: &DesktopTransitionParams{ExpectedTitle: "Save As"}}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+		actions = append(actions, p.Action)
+		if p.Action == "windows" {
+			lists++
+			if lists == 1 {
+				return fantasy.NewTextResponse(`{"result":[{"window_id":"11","foreground":true}]}`), nil
+			}
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"22","name":"Save As","owner_window_id":"11","foreground":true}]}`), nil
+		}
+		if p.Action == "observe" {
+			require.Equal(t, "22", p.Automation.WindowID)
+			return fantasy.NewTextResponse(`{"window_id":"22","elements":[]}`), nil
+		}
+		return fantasy.NewTextResponse(`{}`), nil
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Equal(t, []string{"windows", "hotkey", "windows", "observe"}, actions)
+}

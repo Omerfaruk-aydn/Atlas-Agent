@@ -235,3 +235,15 @@ func TestDesktopTransitionDoesNotAdoptUnrelatedDialogOrReplay(t *testing.T) {
 	require.Equal(t, 1, inputs)
 	require.Zero(t, observes)
 }
+
+func TestDesktopRecipesCancelledBeforeDispatch(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	calls := 0
+	_, err := runDesktopWorkflow(ctx, DesktopWorkflowParams{Mode: "sequence", Steps: calculationSteps()}, fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		calls++
+		return fantasy.ToolResponse{}, nil
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Zero(t, calls)
+}

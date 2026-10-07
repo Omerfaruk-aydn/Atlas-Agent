@@ -214,3 +214,24 @@ func TestDesktopTransitionObservesOwnedDialog(t *testing.T) {
 	require.False(t, r.IsError, r.Content)
 	require.Equal(t, []string{"windows", "hotkey", "windows", "observe"}, actions)
 }
+
+func TestDesktopTransitionDoesNotAdoptUnrelatedDialogOrReplay(t *testing.T) {
+	inputs, observes := 0, 0
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "transition", Input: ComputerParams{Action: "key", Key: "enter", Automation: computer.AutomationRequest{WindowID: "11"}}, Transition: &DesktopTransitionParams{ExpectedTitle: "Save As", WaitMS: 30}}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+		switch p.Action {
+		case "windows":
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"22","name":"Save As","owner_window_id":"99","foreground":true}]}`), nil
+		case "key":
+			inputs++
+		case "observe":
+			observes++
+		}
+		return fantasy.NewTextResponse(`{}`), nil
+	})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.Equal(t, 1, inputs)
+	require.Zero(t, observes)
+}

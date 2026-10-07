@@ -97,3 +97,24 @@ func (r *nativeActivityRecorder) Close() {
 }
 
 func (r *nativeActivityRecorder) SetStopHandler(stop func(uint64) bool) { r.stop = stop }
+
+func TestNativeBrowserRoutingNeverDependsOnDocumentContext(t *testing.T) {
+	t.Parallel()
+	recorder := &nativeActivityRecorder{}
+	// No CDP context exists: native lifecycle and capture exclusion must
+	// remain usable even when a navigating document has been destroyed.
+	s := &chromedpSession{activityNative: recorder}
+	renderer := browserActivityRenderer{s}
+	e := activity.Event{ID: 11, Resource: "browser", Visible: true, Persistent: true, CanStop: true}
+	renderer.Render(e)
+	require.Equal(t, []activity.Event{e}, recorder.events)
+	resume, err := s.suspendActivity(true)
+	require.NoError(t, err)
+	resume()
+	require.Len(t, recorder.events, 1)
+	require.False(t, s.activityMascot.running(), "There is exactly one visual owner, without a page character worker")
+	renderer.Render(activity.Event{})
+	renderer.Close()
+	require.True(t, recorder.closed)
+	require.False(t, recorder.events[len(recorder.events)-1].Visible)
+}

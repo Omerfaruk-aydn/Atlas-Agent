@@ -45,3 +45,35 @@ func TestDesktopObserveRejectsMutationsBeforeDispatch(t *testing.T) {
 		require.True(t, r.IsError)
 	}
 }
+
+func TestDesktopObservePropagatesChildDenial(t *testing.T) {
+	t.Parallel()
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "observe", WindowID: "11"}, fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		r := fantasy.NewTextErrorResponse("denied")
+		r.StopTurn = true
+		return r, nil
+	})
+	require.NoError(t, err)
+	require.True(t, r.StopTurn)
+	require.True(t, r.IsError)
+}
+
+func TestDesktopRenameMissingReturnsObservedNamesWithoutInput(t *testing.T) {
+	t.Parallel()
+	p := renameParams()
+	p.Rename.OldName, p.Rename.NewName = "hesap.txt", "sonuc.txt"
+	invoke, calls := renameFixture(t, func(p ComputerParams, r fantasy.ToolResponse) fantasy.ToolResponse {
+		if p.Action == "find" && p.Automation.Name == "" {
+			return fantasy.NewTextResponse(`{"result":{"matches":[{"element_id":"file","name":"hesap","role":"ControlType.ListItem","process_id":7,"enabled":true}],"truncated":false}}`)
+		}
+		return r
+	})
+	r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, invoke)
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.Contains(t, r.Content, `"hesap"`)
+	require.Contains(t, r.Content, "No rename input sent")
+	for _, call := range *calls {
+		require.Contains(t, []string{"windows", "find"}, call.Action)
+	}
+}

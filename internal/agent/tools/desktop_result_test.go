@@ -24,3 +24,19 @@ func TestDesktopResultPutsDecisionIdentityBeforeLargeControlTree(t *testing.T) {
 	require.JSONEq(t, string(want), string(data))
 	require.Contains(t, input, "window_id", "Rendering must not mutate evidence")
 }
+
+func TestDesktopResultPreservesEmptyEscapedAndFailedEncoding(t *testing.T) {
+	t.Parallel()
+	for _, input := range []map[string]any{nil, {}, {"source_window_id": "closed", "foreground_window": nil}, {"window_id": "11", "content": "quoted \"path\"\nÖmer&Ceylin", "extra": []any{true, nil, 42}}} {
+		data, err := marshalDesktopResult(input)
+		require.NoError(t, err)
+		want, err := json.Marshal(input)
+		require.NoError(t, err)
+		require.JSONEq(t, string(want), string(data))
+	}
+	input := map[string]any{"window_id": "11", "extra": make(chan int)}
+	data, err := marshalDesktopResult(input)
+	require.Error(t, err)
+	require.Nil(t, data)
+	require.Len(t, input, 2)
+}

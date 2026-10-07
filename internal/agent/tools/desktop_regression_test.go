@@ -67,3 +67,66 @@ func TestDesktopSequenceAvoidsDuplicateStableReadback(t *testing.T) {
 		})
 	}
 }
+
+func TestDesktopActObservesOnlyDirectOwnedForegroundDialog(t *testing.T) {
+	for _, kind := range []string{"owned", "foreign", "not_dialog", "not_foreground", "minimized", "wrong_identity", "denied"} {
+		t.Run(kind, func(t *testing.T) {
+			observations, inputs := 0, 0
+			r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "act", Observation: "semantic", Input: ComputerParams{Action: "hotkey", Key: "s", Modifiers: "ctrl", Automation: computer.AutomationRequest{WindowID: "11"}}}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+				var p ComputerParams
+				require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+				if p.Action == "hotkey" {
+					inputs++
+					return fantasy.NewTextResponse(`{}`), nil
+				}
+				require.Equal(t, "observe", p.Action)
+				observations++
+				if observations == 1 {
+					w := desktopWindowInfo{ID: "22", Owner: "11", Foreground: true, WindowClass: "#32770"}
+					switch kind {
+					case "foreign":
+						w.Owner = "99"
+					case "not_dialog":
+						w.WindowClass = "CabinetWClass"
+					case "not_foreground":
+						w.Foreground = false
+					case "minimized":
+						w.Minimized = true
+					}
+					data, marshalErr := json.Marshal(map[string]any{"window_id": "11", "snapshot_id": "source", "foreground_window": w, "elements": []any{}})
+					require.NoError(t, marshalErr)
+					return fantasy.NewTextResponse(string(data)), nil
+				}
+				require.Equal(t, "22", p.Automation.WindowID)
+				if kind == "denied" {
+					return fantasy.NewTextErrorResponse("permission_denied: observe dialog"), nil
+				}
+				if kind == "wrong_identity" {
+					return fantasy.NewTextResponse(`{"window_id":"99","snapshot_id":"wrong","elements":[]}`), nil
+				}
+				image := fantasy.NewImageResponse([]byte("dialog image"), "image/png")
+				image.Content = `{"window_id":"22","snapshot_id":"dialog","elements":[]}`
+				return image, nil
+			})
+			require.NoError(t, err)
+			require.Equal(t, 1, inputs)
+			if kind == "denied" || kind == "wrong_identity" {
+				// A denied read must stop without replaying the preceding mutation.
+				require.True(t, r.IsError)
+				require.Equal(t, 2, observations)
+				return
+			}
+			require.False(t, r.IsError, r.Content)
+			if kind == "owned" {
+				require.Equal(t, 2, observations)
+				require.Equal(t, "image", r.Type)
+				require.Contains(t, r.Content, `"source_window_id":"11"`)
+				require.Contains(t, r.Content, `"snapshot_id":"dialog"`)
+				require.NotContains(t, r.Content, `"snapshot_id":"source"`)
+			} else {
+				require.Equal(t, 1, observations)
+				require.Contains(t, r.Content, `"snapshot_id":"source"`)
+			}
+		})
+	}
+}

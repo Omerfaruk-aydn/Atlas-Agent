@@ -142,3 +142,20 @@ func TestDesktopSequenceValidatesAllStepsBeforeInput(t *testing.T) {
 	require.True(t, r.IsError)
 	require.Zero(t, calls)
 }
+
+func TestDesktopSequenceFailedGateStopsNextInput(t *testing.T) {
+	var actions []string
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "sequence", Steps: calculationSteps()}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+		actions = append(actions, p.Action)
+		if p.Action == "assert" {
+			return fantasy.NewTextResponse(`{"passed":false,"actual":"wrong"}`), nil
+		}
+		return fantasy.NewTextResponse(`{}`), nil
+	})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.Equal(t, []string{"key", "assert"}, actions)
+	require.Contains(t, r.Content, `"actual":"wrong"`)
+}

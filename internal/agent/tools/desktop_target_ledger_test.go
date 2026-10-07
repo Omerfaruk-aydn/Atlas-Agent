@@ -27,3 +27,27 @@ func TestNativeDesktopRechecksRewrittenTargetBeforeExecution(t *testing.T) {
 	require.Contains(t, resp.Content, "unobserved_target")
 	require.Empty(t, b.native, "a hook rewrite must not bypass target provenance")
 }
+
+func TestNativeWindowDiscoveryAuthorizesOnlyThisSession(t *testing.T) {
+	t.Parallel()
+	b := newContractBackend(t)
+	root := t.TempDir()
+	tool := WithDesktopGuard(newComputerTool(permission.NewPermissionService(root, true, nil), root, b, func() bool { return true }, "computer", 0))
+	ctx := context.WithValue(t.Context(), SessionIDContextKey, t.Name())
+	call := computerCall(`{"action":"focus","automation":{"window_id":"11"}}`)
+	resp, err := tool.Run(ctx, call)
+	require.NoError(t, err)
+	require.Contains(t, resp.Content, "unobserved_target")
+	require.Empty(t, b.native)
+	resp, err = tool.Run(ctx, computerCall(`{"action":"windows"}`))
+	require.NoError(t, err)
+	require.False(t, resp.IsError, resp.Content)
+	resp, err = tool.Run(ctx, call)
+	require.NoError(t, err)
+	require.False(t, resp.IsError, resp.Content)
+	require.Contains(t, b.native, "focus")
+	other := context.WithValue(t.Context(), SessionIDContextKey, t.Name()+"/other")
+	resp, err = tool.Run(other, call)
+	require.NoError(t, err)
+	require.Contains(t, resp.Content, "unobserved_target")
+}

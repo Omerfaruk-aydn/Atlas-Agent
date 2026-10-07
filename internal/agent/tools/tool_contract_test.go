@@ -330,3 +330,22 @@ func TestSequenceCheckpointWithoutWindowReturnsStructuredFix(t *testing.T) {
 	require.Equal(t, "checkpoint.window_id", contract.Field)
 	require.Contains(t, contract.Example, "<window_id from prepare/observe>")
 }
+
+func TestKnownGoodShapesStillDecode(t *testing.T) {
+	t.Parallel()
+	for _, input := range []string{
+		`{"action":"observe","observation":"semantic","automation":{"window_id":"11","max_elements":40}}`,
+		`{"action":"hotkey","key":"l","modifiers":"ctrl","automation":{"window_id":"11"}}`,
+		`{"action":"key","key":"ctrl+l","automation":{"window_id":"11"}}`,
+		`{"action":"key","automation":{"window_id":"11","key":"enter"}}`,
+		`{"action":"Click","x":5,"y":6}`,
+		`{"action":"ocr"}`,
+		`{"action":"assert","automation":{"window_id":"11","name":"Save","condition":"visible","wait_ms":500}}`,
+		`{"action":"capture_region","x":1,"y":2,"width":3,"height":4}`,
+	} {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(input), &p), input)
+	}
+	var wp DesktopWorkflowParams
+	require.NoError(t, json.Unmarshal([]byte(`{"mode":"act","window_id":"11","focus_window":true,"input":{"action":"key","key":"enter","automation":{"window_id":"11"}}}`), &wp))
+}

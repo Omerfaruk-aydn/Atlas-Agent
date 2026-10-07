@@ -219,3 +219,33 @@ func TestDesktopSequenceRejectsExcessiveChildBudgetBeforeInput(t *testing.T) {
 	require.True(t, r.IsError)
 	require.Zero(t, calls)
 }
+
+func TestDesktopActClosedWindowReturnsVerifiedAbsence(t *testing.T) {
+	for _, key := range []string{"f4", "esc", "enter"} {
+		var actions []string
+		input := ComputerParams{Action: "key", Key: key, Automation: computer.AutomationRequest{WindowID: "11"}}
+		if key == "f4" {
+			input.Action = "hotkey"
+			input.Modifiers = "alt"
+		}
+		r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "act", Input: input}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			var p ComputerParams
+			require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+			actions = append(actions, p.Action)
+			if p.Action == "windows" {
+				return fantasy.NewTextResponse(`{"result":[{"window_id":"22","foreground":true}]}`), nil
+			}
+			return fantasy.NewTextResponse(`{"action_sent":true}`), nil
+		})
+		require.NoError(t, err)
+		require.False(t, r.IsError, r.Content)
+		require.Equal(t, []string{input.Action, "windows"}, actions)
+		require.Contains(t, r.Content, `"window_status":"absent"`)
+		if key == "f4" {
+			require.Contains(t, r.Content, "absent_closed_window_ids")
+		} else {
+			require.NotContains(t, r.Content, "absent_closed_window_ids")
+		}
+		require.NotContains(t, r.Content, "snapshot_id")
+	}
+}

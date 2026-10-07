@@ -71,7 +71,7 @@ func TestTracker_BuiltinSkillTracking(t *testing.T) {
 	require.False(t, tracker.IsLoaded("atlas-config"))
 	require.False(t, tracker.IsLoaded("go-doc"))
 
-	// Mark builtin skill as loaded (simulating read via crush://...).
+	// Mark builtin skill as loaded (simulating read via atlas://...).
 	tracker.MarkLoaded("atlas-config")
 	require.True(t, tracker.IsLoaded("atlas-config"))
 

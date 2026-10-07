@@ -247,3 +247,37 @@ func TestDesktopRecipesCancelledBeforeDispatch(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	require.Zero(t, calls)
 }
+
+func TestDesktopSequenceStopsOnHandoffAndDenial(t *testing.T) {
+	for _, handoff := range []bool{false, true} {
+		calls := 0
+		r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "sequence", Steps: calculationSteps()}, fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			calls++
+			r := fantasy.NewTextErrorResponse("permission_denied: stop")
+			r.StopTurn = handoff
+			return r, nil
+		})
+		require.NoError(t, err)
+		require.True(t, r.IsError)
+		require.Equal(t, handoff, r.StopTurn)
+		require.Equal(t, 1, calls)
+	}
+}
+
+func TestDesktopSequenceCancellationDuringCheckpointStopsInput(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	inputs := 0
+	_, err := runDesktopWorkflow(ctx, DesktopWorkflowParams{Mode: "sequence", Steps: calculationSteps()}, fantasy.ToolCall{}, func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+		if p.Action == "assert" {
+			cancel()
+			return fantasy.ToolResponse{}, ctx.Err()
+		}
+		inputs++
+		return fantasy.NewTextResponse(`{}`), nil
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 1, inputs)
+}

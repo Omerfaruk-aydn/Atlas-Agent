@@ -70,22 +70,17 @@ func TestHandleDialogErrorsWhenNothingIsPending(t *testing.T) {
 	require.Contains(t, err.Error(), "no pending dialog")
 }
 
-func TestHandleDialogPopsInFIFOOrder(t *testing.T) {
+func TestHandleDialogDoesNotDiscardBeforeDispatchSucceeds(t *testing.T) {
 	s := &chromedpSession{}
 	s.appendDialog(DialogInfo{Type: "alert", Message: "first"})
 	s.appendDialog(DialogInfo{Type: "confirm", Message: "second"})
 
-	// HandleDialog's own s.run call would need a live browser target, so
-	// this only exercises the FIFO bookkeeping: the dequeue must happen
-	// (and happen in order) before that call is ever reached. A nil ctx
-	// panic from the unreachable-in-this-test s.run is caught and
-	// ignored -- the assertion is about what got dequeued, not about
-	// completing the (unavailable here) CDP round trip.
+	// Without a CDP target dispatch cannot succeed. The pending dialog
+	// must remain observable even if the underlying call panics.
 	func() {
 		defer func() { _ = recover() }()
 		_ = s.HandleDialog(true, "")
 	}()
 
-	require.Equal(t, []DialogInfo{{Type: "confirm", Message: "second"}}, s.PendingDialogs(),
-		"the oldest pending dialog must be dequeued first")
+	require.Equal(t, []DialogInfo{{Type: "alert", Message: "first"}, {Type: "confirm", Message: "second"}}, s.PendingDialogs())
 }

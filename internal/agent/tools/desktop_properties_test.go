@@ -82,3 +82,16 @@ func TestDesktopActObservesVerifiedExplorerProperties(t *testing.T) {
 		})
 	}
 }
+
+func TestDesktopPropertiesDeniedBaselineDoesNotExecuteShortcut(t *testing.T) {
+	var actions []string
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "act", Input: ComputerParams{Action: "hotkey", Key: "enter", Modifiers: "alt", Automation: computer.AutomationRequest{WindowID: "11"}}}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+		actions = append(actions, p.Action)
+		return fantasy.NewTextErrorResponse("permission_denied"), nil
+	})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.Equal(t, []string{"windows"}, actions)
+}

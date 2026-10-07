@@ -364,7 +364,7 @@ func TestToPromptXMLBuiltinType(t *testing.T) {
 	t.Parallel()
 
 	skills := []*Skill{
-		{Name: "builtin-skill", Description: "A builtin.", SkillFilePath: "crush://skills/builtin-skill/SKILL.md", Builtin: true},
+		{Name: "builtin-skill", Description: "A builtin.", SkillFilePath: "atlas://skills/builtin-skill/SKILL.md", Builtin: true},
 		{Name: "user-skill", Description: "A user skill.", SkillFilePath: "/home/user/.config/Atlas-Agent/skills/user-skill/SKILL.md"},
 	}
 	xml := ToPromptXML(skills)
@@ -412,8 +412,8 @@ func TestDiscoverBuiltin(t *testing.T) {
 			found = true
 			require.True(t, strings.HasPrefix(s.SkillFilePath, BuiltinPrefix))
 			require.True(t, strings.HasPrefix(s.Path, BuiltinPrefix))
-			require.Equal(t, "crush://skills/atlas-config/SKILL.md", s.SkillFilePath)
-			require.Equal(t, "crush://skills/atlas-config", s.Path)
+			require.Equal(t, "atlas://skills/atlas-config/SKILL.md", s.SkillFilePath)
+			require.Equal(t, "atlas://skills/atlas-config", s.Path)
 			require.NotEmpty(t, s.Description)
 			require.NotEmpty(t, s.Instructions)
 			require.True(t, s.Builtin)
@@ -425,8 +425,8 @@ func TestDiscoverBuiltin(t *testing.T) {
 	for _, s := range discovered {
 		if s.Name == "jq" {
 			foundJQ = true
-			require.Equal(t, "crush://skills/jq/SKILL.md", s.SkillFilePath)
-			require.Equal(t, "crush://skills/jq", s.Path)
+			require.Equal(t, "atlas://skills/jq/SKILL.md", s.SkillFilePath)
+			require.Equal(t, "atlas://skills/jq", s.Path)
 			require.NotEmpty(t, s.Description)
 			require.NotEmpty(t, s.Instructions)
 			require.True(t, s.Builtin)
@@ -438,8 +438,8 @@ func TestDiscoverBuiltin(t *testing.T) {
 	for _, s := range discovered {
 		if s.Name == "atlas-hooks" {
 			foundHooks = true
-			require.Equal(t, "crush://skills/atlas-hooks/SKILL.md", s.SkillFilePath)
-			require.Equal(t, "crush://skills/atlas-hooks", s.Path)
+			require.Equal(t, "atlas://skills/atlas-hooks/SKILL.md", s.SkillFilePath)
+			require.Equal(t, "atlas://skills/atlas-hooks", s.Path)
 			require.NotEmpty(t, s.Description)
 			require.NotEmpty(t, s.Instructions)
 			require.True(t, s.Builtin)
@@ -465,7 +465,7 @@ func TestDeduplicate(t *testing.T) {
 		},
 		{
 			name:     "user overrides builtin",
-			input:    []*Skill{{Name: "atlas-config", Path: "crush://skills/atlas-config"}, {Name: "atlas-config", Path: "/user/atlas-config"}},
+			input:    []*Skill{{Name: "atlas-config", Path: "atlas://skills/atlas-config"}, {Name: "atlas-config", Path: "/user/atlas-config"}},
 			wantLen:  1,
 			wantName: "atlas-config",
 			wantPath: "/user/atlas-config",

@@ -194,3 +194,28 @@ func TestDesktopSequenceGroupsLogicalInputsAtCheckpoint(t *testing.T) {
 	require.False(t, r.IsError, r.Content)
 	require.Equal(t, []string{"type", "key", "assert", "observe"}, actions)
 }
+
+func TestFocusedLegacyContentIsNotFrameOnly(t *testing.T) {
+	var observed map[string]any
+	require.NoError(t, json.Unmarshal([]byte(`{"elements":[{"role":"ControlType.Window"},{"role":"ControlType.Pane","keyboard_focused":true}]}`), &observed))
+	require.False(t, desktopShellOnly(observed))
+}
+
+func TestDesktopSequenceRejectsExcessiveChildBudgetBeforeInput(t *testing.T) {
+	steps := []DesktopWorkflowStep{}
+	for range 16 {
+		inputs := []ComputerParams{}
+		for range 8 {
+			inputs = append(inputs, ComputerParams{Action: "key", Key: "enter", Automation: computer.AutomationRequest{WindowID: "11"}})
+		}
+		steps = append(steps, DesktopWorkflowStep{Inputs: inputs, Checkpoint: computer.AutomationRequest{WindowID: "11", Name: "Ready", Condition: "visible"}})
+	}
+	calls := 0
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "sequence", Steps: steps}, fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		calls++
+		return fantasy.ToolResponse{}, nil
+	})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.Zero(t, calls)
+}

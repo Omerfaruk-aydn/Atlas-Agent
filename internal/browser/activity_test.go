@@ -66,7 +66,11 @@ func TestActivityDoesNotPolluteInputExtractionOrCapture(t *testing.T) {
 	require.Equal(t, `"17.5"`, radius)
 	caption, err := s.Eval(`window[Symbol.for('atlas.agent.activity.v1')].edges.parentNode.querySelector('.control-banner')?.textContent`)
 	require.NoError(t, err)
-	require.Contains(t, caption, "Atlas is using your browser")
+	// The strip reports the recorded action and the run time, not a
+	// fixed slogan, and never claims a pending answer it does not have.
+	require.Contains(t, caption, "Clicking")
+	require.Regexp(t, `\d\d:\d\d`, caption)
+	require.NotContains(t, caption, "Answer in the terminal")
 	strip, err := s.Eval(`(()=>{const b=window[Symbol.for('atlas.agent.activity.v1')].edges.parentNode.querySelector('.control-banner');return {height:b.getBoundingClientRect().height,radius:getComputedStyle(b).borderRadius,pointer:!!b.querySelector('.banner-icon svg')}})()`)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"height":38,"radius":"6px","pointer":true}`, strip)

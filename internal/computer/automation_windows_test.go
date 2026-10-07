@@ -157,6 +157,34 @@ func TestWindowsAutomationOwnForm(t *testing.T) {
 	require.Contains(t, valueResult, `"value_verified":true`)
 	require.Contains(t, valueResult, `"keyboard_focused":`)
 	require.Contains(t, run(AutomationRequest{Action: "assert", Name: "Fixture input", Condition: "value", Expected: "Örnek 123"}), `"passed":true`)
+	readback := run(AutomationRequest{Action: "inspect"})
+	var content struct {
+		Elements []struct {
+			Name           string `json:"name"`
+			Value          string `json:"value"`
+			ValueAvailable bool   `json:"value_available"`
+			Text           string `json:"text"`
+			TextAvailable  bool   `json:"text_available"`
+		} `json:"elements"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(readback), &content))
+	valueRead := false
+	for _, e := range content.Elements {
+		if e.Name == "Fixture input" {
+			require.True(t, e.ValueAvailable)
+			require.Equal(t, "Örnek 123", e.Value)
+			require.True(t, e.TextAvailable)
+			require.Contains(t, run(AutomationRequest{Action: "assert", Name: "Fixture input", Condition: "document_text", Expected: e.Text}), `"passed":true`)
+			valueRead = true
+		}
+	}
+	require.True(t, valueRead)
+	assertion := run(AutomationRequest{Action: "assert", Name: "Fixture input", Condition: "value", Expected: "Örnek 123"})
+	var actual struct {
+		Value string `json:"actual"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(assertion), &actual))
+	require.Equal(t, "Örnek 123", actual.Value)
 	require.Contains(t, run(AutomationRequest{Action: "assert", Name: "Fixture save", Role: "ControlType.Button", Condition: "enabled"}), `"passed":true`)
 	if driver.ForegroundWindow() == hwnd {
 		require.NoError(t, driver.Hotkey([]string{"ctrl"}, "a"))
@@ -219,6 +247,51 @@ func TestWindowsAppIdentifierValidationInTurkishLocale(t *testing.T) {
 			} else {
 				require.Error(t, err)
 				require.Contains(t, string(output), "Unsupported application identifier")
+			}
+		})
+	}
+}
+
+func TestWindowsLocalizedCalculatorLaunchUsesInstalledIdentity(t *testing.T) {
+	end := strings.Index(automationScript, "if ($p.action -eq 'monitors')")
+	require.Positive(t, end)
+	fixture := `function Get-StartApps { [pscustomobject]@{Name='Hesap Makinesi';AppID='Microsoft.WindowsCalculator_8wekyb3d8bbwe!App'} }; function Start-Process { param($FilePath,$ArgumentList) }; `
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", fixture+automationScript[:end]+"} catch { throw }")
+	cmd.Stdin = strings.NewReader(`{"action":"launch_app","name":"Calculator"}`)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, err, string(output))
+	require.Contains(t, string(output), `"launch_requested":true`)
+	require.Contains(t, string(output), `Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`)
+}
+
+func TestWindowsNotepadLaunchUsesInstalledIdentity(t *testing.T) {
+	end := strings.Index(automationScript, "if ($p.action -eq 'monitors')")
+	require.Positive(t, end)
+	for _, test := range []struct {
+		name, appID string
+		accepted    bool
+	}{
+		{"Legacy registered identity", `{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\notepad.exe`, true},
+		{"Packaged registered identity", "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App", true},
+		{"Unrelated registration with similar suffix", "Unrelated!notepad.exe", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := fmt.Sprintf(`function Get-StartApps { [pscustomobject]@{Name='Not Defteri';AppID='%s'} }; function Start-Process { param($FilePath,$ArgumentList) }; `, test.appID)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", fixture+automationScript[:end]+"} catch { throw }")
+			cmd.Stdin = strings.NewReader(`{"action":"launch_app","name":"Notepad"}`)
+			cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+			output, err := cmd.CombinedOutput()
+			if test.accepted {
+				require.NoError(t, err, string(output))
+				require.Contains(t, string(output), `"launch_requested":true`)
+			} else {
+				require.Error(t, err)
+				require.Contains(t, string(output), "Target missing")
 			}
 		})
 	}

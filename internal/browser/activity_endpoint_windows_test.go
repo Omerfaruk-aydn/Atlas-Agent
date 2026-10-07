@@ -4,7 +4,7 @@ package browser
 
 import (
 	"encoding/binary"
-
+	"net"
 	"os"
 	"syscall"
 	"testing"
@@ -39,6 +39,17 @@ func TestNativeListenerIdentityRequiresExactPIDAndPort(t *testing.T) {
 		require.False(t, tcpTableHasBrowserListener(table, ipv6, 9222, 5678))
 		require.False(t, tcpTableHasBrowserListener(table[:len(table)-1], ipv6, 9222, 1234))
 	}
+}
+
+func TestNativeListenerChecksRealWindowsSocketOwnership(t *testing.T) {
+	t.Parallel()
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+	port := uint16(listener.Addr().(*net.TCPAddr).Port)
+	pid := uint32(os.Getpid())
+	require.True(t, localBrowserListenerOwned(port, pid))
+	require.False(t, localBrowserListenerOwned(port, pid+1))
 }
 
 type overlayCoverageScan struct {

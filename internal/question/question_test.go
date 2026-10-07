@@ -41,3 +41,22 @@ func TestConcurrentRequestsQueueAndResolveByID(t *testing.T) {
 	require.Equal(t, "first", (<-first).answers[0].FillInText)
 	require.False(t, svc.Answer([]Answer{{QuestionID: "one-q", FillInText: "again"}}), "A double submit is rejected")
 }
+
+func TestNextRequestIsShownAfterTheDisplayedOneResolves(t *testing.T) {
+	svc := NewService()
+	events := svc.Subscribe(t.Context())
+	notifications := svc.SubscribeNotifications(t.Context())
+	go svc.Ask(t.Context(), batch("a"))
+	require.Equal(t, "a", (<-events).Payload.ID)
+	go svc.Ask(t.Context(), batch("b"))
+	require.Eventually(t, func() bool {
+		svc.mu.Lock()
+		defer svc.mu.Unlock()
+		return len(svc.queue) == 2
+	}, time.Second, time.Millisecond)
+	require.True(t, svc.CancelRequest("a"))
+	require.Equal(t, "a", (<-notifications).Payload.BatchID)
+	require.Equal(t, "b", (<-events).Payload.ID)
+	require.False(t, svc.CancelRequest("a"))
+	require.True(t, svc.Cancel())
+}

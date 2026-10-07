@@ -48,3 +48,10 @@ func TestDesktopRecoveryStopsOnDenialAndHandoff(t *testing.T) {
 		require.Equal(t, 1, calls)
 	}
 }
+
+func TestExplorerIdentityExcludesDesktopShell(t *testing.T) {
+	for _, class := range []string{"Progman", "WorkerW", "Shell_TrayWnd", ""} {
+		require.False(t, desktopApplicationWindowMatches(desktopWindowInfo{Name: "Desktop", ProcessName: "explorer.exe", WindowClass: class}, "File Explorer"))
+	}
+	require.True(t, desktopApplicationWindowMatches(desktopWindowInfo{Name: "deneme", ProcessName: "explorer.exe", WindowClass: "CabinetWClass"}, "Dosya Gezgini"))
+}

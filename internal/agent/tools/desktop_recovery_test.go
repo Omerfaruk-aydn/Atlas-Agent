@@ -33,3 +33,18 @@ func TestDesktopRecoveryObservesWithoutReplaying(t *testing.T) {
 	require.Contains(t, r.Metadata, "fresh_observation")
 	require.Contains(t, r.Content, "fresh_observation", "Recovery evidence must be visible in the model tool message")
 }
+
+func TestDesktopRecoveryStopsOnDenialAndHandoff(t *testing.T) {
+	for _, stop := range []bool{false, true} {
+		calls := 0
+		invoke := desktopRecoveryInvoke(t.Context(), fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			calls++
+			r := fantasy.NewTextErrorResponse("permission_denied: user denied")
+			r.StopTurn = stop
+			return r, nil
+		})
+		_, err := invoke(t.Context(), fantasy.ToolCall{Name: ComputerToolName, Input: `{"action":"key"}`})
+		require.NoError(t, err)
+		require.Equal(t, 1, calls)
+	}
+}

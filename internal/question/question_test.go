@@ -1,6 +1,7 @@
 package question
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -59,4 +60,18 @@ func TestNextRequestIsShownAfterTheDisplayedOneResolves(t *testing.T) {
 	require.Equal(t, "b", (<-events).Payload.ID)
 	require.False(t, svc.CancelRequest("a"))
 	require.True(t, svc.Cancel())
+}
+
+func TestAbandonedRequestIsWithdrawnFromEveryView(t *testing.T) {
+	svc := NewService()
+	notifications := svc.SubscribeNotifications(t.Context())
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	var registered Request
+	ctx = WithPendingHook(ctx, func(r Request) { registered = r; cancel() })
+	go func() { _, err := svc.Ask(ctx, batch("gone")); done <- err }()
+	require.ErrorIs(t, <-done, context.Canceled)
+	require.Equal(t, "gone", registered.ID)
+	require.Equal(t, "gone", (<-notifications).Payload.BatchID)
+	require.False(t, svc.AnswerRequest("gone", nil), "A withdrawn request is never answered")
 }

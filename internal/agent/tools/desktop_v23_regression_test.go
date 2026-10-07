@@ -51,3 +51,27 @@ func TestDesktopTransitionAcceptsMatchingOuterWindow(t *testing.T) {
 		}
 	}
 }
+
+func TestDesktopCheckpointGuidanceUsesRuntimeIdentity(t *testing.T) {
+	t.Parallel()
+	observed := map[string]any{"elements": []any{map[string]any{"automation_id": "CalculatorResults", "element_id": "fresh-result", "name": "Ekran değeri 69.104", "enabled": true}}}
+	desktopCheckpointGuidance(observed, "11")
+	guidance := observed["checkpoint_guidance"].(map[string]any)
+	selector := guidance["selector"].(computer.AutomationRequest)
+	require.Equal(t, "fresh-result", selector.ElementID)
+	require.Empty(t, selector.Name)
+	require.Equal(t, "Ekran değeri 69.104", guidance["actual"])
+	require.Empty(t, selector.Expected)
+}
+
+func TestDesktopSequenceRejectsChangingNameCheckpointBeforeInput(t *testing.T) {
+	t.Parallel()
+	p := DesktopWorkflowParams{Mode: "sequence", Steps: []DesktopWorkflowStep{{Input: ComputerParams{Action: "type", Text: "1234*56", Automation: computer.AutomationRequest{WindowID: "11"}}, Checkpoint: computer.AutomationRequest{WindowID: "11", Name: "Ekran değeri 0", Condition: "text", Expected: "69104"}}}}
+	r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		t.Fatal("Impossible checkpoint dispatched input")
+		return fantasy.ToolResponse{}, nil
+	})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.Contains(t, r.Content, "inconsistent_text_checkpoint")
+}

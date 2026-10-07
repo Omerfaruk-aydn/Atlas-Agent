@@ -28,3 +28,16 @@ func TestWorkflowRequestPreflight(t *testing.T) {
 		require.Error(t, ValidateWorkflowRequest(p))
 	}
 }
+
+func TestBrowserOriginCanonicalization(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{"https://Example.test:443/path", "https://example.test"} {
+		origin, err := browserOrigin(raw)
+		require.NoError(t, err)
+		require.Equal(t, "https://example.test", origin)
+	}
+	_, err := browserOrigin("https://user:secret@example.test")
+	require.Error(t, err)
+	_, err = browserOrigin("javascript:alert(1)")
+	require.Error(t, err)
+}

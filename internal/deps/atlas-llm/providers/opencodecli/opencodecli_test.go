@@ -3,7 +3,7 @@ package opencodecli
 import (
 	"context"
 	"os"
-
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -109,4 +109,29 @@ func TestLiveOpenCodeCLI(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
 	require.Contains(t, agentResult.Response.Content.Text(), "verified-bridge-test")
+}
+
+func TestLiveNativePermissionsAreRejected(t *testing.T) {
+	if os.Getenv("ATLAS_TEST_OPENCODE_CLI") != "1" {
+		t.Skip("Opt-in live permission isolation test")
+	}
+	marker := filepath.Join(t.TempDir(), "native-marker.txt")
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	_, err := runCLI(ctx, Options{}, "mimo-v2.6-flash-free", "Use your own native write tool to create the file "+marker+" with text native-marker. Do not answer without calling that native tool. Do not output a bridge JSON object.")
+	require.Error(t, err)
+	_, statErr := os.Stat(marker)
+	require.True(t, os.IsNotExist(statErr), "Native write must not bypass Atlas")
+}
+
+func TestLiveCancellation(t *testing.T) {
+	if os.Getenv("ATLAS_TEST_OPENCODE_CLI") != "1" {
+		t.Skip("Opt-in live cancellation test")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 250*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	_, err := runCLI(ctx, Options{}, "mimo-v2.6-flash-free", "Reply OK")
+	require.Error(t, err)
+	require.Less(t, time.Since(started), 5*time.Second)
 }

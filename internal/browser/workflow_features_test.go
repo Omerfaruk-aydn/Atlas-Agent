@@ -2,6 +2,10 @@ package browser
 
 import (
 	"testing"
+	"time"
+
+	cdpbrowser "github.com/chromedp/cdproto/browser"
+	"github.com/chromedp/cdproto/cdp"
 
 	"github.com/stretchr/testify/require"
 )
@@ -40,4 +44,23 @@ func TestBrowserOriginCanonicalization(t *testing.T) {
 	require.Error(t, err)
 	_, err = browserOrigin("javascript:alert(1)")
 	require.Error(t, err)
+}
+
+func TestDownloadEvidenceRejectsOtherTabsAndUnfinishedTransfers(t *testing.T) {
+	t.Parallel()
+	s := &chromedpSession{downloadFrames: map[string]bool{"owned": true}, downloads: map[string]browserDownload{}}
+	s.handleDownloadEvent(&cdpbrowser.EventDownloadWillBegin{FrameID: cdp.FrameID("other"), GUID: "bad", SuggestedFilename: "report.txt"})
+	require.Empty(t, s.downloads)
+	s.handleDownloadEvent(&cdpbrowser.EventDownloadWillBegin{FrameID: cdp.FrameID("owned"), GUID: "good", SuggestedFilename: "report.txt"})
+	p := Request{Paths: []string{"report.txt"}, NewerThan: time.Now().Add(-time.Second)}
+	got, err := s.completedDownload(p)
+	require.NoError(t, err)
+	require.Empty(t, got.ID)
+	s.handleDownloadEvent(&cdpbrowser.EventDownloadProgress{GUID: "good", State: cdpbrowser.DownloadProgressStateCompleted})
+	got, err = s.completedDownload(p)
+	require.NoError(t, err)
+	require.Equal(t, "good", got.ID)
+	s.handleDownloadEvent(&cdpbrowser.EventDownloadProgress{GUID: "good", State: cdpbrowser.DownloadProgressStateCanceled})
+	_, err = s.completedDownload(p)
+	require.ErrorContains(t, err, "download_canceled")
 }

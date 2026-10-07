@@ -6,7 +6,7 @@ import (
 
 	cdpbrowser "github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/cdproto/cdp"
-
+	"github.com/chromedp/cdproto/network"
 	"github.com/stretchr/testify/require"
 )
 
@@ -63,4 +63,14 @@ func TestDownloadEvidenceRejectsOtherTabsAndUnfinishedTransfers(t *testing.T) {
 	s.handleDownloadEvent(&cdpbrowser.EventDownloadProgress{GUID: "good", State: cdpbrowser.DownloadProgressStateCanceled})
 	_, err = s.completedDownload(p)
 	require.ErrorContains(t, err, "download_canceled")
+}
+
+func TestResponseHeadersDoNotEndNetworkWait(t *testing.T) {
+	t.Parallel()
+	s := &chromedpSession{}
+	s.startRequest("loading")
+	s.appendNetwork(NetworkEntry{RequestID: "loading", Status: 200})
+	require.Contains(t, s.requests, "loading")
+	s.handleTargetEvent(&network.EventLoadingFinished{RequestID: network.RequestID("loading")})
+	require.NotContains(t, s.requests, "loading")
 }

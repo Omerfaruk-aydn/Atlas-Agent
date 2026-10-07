@@ -58,3 +58,15 @@ func TestDesktopReadinessRetriesTransientReadsOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestDesktopReadinessHasBoundedTimeout(t *testing.T) {
+	backend := &efficientDesktopBackend{}
+	backend.call = func(context.Context, computer.AutomationRequest) (json.RawMessage, error) {
+		return json.RawMessage(`{"passed":false}`), nil
+	}
+	state := &computerToolState{backend: backend}
+	r, err := state.runAutomation(t.Context(), "assert", ComputerParams{Automation: computer.AutomationRequest{WindowID: "11", Name: "status", Condition: "visible", WaitMS: 20}})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.Contains(t, r.Content, "condition_timeout")
+}

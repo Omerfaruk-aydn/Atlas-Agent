@@ -130,3 +130,35 @@ func TestDesktopActObservesOnlyDirectOwnedForegroundDialog(t *testing.T) {
 		})
 	}
 }
+
+func TestDesktopActGroupsKnownInputsBeforeOneObservation(t *testing.T) {
+	var actions []string
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "act", Observation: "semantic", Inputs: []ComputerParams{
+		{Action: "key", Key: "f2", Automation: computer.AutomationRequest{WindowID: "11"}},
+		{Action: "type", Text: "sonuc.txt", Automation: computer.AutomationRequest{WindowID: "11"}},
+		{Action: "key", Key: "enter", Automation: computer.AutomationRequest{WindowID: "11"}},
+	}, WaitFor: computer.AutomationRequest{WindowID: "11", ElementID: "file", Condition: "text", Expected: "sonuc.txt"}}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+		actions = append(actions, p.Action)
+		if p.Action == "assert" {
+			return fantasy.NewTextResponse(`{"passed":true,"actual":"sonuc.txt"}`), nil
+		}
+		return fantasy.NewTextResponse(`{"window_id":"11","elements":[]}`), nil
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Equal(t, []string{"key", "type", "key", "assert", "observe"}, actions)
+}
+
+func TestDesktopActValidatesWholeInputGroup(t *testing.T) {
+	inputs := []ComputerParams{{Action: "key", Key: "f2", Automation: computer.AutomationRequest{WindowID: "11"}}, {Action: "type", Text: "name", Automation: computer.AutomationRequest{WindowID: "22"}}}
+	calls := 0
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "act", Inputs: inputs}, fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		calls++
+		return fantasy.ToolResponse{}, nil
+	})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.Zero(t, calls)
+}

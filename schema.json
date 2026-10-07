@@ -1051,7 +1051,11 @@
         },
         "opencode_transport": {
           "type": "string",
-          "enum": ["auto", "api", "cli"],
+          "enum": [
+            "auto",
+            "api",
+            "cli"
+          ],
           "description": "OpenCode Zen inference transport",
           "default": "auto"
         },

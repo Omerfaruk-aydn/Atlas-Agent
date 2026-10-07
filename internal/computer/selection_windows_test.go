@@ -62,3 +62,24 @@ $element|Add-Member ScriptMethod TryGetCurrentPattern { param($id,$result) if($s
 		})
 	}
 }
+
+func TestWindowsSelectionFixtureMatchesInstalledUIAutomationContract(t *testing.T) {
+	output := runMockedAutomationScript(t, `
+Add-Type -AssemblyName UIAutomationClient
+$pattern=[System.Windows.Automation.SelectionPattern]
+$current=$pattern.GetProperty('Current')
+$method=$current.PropertyType.GetMethod('GetSelection',[Type[]]@())
+@{current_type=$current.PropertyType.FullName;method=$method.Name;return_type=$method.ReturnType.FullName;invalid_direct_method=($null -ne $pattern.GetMethod('GetCurrentSelection'))}|ConvertTo-Json -Compress
+`, "")
+	var r struct {
+		CurrentType         string `json:"current_type"`
+		Method              string `json:"method"`
+		ReturnType          string `json:"return_type"`
+		InvalidDirectMethod bool   `json:"invalid_direct_method"`
+	}
+	require.NoError(t, json.Unmarshal(output, &r), string(output))
+	require.Equal(t, "System.Windows.Automation.SelectionPattern+SelectionPatternInformation", r.CurrentType)
+	require.Equal(t, "GetSelection", r.Method)
+	require.Equal(t, "System.Windows.Automation.AutomationElement[]", r.ReturnType)
+	require.False(t, r.InvalidDirectMethod)
+}

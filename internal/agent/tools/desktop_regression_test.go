@@ -162,3 +162,19 @@ func TestDesktopActValidatesWholeInputGroup(t *testing.T) {
 	require.True(t, r.IsError)
 	require.Zero(t, calls)
 }
+
+func TestDesktopActStopsGroupAtDeniedInput(t *testing.T) {
+	var actions []string
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "act", Inputs: []ComputerParams{{Action: "key", Key: "f2", Automation: computer.AutomationRequest{WindowID: "11"}}, {Action: "type", Text: "name", Automation: computer.AutomationRequest{WindowID: "11"}}, {Action: "key", Key: "enter", Automation: computer.AutomationRequest{WindowID: "11"}}}}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+		actions = append(actions, p.Action)
+		if p.Action == "type" {
+			return fantasy.NewTextErrorResponse("permission_denied: fixture"), nil
+		}
+		return fantasy.NewTextResponse(`{}`), nil
+	})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.Equal(t, []string{"key", "type"}, actions)
+}

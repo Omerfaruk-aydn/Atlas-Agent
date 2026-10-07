@@ -109,3 +109,41 @@ func TestDesktopRenameStopsAtEveryChildFailure(t *testing.T) {
 		})
 	}
 }
+
+func TestDesktopRenameRejectsUnverifiedSelectionAndEditor(t *testing.T) {
+	for _, action := range []string{"select", "inspect", "assert", "windows"} {
+		t.Run(action, func(t *testing.T) {
+			invoke, calls := renameFixture(t, func(p ComputerParams, r fantasy.ToolResponse) fantasy.ToolResponse {
+				if p.Action == action {
+					return fantasy.NewTextResponse(`{"result":{}}`)
+				}
+				return r
+			})
+			r, err := runDesktopWorkflow(t.Context(), renameParams(), fantasy.ToolCall{}, invoke)
+			require.NoError(t, err)
+			require.True(t, r.IsError, r.Content)
+			require.Equal(t, action, (*calls)[len(*calls)-1].Action)
+		})
+	}
+}
+
+func TestDesktopRenamePreflightRejectsUnsafeNamesAndMixedModes(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"", "../sonuc", "a\\b", "CON.txt", "LPT².txt", "sonuc.", "sonuc ", "a\nb"} {
+		p := renameParams()
+		p.Rename.NewName = name
+		r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			t.Fatal("Invalid arguments dispatched input")
+			return fantasy.ToolResponse{}, nil
+		})
+		require.NoError(t, err)
+		require.True(t, r.IsError, name)
+	}
+	for _, mode := range []string{"prepare", "sequence", "flow"} {
+		p := renameParams()
+		p.Mode = mode
+		r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, nil)
+		require.NoError(t, err)
+		require.True(t, r.IsError)
+	}
+}

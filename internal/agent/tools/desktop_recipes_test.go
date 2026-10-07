@@ -7,7 +7,7 @@ import (
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
-
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/schema"
 	"github.com/stretchr/testify/require"
 )
 
@@ -71,5 +71,61 @@ func TestDesktopTransitionGroupRejectsBadScopeAndStopsOnDenial(t *testing.T) {
 		} else {
 			require.Equal(t, []string{"windows", "type"}, actions)
 		}
+	}
+}
+
+func TestDesktopNewRecipesHaveUsableSchema(t *testing.T) {
+	info := NewToolPipeline(nil).Info()
+	data, err := json.Marshal(map[string]any{"type": "object", "properties": info.Parameters, "required": info.Required})
+	require.NoError(t, err)
+	var spec schema.Schema
+	require.NoError(t, json.Unmarshal(data, &spec))
+	for _, input := range []string{
+		`{"desktop":{"mode":"flow","flow":{"nodes":[{"id":"note","kind":"prepare","application":"Notepad","next":"close"},{"id":"close","kind":"close","window_ref":"note"}]}}}`,
+		`{"desktop":{"mode":"rename","window_id":"11","rename":{"old_name":"hesap","new_name":"sonuc"}}}`,
+		`{"desktop":{"mode":"act","inputs":[{"action":"type","text":"name","automation":{"window_id":"11"}},{"action":"key","key":"enter","automation":{"window_id":"11"}}]}}`,
+		`{"desktop":{"mode":"sequence","observation":"auto","steps":[{"input":{"action":"key","key":"enter","automation":{"window_id":"11"}},"checkpoint":{"window_id":"11","element_id":"result","condition":"value","expected":"69104"}}]}}`,
+		`{"desktop":{"mode":"transition","input":{"action":"hotkey","key":"s","modifiers":"ctrl","automation":{"window_id":"11"}},"transition":{"expected_title":"Save As"}}}`,
+	} {
+		var args any
+		require.NoError(t, json.Unmarshal([]byte(input), &args))
+		require.NoError(t, schema.ValidateAgainstSchema(args, spec))
+	}
+}
+
+func TestDesktopSequenceReturnsEveryActualCheckpoint(t *testing.T) {
+	steps := calculationSteps()
+	var actions []string
+	index := 0
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "sequence", Steps: steps, Observation: "semantic"}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+		actions = append(actions, p.Action)
+		if p.Action == "assert" {
+			data, err := json.Marshal(map[string]any{"passed": true, "actual": steps[index].Checkpoint.Expected, "window_id": "11"})
+			require.NoError(t, err)
+			index++
+			return fantasy.NewTextResponse(string(data)), nil
+		}
+		if p.Action == "observe" {
+			require.Equal(t, "semantic", p.Observation)
+			return fantasy.NewTextResponse(`{"window_id":"11","snapshot_id":"fresh","elements":[]}`), nil
+		}
+		return fantasy.NewTextResponse(`{"action_sent":true}`), nil
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Equal(t, []string{"key", "assert", "key", "assert", "key", "assert", "observe"}, actions)
+	var result struct {
+		Checkpoints []struct {
+			Assertion struct {
+				Actual string `json:"actual"`
+			} `json:"assertion"`
+		} `json:"checkpoints"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(r.Content), &result))
+	require.Len(t, result.Checkpoints, 3)
+	for i, value := range []string{"69104", "8638", "9000"} {
+		require.Equal(t, value, result.Checkpoints[i].Assertion.Actual)
 	}
 }

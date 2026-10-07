@@ -60,3 +60,32 @@ func TestIslandDenialIsFinal(t *testing.T) {
 	require.False(t, granted)
 	require.Equal(t, activity.StateDenied, m.Snapshot().State)
 }
+
+func TestIslandSessionGrantIsRememberedLikeTheTerminal(t *testing.T) {
+	granted, _, svc := requestFromIsland(t, activity.DecisionAllowSession)
+	require.True(t, granted)
+	s := svc.(*permissionService)
+	found := false
+	s.sessionPermissions.Seq2()(func(key PermissionKey, _ bool) bool {
+		found = key.SessionID == "island-session" && key.ToolName == "browser" && key.Action == "click"
+		return !found
+	})
+	require.True(t, found)
+}
+
+func TestIslandPromptNeverShowsTypedContentOrSecrets(t *testing.T) {
+	typed := islandPrompt(PermissionRequest{ToolName: "browser", Action: "type", Description: `Type into browser element: hunter2`})
+	require.Empty(t, typed.Permission.Detail)
+	for raw, hidden := range map[string]string{
+		"Navigate browser to: https://user:pw@example.com/login?token=abc#frag":     "abc",
+		"curl -H 'Authorization: Bearer sk-live-0123456789abcdef' https://api.test": "sk-live",
+		"deploy --password hunter2 now":                                             "hunter2",
+		"export API_KEY=AKIAABCDEFGHIJKLMNOP":                                       "AKIA",
+		"use ghp_0123456789abcdefghijklmnopqrstuvwxyzABCD":                          "ghp_",
+	} {
+		shown := RedactForDisplay(raw)
+		require.NotContains(t, shown, hidden, raw)
+	}
+	require.Equal(t, "Navigate browser to: https://example.com/login?•••", RedactForDisplay("Navigate browser to: https://user:pw@example.com/login?token=abc"))
+	require.Equal(t, "Edit internal/activity/renderer_windows.go", RedactForDisplay("Edit internal/activity/renderer_windows.go"))
+}

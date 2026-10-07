@@ -2,7 +2,8 @@ package notification
 
 import (
 	"encoding/binary"
-
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -45,4 +46,16 @@ func TestSoundBackendPlaysEachKindWithItsOwnFile(t *testing.T) {
 		require.Nil(t, b.Send(Notification{Title: "t", Kind: kind})())
 	}
 	require.Equal(t, []played{{KindPermission, `C:\Sesler\izin.wav`}, {KindQuestion, ""}, {KindFinished, ""}}, got)
+}
+
+// TestWriteSoundPreviews saves the sounds for listening:
+// ATLAS_SOUND_PREVIEW=<dir> go test ./internal/ui/notification -run Preview.
+func TestWriteSoundPreviews(t *testing.T) {
+	dir := os.Getenv("ATLAS_SOUND_PREVIEW")
+	if dir == "" {
+		t.Skip("Set ATLAS_SOUND_PREVIEW to a directory to write the sounds")
+	}
+	for _, kind := range Kinds {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "atlas-sound-"+string(kind)+".wav"), BuiltinSound(kind), 0o644))
+	}
 }

@@ -27,3 +27,21 @@ func TestDesktopObserveDispatchesOnlyRead(t *testing.T) {
 	require.False(t, r.IsError)
 	require.Equal(t, 1, calls)
 }
+
+func TestDesktopObserveRejectsMutationsBeforeDispatch(t *testing.T) {
+	t.Parallel()
+	for _, p := range []DesktopWorkflowParams{
+		{Mode: "observe"},
+		{Mode: "observe", WindowID: "11", Application: "Notepad"},
+		{Mode: "observe", WindowID: "11", Input: ComputerParams{Action: "type", Text: "unsafe"}},
+		{Mode: "observe", WindowID: "11", MaxElements: 501},
+		{Mode: "observe", WindowID: "11", Observation: "invalid"},
+	} {
+		r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			t.Fatal("Invalid observe dispatched a child")
+			return fantasy.ToolResponse{}, nil
+		})
+		require.NoError(t, err)
+		require.True(t, r.IsError)
+	}
+}

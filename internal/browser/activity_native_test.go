@@ -1,9 +1,11 @@
 package browser
 
 import (
+	"context"
 	"math"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 	"github.com/stretchr/testify/require"
@@ -117,4 +119,35 @@ func TestNativeBrowserRoutingNeverDependsOnDocumentContext(t *testing.T) {
 	renderer.Close()
 	require.True(t, recorder.closed)
 	require.False(t, recorder.events[len(recorder.events)-1].Visible)
+}
+
+func TestNativeBrowserManagerCloseAndStopAreForwarded(t *testing.T) {
+	t.Parallel()
+	recorder := &nativeActivityRecorder{}
+	s := &chromedpSession{activityNative: recorder, activityEnabled: true}
+	m := activity.New(browserActivityRenderer{s})
+	s.activityManager = m
+	ctx, finish := activity.StartFlow(context.Background(), "native-browser")
+	defer finish()
+	operation := m.Start(ctx, activity.Event{Session: "native-browser", Resource: "browser"})
+	m.Present()
+	require.NotNil(t, recorder.stop)
+	require.True(t, recorder.stop(m.Snapshot().ID))
+	require.ErrorIs(t, ctx.Err(), context.Canceled)
+	operation.End()
+	require.NoError(t, s.CloseActivity())
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	require.True(t, recorder.closed)
+	require.False(t, recorder.events[len(recorder.events)-1].Visible)
+}
+
+func TestNativeBrowserCompletedBannerIsForwardedWithoutDOM(t *testing.T) {
+	t.Parallel()
+	r := &nativeActivityRecorder{}
+	s := &chromedpSession{activityNative: r}
+	e := activity.Event{Phase: activity.PhaseDone, FinishedUntil: time.Now().Add(time.Second)}
+	(browserActivityRenderer{s}).Render(e)
+	require.Equal(t, e, r.events[0])
+	(browserActivityRenderer{s}).Close()
 }

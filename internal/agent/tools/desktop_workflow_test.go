@@ -48,6 +48,208 @@ func TestDesktopPrepareAmbiguousDoesNotFocus(t *testing.T) {
 	require.Equal(t, 1, calls)
 }
 
+func TestDesktopPrepareNotepadUsesProcessIdentity(t *testing.T) {
+	for _, application := range []string{"Notepad", "Not Defteri"} {
+		t.Run(application, func(t *testing.T) {
+			var actions []string
+			r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "prepare", Application: application}, fantasy.ToolCall{}, func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+				var p ComputerParams
+				require.NoError(t, json.Unmarshal([]byte(call.Input), &p))
+				actions = append(actions, p.Action)
+				switch p.Action {
+				case "windows":
+					return fantasy.NewTextResponse(`{"result":[{"window_id":"10","name":"Save As","process_name":"Notepad.exe","owner_window_id":"11","foreground":true},{"window_id":"11","name":"hesap.txt - Not Defteri","process_name":"Notepad.exe","owner_window_id":"0"},{"window_id":"12","name":"Not Defteri","process_name":"chrome.exe"}]}`), nil
+				case "focus":
+					require.Equal(t, "11", p.Automation.WindowID)
+					return fantasy.NewTextResponse(`{"result":{"focused":true}}`), nil
+				case "observe":
+					return fantasy.NewTextResponse(`{"snapshot_id":"ready"}`), nil
+				default:
+					return fantasy.NewTextErrorResponse("Unexpected launch or action"), nil
+				}
+			})
+			require.NoError(t, err)
+			require.False(t, r.IsError, r.Content)
+			require.Equal(t, []string{"windows", "focus", "observe"}, actions)
+		})
+	}
+}
+
+func TestDesktopPrepareNotepadPreservesAmbiguity(t *testing.T) {
+	for _, test := range []struct {
+		name, windows, selected string
+	}{
+		{
+			name:    "No foreground main window",
+			windows: `{"result":[{"window_id":"11","name":"one.txt - Notepad","process_name":"notepad.exe"},{"window_id":"12","name":"two.txt - Notepad","process_name":"notepad.exe"}]}`,
+		},
+		{
+			name:     "Foreground main window",
+			windows:  `{"result":[{"window_id":"11","name":"one.txt - Notepad","process_name":"notepad.exe"},{"window_id":"12","name":"two.txt - Notepad","process_name":"notepad.exe","foreground":true}]}`,
+			selected: "12",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			calls := 0
+			r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "prepare", Application: "Notepad"}, fantasy.ToolCall{}, func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+				calls++
+				var p ComputerParams
+				require.NoError(t, json.Unmarshal([]byte(call.Input), &p))
+				switch p.Action {
+				case "windows":
+					return fantasy.NewTextResponse(test.windows), nil
+				case "focus":
+					require.Equal(t, test.selected, p.Automation.WindowID)
+					return fantasy.NewTextResponse(`{"result":{"focused":true}}`), nil
+				case "observe":
+					return fantasy.NewTextResponse(`{"snapshot_id":"ready"}`), nil
+				default:
+					t.Fatalf("Unexpected action %s", p.Action)
+					return fantasy.ToolResponse{}, nil
+				}
+			})
+			require.NoError(t, err)
+			if test.selected == "" {
+				require.True(t, r.IsError)
+				require.Contains(t, r.Content, "ambiguous_target")
+				require.Equal(t, 1, calls)
+			} else {
+				require.False(t, r.IsError, r.Content)
+				require.Equal(t, 3, calls)
+			}
+		})
+	}
+}
+
+func TestDesktopPrepareSelectsLocalizedForegroundWindow(t *testing.T) {
+	var focused string
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "prepare", Application: "Calculator"}, fantasy.ToolCall{}, func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(call.Input), &p))
+		switch p.Action {
+		case "windows":
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"11","name":"Hesap Makinesi"},{"window_id":"12","name":"Hesap Makinesi","foreground":true}]}`), nil
+		case "focus":
+			focused = p.Automation.WindowID
+			return fantasy.NewTextResponse(`{"result":{"focused":true}}`), nil
+		case "observe":
+			return fantasy.NewTextResponse(`{"snapshot_id":"fresh"}`), nil
+		default:
+			t.Errorf("Unexpected action: %s", p.Action)
+			return fantasy.NewTextErrorResponse("unexpected"), nil
+		}
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Equal(t, "12", focused)
+}
+
+func TestDesktopPrepareRefreshesShellOnlyObservation(t *testing.T) {
+	observations := 0
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "prepare", Application: "Fixture"}, fantasy.ToolCall{}, func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(call.Input), &p))
+		switch p.Action {
+		case "windows":
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"11","name":"Fixture","foreground":true}]}`), nil
+		case "focus":
+			return fantasy.NewTextResponse(`{"result":{"focused":true}}`), nil
+		case "observe":
+			observations++
+			if observations == 1 {
+				return fantasy.NewTextResponse(`{"elements":[{"role":"ControlType.Window"}]}`), nil
+			}
+			return fantasy.NewTextResponse(`{"elements":[{"role":"ControlType.Edit","automation_id":"Search"}]}`), nil
+		default:
+			t.Fatalf("Unexpected action %s", p.Action)
+			return fantasy.ToolResponse{}, nil
+		}
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Equal(t, 2, observations)
+	require.Contains(t, r.Content, "Search")
+}
+
+func TestDesktopPrepareRecoversChangedForegroundHandle(t *testing.T) {
+	lists := 0
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "prepare", Application: "Fixture"}, fantasy.ToolCall{}, func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(call.Input), &p))
+		switch p.Action {
+		case "windows":
+			lists++
+			if lists == 1 {
+				return fantasy.NewTextResponse(`{"result":[{"window_id":"11","name":"Fixture"}]}`), nil
+			}
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"12","name":"Fixture","foreground":true}]}`), nil
+		case "focus":
+			if p.Automation.WindowID == "11" {
+				return fantasy.NewTextErrorResponse("focus_denied: foreground=12"), nil
+			}
+			return fantasy.NewTextResponse(`{"result":{"focused":true}}`), nil
+		case "observe":
+			require.Equal(t, "12", p.Automation.WindowID)
+			return fantasy.NewTextResponse(`{"snapshot_id":"fresh"}`), nil
+		default:
+			t.Fatalf("Unexpected action %s", p.Action)
+			return fantasy.ToolResponse{}, nil
+		}
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Equal(t, 2, lists)
+}
+
+func TestDesktopPrepareDoesNotRecoverExplicitHandleOrDenial(t *testing.T) {
+	for _, tc := range []struct{ id, failure string }{{"11", "focus_denied: foreground=12"}, {"", "denied: permission refused"}} {
+		t.Run(tc.failure, func(t *testing.T) {
+			calls := 0
+			r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "prepare", Application: "Fixture", WindowID: tc.id}, fantasy.ToolCall{}, func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+				calls++
+				var p ComputerParams
+				require.NoError(t, json.Unmarshal([]byte(call.Input), &p))
+				if p.Action == "windows" {
+					return fantasy.NewTextResponse(`{"result":[{"window_id":"11","name":"Fixture"}]}`), nil
+				}
+				require.Equal(t, "focus", p.Action)
+				return fantasy.NewTextErrorResponse(tc.failure), nil
+			})
+			require.NoError(t, err)
+			require.True(t, r.IsError)
+			if tc.id != "" {
+				require.Equal(t, 3, calls)
+			} else {
+				require.Equal(t, 2, calls)
+			}
+		})
+	}
+}
+
+func TestDesktopPrepareBoundsShellOnlyRetries(t *testing.T) {
+	observations := 0
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "prepare", WindowID: "11"}, fantasy.ToolCall{}, func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(call.Input), &p))
+		switch p.Action {
+		case "windows":
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"11","name":"Fixture"}]}`), nil
+		case "focus":
+			return fantasy.NewTextResponse(`{"result":{"focused":true}}`), nil
+		case "observe":
+			observations++
+			return fantasy.NewTextResponse(`{"elements":[{"role":"ControlType.Window"}]}`), nil
+		default:
+			t.Fatalf("Unexpected child %s", p.Action)
+			return fantasy.ToolResponse{}, nil
+		}
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError)
+	require.Equal(t, 3, observations)
+	require.Contains(t, r.Content, `"accessibility_status":"shell_only"`)
+}
+
 func TestDesktopFillDoesNotSubmitUnverifiedField(t *testing.T) {
 	for _, content := range []string{`{"result":{"value_verified":true,"keyboard_focused":false}}`, `{"result":{"value_verified":false,"keyboard_focused":true}}`, `{}`} {
 		calls := 0

@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"math"
 	"sync"
 	"testing"
 
@@ -50,6 +51,30 @@ func TestBrowserDesktopNavigationRetainsLastPositionWithoutStaleClick(t *testing
 	got = desktopBrowserEvent(e, browserScreenTransform{}, false, 0, 0, false)
 	require.False(t, got.Point, "CSS coordinates must never be treated as desktop pixels")
 	require.Empty(t, got.PointerKind)
+}
+
+func TestBrowserDesktopWaitKeepsAgentPointer(t *testing.T) {
+	t.Parallel()
+	got := desktopBrowserEvent(activity.Event{Visible: true, Persistent: true, Action: "wait"}, browserScreenTransform{100, 200, 2}, true, 900, 600, true)
+	require.True(t, got.Point)
+	require.Equal(t, 900, got.X)
+	require.Equal(t, 600, got.Y)
+}
+
+func TestBrowserViewportRejectsInvalidGeometry(t *testing.T) {
+	t.Parallel()
+	require.True(t, (browserViewport{1920, 1080, 2}).valid())
+	for _, v := range []browserViewport{
+		{0, 1080, 1},
+		{1920, 0, 1},
+		{1920, 1080, 0},
+		{1920, 1080, math.NaN()},
+		{math.Inf(1), 1080, 1},
+		{1920, 1080, 17},
+		{1e6, 1080, 2},
+	} {
+		require.False(t, v.valid())
+	}
 }
 
 type nativeActivityRecorder struct {

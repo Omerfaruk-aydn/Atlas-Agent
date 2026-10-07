@@ -93,3 +93,74 @@ func TestDesktopActFocusWindowStopsBeforeInputOnDenial(t *testing.T) {
 	require.True(t, r.IsError)
 	require.NotContains(t, actions, "type")
 }
+
+func TestDesktopActFocusWindowValidatesIdentityBeforeInput(t *testing.T) {
+	t.Parallel()
+	for _, changed := range []bool{false, true} {
+		typed, lists := 0, 0
+		p := DesktopWorkflowParams{Mode: "act", FocusWindow: true, Input: ComputerParams{Action: "type", Text: "hello", Automation: computer.AutomationRequest{WindowID: "11"}}, Observation: "semantic"}
+		r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			var input ComputerParams
+			require.NoError(t, json.Unmarshal([]byte(call.Input), &input))
+			switch input.Action {
+			case "windows":
+				lists++
+				pid := uint32(1)
+				if changed && lists > 1 {
+					pid = 2
+				}
+				data, marshalErr := json.Marshal(map[string]any{"result": []desktopWindowInfo{{ID: "11", ProcessID: pid, WindowClass: "Notepad", ProcessName: "notepad.exe", Foreground: lists > 1}}})
+				require.NoError(t, marshalErr)
+				return fantasy.NewTextResponse(string(data)), nil
+			case "focus":
+				return fantasy.NewTextResponse(`{"result":{"focused":true}}`), nil
+			case "type":
+				typed++
+			case "observe":
+				return fantasy.NewTextResponse(`{"window_id":"11","elements":[]}`), nil
+			default:
+				t.Fatalf("Unexpected action %s", input.Action)
+			}
+			return fantasy.NewTextResponse(`{}`), nil
+		})
+		require.NoError(t, err)
+		if changed {
+			require.True(t, r.IsError)
+			require.Zero(t, typed)
+		} else {
+			require.False(t, r.IsError, r.Content)
+			require.Equal(t, 1, typed)
+		}
+	}
+}
+
+func TestDesktopActHandlesDisappearingDialogUIAWithoutReplay(t *testing.T) {
+	t.Parallel()
+	keys := 0
+	disappeared := false
+	p := DesktopWorkflowParams{Mode: "act", Input: ComputerParams{Action: "key", Key: "enter", Automation: computer.AutomationRequest{WindowID: "11"}}}
+	r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var input ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(call.Input), &input))
+		switch input.Action {
+		case "key":
+			keys++
+		case "windows":
+			if disappeared {
+				return fantasy.NewTextResponse(`{"result":[{"window_id":"22","foreground":true}]}`), nil
+			}
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"11","foreground":true}]}`), nil
+		case "observe":
+			disappeared = true
+			r := fantasy.NewTextErrorResponse("accessibility_unavailable: dialog closed during observation")
+			r.Metadata = `{"desktop_recovery":{"fresh_windows":[{"window_id":"22","foreground":true}]}}`
+			return r, nil
+		}
+		return fantasy.NewTextResponse(`{}`), nil
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Contains(t, r.Content, `"window_status":"absent"`)
+	require.Contains(t, r.Content, `"condition_verified":false`)
+	require.Equal(t, 1, keys)
+}

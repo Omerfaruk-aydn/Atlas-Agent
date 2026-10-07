@@ -44,7 +44,8 @@ func TestNativeListenerIdentityRequiresExactPIDAndPort(t *testing.T) {
 
 func TestNativeListenerChecksRealWindowsSocketOwnership(t *testing.T) {
 	t.Parallel()
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	var listenConfig net.ListenConfig
+	listener, err := listenConfig.Listen(t.Context(), "tcp4", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer listener.Close()
 	port := uint16(listener.Addr().(*net.TCPAddr).Port)
@@ -124,6 +125,10 @@ type overlayCoverageScan struct {
 }
 
 var overlayCoverageCallback = syscall.NewCallback(func(hwnd, parameter uintptr) uintptr {
+	scan := resolveBrowserScan[overlayCoverageScan](parameter)
+	if scan == nil {
+		return 0
+	}
 	if !activity.IsOverlayWindow(hwnd) {
 		return 1
 	}
@@ -132,7 +137,6 @@ var overlayCoverageCallback = syscall.NewCallback(func(hwnd, parameter uintptr) 
 		var rect browserDesktopRect
 		ok, _, _ := browserOverlayUser.NewProc("GetWindowRect").Call(hwnd, uintptr(unsafe.Pointer(&rect)))
 		if ok != 0 {
-			scan := (*overlayCoverageScan)(unsafe.Pointer(parameter))
 			scan.rects = append(scan.rects, rect)
 		}
 	}
@@ -152,7 +156,9 @@ func nativeOverlayCoversMonitor(window uintptr) bool {
 		return false
 	}
 	scan := overlayCoverageScan{}
-	browserOverlayUser.NewProc("EnumWindows").Call(overlayCoverageCallback, uintptr(unsafe.Pointer(&scan)))
+	scanHandle := registerBrowserScan(&scan)
+	browserOverlayUser.NewProc("EnumWindows").Call(overlayCoverageCallback, scanHandle)
+	browserScans.Delete(scanHandle)
 	if len(scan.rects) < 6 {
 		return false
 	}

@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -19,6 +20,25 @@ import (
 )
 
 var browserOverlayUser = syscall.NewLazyDLL("user32.dll")
+
+// Scan handles retain Go state across synchronous Win32 callbacks without
+// converting an opaque integer back into a Go pointer.
+var (
+	browserScanIDs atomic.Uintptr
+	browserScans   sync.Map
+)
+
+func registerBrowserScan(scan any) uintptr {
+	id := browserScanIDs.Add(1)
+	browserScans.Store(id, scan)
+	return id
+}
+
+func resolveBrowserScan[T any](id uintptr) *T {
+	value, _ := browserScans.Load(id)
+	scan, _ := value.(*T)
+	return scan
+}
 
 type (
 	browserDesktopRect  struct{ Left, Top, Right, Bottom int32 }
@@ -216,7 +236,10 @@ type browserWindowScan struct {
 
 // One permanent callback avoids allocating a new Win32 callback each frame.
 var browserWindowScanCallback = syscall.NewCallback(func(hwnd, parameter uintptr) uintptr {
-	scan := (*browserWindowScan)(unsafe.Pointer(parameter))
+	scan := resolveBrowserScan[browserWindowScan](parameter)
+	if scan == nil {
+		return 0
+	}
 	var pid uint32
 	browserOverlayUser.NewProc("GetWindowThreadProcessId").Call(hwnd, uintptr(unsafe.Pointer(&pid)))
 	visible, _, _ := browserOverlayUser.NewProc("IsWindowVisible").Call(hwnd)
@@ -272,7 +295,10 @@ type browserContentScan struct {
 }
 
 var browserContentScanCallback = syscall.NewCallback(func(hwnd, parameter uintptr) uintptr {
-	scan := (*browserContentScan)(unsafe.Pointer(parameter))
+	scan := resolveBrowserScan[browserContentScan](parameter)
+	if scan == nil {
+		return 0
+	}
 	var name [128]uint16
 	browserOverlayUser.NewProc("GetClassNameW").Call(hwnd, uintptr(unsafe.Pointer(&name[0])), uintptr(len(name)))
 	if syscall.UTF16ToString(name[:]) != "Chrome_RenderWidgetHostHWND" {
@@ -302,14 +328,16 @@ func nativeBrowserTransform(pid uint32, bounds *cdpbrowser.Bounds, view browserV
 		}
 	}
 	scan := browserWindowScan{pid: pid, bounds: bounds, score: 64}
-	browserOverlayUser.NewProc("EnumWindows").Call(browserWindowScanCallback, uintptr(unsafe.Pointer(&scan)))
-	runtime.KeepAlive(&scan)
+	windowScanHandle := registerBrowserScan(&scan)
+	browserOverlayUser.NewProc("EnumWindows").Call(browserWindowScanCallback, windowScanHandle)
+	browserScans.Delete(windowScanHandle)
 	if scan.window == 0 {
 		return browserScreenTransform{}, 0, false
 	}
 	content := browserContentScan{width: view.Width * view.DPR, height: view.Height * view.DPR}
-	browserOverlayUser.NewProc("EnumChildWindows").Call(scan.window, browserContentScanCallback, uintptr(unsafe.Pointer(&content)))
-	runtime.KeepAlive(&content)
+	contentScanHandle := registerBrowserScan(&content)
+	browserOverlayUser.NewProc("EnumChildWindows").Call(scan.window, browserContentScanCallback, contentScanHandle)
+	browserScans.Delete(contentScanHandle)
 	if content.found {
 		return browserScreenTransform{float64(content.origin.X), float64(content.origin.Y), view.DPR}, scan.window, true
 	}

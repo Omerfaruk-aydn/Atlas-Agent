@@ -87,3 +87,20 @@ func TestClaudeToolContractRestoresWireNamesAndTypedArguments(t *testing.T) {
 		})
 	}
 }
+
+func TestClaudeToolHistoryCopiesOnlyAdvertisedClientCalls(t *testing.T) {
+	t.Parallel()
+	prompt := fantasy.Prompt{{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+		fantasy.ToolCallPart{ToolName: "computer", ToolCallID: "local", Input: `{}`},
+		fantasy.ToolCallPart{ToolName: "computer", ToolCallID: "server", Input: `{}`, ProviderExecuted: true},
+		fantasy.ToolCallPart{ToolName: "disabled", Input: `{}`},
+	}}}
+	actual := claudeToolHistory(prompt, []fantasy.Tool{contractTool()})
+	require.Equal(t, "_computer", actual[0].Content[0].(fantasy.ToolCallPart).ToolName)
+	require.Equal(t, "computer", actual[0].Content[1].(fantasy.ToolCallPart).ToolName)
+	require.Equal(t, "disabled", actual[0].Content[2].(fantasy.ToolCallPart).ToolName)
+	require.Equal(t, "computer", prompt[0].Content[0].(fantasy.ToolCallPart).ToolName)
+	bindings := claudeToolBindings([]fantasy.Tool{contractTool()})
+	_, exists := bindings["_disabled"]
+	require.False(t, exists)
+}

@@ -223,6 +223,54 @@ func TestComputerNormalizesQuotedScalarsAndKeepsRealErrors(t *testing.T) {
 	require.Len(t, b.clicked, 1)
 }
 
+func TestWindowRootInvokeFailureIsNotRepairedWithInput(t *testing.T) {
+	t.Parallel()
+	b := newContractBackend(t)
+	inner := b.call
+	b.call = func(ctx context.Context, p computer.AutomationRequest) (json.RawMessage, error) {
+		if p.Action == "invoke" {
+			b.native = append(b.native, p.Action)
+			return nil, computerError("unsupported_pattern: Pattern unavailable: Invoke on ControlType.Window (supported patterns: Window, Transform); no click or key was sent; a window root is activated with the focus action, not invoked")
+		}
+		return inner(ctx, p)
+	}
+	resp := runRaw(t, b, `{"action":"invoke","automation":{"window_id":"22","element_id":"42:22"}}`)
+	require.True(t, resp.IsError)
+	require.Contains(t, resp.Content, "unsupported_pattern")
+	require.Contains(t, resp.Content, "focus action")
+	require.Zero(t, atomic.LoadInt32(&b.inputs), "no double-click, Enter or other guess after the refusal")
+	require.Empty(t, b.clicked)
+	require.Empty(t, b.keys)
+}
+
 type computerError string
 
 func (e computerError) Error() string { return string(e) }
+
+func TestObservationSeparatesObservedFromForegroundWindow(t *testing.T) {
+	t.Parallel()
+	// Background window observed: it must be clear that observation did not focus it.
+	b := newContractBackend(t)
+	b.foreground = "22"
+	s := &computerToolState{backend: b}
+	ctx := context.WithValue(t.Context(), SessionIDContextKey, t.Name())
+	resp, err := s.runComputerAction(ctx, "observe", ComputerParams{Observation: "semantic", Automation: computer.AutomationRequest{WindowID: "11"}})
+	require.NoError(t, err)
+	var observed struct {
+		Target desktopTargetState `json:"target_window"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(resp.Content), &observed))
+	require.Equal(t, "no", observed.Target.Foreground)
+	require.Equal(t, "22", observed.Target.ForegroundWindowID)
+	require.False(t, observed.Target.InputReady)
+	require.False(t, observed.Target.FocusChangedByObservation)
+	require.Contains(t, observed.Target.Note, "does not focus")
+	require.NotEmpty(t, observed.Target.InvalidatedBy)
+
+	b.foreground = "11"
+	resp, err = s.runComputerAction(ctx, "observe", ComputerParams{Observation: "semantic", Automation: computer.AutomationRequest{WindowID: "11"}})
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal([]byte(resp.Content), &observed))
+	require.Equal(t, "yes", observed.Target.Foreground)
+	require.True(t, observed.Target.InputReady)
+}

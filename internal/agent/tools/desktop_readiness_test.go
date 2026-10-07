@@ -3,7 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
-
+	"errors"
 	"testing"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
@@ -30,6 +30,30 @@ func TestDesktopReadinessStopsAtActualCondition(t *testing.T) {
 		if initiallyReady {
 			require.Equal(t, 1, calls)
 		} else {
+			require.Equal(t, 2, calls)
+		}
+	}
+}
+
+func TestDesktopReadinessRetriesTransientReadsOnly(t *testing.T) {
+	for _, code := range []string{"observation_incomplete", "unsupported_pattern"} {
+		calls := 0
+		backend := &efficientDesktopBackend{}
+		backend.call = func(context.Context, computer.AutomationRequest) (json.RawMessage, error) {
+			calls++
+			if calls == 1 {
+				return nil, errors.New(code + ": fixture")
+			}
+			return json.RawMessage(`{"passed":true,"actual":"Ready"}`), nil
+		}
+		state := &computerToolState{backend: backend}
+		r, err := state.runAutomation(t.Context(), "assert", ComputerParams{Automation: computer.AutomationRequest{WindowID: "11", Name: "Ready", Condition: "visible", WaitMS: 1000}})
+		require.NoError(t, err)
+		if code == "unsupported_pattern" {
+			require.True(t, r.IsError)
+			require.Equal(t, 1, calls)
+		} else {
+			require.False(t, r.IsError, r.Content)
 			require.Equal(t, 2, calls)
 		}
 	}

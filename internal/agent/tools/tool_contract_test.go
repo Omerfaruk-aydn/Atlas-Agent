@@ -163,8 +163,53 @@ func numericWindowIDPattern(id string) bool {
 	return id != "" && strings.Trim(id, "0123456789") == ""
 }
 
+func TestOCRRegionInAutomationIsAppliedAndReported(t *testing.T) {
+	t.Parallel()
+	b := newContractBackend(t)
+	var cropWidth int
+	inner := b.call
+	b.call = func(ctx context.Context, p computer.AutomationRequest) (json.RawMessage, error) {
+		if p.Action == "ocr" {
+			cropWidth = 1 // Image supplied for a region request, not the full 400x300 screen.
+		}
+		return inner(ctx, p)
+	}
+	// Exactly the MiMo shape: the region lives in automation.
+	resp := runRaw(t, b, `{"action":"ocr","automation":{"x":10,"y":20,"width":60,"height":40}}`)
+	require.False(t, resp.IsError, resp.Content)
+	require.Equal(t, 1, cropWidth)
+	var result struct {
+		Scope ocrScope       `json:"scope"`
+		Image computer.Point `json:"image_origin"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(resp.Content), &result))
+	require.Equal(t, ocrScope{Kind: "region", X: 10, Y: 20, Width: 60, Height: 40}, result.Scope)
+	require.Equal(t, computer.Point{X: 10, Y: 20}, result.Image)
+
+	// The equivalent top-level form is identical, and full screen is explicit.
+	resp = runRaw(t, newContractBackendWith(t, b), `{"action":"ocr","x":10,"y":20,"width":60,"height":40}`)
+	require.False(t, resp.IsError, resp.Content)
+	full := runRaw(t, newContractBackend(t), `{"action":"ocr"}`)
+	require.Contains(t, full.Content, `"kind":"full_screen"`)
+}
+
 func newContractBackendWith(t *testing.T, _ *contractBackend) *contractBackend {
 	return newContractBackend(t)
+}
+
+func TestRoleAliasesNormalizeOnlyExactNames(t *testing.T) {
+	t.Parallel()
+	for input, want := range map[string]string{"ListItem": "ControlType.ListItem", "listitem": "ControlType.ListItem", "list_item": "ControlType.ListItem", "ControlType.ListItem": "ControlType.ListItem", "controltype.button": "ControlType.Button", "Window": "ControlType.Window"} {
+		b := newContractBackend(t)
+		resp := runRaw(t, b, `{"action":"find","automation":{"window_id":"11","role":"`+input+`","name":"deneme"}}`)
+		require.False(t, resp.IsError, resp.Content)
+		require.Equal(t, want, b.lastReq.Role, input)
+	}
+	// Valid role, no such element: an ordinary empty result, not a role error.
+	b := newContractBackend(t)
+	resp := runRaw(t, b, `{"action":"find","automation":{"window_id":"11","role":"ListItem","name":"nothing"}}`)
+	require.False(t, resp.IsError)
+	require.Contains(t, resp.Content, `"count":0`)
 }
 
 type computerError string

@@ -43,3 +43,10 @@ func TestNativeChangeSubscriptionCleansUp(t *testing.T) {
 	// Cleanup is safe even when a caller's deadline has already fired.
 	release()
 }
+
+func TestNativeChangeSubscriptionRejectsInvalidTargets(t *testing.T) {
+	for _, id := range []string{"", "0", "-1", "01", "application"} {
+		_, _, err := (&windowsBackend{}).WatchChanges(t.Context(), id)
+		require.Error(t, err)
+	}
+}

@@ -1,6 +1,7 @@
 package opencodecli
 
 import (
+	"strings"
 	"testing"
 
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -38,4 +39,16 @@ func TestReplyValidation(t *testing.T) {
 	call.ToolChoice = &required
 	_, err = decodeReply(`{"text":"Done","tool_calls":[]}`, call)
 	require.Error(t, err)
+}
+
+func TestCLIEvents(t *testing.T) {
+	t.Parallel()
+	result, err := parseEvents(strings.NewReader("{\"type\":\"text\",\"part\":{\"text\":\"hello\"}}\n{\"type\":\"step_finish\",\"part\":{\"reason\":\"stop\",\"tokens\":{\"input\":10,\"output\":2,\"total\":12}}}\n"))
+	require.NoError(t, err)
+	require.Equal(t, "hello", result.text)
+	require.EqualValues(t, 12, result.usage.TotalTokens)
+	for _, events := range []string{`{"type":"tool_use"}`, `{"type":"error","error":{"message":"denied"}}`, `{"type":"text","part":{"text":"partial"}}`, `not-json`, `{"type":"step_finish","part":{"reason":"length"}}`} {
+		_, err := parseEvents(strings.NewReader(events))
+		require.Error(t, err)
+	}
 }

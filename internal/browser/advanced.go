@@ -171,7 +171,7 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 		// A document indicator belongs to its old tab. Remove it before
 		// switching so cancellation cannot leave it running in the background.
 		if s.activityNative == nil {
-			_ = s.activityEval(activityRemove, nil)
+			_ = s.activityCleanup(activityRemove)
 		}
 		s.mu.Lock()
 		s.tabCancels = append(s.tabCancels, closeTab)
@@ -198,7 +198,7 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 		}
 		_, err = s.RawCDP("Page.enable", map[string]any{})
 		if err == nil && s.activityNative != nil && p.Action == "tab_select" {
-			err = s.activityEval(activityRemove, nil)
+			err = s.activityCleanup(activityRemove)
 		}
 		return finish(map[string]any{"active_tab": id}, err)
 	case "frames":

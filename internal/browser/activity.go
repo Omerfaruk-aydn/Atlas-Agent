@@ -171,7 +171,7 @@ func (r browserActivityRenderer) Close() {
 		return
 	}
 	r.session.activityMascot.close()
-	r.session.activityEval(activityRemove, nil)
+	r.session.activityCleanup(activityRemove)
 }
 
 // BeginActivity is optional for non-chromedp and mock browser drivers.
@@ -220,6 +220,18 @@ func (s *chromedpSession) StartActivity(ctx context.Context, sessionID, action, 
 func (s *chromedpSession) activityEval(script string, result any) error {
 	ctx, cancel := context.WithTimeout(s.currentContext(), 300*time.Millisecond)
 	defer cancel()
+	return s.activityEvalContext(ctx, script, result)
+}
+
+// Required cleanup has its own bounded budget so transient page load does
+// not fail an observation or leave a previous tab's controls behind.
+func (s *chromedpSession) activityCleanup(script string) error {
+	ctx, cancel := context.WithTimeout(s.currentContext(), 2*time.Second)
+	defer cancel()
+	return s.activityEvalContext(ctx, script, nil)
+}
+
+func (s *chromedpSession) activityEvalContext(ctx context.Context, script string, result any) error {
 	err := chromedp.Run(ctx, chromedp.Evaluate(script, result))
 	if err != nil {
 		slog.Debug("Activity overlay update unavailable", "error", err)
@@ -247,11 +259,11 @@ func (s *chromedpSession) suspendActivity(force ...bool) (func(), error) {
 		return func() {}, nil
 	}
 	resume := manager.Suspend()
-	if err := s.activityEval(activityRemove, nil); err != nil {
+	if err := s.activityCleanup(activityRemove); err != nil {
 		resume()
 		return nil, fmt.Errorf("cannot exclude activity from observation: %w", err)
 	}
-	return func() { _ = s.activityEval(activityRestore, nil); resume() }, nil
+	return func() { _ = s.activityCleanup(activityRestore); resume() }, nil
 }
 
 // CloseActivity releases native or page surfaces before a session is retired.
@@ -269,7 +281,7 @@ func (s *chromedpSession) CloseActivity() error {
 		if s.activityNative != nil {
 			return nil
 		}
-		return s.activityEval(activityRemove, nil)
+		return s.activityCleanup(activityRemove)
 	}
 	if s.activityNative != nil {
 		s.activityNative.Close()

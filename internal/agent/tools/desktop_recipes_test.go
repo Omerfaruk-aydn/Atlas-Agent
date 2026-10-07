@@ -129,3 +129,16 @@ func TestDesktopSequenceReturnsEveryActualCheckpoint(t *testing.T) {
 		require.Equal(t, value, result.Checkpoints[i].Assertion.Actual)
 	}
 }
+
+func TestDesktopSequenceValidatesAllStepsBeforeInput(t *testing.T) {
+	steps := calculationSteps()
+	steps[2].Checkpoint.WindowID = "wrong"
+	calls := 0
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "sequence", Steps: steps}, fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		calls++
+		return fantasy.ToolResponse{}, nil
+	})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.Zero(t, calls)
+}

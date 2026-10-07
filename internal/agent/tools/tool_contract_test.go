@@ -284,3 +284,49 @@ func TestKeyboardToBackgroundWindowIsRefusedWithoutInput(t *testing.T) {
 	require.Contains(t, resp.Content, "wrong_window")
 	require.Zero(t, atomic.LoadInt32(&b.inputs))
 }
+
+// Pipeline-level shapes: wrong nesting, wrong mode, missing checkpoint target.
+func TestPipelineRejectsWrongNestingBeforeAnyDispatch(t *testing.T) {
+	t.Parallel()
+	dispatched := 0
+	tool := NewToolPipeline(func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		dispatched++
+		return fantasy.NewTextResponse(`{}`), nil
+	})
+	run := func(input string) fantasy.ToolResponse {
+		resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: "p", Name: "tool_pipeline", Input: input})
+		require.NoError(t, err)
+		return resp
+	}
+	// Captured shape: desktop.desktop.
+	resp := run(`{"desktop":{"desktop":{"input":{"action":"invoke","automation":{"element_id":"42:1","window_id":"11"}},"mode":"act"}}}`)
+	require.Equal(t, "invalid_nesting", contractOf(t, resp).Code)
+	// A computer action used as a mode.
+	resp = run(`{"desktop":{"mode":"invoke","window_id":"11"}}`)
+	require.Equal(t, "invalid_mode", contractOf(t, resp).Code)
+	require.Contains(t, resp.Content, "computer action")
+	// Fields from the input level placed on the recipe.
+	resp = run(`{"desktop":{"mode":"act","action":"key","key":"enter","window_id":"11"}}`)
+	contract := contractOf(t, resp)
+	require.Equal(t, "unknown_field", contract.Code)
+	require.Contains(t, resp.Content, "belongs inside input")
+	// Fabricated identity inside a step.
+	resp = run(`{"desktop":{"mode":"sequence","steps":[{"checkpoint":{"condition":"text","expected":"x","name":"y"},"input":{"action":"key","key":"enter","automation":{"window_id":"shell"}}}]}}`)
+	require.Equal(t, "invalid_target", contractOf(t, resp).Code)
+	require.Zero(t, dispatched)
+}
+
+func TestSequenceCheckpointWithoutWindowReturnsStructuredFix(t *testing.T) {
+	t.Parallel()
+	var p DesktopWorkflowParams
+	require.NoError(t, json.Unmarshal([]byte(`{"mode":"sequence","steps":[{"checkpoint":{"condition":"text","expected":"deneme","name":"Masaüstü","wait_ms":5000},"input":{"action":"key","key":"enter","automation":{"window_id":"11"}}}]}`), &p))
+	r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		t.Fatal("input dispatched")
+		return fantasy.ToolResponse{}, nil
+	})
+	require.NoError(t, err)
+	contract := contractOf(t, r)
+	require.Equal(t, "checkpoint_target_missing", contract.Code)
+	require.Equal(t, "checkpoint.window_id", contract.Field)
+	require.Contains(t, contract.Example, "<window_id from prepare/observe>")
+}

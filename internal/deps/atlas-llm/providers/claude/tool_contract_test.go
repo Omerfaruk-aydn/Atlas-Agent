@@ -104,3 +104,36 @@ func TestClaudeToolHistoryCopiesOnlyAdvertisedClientCalls(t *testing.T) {
 	_, exists := bindings["_disabled"]
 	require.False(t, exists)
 }
+
+func TestClaudeArgumentsDecodeSchemaTypesWithoutInventingValues(t *testing.T) {
+	t.Parallel()
+	spec := schema.Generate(reflect.TypeFor[contractArguments]())
+	input := `{"action":"prepare","desktop":"{\"mode\":\"prepare\"}","argv":"[\"powershell\",\"$d='unchanged'\"]"}`
+	var actual contractArguments
+	require.NoError(t, json.Unmarshal([]byte(normalizeClaudeArguments(input, spec)), &actual))
+	require.Equal(t, "prepare", actual.Desktop.Mode)
+	require.Equal(t, []string{"powershell", "$d='unchanged'"}, actual.Argv)
+	for _, invalid := range []string{`{"action":"click","x":"1172.5"}`, `{"action":"click","x":"9007199254740993"}`, `{"action":"click","automation":"{broken}"}`, `{"automation":"{\"window_id\":\"11\"}"}`, `{"action":"click","automation":"{\"name\":\"wrong\"}"}`} {
+		require.Equal(t, invalid, normalizeClaudeArguments(invalid, spec))
+	}
+	// Correctly typed calls and unknown/text fields preserve their raw representation.
+	valid := `{"action":"type","text":"[1,2]","unknown":"{\"a\":1}"}`
+	require.Equal(t, valid, normalizeClaudeArguments(valid, spec))
+	maximum := float64(1000)
+	spec.Properties["x"].Maximum = &maximum
+	bounded := `{"action":"click","x":"1172"}`
+	require.Equal(t, bounded, normalizeClaudeArguments(bounded, spec))
+}
+
+func TestClaudeToolBindingsPreserveAlreadyPrefixedLocalNames(t *testing.T) {
+	t.Parallel()
+	a, b := contractTool(), contractTool()
+	b.Name = "_computer"
+	for _, tools := range [][]fantasy.Tool{{a, b}, {b, a}} {
+		bindings := claudeToolBindings(tools)
+		require.Equal(t, "computer", bindings["_computer"].name)
+		require.Equal(t, "_computer", bindings["__computer"].name)
+		_, unknown := bindings["___computer"]
+		require.False(t, unknown)
+	}
+}

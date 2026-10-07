@@ -249,3 +249,28 @@ func TestDesktopActClosedWindowReturnsVerifiedAbsence(t *testing.T) {
 		require.NotContains(t, r.Content, "snapshot_id")
 	}
 }
+
+func TestDesktopActHandlesAsynchronousDialogDismissalWithoutReplay(t *testing.T) {
+	var actions []string
+	lists := 0
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "act", Input: ComputerParams{Action: "key", Key: "esc", Automation: computer.AutomationRequest{WindowID: "11"}}}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+		actions = append(actions, p.Action)
+		if p.Action == "windows" {
+			lists++
+			if lists == 1 {
+				return fantasy.NewTextResponse(`{"result":[{"window_id":"11","foreground":true}]}`), nil
+			}
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"22","foreground":true}]}`), nil
+		}
+		if p.Action == "observe" {
+			return fantasy.NewTextErrorResponse("target_missing: window disappeared"), nil
+		}
+		return fantasy.NewTextResponse(`{}`), nil
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Contains(t, r.Content, `"window_status":"absent"`)
+	require.Equal(t, []string{"key", "windows", "observe", "windows"}, actions)
+}

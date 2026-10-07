@@ -178,3 +178,19 @@ func TestDesktopActStopsGroupAtDeniedInput(t *testing.T) {
 	require.True(t, r.IsError)
 	require.Equal(t, []string{"key", "type"}, actions)
 }
+
+func TestDesktopSequenceGroupsLogicalInputsAtCheckpoint(t *testing.T) {
+	var actions []string
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "sequence", Steps: []DesktopWorkflowStep{{Inputs: []ComputerParams{{Action: "type", Text: "name", Automation: computer.AutomationRequest{WindowID: "11"}}, {Action: "key", Key: "enter", Automation: computer.AutomationRequest{WindowID: "11"}}}, Checkpoint: computer.AutomationRequest{WindowID: "11", ElementID: "file", Condition: "text", Expected: "name"}}}}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+		actions = append(actions, p.Action)
+		if p.Action == "assert" {
+			return fantasy.NewTextResponse(`{"passed":true,"actual":"name"}`), nil
+		}
+		return fantasy.NewTextResponse(`{"window_id":"11","elements":[]}`), nil
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+	require.Equal(t, []string{"type", "key", "assert", "observe"}, actions)
+}

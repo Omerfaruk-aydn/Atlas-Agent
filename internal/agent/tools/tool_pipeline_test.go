@@ -28,6 +28,39 @@ func TestPipelineItemsAndSelectiveReturn(t *testing.T) {
 	require.NotContains(t, response.Content, "a.go")
 }
 
+func TestPipelineExposesDesktopEvidenceWithoutExtraCalls(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	tool := NewToolPipeline(func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		calls++
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(call.Input), &p))
+		if p.Action == "hotkey" {
+			return fantasy.NewTextResponse("Sent shortcut"), nil
+		}
+		return fantasy.NewTextResponse(`{"result":[{"window_id":"22","foreground":true}]}`), nil
+	})
+	p := PipelineParams{Steps: []PipelineStep{
+		{ID: "close", Tool: "computer", Arguments: map[string]any{"action": "hotkey", "modifiers": "alt", "key": "f4", "automation": map[string]any{"window_id": "11"}}},
+		{ID: "verify", Tool: "computer", Arguments: map[string]any{"action": "windows"}},
+	}, Return: []string{"verify"}}
+	data, err := json.Marshal(p)
+	require.NoError(t, err)
+	r, err := tool.Run(t.Context(), fantasy.ToolCall{Input: string(data)})
+	require.NoError(t, err)
+	var output []struct {
+		State struct {
+			Foreground string   `json:"foreground_window_id"`
+			Absent     []string `json:"absent_closed_window_ids"`
+		} `json:"desktop_state"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(r.Content), &output))
+	require.Len(t, output, 1)
+	require.Equal(t, "22", output[0].State.Foreground)
+	require.Equal(t, []string{"11"}, output[0].State.Absent)
+	require.Equal(t, 2, calls, "Reuse the requested verification; do not add enumeration")
+}
+
 func TestPipelineStopsAtDenialAndRefusesRecursion(t *testing.T) {
 	t.Parallel()
 	calls := 0

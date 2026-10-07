@@ -71,13 +71,21 @@ func TestInitialDestinationRealChrome(t *testing.T) {
 				OverlayDisabled: true, ActionTimeout: 30 * time.Second, initialURL: server.URL + "/start",
 			}
 			if remote {
-				listener, err := net.Listen("tcp4", "127.0.0.1:0")
+				var listenConfig net.ListenConfig
+				listener, err := listenConfig.Listen(t.Context(), "tcp4", "127.0.0.1:0")
 				require.NoError(t, err)
 				opts.RemoteURL = "http://" + listener.Addr().String()
 				require.NoError(t, listener.Close())
 				t.Cleanup(func() {
+					cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
 					client := &http.Client{Timeout: time.Second}
-					response, err := client.Get(opts.RemoteURL + "/json/version")
+					req, err := http.NewRequestWithContext(cleanupCtx, http.MethodGet, opts.RemoteURL+"/json/version", nil)
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					response, err := client.Do(req)
 					if err != nil {
 						return
 					}
@@ -88,9 +96,10 @@ func TestInitialDestinationRealChrome(t *testing.T) {
 						t.Error(err)
 						return
 					}
-					cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					defer cancel()
-					conn, _, err := websocket.DefaultDialer.DialContext(cleanupCtx, version.WebSocketDebuggerURL, nil)
+					conn, handshake, err := websocket.DefaultDialer.DialContext(cleanupCtx, version.WebSocketDebuggerURL, nil)
+					if handshake != nil && handshake.Body != nil {
+						handshake.Body.Close()
+					}
 					if err != nil {
 						t.Error(err)
 						return

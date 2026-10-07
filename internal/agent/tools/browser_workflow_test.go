@@ -35,6 +35,7 @@ func TestBrowserPipelineStopsBeforeDependentInput(t *testing.T) {
 	t.Parallel()
 	for _, evidence := range []string{`{"passed":false}`, `{}`, `not JSON`} {
 		t.Run(evidence, func(t *testing.T) {
+			t.Parallel()
 			var actions []string
 			tool := NewToolPipeline(func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 				require.Equal(t, BrowserToolName, call.Name)

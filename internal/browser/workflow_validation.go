@@ -21,7 +21,7 @@ func ValidateWorkflowRequest(p Request) error {
 	}
 	switch p.Action {
 	case "assert", "wait_for":
-		if !validCondition(p.Condition) && !(p.Action == "wait_for" && (p.Condition == "ready" || p.Condition == "network_idle")) {
+		if !validCondition(p.Condition) && (p.Action != "wait_for" || (p.Condition != "ready" && p.Condition != "network_idle")) {
 			return fmt.Errorf("unsupported condition %q", p.Condition)
 		}
 		if p.Condition == "url" || p.Condition == "title" || p.Condition == "ready" || p.Condition == "network_idle" {

@@ -130,7 +130,11 @@ func ensureRemoteBrowser(opts Options) (string, error) {
 // Ambiguous pages are never adopted as an agent-owned task tab.
 func launchedPageID(endpoint string) (string, error) {
 	client := &http.Client{Timeout: probeTimeout}
-	response, err := client.Get(strings.TrimRight(endpoint, "/") + "/json/list")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, strings.TrimRight(endpoint, "/")+"/json/list", nil)
+	if err != nil {
+		return "", err
+	}
+	response, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}

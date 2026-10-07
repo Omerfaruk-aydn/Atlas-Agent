@@ -54,3 +54,9 @@ func TestIslandGrantResolvesThroughPermissionService(t *testing.T) {
 	require.True(t, granted)
 	require.Equal(t, activity.StateResuming, m.Snapshot().State)
 }
+
+func TestIslandDenialIsFinal(t *testing.T) {
+	granted, m, _ := requestFromIsland(t, activity.DecisionDeny)
+	require.False(t, granted)
+	require.Equal(t, activity.StateDenied, m.Snapshot().State)
+}

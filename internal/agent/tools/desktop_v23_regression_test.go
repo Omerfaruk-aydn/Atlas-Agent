@@ -75,3 +75,21 @@ func TestDesktopSequenceRejectsChangingNameCheckpointBeforeInput(t *testing.T) {
 	require.True(t, r.IsError)
 	require.Contains(t, r.Content, "inconsistent_text_checkpoint")
 }
+
+func TestDesktopActFocusWindowStopsBeforeInputOnDenial(t *testing.T) {
+	t.Parallel()
+	p := DesktopWorkflowParams{Mode: "act", FocusWindow: true, Input: ComputerParams{Action: "type", Text: "hello", Automation: computer.AutomationRequest{WindowID: "11"}}}
+	var actions []string
+	r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var input ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(call.Input), &input))
+		actions = append(actions, input.Action)
+		if input.Action == "windows" {
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"11","process_id":1,"class_name":"Notepad","process_name":"notepad.exe"}]}`), nil
+		}
+		return fantasy.NewTextErrorResponse("focus_denied: fixture"), nil
+	})
+	require.NoError(t, err)
+	require.True(t, r.IsError)
+	require.NotContains(t, actions, "type")
+}

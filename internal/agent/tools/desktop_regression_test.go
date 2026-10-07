@@ -274,3 +274,53 @@ func TestDesktopActHandlesAsynchronousDialogDismissalWithoutReplay(t *testing.T)
 	require.Contains(t, r.Content, `"window_status":"absent"`)
 	require.Equal(t, []string{"key", "windows", "observe", "windows"}, actions)
 }
+
+func TestDesktopTransitionAcceptsNewSameProcessPropertiesHelper(t *testing.T) {
+	lists := 0
+	r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "transition", Input: ComputerParams{Action: "hotkey", Key: "enter", Modifiers: "alt", Automation: computer.AutomationRequest{WindowID: "11"}}, Transition: &DesktopTransitionParams{ExpectedTitle: "sonuc Özellikleri", WaitMS: 1000}}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		var p ComputerParams
+		require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+		if p.Action == "windows" {
+			lists++
+			if lists == 1 {
+				return fantasy.NewTextResponse(`{"result":[{"window_id":"11","process_id":5,"foreground":true}]}`), nil
+			}
+			return fantasy.NewTextResponse(`{"result":[{"window_id":"11","process_id":5},{"window_id":"22","name":"sonuc Özellikleri","process_id":5,"owner_window_id":"33","owner_process_id":5,"class_name":"#32770","foreground":true}]}`), nil
+		}
+		return fantasy.NewTextResponse(`{"window_id":"22","elements":[]}`), nil
+	})
+	require.NoError(t, err)
+	require.False(t, r.IsError, r.Content)
+}
+
+func TestDesktopTransitionRejectsForeignOrExistingHelperDialog(t *testing.T) {
+	for _, kind := range []string{"foreign_process", "visible_owner", "existing"} {
+		lists := 0
+		r, err := runDesktopWorkflow(t.Context(), DesktopWorkflowParams{Mode: "transition", Input: ComputerParams{Action: "hotkey", Key: "enter", Modifiers: "alt", Automation: computer.AutomationRequest{WindowID: "11"}}, Transition: &DesktopTransitionParams{ExpectedTitle: "Properties", WaitMS: 20}}, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			var p ComputerParams
+			require.NoError(t, json.Unmarshal([]byte(c.Input), &p))
+			if p.Action == "windows" {
+				lists++
+				windows := []desktopWindowInfo{{ID: "11", ProcessID: 5, Foreground: lists == 1}}
+				dialog := desktopWindowInfo{ID: "22", Name: "Properties", ProcessID: 5, WindowClass: "#32770", Owner: "33", OwnerProcessID: 5, Foreground: lists > 1}
+				if kind == "foreign_process" {
+					dialog.ProcessID = 6
+					dialog.OwnerProcessID = 6
+				}
+				if kind == "visible_owner" {
+					windows = append(windows, desktopWindowInfo{ID: "33", ProcessID: 5})
+				}
+				if lists > 1 || kind == "existing" {
+					windows = append(windows, dialog)
+				}
+				data, err := json.Marshal(map[string]any{"result": windows})
+				require.NoError(t, err)
+				return fantasy.NewTextResponse(string(data)), nil
+			}
+			require.NotEqual(t, "observe", p.Action)
+			return fantasy.NewTextResponse(`{}`), nil
+		})
+		require.NoError(t, err)
+		require.True(t, r.IsError, r.Content)
+	}
+}

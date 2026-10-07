@@ -147,3 +147,15 @@ func TestDesktopRenamePreflightRejectsUnsafeNamesAndMixedModes(t *testing.T) {
 		require.True(t, r.IsError)
 	}
 }
+
+func TestDesktopRenameEditorRejectsForeignFieldAndWrongReadback(t *testing.T) {
+	t.Parallel()
+	item := desktopElement{ID: "file", ProcessID: 7, X: 100, Y: 100, Width: 400, Height: 30}
+	good := desktopElement{ID: "edit", ProcessID: 7, Name: "hesap", Role: "ControlType.Edit", Enabled: true, KeyboardFocused: true, X: 110, Y: 102, Width: 90, Height: 25}
+	require.True(t, desktopRenameEditor(&good, item, "hesap", ""))
+	for _, mutate := range []func(*desktopElement){func(e *desktopElement) { e.ProcessID++ }, func(e *desktopElement) { e.Y = 0 }, func(e *desktopElement) { e.Name = "search" }, func(e *desktopElement) { e.Role = "ControlType.ListItem" }, func(e *desktopElement) { e.ValueAvailable, e.Value = true, "different" }, func(e *desktopElement) { e.Password = true }} {
+		e := good
+		mutate(&e)
+		require.False(t, desktopRenameEditor(&e, item, "hesap", ""))
+	}
+}

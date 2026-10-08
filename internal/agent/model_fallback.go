@@ -60,6 +60,20 @@ func (c *modelChain) Current() Model {
 	return c.models[c.active]
 }
 
+// RefreshModels replaces clients rebuilt after credential renewal without
+// changing this turn's selected model, fallback order, or active index.
+func (c *modelChain) RefreshModels(primary Model, fallbacks []Model) {
+	candidates := append([]Model{primary}, fallbacks...)
+	for i, current := range c.models {
+		for _, candidate := range candidates {
+			if candidate.Model != nil && current.ModelCfg.Provider == candidate.ModelCfg.Provider && current.ModelCfg.Model == candidate.ModelCfg.Model {
+				c.models[i].Model = candidate.Model
+				break
+			}
+		}
+	}
+}
+
 // Provider adapts Current for fantasy's ModelProvider hook, which is called
 // fresh on every retry attempt -- including the first -- so a chain that has
 // advanced by the time of a later attempt hands that attempt the new model

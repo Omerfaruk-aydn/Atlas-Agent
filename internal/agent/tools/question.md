@@ -8,6 +8,12 @@ renders as a plain question; multiple items render as a tabbed form with
 a confirmation screen at the end.
 
 Every question MUST include:
+- `purpose` — `information` for a missing fact, preference, or clarification;
+  `confirmation` for approval to act or continue. In YOLO this field is
+  required and confirmation requests are rejected for every question type.
+  An omitted purpose in YOLO returns an error without showing a question.
+  Never relabel an approval request as information. Outside YOLO, older
+  calls without a purpose remain supported.
 - `type` — `yes_no`, `single_choice`, `multi_choice`, or `free_text`
 - `question` — a short, direct question (one line)
 - `description` — markdown context shown below the question with details,
@@ -27,8 +33,10 @@ These are enforced. Violations return an error and waste a round trip.
 
 ## Question types
 
-- `yes_no` — confirmation only. The question must be a proposition the user
-  affirms or rejects (e.g. "Proceed with deletion?", "Enable caching?").
+- `yes_no` — a proposition the user affirms or rejects. Its purpose may be
+  factual information ("Is two-factor authentication enabled on this
+  account?") or confirmation ("Proceed with deletion?"). YOLO allows
+  factual information questions and rejects confirmation questions.
   Never use yes_no for A-vs-B choices, preference questions, or anything
   where both answers are valid options rather than accept/reject. If the
   question has two meaningful alternatives, use `single_choice` with two
@@ -66,7 +74,7 @@ Example — single question:
 ```json
 {
   "questions": [
-    {"type": "yes_no", "question": "Enable caching?", "description": "Reduces latency for repeated queries but adds invalidation complexity."}
+    {"purpose": "information", "type": "yes_no", "question": "Is caching already enabled?", "description": "This fact is not available from the observed configuration."}
   ]
 }
 ```
@@ -75,9 +83,9 @@ Example — multiple questions with confirmation:
 ```json
 {
   "questions": [
-    {"label": "Database", "type": "single_choice", "question": "Which database?", "description": "PostgreSQL for relational data, MongoDB for documents.", "choices": [{"id": "pg", "label": "PostgreSQL"}, {"id": "mongo", "label": "MongoDB"}]},
-    {"label": "Caching", "type": "yes_no", "question": "Enable caching?", "description": "Reduces latency for repeated queries but adds invalidation complexity."},
-    {"label": "Concerns", "type": "free_text", "question": "Any concerns about this approach?", "description": "Share any reservations or edge cases we should consider."}
+    {"purpose": "information", "label": "Database", "type": "single_choice", "question": "Which database?", "description": "PostgreSQL for relational data, MongoDB for documents.", "choices": [{"id": "pg", "label": "PostgreSQL"}, {"id": "mongo", "label": "MongoDB"}]},
+    {"purpose": "information", "label": "Caching", "type": "yes_no", "question": "Is caching already enabled?", "description": "This fact is not available from the observed configuration."},
+    {"purpose": "information", "label": "Concerns", "type": "free_text", "question": "Any concerns about this approach?", "description": "Share any reservations or edge cases we should consider."}
   ],
   "confirm_title": "Ready to configure?",
   "confirm_description": "We'll set up PostgreSQL with query caching enabled."
@@ -86,7 +94,7 @@ Example — multiple questions with confirmation:
 
 ## When to use
 
-- Confirm destructive or ambiguous actions
+- Clarify ambiguous actions; request confirmation only outside YOLO
 - User's request has multiple valid interpretations
 - Need the user to pick from options
 - Gather multiple related answers at once

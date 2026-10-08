@@ -23,6 +23,9 @@ type ToolResult struct {
 	Content   string
 	Data      []byte
 	MediaType string
+	// IsError is the server reporting that the call failed. The transport
+	// succeeded, so this is a completed refusal, not an unknown outcome.
+	IsError bool
 }
 
 var allTools = csync.NewMap[string, []*Tool]()
@@ -48,11 +51,13 @@ func RunTool(ctx context.Context, cfg *config.ConfigStore, name, toolName string
 		Arguments: args,
 	})
 	if err != nil {
-		return ToolResult{}, err
+		// The request may have reached the server before the transport
+		// failed, so the effect of the call is not known.
+		return ToolResult{}, &SendError{Err: err}
 	}
 
 	if len(result.Content) == 0 {
-		return ToolResult{Type: "text", Content: ""}, nil
+		return ToolResult{Type: "text", Content: "", IsError: result.IsError}, nil
 	}
 
 	var textParts []string
@@ -81,6 +86,7 @@ func RunTool(ctx context.Context, cfg *config.ConfigStore, name, toolName string
 	}
 
 	textContent := strings.Join(textParts, "\n")
+	isError := result.IsError
 
 	// We need to make sure the data is base64
 	// when using something like docker + playwright the data was not returned correctly.
@@ -90,6 +96,7 @@ func RunTool(ctx context.Context, cfg *config.ConfigStore, name, toolName string
 			Content:   textContent,
 			Data:      ensureRawBytes(imageData),
 			MediaType: imageMimeType,
+			IsError:   isError,
 		}, nil
 	}
 
@@ -99,12 +106,14 @@ func RunTool(ctx context.Context, cfg *config.ConfigStore, name, toolName string
 			Content:   textContent,
 			Data:      ensureRawBytes(audioData),
 			MediaType: audioMimeType,
+			IsError:   isError,
 		}, nil
 	}
 
 	return ToolResult{
 		Type:    "text",
 		Content: textContent,
+		IsError: isError,
 	}, nil
 }
 
@@ -253,3 +262,11 @@ func decodeBase64(data []byte) ([]byte, bool) {
 	}
 	return nil, false
 }
+
+// SendError wraps a failure of the call itself, after the request was handed
+// to the transport. Failures before that point (bad arguments, no client)
+// are returned unwrapped and prove nothing was sent.
+type SendError struct{ Err error }
+
+func (e *SendError) Error() string { return e.Err.Error() }
+func (e *SendError) Unwrap() error { return e.Err }

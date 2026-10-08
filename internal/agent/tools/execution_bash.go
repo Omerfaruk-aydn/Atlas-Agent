@@ -33,10 +33,8 @@ func runIsolatedBash(ctx context.Context, params BashParams, call fantasy.ToolCa
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 	} else {
-		for _, block := range blocks {
-			if block(params.Argv) {
-				return fantasy.NewTextErrorResponse("Command blocked by policy"), nil
-			}
+		if shell.BlockedArgv(blocks, params.Argv) {
+			return fantasy.NewTextErrorResponse("Command blocked by policy"), nil
 		}
 	}
 	binding, runner, err := isolatedRunner(ctx)

@@ -15,6 +15,7 @@ const (
 	desktopInputLimit        = 16
 	desktopSequenceStepLimit = 24
 	desktopSequenceCallLimit = 128
+	desktopSequenceTimeout   = 120 * time.Second
 )
 
 // DesktopWorkflowStep performs one input followed by verified fresh readback.
@@ -48,6 +49,14 @@ func desktopKnownInputs(single ComputerParams, multiple []ComputerParams) ([]Com
 }
 
 func validateDesktopChild(p ComputerParams) error {
+	if p.File != nil && p.Action != "file_check" {
+		return fmt.Errorf("file parameters require action file_check")
+	}
+	if p.Action == "file_check" {
+		if err := validateDesktopFileCheck(p.File); err != nil {
+			return err
+		}
+	}
 	if p.Batch != nil || p.Action == "batch" {
 		return fmt.Errorf("nested computer batches are prohibited")
 	}
@@ -136,7 +145,7 @@ func validateDesktopCheckpoint(p computer.AutomationRequest, id string) error {
 		return fmt.Errorf("checkpoint requires explicit expected-state target")
 	}
 	switch p.Condition {
-	case "visible", "hidden", "enabled", "text", "value", "document_text", "keyboard_focused":
+	case "visible", "hidden", "enabled", "text", "value", "document_text", "keyboard_focused", "file_name":
 	default:
 		return fmt.Errorf("unsupported checkpoint condition")
 	}
@@ -152,6 +161,9 @@ func desktopRecipeChild(parent fantasy.ToolCall, invoke func(context.Context, fa
 		if err := validateDesktopChild(p); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
+		// JSON decoders normalize roles, but recipes also accept typed plans.
+		// Send the same canonical selector regardless of the entry point.
+		p.Automation.Role, _ = computer.NormalizeRole(p.Automation.Role)
 		data, err := json.Marshal(p)
 		if err != nil {
 			return fantasy.ToolResponse{}, err
@@ -197,7 +209,9 @@ func desktopStableReadback(p DesktopWorkflowParams, i int, content string) bool 
 		return false
 	}
 	current, next := p.Steps[i].Checkpoint, p.Steps[i+1]
-	if current.ElementID == "" || current.WindowID != next.Checkpoint.WindowID || current.ElementID != next.Checkpoint.ElementID || current.Name != next.Checkpoint.Name || current.Role != next.Checkpoint.Role {
+	currentRole, currentErr := computer.NormalizeRole(current.Role)
+	nextRole, nextErr := computer.NormalizeRole(next.Checkpoint.Role)
+	if currentErr != nil || nextErr != nil || current.ElementID == "" || current.WindowID != next.Checkpoint.WindowID || current.ElementID != next.Checkpoint.ElementID || current.Name != next.Checkpoint.Name || currentRole != nextRole {
 		return false
 	}
 	switch current.Condition {
@@ -246,7 +260,7 @@ func runDesktopSequence(ctx context.Context, p DesktopWorkflowParams, parent fan
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 	}
-	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, desktopSequenceTimeout)
 	defer cancel()
 	child := desktopRecipeChild(parent, invoke)
 	var result fantasy.ToolResponse
@@ -346,9 +360,10 @@ func runDesktopSequence(ctx context.Context, p DesktopWorkflowParams, parent fan
 			return progress(fantasy.NewTextErrorResponse("Invalid checkpoint observation identity; do not replay input")), nil
 		}
 		readback := []desktopElement{}
+		role, _ := computer.NormalizeRole(step.Checkpoint.Role)
 		for _, e := range observation.Elements {
 			q := step.Checkpoint
-			if (q.ElementID == "" || q.ElementID == e.ID) && (q.Name == "" || q.Name == e.Name) && (q.Role == "" || q.Role == e.Role) {
+			if (q.ElementID == "" || q.ElementID == e.ID) && (q.Name == "" || q.Name == e.Name) && (role == "" || role == e.Role) {
 				readback = append(readback, e)
 			}
 		}
@@ -404,7 +419,7 @@ func desktopCheckpointReadback(content string, q computer.AutomationRequest) boo
 	if json.Unmarshal([]byte(content), &state) != nil || len(state.Actual) == 0 || string(state.Actual) == "null" {
 		return false
 	}
-	if q.Condition == "text" || q.Condition == "value" || q.Condition == "document_text" {
+	if q.Condition == "text" || q.Condition == "value" || q.Condition == "document_text" || q.Condition == "file_name" {
 		var actual string
 		return json.Unmarshal(state.Actual, &actual) == nil && actual == q.Expected && len([]rune(actual)) <= 4096
 	}

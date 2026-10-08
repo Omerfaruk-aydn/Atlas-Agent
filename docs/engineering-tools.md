@@ -75,6 +75,17 @@ claim while keeping it paused; `resume` separately authorizes another run.
 | `interaction_audit` | Observed focus/control/overflow state; use existing `ui_verify` for actual interactions. |
 | `visual_diff` | Pixel comparison of hash-verified `ui_verify` screenshot artifacts from this session. |
 | `requirement_trace` | Delivery requirements, task fingerprints and contract evidence; reported evidence remains distinguished from verified contracts. |
+| `stress_journey` | Declared adverse web cases with real network/viewport faults, explicit assertions, owned-tab cleanup and persisted outcomes. |
+| `time_lab` | Main-frame Date/timer rehearsal with virtual time, timezone emulation and observed UI assertions. |
+| `dataset_forge` | Seeded related synthetic JSON through guarded output writes, with declared null/empty boundary cases. |
+| `assumption_check` | Declarative business invariants over hash-bound JSON documents, exact decimal totals and counterexample indices. |
+| `data_boundary` | Session-bound synthetic markers, positive controls and bounded output scans without content snippets. |
+| `undo_feature` | Reviewable inverse patch for explicitly selected feature commits; stale/overlapping changes refused without rewriting history. |
+| `handover` | README-backed finite commands in a disposable project copy, actual exits and output/file expectations. |
+| `cli_bridge` | Reviewed profiles for installed programs: typed `name=value` params rendered to a literal argv, pinned executable identity, guarded bash execution and stored run reports. See [CLI Bridge](cli-bridge.md). |
+
+See [quality workflows](quality-workflows.md) for manifests, slash commands,
+CLI entry points, verification integration and the exact limits of each feature.
 
 Mutation engines must perform their own isolated mutations/restoration. Atlas
 rejects success when source fingerprints differ; it does not overwrite changed
@@ -87,10 +98,44 @@ unobserved text is never accepted as a passing check. Delivery contracts can
 bind their exact inputs and verification records. Partial DOM accessibility and
 interaction audits remain observations, not complete validation gates.
 
-Set `options.defer_tool_schemas` to true to expose only the core palette initially.
-`tool_search` loads matching allowed schemas on the next model step. Discoveries
-persist per session and are intersected with current permissions. The default
-remains false for compatibility.
+### Deferred tool schemas
+
+`options.defer_tool_schemas` is on unless a config layer sets it to `false`
+(`option defer-tool-schemas false` in `atlasrc`). An explicit `false` in any
+layer, including a workspace file over a global `true`, sends every allowed
+schema in every request, as before.
+
+When on, each request carries:
+
+- the core palette: `tool_search`, `bash`, `view`, `edit`, `multiedit`,
+  `write`, `grep`, `glob`, `ls` and `question`;
+- tools the session state needs: `todos` while tasks exist, `goal` while a
+  goal is set, `workflow` while operations are unresolved or the run is paused;
+- tools discovered in this session;
+- a short `<deferred_tools>` index naming every other enabled tool by category.
+
+`tool_search` ranks the live authorized palette by name, category and
+English/Turkish task terms, returns one-line summaries (never schemas) and
+loads strong matches or exact `names` for the next model step. A request that
+explicitly names the browser or desktop preloads those tools; a wrong guess
+only costs a `tool_search` call. Loading runs nothing and grants nothing:
+hooks, approvals and workspace limits apply when the tool is called.
+
+A call to an enabled but unloaded tool is not executed. It loads the schema
+and asks the model to call again, once per tool per turn. Discoveries are
+stored per session, intersected with the current palette on every step (a
+disabled tool or disconnected MCP server cannot return), dropped after 20
+idle turns and bounded to 32 tools. A damaged record falls back to the core
+palette.
+
+Desktop procedures are attached as a `<tool_protocol name="desktop">` system
+message while `computer` or `tool_pipeline` is loaded.
+
+`atlas context inspect SESSION --summary` prints a content-free breakdown of
+the latest request: bytes and estimated tokens per component, advertised and
+deferred tool counts and the largest tool definitions. Token figures there are
+estimates (`estimate:utf8_runes_div_4`); provider-reported usage is on the
+session.
 
 The workflow panel's `t` key switches between tasks and recent operations, checks
 and checkpoints. Arrow keys select events; Enter shows identity and evidence.

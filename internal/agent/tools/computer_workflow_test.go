@@ -42,7 +42,7 @@ func TestPipelineGateStopsMutation(t *testing.T) {
 			calls++
 			return fantasy.NewTextResponse(content), nil
 		})
-		data, _ := json.Marshal(PipelineParams{Steps: []PipelineStep{{ID: "check", Tool: "computer", RequirePassed: true, Arguments: map[string]any{"action": "assert"}}, {ID: "input", Tool: "computer"}}})
+		data, _ := json.Marshal(PipelineParams{Steps: []PipelineStep{{ID: "check", Tool: "computer", RequirePassed: true, Arguments: map[string]any{"action": "assert"}}, {ID: "input", Tool: "computer", Arguments: map[string]any{"action": "type", "text": "must not be sent", "automation": map[string]any{"window_id": "11"}}}}})
 		r, err := tool.Run(t.Context(), fantasy.ToolCall{Input: string(data)})
 		require.NoError(t, err)
 		require.True(t, r.IsError)

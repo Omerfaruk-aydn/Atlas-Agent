@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -127,7 +128,14 @@ func (m *Tool) Run(ctx context.Context, params fantasy.ToolCall) (fantasy.ToolRe
 
 	result, err := mcp.RunTool(ctx, m.cfg, m.mcpName, m.tool.Name, params.Input)
 	if err != nil {
-		return fantasy.NewTextErrorResponse(err.Error()), nil
+		var sent *mcp.SendError
+		if errors.As(err, &sent) {
+			return mcpOutcomeUnknown(err), nil
+		}
+		return fantasy.NewTextErrorResponse(err.Error() + ". Nothing was sent"), nil
+	}
+	if result.IsError {
+		return mcpServerError(result.Content), nil
 	}
 
 	switch result.Type {
@@ -148,4 +156,21 @@ func (m *Tool) Run(ctx context.Context, params fantasy.ToolCall) (fantasy.ToolRe
 	default:
 		return fantasy.NewTextResponse(result.Content), nil
 	}
+}
+
+// mcpOutcomeUnknown reports a transport failure after the request was handed
+// off. The server may have acted, so the call is neither success nor a clean
+// refusal and must be checked rather than resent.
+func mcpOutcomeUnknown(err error) fantasy.ToolResponse {
+	resp := fantasy.NewTextErrorResponse(fmt.Sprintf(`mcp_outcome_unknown: %s. The request may have reached the server and changed something {"dispatch":"unknown"}. Check the target system with a read-only call before deciding; do not resend the same call blindly.`, err))
+	resp.Metadata = `{"dispatch":"unknown","mcp_error":true}`
+	return resp
+}
+
+// mcpServerError reports an error the server itself returned. The call was
+// delivered and answered, so it is a completed failure, not a success.
+func mcpServerError(content string) fantasy.ToolResponse {
+	resp := fantasy.NewTextErrorResponse("mcp_tool_error: " + content)
+	resp.Metadata = `{"dispatch":"sent","mcp_error":true}`
+	return resp
 }

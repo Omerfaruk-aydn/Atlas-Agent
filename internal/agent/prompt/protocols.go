@@ -63,7 +63,7 @@ func SelectProtocols(task, role string) []string {
 		"migration":     has("migration", "migrate", "migrasyon", "schema", "şema", "backfill", "upgrade", "sqlite", "database", "veritabanı"),
 		"debug":         has("debug", "diagnose", "bug", "regression", "hata", "hatayı", "hataları", "deadlock", "race"),
 		"research":      has("research", "investigate", "araştır", "araştırma", "kaynak", "sources"),
-		"ui":            has("ui", "ux", "frontend", "tui", "arayüz", "arayüzü", "tasarım", "tasarımı", "responsive", "animation", "animasyon", "swiftui", "figma") || slices.Contains([]string{"product-designer", "visual-qa", "motion-designer"}, role),
+		"ui":            has("ui", "ux", "frontend", "tui", "arayüz", "arayüzü", "arayüzünü", "tasarım", "tasarımı", "tasarımını", "tasarla", "tasarlayın", "mockup", "wireframe", "prototip", "prototype", "responsive", "animation", "animasyon", "swiftui", "figma") || slices.Contains([]string{"product-designer", "visual-qa", "motion-designer"}, role),
 		"platform":      has("agent_jobs", "task_board", "source_memory", "tool_pipeline", "vault", "heartbeat", "cron", "kasa", "hedef", "goal", "pipeline"),
 	}
 	var out []string

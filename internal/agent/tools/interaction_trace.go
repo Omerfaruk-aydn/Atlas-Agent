@@ -11,7 +11,7 @@ import (
 
 func recordableBrowserAction(action string) bool {
 	switch action {
-	case "navigate", "back", "forward", "click", "semantic_click", "scroll", "tab_select":
+	case "navigate", "back", "forward", "click", "semantic_click", "scroll", "tab_select", "pointer_move", "pointer_click", "pointer_drag":
 		return true
 	}
 	return false

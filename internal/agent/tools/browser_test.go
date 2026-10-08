@@ -104,6 +104,9 @@ func (f *fakeBrowserSession) HTML(selector string) (string, error) {
 }
 
 func (f *fakeBrowserSession) Screenshot(bool) ([]byte, error) {
+	if f.screenshot != nil {
+		return f.screenshot, nil
+	}
 	return []byte("png-bytes"), nil
 }
 
@@ -192,6 +195,14 @@ func runBrowserTool(t *testing.T, sessions *fakeBrowserSessions, perms permissio
 	return resp
 }
 
+// observeFakePage observes the fake page so that refs used afterwards come
+// from an observation made by this process, as the stale-ref guard demands.
+func observeFakePage(t *testing.T, sessions *fakeBrowserSessions) {
+	t.Helper()
+	resp := runBrowserTool(t, sessions, &mockPermissionService{}, BrowserParams{Action: "observe"})
+	require.False(t, resp.IsError, resp.Content)
+}
+
 func TestBrowserToolNavigateRequiresURL(t *testing.T) {
 	t.Parallel()
 	resp := runBrowserTool(t, newFakeBrowserSessions(), &mockPermissionService{}, BrowserParams{Action: "navigate"})
@@ -218,7 +229,8 @@ func TestBrowserToolClickRequiresSelector(t *testing.T) {
 	t.Parallel()
 	resp := runBrowserTool(t, newFakeBrowserSessions(), &mockPermissionService{}, BrowserParams{Action: "click"})
 	require.True(t, resp.IsError)
-	require.Contains(t, resp.Content, "selector is required")
+	require.Contains(t, resp.Content, "missing_target")
+	require.Contains(t, resp.Content, `"input_sent":false`)
 }
 
 func TestBrowserToolTypeReplacesFieldContents(t *testing.T) {
@@ -268,6 +280,39 @@ func TestBrowserToolScreenshotReturnsAnImageResponse(t *testing.T) {
 	require.Equal(t, []byte("png-bytes"), resp.Data)
 }
 
+func TestBrowserCleanScreenshotKeepsDeliveryPixels(t *testing.T) {
+	t.Parallel()
+	sessions := newFakeBrowserSessions()
+	sessions.sessions["test-session"] = &fakeBrowserSession{
+		screenshot: []byte("clean-pixels"), annotated: []byte("target-boxes"),
+	}
+	annotate := false
+	resp := runBrowserTool(t, sessions, &mockPermissionService{}, BrowserParams{Action: "screenshot", Annotate: &annotate})
+	require.False(t, resp.IsError)
+	require.Equal(t, []byte("clean-pixels"), resp.Data)
+	require.Contains(t, resp.Content, "No pointer viewport grant")
+	resp = runBrowserTool(t, sessions, &mockPermissionService{}, BrowserParams{Action: "screenshot"})
+	require.False(t, resp.IsError)
+	require.Equal(t, []byte("target-boxes"), resp.Data)
+}
+
+func TestBrowserWorkflowPreservesCleanScreenshotChoice(t *testing.T) {
+	t.Parallel()
+	annotate := false
+	steps, err := compileBrowserWorkflow(BrowserWorkflowParams{Steps: []BrowserWorkflowStep{{
+		ID: "delivery", Action: "screenshot", Annotate: &annotate,
+	}}})
+	require.NoError(t, err)
+	require.Len(t, steps, 1)
+	require.Equal(t, false, steps[0].Arguments["annotate"])
+	data, err := json.Marshal(steps[0].Arguments)
+	require.NoError(t, err)
+	var decoded BrowserParams
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	require.NotNil(t, decoded.Annotate)
+	require.False(t, *decoded.Annotate)
+}
+
 func TestBrowserToolCloseClosesTheSessionWithoutLaunchingOne(t *testing.T) {
 	t.Parallel()
 	sessions := newFakeBrowserSessions()
@@ -293,6 +338,10 @@ func TestBrowserToolBackAndForward(t *testing.T) {
 func TestBrowserToolClickPrefersRefOverSelector(t *testing.T) {
 	t.Parallel()
 	sessions := newFakeBrowserSessions()
+	sess, err := sessions.Session("test-session")
+	require.NoError(t, err)
+	sess.(*fakeBrowserSession).snapshot = []browser.SnapshotElement{{Ref: "e3", Role: "button", Tag: "button"}}
+	observeFakePage(t, sessions)
 	resp := runBrowserTool(t, sessions, &mockPermissionService{}, BrowserParams{Action: "click", Ref: "e3", Selector: "#ignored"})
 	require.False(t, resp.IsError)
 	require.Equal(t, `[data-atlas-ref="e3"]`, sessions.sessions["test-session"].clicked)
@@ -300,7 +349,9 @@ func TestBrowserToolClickPrefersRefOverSelector(t *testing.T) {
 
 func TestBrowserToolClickRejectsAnUnsafeRef(t *testing.T) {
 	t.Parallel()
-	resp := runBrowserTool(t, newFakeBrowserSessions(), &mockPermissionService{}, BrowserParams{Action: "click", Ref: `e3"]evil[`})
+	sessions := newFakeBrowserSessions()
+	observeFakePage(t, sessions)
+	resp := runBrowserTool(t, sessions, &mockPermissionService{}, BrowserParams{Action: "click", Ref: `e3"]evil[`})
 	require.True(t, resp.IsError)
 	require.Contains(t, resp.Content, "invalid ref")
 }
@@ -308,6 +359,10 @@ func TestBrowserToolClickRejectsAnUnsafeRef(t *testing.T) {
 func TestBrowserToolTypeByRef(t *testing.T) {
 	t.Parallel()
 	sessions := newFakeBrowserSessions()
+	sess, err := sessions.Session("test-session")
+	require.NoError(t, err)
+	sess.(*fakeBrowserSession).snapshot = []browser.SnapshotElement{{Ref: "e5", Role: "textbox", Tag: "input"}}
+	observeFakePage(t, sessions)
 	resp := runBrowserTool(t, sessions, &mockPermissionService{}, BrowserParams{Action: "type", Ref: "e5", Text: "hi"})
 	require.False(t, resp.IsError)
 	require.Equal(t, `[data-atlas-ref="e5"]`, sessions.sessions["test-session"].typedSel)
@@ -431,7 +486,7 @@ func TestBrowserToolCDPRejectsMalformedParams(t *testing.T) {
 	// not an object -- an actually-malformed byte sequence can't survive
 	// the test harness's own json.Marshal of the outer BrowserParams.
 	resp := runBrowserTool(t, newFakeBrowserSessions(), &mockPermissionService{},
-		BrowserParams{Action: "cdp", CDPMethod: "Network.getCookies", CDPParams: json.RawMessage(`"not an object"`)})
+		BrowserParams{Action: "cdp", CDPMethod: "Network.getCookies", CDPParams: BrowserCDPParams(`"not an object"`)})
 	require.True(t, resp.IsError)
 	require.Contains(t, resp.Content, "cdp_params must be a JSON object")
 }
@@ -443,7 +498,7 @@ func TestBrowserToolCDPSendsMethodAndParamsAndReturnsResult(t *testing.T) {
 		cdpResult: map[string]any{"cookies": []any{}},
 	}
 	resp := runBrowserTool(t, sessions, &mockPermissionService{}, BrowserParams{
-		Action: "cdp", CDPMethod: "Network.getCookies", CDPParams: json.RawMessage(`{"urls":["https://example.com"]}`),
+		Action: "cdp", CDPMethod: "Network.getCookies", CDPParams: BrowserCDPParams(`{"urls":["https://example.com"]}`),
 	})
 	require.False(t, resp.IsError)
 	f := sessions.sessions["test-session"]

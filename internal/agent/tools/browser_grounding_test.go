@@ -20,7 +20,7 @@ func TestBrowserDoesNotRepeatAnUncertainTimedOutClick(t *testing.T) {
 	fake := sess.(*fakeBrowserSession)
 	fake.clickErr = errors.New("context deadline exceeded after dispatch")
 	fake.snapshot = []browser.SnapshotElement{{Ref: "e1", Rect: browser.ElementRect{X: 1, Y: 2, Width: 30, Height: 40}}}
-	response, err := runBrowserAction(fake, "click", BrowserParams{Ref: "e1"})
+	response, err := runBrowserAction(t.Context(), fake, "click", BrowserParams{Ref: "e1"})
 	require.NoError(t, err)
 	require.True(t, response.IsError)
 	require.Zero(t, fake.clickAtX)
@@ -60,7 +60,8 @@ func TestBrowserToolCapsAttachedSnapshot(t *testing.T) {
 	resp := runBrowserTool(t, sessions, &mockPermissionService{},
 		BrowserParams{Action: "navigate", URL: "https://example.com"})
 	require.False(t, resp.IsError)
-	require.Equal(t, 100, strings.Count(resp.Content, "(button)"))
+	require.Equal(t, 100, strings.Count(resp.Content, "] button"))
+	require.Contains(t, resp.Content, "has_more=true", "a capped list says how to see the rest")
 }
 
 func TestBrowserToolNotesSnapshotFailure(t *testing.T) {
@@ -86,6 +87,7 @@ func TestBrowserToolClickFallsBackToCoordinates(t *testing.T) {
 		Ref: "e3", Role: "button", Tag: "button", Name: "Save",
 		Rect: browser.ElementRect{X: 10, Y: 20, Width: 100, Height: 50},
 	}}
+	observeFakePage(t, sessions)
 	resp := runBrowserTool(t, sessions, &mockPermissionService{},
 		BrowserParams{Action: "click", Ref: "e3"})
 	require.False(t, resp.IsError)
@@ -101,6 +103,10 @@ func TestBrowserToolClickReportsGoneRef(t *testing.T) {
 	require.NoError(t, err)
 	fake := sess.(*fakeBrowserSession)
 	fake.clickErr = errBrowserGroundingBoom
+	fake.snapshot = []browser.SnapshotElement{{Ref: "e3", Role: "button", Tag: "button"}}
+	observeFakePage(t, sessions)
+	// The ref was genuinely observed, but its element disappeared before
+	// the click. The coordinate fallback must not reuse a different element.
 	fake.snapshot = []browser.SnapshotElement{
 		{Ref: "e9", Role: "link", Tag: "a"},
 	}

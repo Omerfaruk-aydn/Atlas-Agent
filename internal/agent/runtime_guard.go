@@ -13,17 +13,35 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/outcome"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 )
 
 type guardedTool struct {
 	fantasy.AgentTool
-	store *engineering.Store
+	store    *engineering.Store
+	sessions session.Service
 }
 
 func (t *guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 	scope := engineering.GetScope(ctx, tools.GetSessionFromContext(ctx))
+	if call.Name == "verify" {
+		var params tools.VerifyParams
+		if json.Unmarshal([]byte(call.Input), &params) == nil && params.TaskID != "" {
+			if scope.TaskID != "" && scope.TaskID != params.TaskID {
+				return fantasy.NewTextErrorResponse("task_id cannot override the assigned task"), nil
+			}
+			ctx = engineering.WithScope(ctx, scope.SessionID, params.TaskID)
+			scope = engineering.GetScope(ctx, scope.SessionID)
+		}
+	}
 	if err := checkToolOwnership(scope, call); err != nil {
 		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	if t.sessions != nil && scope.TaskID != "" && call.Name != "verify" && tools.CallMutates(call.Name, call.Input) {
+		if refusal := sharedTaskDispatchRefusal(ctx, t.store, t.sessions, scope.SessionID, scope.TaskID); refusal != "" {
+			return fantasy.NewTextErrorResponse(refusal), nil
+		}
 	}
 	if call.Name == tools.LSPEditPlanToolName {
 		var params tools.EditPlanParams
@@ -49,11 +67,36 @@ func (t *guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 			return response, err
 		}
 	}
+	if refusal := t.resendRefusal(ctx, scope.SessionID, call); refusal != "" {
+		return fantasy.NewTextErrorResponse(refusal), nil
+	}
 	id, err := t.store.Begin(ctx, scope.SessionID, call.ID, call.Name, call.Input, scope.TaskID)
 	if err != nil {
 		resp := fantasy.NewTextErrorResponse(err.Error())
 		resp.StopTurn = true
 		return resp, nil
+	}
+	if call.Name == "verify" && scope.TaskID != "" && t.sessions != nil {
+		current, getErr := t.sessions.Get(ctx, scope.SessionID)
+		if getErr != nil {
+			return fantasy.ToolResponse{}, getErr
+		}
+		for _, todo := range current.Todos {
+			if todo.ID != scope.TaskID {
+				continue
+			}
+			if updateErr := t.store.Update(ctx, scope.SessionID, func(st *engineering.State) error {
+				for i := range st.Operations {
+					if st.Operations[i].ID == id {
+						st.Operations[i].TaskFingerprint = session.TaskFingerprint(todo)
+					}
+				}
+				return nil
+			}); updateErr != nil {
+				return fantasy.ToolResponse{}, updateErr
+			}
+			break
+		}
 	}
 	if call.Name == AgentToolName {
 		var params AgentParams
@@ -72,6 +115,9 @@ func (t *guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 	}
 	resp, runErr := t.AgentTool.Run(ctx, call)
 	if ctx.Err() != nil && (runErr != nil || resp.IsError) || errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
+		abandoned, abandon := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		_ = t.recordOutcome(abandoned, scope.SessionID, id, call, outcomeResult(call.Name, resp, runErr, tools.CallMutates(call.Name, call.Input), true), resp)
+		abandon()
 		return resp, runErr
 	}
 	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -86,6 +132,24 @@ func (t *guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 			for _, op := range state.Operations {
 				if op.Status == "running" && op.BackgroundID == meta.ShellID && meta.ShellID != "" {
 					evidence, observed := operationOutcome(tools.BashToolName, resp, nil)
+					if err := t.store.Update(cleanup, scope.SessionID, func(st *engineering.State) error {
+						for _, record := range st.Outcomes.Records {
+							if record.OpID != op.ID {
+								continue
+							}
+							if *meta.ExitCode == 0 {
+								record.Phase = outcome.PhaseVerified
+							} else {
+								record.Phase = outcome.PhaseUnknown
+							}
+							record.At = time.Now().UnixMilli()
+							st.Outcomes.Record(record)
+							break
+						}
+						return nil
+					}); err != nil {
+						return resp, err
+					}
 					if err := t.store.FinishObserved(cleanup, scope.SessionID, op.ID, *meta.ExitCode == 0, false, evidence, observed); err != nil {
 						return resp, err
 					}
@@ -100,6 +164,7 @@ func (t *guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 				for i := range st.Operations {
 					if st.Operations[i].ID == id {
 						st.Operations[i].BackgroundID = meta.ShellID
+						st.Outcomes.Record(outcome.Record{OpID: id, Tool: call.Name, Phase: outcome.PhaseDispatched, Mutation: true, Subjects: outcomeSubjects(call), Fingerprint: outcomeFingerprint(call)})
 					}
 				}
 				return nil
@@ -127,8 +192,35 @@ func (t *guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 		var params tools.WorktreeParams
 		mutation = json.Unmarshal([]byte(call.Input), &params) == nil && params.Action == "apply"
 	}
+	if call.Name == "undo_feature" {
+		var meta tools.UndoFeatureMetadata
+		mutation = json.Unmarshal([]byte(resp.Metadata), &meta) == nil && meta.Applied
+		if mutation && (runErr != nil || resp.IsError) {
+			if err := t.store.Update(cleanup, scope.SessionID, func(state *engineering.State) error {
+				state.Generation++
+				state.Failures = map[string]int{}
+				return nil
+			}); err != nil {
+				return resp, err
+			}
+		}
+	}
 	evidence, observed := operationOutcome(call.Name, resp, runErr)
-	if err := t.store.FinishObserved(cleanup, scope.SessionID, id, tools.ToolSucceeded(call.Name, resp, runErr), mutation, evidence, observed); err != nil {
+	passed := tools.ToolSucceeded(call.Name, resp, runErr)
+	if (call.Name == "data_boundary" || call.Name == tools.CLIBridgeToolName) && runErr == nil && !resp.IsError && !resp.StopTurn {
+		var meta struct {
+			Prepared bool `json:"prepared"`
+		}
+		if json.Unmarshal([]byte(resp.Metadata), &meta) == nil && meta.Prepared {
+			// Probe creation, CLI Bridge previews and started background
+			// runs are successful preparation, not observed checks.
+			passed = true
+		}
+	}
+	if err := t.recordOutcome(cleanup, scope.SessionID, id, call, outcomeResult(call.Name, resp, runErr, mutation || tools.CallMutates(call.Name, call.Input), false), resp); err != nil {
+		return resp, fmt.Errorf("persist tool outcome %s: %w", id, err)
+	}
+	if err := t.store.FinishObserved(cleanup, scope.SessionID, id, passed, mutation, evidence, observed); err != nil {
 		return resp, fmt.Errorf("persist tool completion %s: %w", id, err)
 	}
 	return resp, runErr
@@ -291,7 +383,7 @@ func checkToolOwnership(scope engineering.Scope, call fantasy.ToolCall) error {
 	return fmt.Errorf("file is outside this task's declared ownership; hand the change to its owner")
 }
 
-func guardTools(ts []fantasy.AgentTool, store *engineering.Store) []fantasy.AgentTool {
+func guardTools(ts []fantasy.AgentTool, store *engineering.Store, sessions ...session.Service) []fantasy.AgentTool {
 	if store == nil {
 		return ts
 	}
@@ -302,6 +394,9 @@ func guardTools(ts []fantasy.AgentTool, store *engineering.Store) []fantasy.Agen
 			out[i] = t
 		} else {
 			out[i] = &guardedTool{AgentTool: t, store: store}
+			if len(sessions) > 0 {
+				out[i].(*guardedTool).sessions = sessions[0]
+			}
 		}
 	}
 	return out

@@ -6,6 +6,17 @@ design; preserve established identity unless a redesign was requested.
 Load ui-ux-pro-max for web/mobile design and use available design_search to compare
 style, typography, color, UX and actual-stack candidates. Combine compatible choices
 into semantic tokens; rankings are references, not a generated design guarantee.
+Validate one complete representative screen before scaling the composition to
+other screens. Build actual reusable components and states, then use instances;
+names or copied rectangles are not evidence of a component system. For browser
+authoring in Figma, load figma-browser and record separately verifiable screen,
+layout, component, contrast, overflow and prototype requirements. Finish each
+milestone with evidence instead of counting navigation as delivery. Exercise
+prototype links in presentation mode. A keyboard placeholder or configured
+interaction row is not proof of a finished keyboard or working prototype.
+Before batching repeated canvas work, verify the first two items' actual parent,
+geometry and layout mode. Stop and repair an unexpected placement instead of
+repeating the same unverified gestures across the entire composition.
 Load apple-design for requested Apple-like interaction craft or appropriate native
 Apple work. Load tui-design for terminal interfaces: web blur, CSS and SVG guidance
 does not translate directly to terminal rendering. Respect disabled skills/tools.

@@ -13,6 +13,7 @@ import (
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/browser"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
@@ -57,6 +58,9 @@ var browserActions = []string{
 	"screenshot", "url", "close", "export_test", "trace_start", "trace_stop",
 	"vault_list", "vault_fill",
 	"find", "assert", "semantic_click", "semantic_type", "tabs", "tab_new", "tab_select", "tab_close", "frames", "network", "capture_region", "upload", "download_start", "download_wait", "handoff", "status", "trace", "auth_code",
+	browser.InputPointerMove, browser.InputPointerClick, browser.InputPointerDrag, browser.InputKeyCombo, browser.InputInsertText,
+	"observe", "set_field", "read_field", "select_option", "fill_form", "submit", "collect", "research", "health", "tab_return", "undo", "knowledge",
+	"task_plan", "task_update", "task_status",
 }
 
 // browserReadOnlyActions are the actions that only observe the current page
@@ -77,13 +81,14 @@ var browserReadOnlyActions = map[string]bool{
 	"url":        true,
 	"close":      true,
 	"find":       true, "assert": true, "tabs": true, "frames": true, "network": true, "capture_region": true, "status": true, "trace": true, "handoff": true,
+	"observe": true, "read_field": true, "health": true, "knowledge": true, "task_plan": true, "task_update": true, "task_status": true,
 }
 
 type BrowserParams struct {
 	CredentialID string          `json:"credential_id,omitempty" description:"Saved vault handle for vault_fill. Never supply passwords in tool arguments."`
 	Advanced     browser.Request `json:"advanced,omitempty" description:"Parameters for semantic targets/scope, document/tab/origin guards, conditions, tabs/popups/dialogs, frames, upload/download. Action is taken from the outer action field."`
 	SecretEnv    string          `json:"secret_env,omitempty" description:"For auth_code: environment variable containing an authorized TOTP seed; never supply the seed itself."`
-	Action       string          `json:"action" description:"Browser action: navigate/back/forward/click/type/key/scroll/eval/text/html/snapshot/images/console/dialog/cdp/screenshot/url/close, find/assert/wait_for/semantic_click/semantic_type, tabs/tab_new/tab_select/tab_close/popup_wait/dialog_wait/dialog_handle/frames/network/capture_region/upload/download_start/download_wait, handoff/status/trace/trace_start/trace_stop/export_test/auth_code/vault_list/vault_fill. See tool description."`
+	Action       string          `json:"action" description:"Browser action: navigate/back/forward/click/type/key/scroll/eval/text/html/snapshot/images/console/dialog/cdp/screenshot/url/close, find/assert/wait_for/semantic_click/semantic_type, tabs/tab_new/tab_select/tab_close/popup_wait/dialog_wait/dialog_handle/frames/network/capture_region/upload/download_start/download_wait, handoff/status/trace/trace_start/trace_stop/export_test/auth_code/vault_list/vault_fill, pointer_move/pointer_click/pointer_drag/key_combo/insert_text. See tool description."`
 	// URL is required for navigate.
 	URL string `json:"url,omitempty" description:"Destination for the navigate action. Must start with http:// or https://."`
 	// Selector is an alternative to Ref for click, type, text, and html.
@@ -91,8 +96,12 @@ type BrowserParams struct {
 	// Ref is the preferred way to target an element for click, type,
 	// text, and html: an id from a prior snapshot action.
 	Ref string `json:"ref,omitempty" description:"Element ref from a prior snapshot action (e.g. \"e3\"), for click, type, text, and html. Preferred over selector."`
+	// Value advertises the top-level alias of advanced.value. UnmarshalJSON
+	// moves it into Advanced and keeps this field empty, so it only exists
+	// for the schema: the model is offered exactly what the runtime accepts.
+	Value string `json:"value,omitempty" description:"For set_field/select_option: the value to apply, same as advanced.value (send one of them). Required; an empty string clears the field."`
 	// Text is required for type.
-	Text string `json:"text,omitempty" description:"Text to type into the element identified by ref/selector, for the type action. Replaces whatever was already in the field."`
+	Text string `json:"text,omitempty" description:"For type: text that replaces the field identified by ref/selector. For insert_text: text typed at the focused element. For handoff: the exact step only the user can do (no secrets)."`
 	// Key is required for key.
 	Key string `json:"key,omitempty" description:"Named key to send to the focused element, for the key action: enter, tab, escape, backspace, delete, arrowup, arrowdown, arrowleft, arrowright."`
 	// Direction and Amount are for scroll.
@@ -104,33 +113,40 @@ type BrowserParams struct {
 	Full bool `json:"full,omitempty" description:"For the snapshot action: include elements scrolled out of the current viewport too, not just what's currently visible."`
 	// FullPage only applies to screenshot.
 	FullPage bool `json:"full_page,omitempty" description:"For the screenshot action, capture the full scrollable page instead of just the visible viewport."`
+	// Annotate defaults to true; false captures clean pixels for delivery.
+	Annotate *bool `json:"annotate,omitempty" description:"For screenshot: false returns a clean image without target boxes, for visual validation or delivery. Defaults to true. Clean captures do not issue pointer viewport grants."`
 	// Accept and PromptText are for dialog.
 	Accept     bool   `json:"accept,omitempty" description:"For the dialog action: true to accept (OK/confirm), false to dismiss (Cancel)."`
 	PromptText string `json:"prompt_text,omitempty" description:"For the dialog action: text to enter before accepting a prompt() dialog. Ignored otherwise, and when accept is false."`
 	// CDPMethod and CDPParams are for cdp.
-	CDPMethod string          `json:"cdp_method,omitempty" description:"For the cdp action: the Chrome DevTools Protocol method name, e.g. \"Network.getCookies\"."`
-	CDPParams json.RawMessage `json:"cdp_params,omitempty" description:"For the cdp action: a JSON object of parameters for the method, e.g. {}. Omit for a method that takes none."`
+	CDPMethod string           `json:"cdp_method,omitempty" description:"For the cdp action: the Chrome DevTools Protocol method name, e.g. \"Network.getCookies\"."`
+	CDPParams BrowserCDPParams `json:"cdp_params,omitempty" description:"For the cdp action: a JSON object (not a quoted JSON string) of parameters for the method, e.g. {\"urls\":[\"https://example.com\"]}. Omit for a method that takes none."`
+	// Task carries completion-contract updates for task_plan/task_update.
+	Task *BrowserTaskParams `json:"task,omitempty" description:"For task_plan/task_update: the completion contract of a multi-part browser deliverable."`
 }
 
 type BrowserPermissionsParams struct {
-	CredentialID string          `json:"credential_id,omitempty"`
-	Advanced     browser.Request `json:"advanced,omitempty"`
-	SecretEnv    string          `json:"secret_env,omitempty"`
-	Action       string          `json:"action"`
-	URL          string          `json:"url,omitempty"`
-	Selector     string          `json:"selector,omitempty"`
-	Ref          string          `json:"ref,omitempty"`
-	Text         string          `json:"text,omitempty"`
-	Key          string          `json:"key,omitempty"`
-	Direction    string          `json:"direction,omitempty"`
-	Amount       int             `json:"amount,omitempty"`
-	Script       string          `json:"script,omitempty"`
-	Full         bool            `json:"full,omitempty"`
-	FullPage     bool            `json:"full_page,omitempty"`
-	Accept       bool            `json:"accept,omitempty"`
-	PromptText   string          `json:"prompt_text,omitempty"`
-	CDPMethod    string          `json:"cdp_method,omitempty"`
-	CDPParams    json.RawMessage `json:"cdp_params,omitempty"`
+	CredentialID string             `json:"credential_id,omitempty"`
+	Advanced     browser.Request    `json:"advanced,omitempty"`
+	SecretEnv    string             `json:"secret_env,omitempty"`
+	Action       string             `json:"action"`
+	URL          string             `json:"url,omitempty"`
+	Selector     string             `json:"selector,omitempty"`
+	Ref          string             `json:"ref,omitempty"`
+	Value        string             `json:"value,omitempty"`
+	Text         string             `json:"text,omitempty"`
+	Key          string             `json:"key,omitempty"`
+	Direction    string             `json:"direction,omitempty"`
+	Amount       int                `json:"amount,omitempty"`
+	Script       string             `json:"script,omitempty"`
+	Full         bool               `json:"full,omitempty"`
+	FullPage     bool               `json:"full_page,omitempty"`
+	Annotate     *bool              `json:"annotate,omitempty"`
+	Accept       bool               `json:"accept,omitempty"`
+	PromptText   string             `json:"prompt_text,omitempty"`
+	CDPMethod    string             `json:"cdp_method,omitempty"`
+	CDPParams    BrowserCDPParams   `json:"cdp_params,omitempty"`
+	Task         *BrowserTaskParams `json:"task,omitempty"`
 }
 
 type BrowserResponseMetadata struct {
@@ -176,11 +192,19 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 			if !slices.Contains(browserActions, action) {
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("unknown action %q, must be one of: %s", params.Action, strings.Join(browserActions, ", "))), nil
 			}
+			if err := browserArgumentPreflight(action, params, false); err != nil {
+				return errorResponse(err), nil
+			}
 
 			sessionID := GetSessionFromContext(ctx)
 			if sessionID == "" {
 				return fantasy.ToolResponse{}, fmt.Errorf("session ID is required for using the browser")
 			}
+			stateID := sessionID
+			if _, shared := sessions.(*browser.Manager); !shared {
+				stateID = fmt.Sprintf("%s@%p", sessionID, sessions)
+			}
+			ctx = withBrowserState(ctx, stateID)
 			controlID := engineering.GetScope(ctx, sessionID).SessionID
 			if err := interaction.Default.Load(workingDir, controlID); err != nil {
 				return fantasy.NewTextErrorResponse("Cannot load interaction state: " + err.Error()), nil
@@ -206,17 +230,37 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 				return NewPermissionDeniedResponse(permissions), nil
 			}
 			if action == "handoff" {
-				interaction.Default.Pause(controlID, "Browser authentication or user intervention required")
+				step, err := handoffStep(params.Text)
+				if err != nil {
+					return contractResponse(err), nil
+				}
+				interaction.Default.Pause(controlID, step)
 				if err := interaction.Default.Record(workingDir, controlID, interaction.Entry{Time: time.Now(), Resource: "browser", Action: action, Status: "paused"}); err != nil {
 					return fantasy.NewTextErrorResponse(err.Error()), nil
 				}
-				response := fantasy.NewTextResponse("Automation paused. Complete CAPTCHA, passkey or authentication in the visible browser, then resume from /interactions.")
-				response.StopTurn = true
-				return response, nil
+				return handoffResponse(step, "in the visible browser"), nil
 			}
 			if action == "status" || action == "trace" {
 				data, _ := json.Marshal(interaction.Default.ToolSnapshot(controlID, action == "trace"))
+				if action == "status" {
+					var state map[string]any
+					if json.Unmarshal(data, &state) == nil {
+						state["browser_metrics"] = BrowserSessionMetrics(stateID)
+						data, _ = json.Marshal(state)
+					}
+				}
 				return fantasy.NewTextResponse(string(data)), nil
+			}
+			if browserTaskActions[action] {
+				task := BrowserTaskParams{}
+				if params.Task != nil {
+					task = *params.Task
+				}
+				out, err := runBrowserTask(workingDir, sessionID, stateID, action, task)
+				if err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+				return fantasy.NewTextResponse(out), nil
 			}
 			if action == "trace_start" || action == "trace_stop" {
 				interaction.Default.SetImageRecording(controlID, action == "trace_start")
@@ -242,13 +286,13 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 			}
 			release, err := interaction.Default.Acquire(ctx, controlID, resource)
 			if err != nil {
-				return fantasy.NewTextErrorResponse(err.Error()), nil
+				return interactionAcquireResponse(err), nil
 			}
 			defer release()
 			if manager, ok := sessions.(interface{ UsesDesktop() bool }); ok && manager.UsesDesktop() {
 				releaseDesktop, err := interaction.Default.Acquire(ctx, controlID, "desktop")
 				if err != nil {
-					return fantasy.NewTextErrorResponse(err.Error()), nil
+					return interactionAcquireResponse(err), nil
 				}
 				defer releaseDesktop()
 			}
@@ -276,6 +320,7 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 
 			if action == "close" {
 				sessions.Close(sessionID)
+				browserObservations.invalidate(stateID)
 				status = "succeeded"
 				return fantasy.NewTextResponse("Browser session closed."), nil
 			}
@@ -340,14 +385,24 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 			}
 
 			var response fantasy.ToolResponse
-			if action == "vault_fill" {
+			if guardErr := ledgerFor(stateID).guardRepeat(stateID, action, params); guardErr != nil {
+				response = fantasy.NewTextErrorResponse(guardErr.Error())
+			} else if refErr := staleRefGuard(ctx, sess, stateID, action, params); refErr != nil {
+				response = fantasy.NewTextErrorResponse(refErr.Error())
+			} else if typeErr := keyWouldType(ctx, sess, action, params); typeErr != nil {
+				response = errorResponse(typeErr)
+			} else if action == "vault_fill" {
 				response, err = fillBrowserVault(ctx, sess, credentialStore, params)
 			} else if action == "auth_code" {
 				response, err = runBrowserAuth(ctx, sess, params)
+			} else if browser.IsInputAction(action) {
+				response, err = runBrowserInput(ctx, sess, stateID, action, params)
+			} else if browserExtendedActions[action] {
+				response, err = runExtendedBrowser(ctx, sess, action, params, workingDir, stateID)
 			} else if isAdvancedBrowserAction(action) {
 				response, err = runAdvancedBrowser(ctx, sess, action, params, workingDir)
 			} else {
-				response, err = runBrowserAction(sess, action, params)
+				response, err = runBrowserAction(ctx, sess, action, params)
 			}
 			if err == nil && !response.IsError {
 				status = "succeeded"
@@ -358,7 +413,41 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 			if recordImages {
 				after = captureBrowserTrace(ctx, sess, workingDir, controlID)
 			}
-			return withInteractionFailure(response), err
+			if err == nil {
+				var exec browser.ExecutionIdentity
+				if identity, ok := sess.(browser.IdentitySession); ok {
+					exec = identity.ExecutionIdentity(ctx)
+				} else if tabs, ok := sess.(browser.TabIdentity); ok {
+					exec.TabID = tabs.ActiveTab()
+				}
+				if action == "find" && !response.IsError {
+					var found struct {
+						Matches []struct {
+							Ref string `json:"ref"`
+						} `json:"matches"`
+					}
+					if json.Unmarshal([]byte(response.Content), &found) == nil {
+						var refs []string
+						for _, match := range found.Matches {
+							refs = append(refs, match.Ref)
+						}
+						browserObservations.grantFoundRefs(ctx, stateID, sess, exec, refs)
+					}
+				}
+				if !response.IsError {
+					trackCanvasTextEdit(ctx, sess, stateID, action, params, exec)
+				}
+				if params.Ref != "" && !response.IsError && (action == "set_field" || action == "select_option" || action == "read_field" || action == "type") {
+					// The result reports the field as it is now; a field whose
+					// name carries its value keeps a usable ref.
+					browserObservations.grantFoundRefs(ctx, stateID, sess, exec, []string{params.Ref})
+				}
+				var op BrowserOp
+				response, op = recordBrowserOp(stateID, action, params, response, started, exec)
+				response = withToolOutcome(response, browserOutcome(op))
+				recordBrowserStep(workingDir, sessionID, op)
+			}
+			return withBrowserFailure(response), err
 		},
 	)
 }
@@ -406,6 +495,32 @@ func browserActionDescription(action string, params BrowserParams) string {
 		return verb + " the pending browser dialog"
 	case "cdp":
 		return "Send raw CDP command: " + params.CDPMethod
+	case browser.InputPointerMove, browser.InputPointerClick:
+		return fmt.Sprintf("Browser %s at (%.0f, %.0f)", strings.ReplaceAll(action, "_", " "), params.Advanced.X, params.Advanced.Y)
+	case browser.InputPointerDrag:
+		return fmt.Sprintf("Browser pointer drag from (%.0f, %.0f) to (%.0f, %.0f)", params.Advanced.X, params.Advanced.Y, params.Advanced.ToX, params.Advanced.ToY)
+	case browser.InputKeyCombo:
+		return "Send browser key combination: " + strings.Join(append(append([]string(nil), params.Advanced.Modifiers...), firstNonEmpty(params.Advanced.Key, params.Key)), "+")
+	case browser.InputInsertText:
+		return "Insert text at the focused browser element"
+	case "observe":
+		return "Observe the page (" + firstNonEmpty(params.Advanced.Mode, "delta") + ")"
+	case "set_field":
+		return "Set and commit browser field: " + firstNonEmpty(describeTarget(params), params.Advanced.Label, params.Advanced.Name, params.Advanced.Selector)
+	case "read_field":
+		return "Read browser field: " + firstNonEmpty(describeTarget(params), params.Advanced.Label, params.Advanced.Name, params.Advanced.Selector)
+	case "select_option":
+		return "Select option " + params.Advanced.Value + " in: " + firstNonEmpty(describeTarget(params), params.Advanced.Label, params.Advanced.Name, params.Advanced.Selector)
+	case "fill_form":
+		return fmt.Sprintf("Fill %d browser form field(s)", len(params.Advanced.Fields))
+	case "submit":
+		return "Submit browser form via: " + firstNonEmpty(describeTarget(params), params.Advanced.Name, params.Advanced.Selector)
+	case "collect":
+		return "Collect list rows: " + params.Advanced.RowSelector
+	case "research":
+		return fmt.Sprintf("Read %d page(s) in background tabs", max(len(params.Advanced.URLs), 1))
+	case "undo":
+		return "Undo the last browser field edit made by Atlas"
 	case "screenshot":
 		return "Take browser screenshot"
 	case "url":
@@ -439,9 +554,12 @@ func resolveTargetSelector(action string, params BrowserParams) (string, error) 
 // outright: the DOM often moved between the model's snapshot and its
 // click. Without a ref there is no box to aim at, so the backend error
 // (which already hints at staleness) stands as-is.
-func clickFallback(sess browser.Session, metadata BrowserResponseMetadata, params BrowserParams, selector string, clickErr error) (fantasy.ToolResponse, error) {
-	code, _ := interaction.Failure(clickErr.Error())
-	if code == "timeout" || code == "ambiguous_target" || code == "target_not_actionable" {
+func clickFallback(ctx context.Context, sess browser.Session, metadata BrowserResponseMetadata, params BrowserParams, selector string, clickErr error) (fantasy.ToolResponse, error) {
+	// Only an unexplained driver failure may fall back to the element's
+	// coordinates. A covered, absent, moved or ambiguous target is the
+	// reason not to click there: the point would hit something else.
+	code, _ := browserErrorCode(clickErr.Error())
+	if code != "driver_error" || strings.Contains(clickErr.Error(), "target_changed_before_dispatch") {
 		return fantasy.NewTextErrorResponse("click failed: " + clickErr.Error() + "; observe and verify before retrying input"), nil
 	}
 	if params.Ref == "" {
@@ -464,7 +582,7 @@ func clickFallback(sess browser.Session, metadata BrowserResponseMetadata, param
 				clickErr.Error(), x, y, err.Error(),
 			)), nil
 		}
-		return withFreshState(sess, metadata, fmt.Sprintf(
+		return withFreshState(ctx, sess, metadata, fmt.Sprintf(
 			"Clicked %s at (%.0f, %.0f) via coordinate fallback.",
 			describeTarget(params), x, y,
 		))
@@ -499,32 +617,30 @@ func scrollDelta(direction string, amount int) (dx, dy int, err error) {
 	}
 }
 
-// freshSnapshotCap bounds the snapshot attached to state-changing
-// action responses. Enough to act on without another round trip, too
-// small to flood context on element-dense pages.
-const freshSnapshotCap = 100
-
-// withFreshState appends the page's current interactive elements to a
-// successful state-changing action's response. Refs die on navigation
-// and many clicks mutate the DOM, so handing the model a fresh list
-// with the result removes the whole class of stale-ref retries.
-func withFreshState(sess browser.Session, metadata BrowserResponseMetadata, msg string) (fantasy.ToolResponse, error) {
+// withFreshState appends what changed on the page to a successful
+// state-changing action's response. The first observation of a document is
+// a full list; later ones carry only added, removed and changed elements,
+// with an observation_id the model can relate to the previous one. Refs die
+// on navigation and many clicks mutate the DOM, so handing the model the
+// change with the result removes the whole class of stale-ref retries
+// without resending an unchanged page after every key.
+func withFreshState(ctx context.Context, sess browser.Session, metadata BrowserResponseMetadata, msg string) (fantasy.ToolResponse, error) {
 	var b strings.Builder
 	b.WriteString(msg)
-	elements, err := sess.Snapshot(false)
+	obs, err := takeObservation(ctx, sess, browserStateID(ctx), observeRequest{mode: "delta", limit: 100})
 	if err != nil {
 		fmt.Fprintf(&b, "\n\nFresh snapshot unavailable: %s.", err.Error())
+	} else if obs.mode == "delta" {
+		b.WriteString("\n\nChanges since " + obs.baseID + ":\n")
+		b.WriteString(obs.text)
 	} else {
-		if len(elements) > freshSnapshotCap {
-			elements = elements[:freshSnapshotCap]
-		}
 		b.WriteString("\n\nInteractive elements now:\n")
-		b.WriteString(formatSnapshot(elements, sess.PendingDialogs()))
+		b.WriteString(obs.text)
 	}
 	return fantasy.WithResponseMetadata(fantasy.NewTextResponse(b.String()), metadata), nil
 }
 
-func runBrowserAction(sess browser.Session, action string, params BrowserParams) (fantasy.ToolResponse, error) {
+func runBrowserAction(ctx context.Context, sess browser.Session, action string, params BrowserParams) (fantasy.ToolResponse, error) {
 	metadata := BrowserResponseMetadata{Action: action}
 
 	switch action {
@@ -539,19 +655,19 @@ func runBrowserAction(sess browser.Session, action string, params BrowserParams)
 			return fantasy.NewTextErrorResponse("navigate failed: " + err.Error()), nil
 		}
 		metadata.URL = params.URL
-		return withFreshState(sess, metadata, "Navigated to "+params.URL)
+		return withFreshState(ctx, sess, metadata, "Navigated to "+params.URL)
 
 	case "back":
 		if err := sess.Back(); err != nil {
 			return fantasy.NewTextErrorResponse("back failed: " + err.Error()), nil
 		}
-		return withFreshState(sess, metadata, "Navigated back.")
+		return withFreshState(ctx, sess, metadata, "Navigated back.")
 
 	case "forward":
 		if err := sess.Forward(); err != nil {
 			return fantasy.NewTextErrorResponse("forward failed: " + err.Error()), nil
 		}
-		return withFreshState(sess, metadata, "Navigated forward.")
+		return withFreshState(ctx, sess, metadata, "Navigated forward.")
 
 	case "click":
 		selector, err := resolveTargetSelector(action, params)
@@ -559,9 +675,9 @@ func runBrowserAction(sess browser.Session, action string, params BrowserParams)
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		if err := sess.Click(selector); err != nil {
-			return clickFallback(sess, metadata, params, selector, err)
+			return clickFallback(ctx, sess, metadata, params, selector, err)
 		}
-		return withFreshState(sess, metadata, "Clicked "+describeTarget(params))
+		return withFreshState(ctx, sess, metadata, "Clicked "+describeTarget(params))
 
 	case "type":
 		selector, err := resolveTargetSelector(action, params)
@@ -571,16 +687,19 @@ func runBrowserAction(sess browser.Session, action string, params BrowserParams)
 		if err := sess.Type(selector, params.Text); err != nil {
 			return fantasy.NewTextErrorResponse("type failed: " + err.Error()), nil
 		}
-		return withFreshState(sess, metadata, "Typed into "+describeTarget(params))
+		return withFreshState(ctx, sess, metadata, "Typed into "+describeTarget(params))
 
 	case "key":
 		if params.Key == "" {
 			return fantasy.NewTextErrorResponse("key is required for the key action"), nil
 		}
-		if err := sess.PressKey(strings.ToLower(params.Key)); err != nil {
+		if err := pressBrowserKey(ctx, sess, params.Key); err != nil {
+			if ctx.Err() != nil {
+				return fantasy.ToolResponse{}, ctx.Err()
+			}
 			return fantasy.NewTextErrorResponse("key press failed: " + err.Error()), nil
 		}
-		return withFreshState(sess, metadata, "Sent key "+params.Key)
+		return withFreshState(ctx, sess, metadata, "Sent key "+params.Key)
 
 	case "scroll":
 		dx, dy, err := scrollDelta(params.Direction, params.Amount)
@@ -596,11 +715,7 @@ func runBrowserAction(sess browser.Session, action string, params BrowserParams)
 		if params.Script == "" {
 			return fantasy.NewTextErrorResponse("script is required for the eval action"), nil
 		}
-		result, err := sess.Eval(params.Script)
-		if err != nil {
-			return fantasy.NewTextErrorResponse("eval failed: " + err.Error()), nil
-		}
-		return fantasy.WithResponseMetadata(fantasy.NewTextResponse(result), metadata), nil
+		return guardedEval(ctx, sess, params)
 
 	case "text":
 		selector, err := resolveTargetSelector(action, params)
@@ -625,11 +740,11 @@ func runBrowserAction(sess browser.Session, action string, params BrowserParams)
 		return fantasy.WithResponseMetadata(fantasy.NewTextResponse(result), metadata), nil
 
 	case "snapshot":
-		elements, err := sess.Snapshot(params.Full)
+		obs, err := takeObservation(ctx, sess, browserStateID(ctx), observeRequest{mode: "full", full: params.Full, cursor: params.Advanced.Cursor})
 		if err != nil {
 			return fantasy.NewTextErrorResponse("snapshot failed: " + err.Error()), nil
 		}
-		return fantasy.WithResponseMetadata(fantasy.NewTextResponse(formatSnapshot(elements, sess.PendingDialogs())), metadata), nil
+		return fantasy.WithResponseMetadata(fantasy.NewTextResponse(obs.text), metadata), nil
 
 	case "images":
 		images, err := sess.Images()
@@ -655,11 +770,9 @@ func runBrowserAction(sess browser.Session, action string, params BrowserParams)
 		if params.CDPMethod == "" {
 			return fantasy.NewTextErrorResponse("cdp_method is required for the cdp action"), nil
 		}
-		var cdpParams map[string]any
-		if len(params.CDPParams) > 0 {
-			if err := json.Unmarshal(params.CDPParams, &cdpParams); err != nil {
-				return fantasy.NewTextErrorResponse("cdp_params must be a JSON object: " + err.Error()), nil
-			}
+		cdpParams, err := decodeCDPParams(params.CDPParams)
+		if err != nil {
+			return contractResponse(computer.NewContractError("invalid_cdp_params", "cdp_params", err.Error()+". No CDP command sent", "Resend the same method with cdp_params as a JSON object value.", `{"action":"cdp","cdp_method":"Input.dispatchMouseEvent","cdp_params":{"type":"mouseMoved","x":120,"y":80}}`)), nil
 		}
 		result, err := sess.RawCDP(params.CDPMethod, cdpParams)
 		if err != nil {
@@ -672,10 +785,27 @@ func runBrowserAction(sess browser.Session, action string, params BrowserParams)
 		return fantasy.WithResponseMetadata(fantasy.NewTextResponse(string(resultJSON)), metadata), nil
 
 	case "screenshot":
+		if params.Annotate != nil && !*params.Annotate {
+			data, err := sess.Screenshot(params.FullPage)
+			if err != nil {
+				return fantasy.NewTextErrorResponse("screenshot failed: " + err.Error()), nil
+			}
+			resp := fantasy.NewImageResponse(data, "image/png")
+			resp.Content = "Clean screenshot without target annotations. No pointer viewport grant was issued; request an annotated viewport screenshot before coordinate input."
+			return resp, nil
+		}
+		if input, ok := sess.(browser.InputSession); ok && !params.FullPage {
+			resp, err := viewportScreenshotResponse(ctx, input)
+			if err == nil && !resp.IsError {
+				grantScreenshotRefs(ctx, browserStateID(ctx), sess)
+			}
+			return resp, err
+		}
 		data, err := sess.AnnotatedScreenshot(params.FullPage)
 		if err != nil {
 			return fantasy.NewTextErrorResponse("screenshot failed: " + err.Error()), nil
 		}
+		grantScreenshotRefs(ctx, browserStateID(ctx), sess)
 		resp := fantasy.NewImageResponse(data, "image/png")
 		resp.Content = "Numbered boxes mark interactive elements, labeled with their snapshot ref. " +
 			"Act with click/type using the shown ref, not pixel coordinates."
@@ -692,36 +822,6 @@ func runBrowserAction(sess browser.Session, action string, params BrowserParams)
 	default:
 		return fantasy.NewTextErrorResponse("unknown action: " + action), nil
 	}
-}
-
-// formatSnapshot renders a page snapshot as one line per element --
-// [ref] role "name" value="..." (tag) -- with any dialogs blocking the
-// page called out first, since nothing else will succeed until one is
-// answered.
-func formatSnapshot(elements []browser.SnapshotElement, dialogs []browser.DialogInfo) string {
-	var b strings.Builder
-	if len(dialogs) > 0 {
-		fmt.Fprintf(&b, "%d pending dialog(s) block the page -- resolve with the dialog action first:\n", len(dialogs))
-		for _, d := range dialogs {
-			fmt.Fprintf(&b, "- %s: %q\n", d.Type, d.Message)
-		}
-		b.WriteString("\n")
-	}
-	if len(elements) == 0 {
-		b.WriteString("No interactive elements found.")
-		return b.String()
-	}
-	for _, el := range elements {
-		fmt.Fprintf(&b, "[%s] %s", el.Ref, el.Role)
-		if el.Name != "" {
-			fmt.Fprintf(&b, " %q", el.Name)
-		}
-		if el.Value != "" {
-			fmt.Fprintf(&b, " value=%q", el.Value)
-		}
-		fmt.Fprintf(&b, " (%s)\n", el.Tag)
-	}
-	return b.String()
 }
 
 func formatImages(images []browser.ImageInfo) string {

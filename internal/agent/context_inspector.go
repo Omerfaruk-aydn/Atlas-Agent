@@ -12,13 +12,14 @@ import (
 	"unicode/utf8"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/schema"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 )
 
 var contextSourceBlock = regexp.MustCompile(`<file path="([^"]+)" origin="[^"]*" scope="[^"]*">([\s\S]*?)</file>`)
 
 // Inspect and filter the actual request while retaining tool-call/result pairs.
-func (a *sessionAgent) inspectContext(ctx context.Context, id, model string, step int, messages []fantasy.Message, palette []fantasy.AgentTool, pinnedContext *[]string) ([]fantasy.Message, error) {
+func (a *sessionAgent) inspectContext(ctx context.Context, id, model string, step int, messages []fantasy.Message, palette []fantasy.AgentTool, deferredCount int, pinnedContext *[]string) ([]fantasy.Message, error) {
 	if a.engineering == nil {
 		return messages, nil
 	}
@@ -98,13 +99,17 @@ func (a *sessionAgent) inspectContext(ctx context.Context, id, model string, ste
 			add(path, "pinned", path, []byte(text), false)
 		}
 	}
+	manifest.TokenMethod = engineering.ContextTokenMethod
 	for _, tool := range palette {
-		data, err := json.Marshal(tool.Info())
+		data, err := toolDefinitionJSON(tool)
 		if err != nil {
 			return nil, err
 		}
+		manifest.ToolCount++
+		manifest.ToolBytes += len(data)
 		add("tool:"+tool.Info().Name, "tool-schema", tool.Info().Name, data, false)
 	}
+	manifest.DeferredTools = deferredCount
 	if len(manifest.Entries) > 2048 {
 		manifest.Truncated = true
 		manifest.Entries = append(manifest.Entries[:1024:1024], manifest.Entries[len(manifest.Entries)-1024:]...)
@@ -113,4 +118,13 @@ func (a *sessionAgent) inspectContext(ctx context.Context, id, model string, ste
 		return nil, err
 	}
 	return messages, nil
+}
+
+// toolDefinitionJSON approximates the definition a provider receives: the
+// name, description and normalized input schema, without provider framing.
+func toolDefinitionJSON(tool fantasy.AgentTool) ([]byte, error) {
+	info := tool.Info()
+	input := map[string]any{"type": "object", "properties": info.Parameters, "required": info.Required}
+	schema.Normalize(input)
+	return json.Marshal(map[string]any{"name": info.Name, "description": info.Description, "input_schema": input})
 }

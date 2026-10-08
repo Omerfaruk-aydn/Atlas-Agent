@@ -11,6 +11,9 @@ import (
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 )
 
+// desktopRecipeTimeout bounds prepare, act and fill_submit recipes.
+const desktopRecipeTimeout = 30 * time.Second
+
 // DesktopWorkflowParams groups known operations while preserving child controls.
 type DesktopWorkflowParams struct {
 	FocusWindow   bool                       `json:"focus_window,omitempty" description:"For act/fill_submit: activate the explicit input window and confirm its native identity before input; never chooses a different window."`
@@ -108,7 +111,7 @@ func runDesktopWorkflow(ctx context.Context, p DesktopWorkflowParams, parent fan
 			return fantasy.NewTextErrorResponse("wait_for requires an explicit expected-state target"), nil
 		}
 		switch p.WaitFor.Condition {
-		case "visible", "hidden", "enabled", "text", "value", "document_text", "keyboard_focused":
+		case "visible", "hidden", "enabled", "text", "value", "document_text", "keyboard_focused", "file_name":
 		default:
 			return fantasy.NewTextErrorResponse("unsupported wait_for condition"), nil
 		}
@@ -125,7 +128,7 @@ func runDesktopWorkflow(ctx context.Context, p DesktopWorkflowParams, parent fan
 	if p.Mode == "fill_submit" && (p.Input.Action != "set_value" || p.Input.Automation.Text == "") {
 		return fantasy.NewTextErrorResponse("fill_submit requires set_value with automation.text"), nil
 	}
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, desktopRecipeTimeout)
 	defer cancel()
 	actions := []string{}
 	operationCtx := ctx

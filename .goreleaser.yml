@@ -70,7 +70,7 @@ builds:
       - goos: windows
         goarch: arm
     ldflags:
-      - -s -w -X github.com/charmbracelet/Atlas-Agent/internal/version.Version={{.Version}}
+      - -s -w -X github.com/Omerfaruk-aydn/Atlas-Agent/internal/version.Version={{.Version}}
     flags:
       - -trimpath
 
@@ -116,7 +116,7 @@ aur_sources:
       export CGO_CXXFLAGS="${CXXFLAGS}"
       export CGO_LDFLAGS="${LDFLAGS}"
       export GOFLAGS="-buildmode=pie -trimpath -mod=readonly -modcacherw"
-      go build -ldflags="-w -s -buildid='' -linkmode=external -X github.com/charmbracelet/Atlas-Agent/internal/version.Version=v${pkgver}" .
+      go build -ldflags="-w -s -buildid='' -linkmode=external -X github.com/Omerfaruk-aydn/Atlas-Agent/internal/version.Version=v${pkgver}" .
       ./atlas completion bash >./completions/atlas.bash
       ./atlas completion zsh >./completions/atlas.zsh
       ./atlas completion fish >./completions/atlas.fish

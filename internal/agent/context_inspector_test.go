@@ -16,10 +16,10 @@ func TestContextInspectorExcludesResultsWithoutMutatingHistory(t *testing.T) {
 	a := &sessionAgent{engineering: store}
 	message := fantasy.Message{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{fantasy.ToolResultPart{ToolCallID: "result", Output: fantasy.ToolResultOutputContentText{Text: "original output"}}}}
 	var pins []string
-	_, err := a.inspectContext(t.Context(), "session", "model", 0, []fantasy.Message{message}, nil, &pins)
+	_, err := a.inspectContext(t.Context(), "session", "model", 0, []fantasy.Message{message}, nil, 0, &pins)
 	require.NoError(t, err)
 	require.NoError(t, store.ContextControl(t.Context(), t.TempDir(), "session", "context_exclude", "result"))
-	out, err := a.inspectContext(t.Context(), "session", "model", 1, []fantasy.Message{message}, nil, &pins)
+	out, err := a.inspectContext(t.Context(), "session", "model", 1, []fantasy.Message{message}, nil, 0, &pins)
 	require.NoError(t, err)
 	result, ok := fantasy.AsMessagePart[fantasy.ToolResultPart](out[0].Content[0])
 	require.True(t, ok)
@@ -50,7 +50,7 @@ func TestContextInspectorListsInstructionSourcesWithoutDoubleCounting(t *testing
 	a := &sessionAgent{engineering: store}
 	var pins []string
 	input := fantasy.NewSystemMessage(`<project_context><file path="AGENTS.md" origin="project" scope=".">Follow project rules.</file></project_context>`)
-	_, err := a.inspectContext(t.Context(), "session", "model", 0, []fantasy.Message{input}, nil, &pins)
+	_, err := a.inspectContext(t.Context(), "session", "model", 0, []fantasy.Message{input}, nil, 0, &pins)
 	require.NoError(t, err)
 	manifest, _, err := store.ReadContext(t.Context(), "session")
 	require.NoError(t, err)

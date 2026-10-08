@@ -8,6 +8,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/prompt"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/db"
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/stretchr/testify/require"
 )
@@ -61,4 +62,19 @@ func TestPromptRecipeSurvivesRestartAndScopesSessions(t *testing.T) {
 	_, err = c.stateStore().Get(t.Context(), "prompt_recipe/second", "active", &recipe)
 	require.NoError(t, err)
 	require.Empty(t, recipe.Layers)
+}
+
+// TestPromptIntentReadsPastedRequest replays session aaae8f0a: the whole
+// design request arrived as a pasted text attachment with an empty message,
+// and no task guidance was selected ("layers": null).
+func TestPromptIntentReadsPastedRequest(t *testing.T) {
+	t.Parallel()
+	pasted := message.Attachment{FileName: "paste.txt", MimeType: "text/plain", Content: []byte("Browser use ile gerçek Figma editöründe Atlas Remote Control için mobil arayüz tasarla.")}
+	image := message.Attachment{FileName: "shot.png", MimeType: "image/png", Content: []byte("tasarla figma")}
+	text := promptIntentText("", []message.Attachment{pasted, image})
+	require.Contains(t, text, "Figma")
+	require.NotContains(t, text, "tasarla figma", "binary attachments are not read")
+	ids := prompt.SelectProtocols(text, "")
+	require.Contains(t, ids, "ui")
+	require.Contains(t, ids, "automation")
 }

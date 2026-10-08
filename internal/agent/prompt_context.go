@@ -2,11 +2,37 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/prompt"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agentstate"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
 )
+
+// maxIntentAttachmentBytes bounds how much pasted text is read to choose
+// task guidance; the request's intent is stated near its start.
+const maxIntentAttachmentBytes = 16 * 1024
+
+// promptIntentText is the text task guidance is chosen from: the typed
+// prompt plus pasted text attachments. A request pasted as an attachment
+// with an empty message otherwise selected no guidance at all.
+func promptIntentText(prompt string, attachments []message.Attachment) string {
+	var b strings.Builder
+	b.WriteString(prompt)
+	for _, a := range attachments {
+		if !a.IsText() || len(a.Content) == 0 {
+			continue
+		}
+		content := a.Content
+		if len(content) > maxIntentAttachmentBytes {
+			content = content[:maxIntentAttachmentBytes]
+		}
+		b.WriteByte('\n')
+		b.WriteString(strings.ToValidUTF8(string(content), ""))
+	}
+	return b.String()
+}
 
 type promptRecipe struct {
 	Version string   `json:"version"`

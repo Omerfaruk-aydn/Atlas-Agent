@@ -20,7 +20,13 @@ func desktopFlowIntent(n DesktopFlowNode, state *desktopFlowState, save func(*de
 	}
 	state.Pending = n.ID
 	state.Attempts[n.ID]++
-	return save(state)
+	if err := save(state); err != nil {
+		// No intent was recorded, so nothing is sent and nothing is pending.
+		state.Pending = ""
+		delete(state.Attempts, n.ID)
+		return err
+	}
+	return nil
 }
 
 // Nested recipes still dispatch every child through the flow's bounded guards.

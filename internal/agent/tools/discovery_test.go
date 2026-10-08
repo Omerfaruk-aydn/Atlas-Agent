@@ -17,20 +17,20 @@ func TestToolSearchUsesAuthorizedPaletteWithoutExecution(t *testing.T) {
 		t.Fatal("discovery must not execute tools")
 		return fantasy.ToolResponse{}, nil
 	})
-	tool := NewToolSearchTool(func(context.Context) []fantasy.AgentTool { return []fantasy.AgentTool{fixture} })
+	tool := NewToolSearchTool(ToolSearchOptions{Palette: func(context.Context) []fantasy.AgentTool { return []fantasy.AgentTool{fixture} }})
 	response, err := tool.Run(t.Context(), fantasy.ToolCall{Input: `{"query":"fixture test"}`})
 	require.NoError(t, err)
 	require.False(t, response.IsError, response.Content)
 	var result struct {
-		Tools []fantasy.ToolInfo `json:"tools"`
-		Total int                `json:"total"`
+		Results []toolSearchResult `json:"results"`
+		Total   int                `json:"total_matches"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(response.Content), &result))
 	require.Equal(t, 1, result.Total)
-	require.Equal(t, "fixture_test", result.Tools[0].Name)
+	require.Equal(t, "fixture_test", result.Results[0].Name)
 	response, err = tool.Run(t.Context(), fantasy.ToolCall{Input: `{"query":"disabled"}`})
 	require.NoError(t, err)
-	require.Contains(t, response.Content, `"total":0`)
+	require.Contains(t, response.Content, `"total_matches":0`)
 }
 
 func TestCodeQueryScopesAndPreservesGuardedDispatch(t *testing.T) {

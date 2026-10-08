@@ -1,0 +1,11 @@
+{$ATLAS_MOBILE_HOST} {
+    reverse_proxy relay:8787 {
+        flush_interval -1
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        X-Frame-Options "DENY"
+    }
+}

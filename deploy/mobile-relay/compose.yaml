@@ -1,0 +1,47 @@
+services:
+  relay:
+    build:
+      context: ../..
+      dockerfile: deploy/mobile-relay/Dockerfile
+    command:
+      - serve
+      - --listen=0.0.0.0:8787
+      - --behind-proxy
+      - --public-url=https://${ATLAS_MOBILE_HOST:?Set the dedicated HTTPS hostname}
+      - --token-file=/run/secrets/connector_key
+    secrets:
+      - connector_key
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # No published ports: this unencrypted listener belongs only to Caddy.
+    networks:
+      - mobile
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      ATLAS_MOBILE_HOST: ${ATLAS_MOBILE_HOST:?Set the dedicated HTTPS hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+    networks:
+      - mobile
+secrets:
+  connector_key:
+    file: ${ATLAS_RELAY_KEY_FILE:?Set an absolute private connector key path}
+networks:
+  mobile:
+volumes:
+  caddy_data:
+  caddy_config:

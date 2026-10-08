@@ -1,0 +1,9 @@
+**
+!go.mod
+!go.sum
+!cmd/
+!cmd/atlas-mobile-relay/
+!cmd/atlas-mobile-relay/**
+!internal/
+!internal/mobilerelay/
+!internal/mobilerelay/**

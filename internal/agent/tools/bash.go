@@ -58,6 +58,9 @@ type BashResponseMetadata struct {
 	// Executed is true when the process started and exited; the command
 	// text is never rewritten or retried by the tool.
 	Executed bool `json:"executed,omitempty"`
+	// Streams are separately bounded stdout and stderr of a literal argv
+	// run, present only when an internal caller requested them.
+	Streams *ArgvStreams `json:"streams,omitempty"`
 }
 
 const (
@@ -181,9 +184,6 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 		if (params.Command == "") == (len(params.Argv) == 0) {
 			return fantasy.NewTextErrorResponse("supply exactly one of command or argv"), nil
 		}
-		if len(params.Argv) > 0 && params.RunInBackground {
-			return fantasy.NewTextErrorResponse("literal argv checks require foreground execution"), nil
-		}
 
 		// Determine working directory
 		execWorkingDir := cmp.Or(params.WorkingDir, workingDir)
@@ -235,16 +235,23 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 		if execution.HasBinding(ctx) {
 			return runIsolatedBash(ctx, params, call, execWorkingDir, blocks, limits)
 		}
+		if len(params.Argv) > 0 && params.RunInBackground {
+			return startArgvJob(ctx, params, execWorkingDir, blocks)
+		}
 		if len(params.Argv) > 0 {
 			start := time.Now()
 			sh := shell.NewShell(&shell.Options{WorkingDir: execWorkingDir, BlockFuncs: blocks})
-			stdout, stderr, err := sh.ExecArgv(ctx, params.Argv)
+			stdout, stderr := newHeadTail(argvCaptureLimit), newHeadTail(argvCaptureLimit)
+			err := sh.ExecArgvStream(ctx, params.Argv, stdout, stderr)
 			if !shell.ObservedExit(err) {
 				return fantasy.ToolResponse{}, err
 			}
 			exit := shell.ExitCode(err)
-			output := formatOutput(stdout, stderr, err, limits.MaxOutputLength)
+			output := formatOutput(stdout.String(), stderr.String(), err, limits.MaxOutputLength)
 			metadata := BashResponseMetadata{ExitCode: &exit, StartTime: start.UnixMilli(), EndTime: time.Now().UnixMilli(), Output: output, Description: params.Description, WorkingDirectory: execWorkingDir}
+			if opts := argvOptions(ctx); opts.StreamLimit > 0 {
+				metadata.Streams = argvStreams(stdout, stderr, opts.StreamLimit)
+			}
 			return fantasy.WithResponseMetadata(fantasy.NewTextResponse(cmp.Or(output, BashNoOutput)), metadata), nil
 		}
 
@@ -396,6 +403,21 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 			return annotateBashExit(resp, err)
 		},
 	)
+}
+
+// startArgvJob starts literal argv in the shared background job manager, so
+// job_output and job_kill work exactly as for shell commands.
+func startArgvJob(ctx context.Context, params BashParams, workingDir string, blocks []shell.BlockFunc) (fantasy.ToolResponse, error) {
+	start := time.Now()
+	bgManager := shell.GetBackgroundShellManager()
+	bgManager.Cleanup()
+	job, err := bgManager.StartArgv(context.WithoutCancel(ctx), workingDir, blocks, params.Argv, params.Description, argvOptions(ctx).JobTimeout)
+	if err != nil {
+		return fantasy.NewTextErrorResponse("Background job not started: " + err.Error()), nil
+	}
+	metadata := BashResponseMetadata{StartTime: start.UnixMilli(), EndTime: time.Now().UnixMilli(), Description: params.Description, WorkingDirectory: workingDir, Background: true, ShellID: job.ID}
+	response := fmt.Sprintf("Background job started with ID: %s\n\nUse job_output tool to view output or job_kill to terminate.", job.ID)
+	return fantasy.WithResponseMetadata(fantasy.NewTextResponse(response), metadata), nil
 }
 
 // formatOutput formats the output of a completed command with error handling

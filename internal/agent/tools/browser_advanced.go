@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/browser"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 )
 
@@ -21,17 +22,13 @@ func isAdvancedBrowserAction(action string) bool {
 	switch action {
 	case "wait_for", "popup_wait", "dialog_wait", "dialog_handle":
 		return true
-	case "find", "assert", "semantic_click", "semantic_type", "tabs", "tab_new", "tab_select", "tab_close", "frames", "network", "capture_region", "upload", "download_start", "download_wait":
+	case "find", "assert", "semantic_click", "semantic_type", "tabs", "tab_new", "tab_select", "tab_close", "tab_return", "frames", "network", "capture_region", "upload", "download_start", "download_wait":
 		return true
 	}
 	return false
 }
 
 func runAdvancedBrowser(ctx context.Context, sess browser.Session, action string, params BrowserParams, root string) (fantasy.ToolResponse, error) {
-	driver, ok := sess.(browser.AdvancedSession)
-	if !ok {
-		return fantasy.NewTextErrorResponse("Advanced browser actions unavailable in this driver"), nil
-	}
 	p := params.Advanced
 	p.Action = action
 	if p.Selector == "" && params.Ref != "" {
@@ -43,6 +40,19 @@ func runAdvancedBrowser(ctx context.Context, sess browser.Session, action string
 	}
 	if p.Selector == "" {
 		p.Selector = params.Selector
+	}
+	if err := browser.ValidateWorkflowRequest(p); err != nil {
+		example := `{"action":"find","advanced":{"role":"button","name":"Share"}}`
+		next := "Correct the listed field and call again."
+		if action == "wait_for" || action == "assert" {
+			example = `{"action":"wait_for","advanced":{"condition":"hidden","role":"button","name":"Stop"}}`
+			next = "Element conditions need a target (ref, selector, role/name or label). Page conditions without a target: ready, network_idle, stable, url, title."
+		}
+		return contractResponse(computer.NewContractError("invalid_arguments", "advanced", err.Error()+". Nothing was sent", next, example)), nil
+	}
+	driver, ok := sess.(browser.AdvancedSession)
+	if !ok {
+		return fantasy.NewTextErrorResponse("Advanced browser actions unavailable in this driver"), nil
 	}
 	if action == "upload" || action == "download_start" || action == "download_wait" {
 		for i, path := range p.Paths {

@@ -17,7 +17,9 @@ type desktopFlowRecord struct {
 	Next string `json:"next,omitempty"`
 }
 
-// Journals contain fingerprints and status, never text, images or window IDs.
+// Journals contain fingerprints and status, never input text, images or
+// window IDs. Captured values are kept (bounded) because completed nodes are
+// never repeated, so a resumed run cannot read them again.
 type desktopFlowState struct {
 	Version   int                 `json:"version"`
 	PlanHash  string              `json:"plan_hash"`
@@ -25,6 +27,7 @@ type desktopFlowState struct {
 	Pending   string              `json:"pending,omitempty"`
 	Completed []desktopFlowRecord `json:"completed"`
 	Attempts  map[string]int      `json:"attempts"`
+	Captures  map[string]string   `json:"captures,omitempty"`
 }
 
 func openDesktopFlow(ctx context.Context, f DesktopFlowParams) (*desktopFlowState, func(*desktopFlowState) error, func(), error) {
@@ -76,7 +79,12 @@ func openDesktopFlow(ctx context.Context, f DesktopFlowParams) (*desktopFlowStat
 		return fail(fmt.Errorf("run_missing: no durable progress for this session and run_id"))
 	}
 	save := func(state *desktopFlowState) error {
-		if err := ctx.Err(); err != nil {
+		// Intent is recorded before an input and must not be written once
+		// the run is canceled, because no input follows. A completion
+		// records a checkpoint that already passed; it is kept even when
+		// cancellation arrives right after, so resume does not have to
+		// treat verified work as uncertain.
+		if err := ctx.Err(); err != nil && state.Pending != "" {
 			return err
 		}
 		encoded, err := json.Marshal(state)
@@ -137,6 +145,22 @@ func validateDesktopFlowState(f DesktopFlowParams, s desktopFlowState) error {
 	}
 	if s.Pending != "" && s.Attempts[s.Pending] == 0 {
 		return fmt.Errorf("invalid_journal: pending intent lacks attempt record")
+	}
+	captured := map[string]bool{}
+	for _, r := range s.Completed {
+		if c := nodes[r.ID].Capture; c != nil {
+			captured[c.Name] = true
+		}
+	}
+	for name, value := range s.Captures {
+		if !captured[name] || value == "" || len(value) > maxCaptureValueBytes {
+			return fmt.Errorf("invalid_journal: captured value %q does not belong to a completed capture node", name)
+		}
+	}
+	for name := range captured {
+		if _, ok := s.Captures[name]; !ok {
+			return fmt.Errorf("invalid_journal: completed capture %q has no stored value", name)
+		}
 	}
 	return nil
 }

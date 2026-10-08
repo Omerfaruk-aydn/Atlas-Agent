@@ -68,6 +68,8 @@ jobs:
           TAG="${{ steps.tag.outputs.tag }}"
           COMMIT="$(git rev-parse HEAD)"
           LDFLAGS="-s -w -X github.com/Omerfaruk-aydn/Atlas-Agent/internal/version.Version=${TAG} -X github.com/Omerfaruk-aydn/Atlas-Agent/internal/version.Commit=${COMMIT}"
+          # Bundle the Linux relay that /rc installs; its SHA-256 is checked again on the server.
+          go generate ./internal/remotecontrol/relaybin
           GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/atlas-agent-windows-x64.exe .
           GOOS=linux   GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/atlas-agent-linux-x64 .
           GOOS=darwin  GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/atlas-agent-darwin-x64 .

@@ -38,6 +38,9 @@ const (
 	failureEffectUnknown = "effect_unknown"
 	failureDenied        = "denied"
 	failureCanceled      = "canceled"
+	// failureTransition is a refusal made because a window appeared late.
+	// Once reported, the window is known and a deliberate retry may run.
+	failureTransition = "late_transition"
 )
 
 var (
@@ -55,7 +58,7 @@ var (
 	readOnlyComputerActions = map[string]bool{
 		"observe": true, "health": true, "screenshot": true, "screen_size": true, "cursor_position": true, "windows": true,
 		"inspect": true, "find": true, "assert": true, "monitors": true, "ocr": true, "capture_region": true, "capture_window": true,
-		"status": true, "trace": true,
+		"status": true, "trace": true, "file_check": true,
 	}
 	effectUnknownText = regexp.MustCompile(`(?i)context canceled|deadline exceeded|timed out|effect_unknown|outcome unknown|interrupted`)
 	codePattern       = regexp.MustCompile(`^[a-z][a-z0-9_]{2,40}$`)
@@ -67,6 +70,9 @@ type desktopRecord struct {
 	class    string
 	failures int
 	mutEpoch int
+	// contract is the refusal's own structured document, kept so a repeat
+	// of an argument error repeats its fix instead of generic advice.
+	contract *computer.ContractError
 }
 
 type desktopGuardState struct {
@@ -171,6 +177,34 @@ func responseCode(resp fantasy.ToolResponse) string {
 	return "error"
 }
 
+// responseContract returns the structured refusal of a response, from its
+// metadata or, failing that, from the "Tool contract:" document in its text.
+func responseContract(resp fantasy.ToolResponse) *computer.ContractError {
+	var metadata struct {
+		Contract *computer.ContractError `json:"tool_contract"`
+	}
+	if json.Unmarshal([]byte(resp.Metadata), &metadata) == nil && metadata.Contract != nil {
+		return metadata.Contract
+	}
+	if _, document, ok := strings.Cut(resp.Content, "Tool contract: "); ok {
+		var contract computer.ContractError
+		if json.Unmarshal([]byte(strings.TrimSpace(document)), &contract) == nil && contract.Code != "" {
+			return &contract
+		}
+	}
+	return nil
+}
+
+// argumentFailure reports a refusal of the call's own arguments: a known
+// argument code, any invalid_* code, or a typed contract that proves nothing
+// was sent. Such a call cannot succeed by observing or focusing.
+func argumentFailure(code string, contract *computer.ContractError) bool {
+	if argumentCodes[code] || strings.HasPrefix(code, "invalid_") {
+		return true
+	}
+	return contract != nil && contract.Code == code && contract.ExpectedType != "" && !contract.InputSent && contract.Effect == "none"
+}
+
 func classifyFailure(ctx context.Context, resp fantasy.ToolResponse, err error, readOnly bool) (code, class string) {
 	switch {
 	case err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)), ctx.Err() != nil:
@@ -186,20 +220,19 @@ func classifyFailure(ctx context.Context, resp fantasy.ToolResponse, err error, 
 		return "tool_error", failureNative
 	}
 	code = responseCode(resp)
-	var metadata struct {
-		Contract *computer.ContractError `json:"tool_contract"`
-	}
-	_ = json.Unmarshal([]byte(resp.Metadata), &metadata)
+	contract := responseContract(resp)
 	switch {
 	case resp.StopTurn && strings.Contains(resp.Content, "denied"):
 		return "permission_denied", failureDenied
 	case strings.HasPrefix(resp.Content, "Tool call blocked by hook"), strings.HasPrefix(resp.Content, "Turn halted by hook"):
 		return "hook_denied", failureDenied
-	case argumentCodes[code]:
+	case code == "delayed_transition":
+		return code, failureTransition
+	case argumentFailure(code, contract):
 		return code, failureArgument
-	case !readOnly && metadata.Contract != nil && metadata.Contract.Effect == "unknown":
+	case !readOnly && contract != nil && contract.Effect == "unknown":
 		return code, failureEffectUnknown
-	case !readOnly && code == "condition_timeout" && (metadata.Contract == nil || metadata.Contract.Effect != "none"):
+	case !readOnly && code == "condition_timeout" && (contract == nil || contract.Effect != "none"):
 		return code, failureEffectUnknown
 	case !readOnly && effectUnknownText.MatchString(resp.Content):
 		return code, failureEffectUnknown
@@ -263,6 +296,10 @@ func (t *desktopGuardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fa
 		state.order = append(state.order, key)
 	}
 	rec.code, rec.class = code, class
+	rec.contract = nil
+	if contract := responseContract(resp); err == nil && contract != nil && contract.Code == code {
+		rec.contract = contract
+	}
 	rec.failures++
 	rec.mutEpoch = state.mutEpoch
 	if err == nil {
@@ -274,18 +311,25 @@ func (t *desktopGuardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fa
 // repeatBlock decides whether an identical call may run again. The caller
 // holds the state lock.
 func repeatBlock(rec *desktopRecord, state *desktopGuardState, readOnly bool) *computer.ContractError {
-	var why, next string
+	var why, next, field, example string
 	switch rec.class {
 	case failureArgument:
-		why = "the same arguments were already rejected as invalid, and re-sending them cannot succeed"
-		next = "Change the arguments according to the earlier error before calling again."
+		why = "the same arguments were already rejected before any input, and re-sending them cannot succeed"
+		next = "Change the arguments according to the earlier error before calling again; observing or focusing does not fix arguments."
+		if c := rec.contract; c != nil {
+			// Repeat the original, specific repair instead of generic advice.
+			field, example = c.Field, c.Example
+			if c.NextStep != "" {
+				next = "Change the call; the identical text cannot succeed. " + c.NextStep
+			}
+		}
 	case failureDenied:
 		why = "this call was denied; it is not retried without a new decision"
 		next = "Do not retry. Ask the user, or choose a different permitted approach."
 	case failureEffectUnknown:
 		why = "the earlier attempt may or may not have taken effect (it was interrupted or timed out), and replaying an input could apply it twice"
 		next = "Do not replay this call, even after a read. Inspect the intended target and verify the outcome. If correction is needed, use a distinct operation with a verified postcondition (for example set_value for an editable field); otherwise hand off."
-	case failureCanceled:
+	case failureCanceled, failureTransition:
 		return nil
 	default:
 		if state.mutEpoch > rec.mutEpoch || (readOnly && rec.failures < 2) {
@@ -294,7 +338,7 @@ func repeatBlock(rec *desktopRecord, state *desktopGuardState, readOnly bool) *c
 		why = "the same call already failed and no successful action has changed the desktop state since"
 		next = "Observing alone does not change the state. Resolve the cause (for example focus the intended window), change the arguments, or report the blocker."
 	}
-	err := computer.NewContractError("repeat_blocked", "", fmt.Sprintf("identical call refused: %s (previous result: %s). No input sent", why, rec.code), next, "")
+	err := computer.NewContractError("repeat_blocked", field, fmt.Sprintf("identical call refused: %s (previous result: %s). No input sent", why, rec.code), next, example)
 	err.FreshObservation = rec.class != failureArgument && rec.class != failureDenied
 	return err
 }

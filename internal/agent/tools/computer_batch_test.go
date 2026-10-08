@@ -164,7 +164,7 @@ func TestComputerBatchPublicToolRetainsPermissionsAndAtomicDispatch(t *testing.T
 }
 
 func TestPipelineSupportsExpandedBoundedCapacity(t *testing.T) {
-	for _, count := range []int{64, 128, 129} {
+	for _, count := range []int{64, 128, maxPipelineInvocations, maxPipelineInvocations + 1} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			calls := 0
 			tool := NewToolPipeline(func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
@@ -176,8 +176,8 @@ func TestPipelineSupportsExpandedBoundedCapacity(t *testing.T) {
 			require.NoError(t, err)
 			r, err := tool.Run(t.Context(), fantasy.ToolCall{Input: string(data)})
 			require.NoError(t, err)
-			require.Equal(t, count > 128, r.IsError)
-			if count > 128 {
+			require.Equal(t, count > maxPipelineInvocations, r.IsError)
+			if count > maxPipelineInvocations {
 				require.Zero(t, calls)
 			} else {
 				require.Equal(t, count, calls)

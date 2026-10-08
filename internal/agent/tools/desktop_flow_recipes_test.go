@@ -11,6 +11,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// taskOwnedContext gives a test its own session in which the listed windows
+// were opened by the task, as the input tracker records after a launch or an
+// opening input. Close nodes only close such windows.
+func taskOwnedContext(t *testing.T, ids ...string) context.Context {
+	t.Helper()
+	ctx := context.WithValue(t.Context(), SessionIDContextKey, "flow-"+t.Name())
+	state := desktopTransitionsFor(desktopFlowSession(ctx))
+	state.mu.Lock()
+	for _, id := range ids {
+		state.taskOpened[id] = desktopWindowInfo{ID: id}
+	}
+	state.mu.Unlock()
+	return ctx
+}
+
 func TestDesktopFlowPrepareWriteAndCloseInOneCall(t *testing.T) {
 	p := desktopFlowTestPlan()
 	p.Flow.Nodes[0].Kind = "prepare"
@@ -18,7 +33,7 @@ func TestDesktopFlowPrepareWriteAndCloseInOneCall(t *testing.T) {
 	p.Flow.Nodes = append(p.Flow.Nodes, DesktopFlowNode{ID: "close", Kind: "close", WindowRef: "app"})
 	value, mutations, closed := "empty", 0, false
 	base := desktopFlowFixture(t, &value, &mutations)
-	r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	r, err := runDesktopWorkflow(taskOwnedContext(t, "11"), p, fantasy.ToolCall{}, func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
 		var input ComputerParams
 		require.NoError(t, json.Unmarshal([]byte(c.Input), &input))
 		switch input.Action {
@@ -54,7 +69,7 @@ func TestDesktopFlowCloseActivatesEachWindowAndProvesAbsence(t *testing.T) {
 	}}}
 	windows := []desktopWindowInfo{{ID: "11", Name: "Saved - Notepad", ProcessID: 1, ProcessName: "notepad.exe", WindowClass: "Notepad"}, {ID: "12", Name: "Calculator", ProcessID: 2, ProcessName: "CalculatorApp.exe", WindowClass: "ApplicationFrameWindow", Foreground: true}}
 	var closed []string
-	r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	r, err := runDesktopWorkflow(taskOwnedContext(t, "11", "12"), p, fantasy.ToolCall{}, func(_ context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
 		var input ComputerParams
 		require.NoError(t, json.Unmarshal([]byte(c.Input), &input))
 		switch input.Action {
@@ -93,7 +108,7 @@ func TestDesktopFlowCloseStopsAtOwnedUnsavedDialog(t *testing.T) {
 	p.Flow.Nodes[0].Next = "close"
 	value, mutations, keys := "empty", 0, 0
 	base := desktopFlowFixture(t, &value, &mutations)
-	r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	r, err := runDesktopWorkflow(taskOwnedContext(t, "11"), p, fantasy.ToolCall{}, func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
 		var input ComputerParams
 		require.NoError(t, json.Unmarshal([]byte(c.Input), &input))
 		if input.Action == "hotkey" {
@@ -216,7 +231,7 @@ func TestDesktopFlowCloseStopsBeforeInputOnFocusOrPermissionFailure(t *testing.T
 		p.Flow.Nodes[1] = DesktopFlowNode{ID: "write", Kind: "close", WindowRef: "app"}
 		value, mutations, blocked, keys := "empty", 0, false, 0
 		base := desktopFlowFixture(t, &value, &mutations)
-		r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		r, err := runDesktopWorkflow(taskOwnedContext(t, "11"), p, fantasy.ToolCall{}, func(ctx context.Context, c fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			require.False(t, blocked, "Child dispatched after denial")
 			var input ComputerParams
 			require.NoError(t, json.Unmarshal([]byte(c.Input), &input))

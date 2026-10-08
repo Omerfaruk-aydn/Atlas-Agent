@@ -151,12 +151,10 @@ func desktopFlowPredicate(ctx context.Context, q computer.AutomationRequest, chi
 func desktopFlowFailureCrop(ctx context.Context, q computer.AutomationRequest, window desktopWindowInfo, original fantasy.ToolResponse, child desktopFlowChild) fantasy.ToolResponse {
 	e, r, err := desktopFlowTarget(ctx, q, child)
 	if desktopRecipeStopped(r, err) || e.Offscreen || e.Width <= 0 || e.Height <= 0 {
-		original.StopTurn = original.StopTurn || r.StopTurn
-		return original
+		return desktopFlowDiagnosticStop(original, r)
 	}
 	if r, err := desktopFlowIdentity(ctx, window, false, child); desktopRecipeStopped(r, err) {
-		original.StopTurn = original.StopTurn || r.StopTurn
-		return original
+		return desktopFlowDiagnosticStop(original, r)
 	}
 	// UIA bounds are native desktop pixels; capture uses virtual-screen origin.
 	var screen struct {
@@ -172,9 +170,22 @@ func desktopFlowFailureCrop(ctx context.Context, q computer.AutomationRequest, w
 	}
 	crop, err := child(ctx, ComputerParams{Action: "capture_region", X: x, Y: y, Width: w, Height: h})
 	if desktopRecipeStopped(crop, err) || crop.Type != "image" {
-		original.StopTurn = original.StopTurn || crop.StopTurn
-		return original
+		return desktopFlowDiagnosticStop(original, crop)
 	}
-	crop.IsError, crop.Content = true, original.Content+"\nDiagnostic crop only; checkpoint failed. "+crop.Content
-	return crop
+	// The image is diagnostic; its capture outcome must not replace the
+	// failed assertion's metadata or turn an uncertain effect into success.
+	original.Type, original.Data, original.MediaType = crop.Type, crop.Data, crop.MediaType
+	original.Content += "\nDiagnostic crop only; checkpoint failed. " + crop.Content
+	return original
+}
+
+// A question or permission raised while capturing needs its own metadata
+// for the UI to respond. Otherwise keep the original assertion failure.
+func desktopFlowDiagnosticStop(original, diagnostic fantasy.ToolResponse) fantasy.ToolResponse {
+	if diagnostic.StopTurn {
+		diagnostic.IsError = true
+		diagnostic.Content = original.Content + "\n" + diagnostic.Content
+		return diagnostic
+	}
+	return original
 }

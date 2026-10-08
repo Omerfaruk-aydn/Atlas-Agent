@@ -37,6 +37,10 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/filetracker"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/history"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/hooks"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/integrations"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/isolation"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/localapps"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/log"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/lsp"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/memory"
@@ -217,6 +221,11 @@ type coordinator struct {
 	// mailbox for the team_send/team_read tools. See internal/teams.
 	teams *teams.Registry
 
+	// integrations and localApps back the integrations and local_app
+	// tools; both are nil when the host did not provide them.
+	integrations *integrations.Service
+	localApps    *localapps.Manager
+
 	readyWg errgroup.Group
 }
 
@@ -236,6 +245,10 @@ type CoordinatorOptions struct {
 	RunComplete pubsub.Publisher[notify.RunComplete]
 	Skills      *skills.Manager
 	Interactive bool
+	// Integrations and LocalApps are shared with the TUI so the agent and
+	// the /integrations and /app screens read the same state. Optional.
+	Integrations *integrations.Service
+	LocalApps    *localapps.Manager
 }
 
 func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, error) {
@@ -276,6 +289,8 @@ func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, 
 		teams:        teams.NewRegistry(),
 		goalRuns:     csync.NewMap[string, *goalRun](),
 		goalJudge:    csync.NewValue(ptrBox[Model]{}),
+		integrations: opts.Integrations,
+		localApps:    opts.LocalApps,
 	}
 
 	agentCfg, ok := opts.Config.Config().Agents[config.AgentCoder]
@@ -355,7 +370,7 @@ func (c *coordinator) run(ctx context.Context, accept *AcceptedRun, sessionID st
 	}
 
 	// refresh models before each run
-	ctx, err := c.preparePromptContext(ctx, sessionID, prompt)
+	ctx, err := c.preparePromptContext(ctx, sessionID, promptIntentText(prompt, attachments))
 	if err != nil {
 		return nil, fmt.Errorf("prepare task prompt: %w", err)
 	}
@@ -1066,9 +1081,16 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		tools.NewWriteTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy),
 	)
 
+	if c.integrations != nil {
+		allTools = append(allTools, tools.NewIntegrationsTool(c.integrations, c.permissions))
+	}
+	if c.localApps != nil {
+		allTools = append(allTools, tools.NewLocalAppTool(c.localApps, c.permissions))
+	}
+
 	// Question tool is interactive-only and not available to sub-agents.
 	if !isSubAgent && c.interactive && ctx.Value(tools.ScheduledTurnKey{}) != true {
-		allTools = append(allTools, tools.NewQuestionTool(c.questions))
+		allTools = append(allTools, tools.NewQuestionTool(c.questions, c.permissions))
 	}
 
 	// Browser tool is opt-in: it launches an external Chrome/Chromium
@@ -1099,7 +1121,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 				if err := schema.ValidateAgainstSchema(arguments, specification); err != nil {
 					return tools.SchemaViolationResponse(call, err), nil
 				}
-				return (&guardedTool{AgentTool: target, store: c.engineering}).Run(ctx, call)
+				return (&guardedTool{AgentTool: target, store: c.engineering, sessions: c.sessions}).Run(ctx, call)
 			}
 		}
 		return fantasy.NewTextErrorResponse("Tool is disabled or unavailable: " + call.Name), nil
@@ -1117,6 +1139,21 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 			func() bool { return c.cfg.Config().Tools.Computer.IsEnabled() },
 			dispatchComputer,
 		))
+	}
+
+	// Device tools are opt-in: they reach isolated guests, Android devices
+	// and paired computers. Each one checks its own backend per call and
+	// reports a missing dependency (adb, virtualization, pairing) instead of
+	// falling back to the host desktop.
+	if devices := c.cfg.Config().Tools.Devices; devices.IsEnabled() {
+		devicesDir := config.GlobalDevicesDir()
+		exe, _ := os.Executable()
+		allTools = append(allTools,
+			tools.NewIsolatedDesktopTool(c.permissions, c.cfg.WorkingDir(), devicesDir, isolation.NewManager(devicesDir, exe, nil)),
+			tools.NewAndroidTool(c.permissions, c.cfg.WorkingDir(), func() string { return c.cfg.Config().Tools.Devices.ADBPath }),
+			tools.NewRemoteNodeTool(c.permissions, c.cfg.WorkingDir(), devicesDir),
+			tools.NewScreenMarkTool(c.permissions, config.GlobalMarksDir()),
+		)
 	}
 
 	// Team tools are opt-in like the others above, even though they have
@@ -1230,7 +1267,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 			// hook interception, ordinary permissions and execution accounting.
 			for _, target := range c.filterTools(allTools, agent, c.hookRunner(hooks.EventPreToolUse), c.hookRunner(hooks.EventPostToolUse), isSubAgent) {
 				if target.Info().Name == call.Name {
-					return (&guardedTool{AgentTool: target, store: c.engineering}).Run(callCtx, call)
+					return (&guardedTool{AgentTool: target, store: c.engineering, sessions: c.sessions}).Run(callCtx, call)
 				}
 			}
 			return fantasy.NewTextErrorResponse("required tool is disabled or unavailable: " + call.Name), nil
@@ -1246,24 +1283,40 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 			graphProviders = append(graphProviders, tools.NewLSPGraphProvider(c.cfg.WorkingDir(), c.lspManager))
 		}
 		allTools = append(allTools, tools.NewProjectMapTool(c.cfg.WorkingDir(), c.engineering, graphProviders...),
+			tools.NewStressJourneyTool(c.cfg.WorkingDir(), c.engineering, invoke),
+			tools.NewTimeLabTool(c.cfg.WorkingDir(), c.engineering, invoke),
+			tools.NewDatasetForgeTool(c.cfg.WorkingDir(), c.engineering, invoke),
+			tools.NewAssumptionCheckTool(c.cfg.WorkingDir(), c.engineering),
+			tools.NewDataBoundaryTool(c.cfg.WorkingDir(), c.engineering),
+			tools.NewHandoverTool(c.cfg.WorkingDir(), c.engineering, invoke),
+			tools.NewUndoFeatureTool(c.cfg.WorkingDir(), c.engineering, c.permissions),
+			tools.NewCLIBridgeTool(tools.CLIBridgeServices{Root: c.cfg.WorkingDir(), Store: c.engineering, Permissions: c.permissions, Invoke: invoke}),
 			tools.NewCodeQueryTool(c.cfg.WorkingDir(), invoke),
 			tools.NewVerifyTool(c.cfg.WorkingDir(), c.engineering, invoke, verificationTools),
 			tools.NewWorktreeTool(c.cfg.WorkingDir(), c.engineering, c.permissions),
 			tools.NewUIVerifyTool(c.engineering, invoke, c.cfg.WorkingDir()),
 			tools.NewScenarioTool(c.cfg.WorkingDir(), c.engineering, c.permissions, invoke, tools.NewCommandPolicy(c.cfg.Config())), c.workflowTool(invoke))
+		if c.cfg.Config().Tools.Devices.IsEnabled() {
+			allTools = append(allTools, tools.NewAppLoopTool(c.cfg.WorkingDir(), filepath.Join(config.GlobalDevicesDir(), "app-loops", engineering.Hash(c.cfg.WorkingDir())[:16]), c.engineering, c.permissions, invoke))
+		}
 		allTools = append(allTools, tools.NewExperimentTools(c.cfg.WorkingDir(), c.engineering, invoke)...)
 		allTools = append(allTools, tools.NewUIAuditTools(c.engineering, invoke)...)
 		allTools = append(allTools, tools.NewSelectionTools(c.cfg.WorkingDir(), c.engineering)...)
 		allTools = append(allTools, c.requirementTraceTool())
 		allTools = append(allTools, tools.NewMutationTestTool(c.cfg.WorkingDir(), c.engineering, invoke))
 	}
-	allTools = append(allTools, tools.NewToolSearchTool(func(context.Context) []fantasy.AgentTool {
-		return c.filterTools(allTools, agent, nil, nil, isSubAgent)
-	}, func(ctx context.Context, infos []fantasy.ToolInfo) error {
-		if !c.cfg.Config().Options.DeferToolSchemas {
-			return nil
-		}
-		return tools.DiscoverTools(ctx, c.engineering, tools.GetSessionFromContext(ctx), infos)
+	allTools = append(allTools, tools.NewToolSearchTool(tools.ToolSearchOptions{
+		Palette: func(context.Context) []fantasy.AgentTool {
+			return c.filterTools(allTools, agent, nil, nil, isSubAgent)
+		},
+		Deferred: func(context.Context) bool {
+			return c.engineering != nil && c.cfg.Config().Options.DeferToolSchemasEnabled()
+		},
+		// Discovery is keyed by the calling session, so parallel sub-agents
+		// and other sessions never share loaded schemas.
+		Load: func(ctx context.Context, names []string) error {
+			return tools.DiscoverTools(ctx, c.engineering, tools.GetSessionFromContext(ctx), names)
+		},
 	}))
 	if c.stateStore() != nil {
 		allTools = append(allTools, tools.NewPlatformTools(c.stateStore(), c.cfg.WorkingDir(), c.platformScope(), c.permissions)...)
@@ -2173,6 +2226,27 @@ func (c *coordinator) BeginAccepted(sessionID string) *AcceptedRun {
 
 func (c *coordinator) Cancel(sessionID string) {
 	c.currentAgent.Cancel(sessionID)
+	c.recordInteractionCancel(sessionID)
+}
+
+// recordInteractionCancel remembers, across restarts, that the user
+// canceled a conversation whose browser/desktop control is handed to them,
+// so returning control later does not restart the canceled task.
+func (c *coordinator) recordInteractionCancel(sessionID string) {
+	if c.cfg == nil {
+		return
+	}
+	root := c.cfg.WorkingDir()
+	if err := interaction.Default.Load(root, sessionID); err != nil {
+		slog.Warn("Failed to load interaction state for cancellation", "error", err)
+		return
+	}
+	if !interaction.Default.MarkCanceled(sessionID) {
+		return
+	}
+	if err := interaction.Default.Record(root, sessionID, interaction.Entry{Resource: "control", Action: "cancel", Status: "canceled"}); err != nil {
+		slog.Warn("Failed to persist interaction cancellation", "error", err)
+	}
 }
 
 func (c *coordinator) CancelAll() {

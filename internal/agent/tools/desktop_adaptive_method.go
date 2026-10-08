@@ -9,6 +9,11 @@ import (
 )
 
 func desktopAdaptiveTarget(o desktopObservation, q computer.AutomationRequest) (*desktopElement, error) {
+	role, err := computer.NormalizeRole(q.Role)
+	if err != nil {
+		return nil, err
+	}
+	q.Role = role
 	if o.Truncated {
 		return nil, fmt.Errorf("observation_incomplete: target resolution requires a complete observation")
 	}

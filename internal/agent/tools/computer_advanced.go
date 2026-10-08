@@ -93,6 +93,11 @@ func (s *computerToolState) runAutomation(ctx context.Context, action string, p 
 				data, err = computer.OCR(ctx, s.backend, driver, request.Name)
 			}
 		} else {
+			if computerMutates(action) {
+				if err := beginComputerDispatch(ctx); err != nil {
+					return fantasy.ToolResponse{}, err
+				}
+			}
 			data, err = driver.Automation(ctx, request)
 		}
 		if err != nil {

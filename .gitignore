@@ -46,6 +46,10 @@ ehthumbs.db
 Thumbs.db
 *.log
 
+# Linux relay bundled into the Atlas executable by go generate.
+internal/remotecontrol/relaybin/files/*.gz
+internal/remotecontrol/relaybin/files/manifest.json
+
 # Binary output directory
 /bin/
 /dist/

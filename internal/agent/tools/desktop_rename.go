@@ -3,7 +3,9 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
@@ -18,6 +20,55 @@ import (
 type DesktopRenameParams struct {
 	OldName string `json:"old_name" description:"Exact observed Explorer ListItem name, including extension only if displayed."`
 	NewName string `json:"new_name" description:"Exact replacement name using the same extension visibility policy. Never guess or remove a hidden extension."`
+	// ExpectedFullName is checked against the shell item, never the label.
+	ExpectedFullName string `json:"expected_full_name,omitempty" description:"Optional exact file-system name with extension (e.g. sonuc.txt when Explorer shows sonuc). After the rename it is read from this Explorer window's shell view item, not from the display label; a mismatch or an unreadable name fails the check."`
+	// OnConflict decides what happens when new_name already exists. Nothing
+	// is ever deleted or overwritten.
+	OnConflict string `json:"on_conflict,omitempty" enum:"fail,keep_both,use_existing_if_identical" description:"When an item named new_name already exists: fail (default) refuses before any input and reports both files' size and sha256; keep_both renames to the first free 'new_name (N)' and reports the actual name; use_existing_if_identical sends no input when the existing file's bytes equal the source's and reports the source as kept. No policy deletes or overwrites a file."`
+}
+
+// Rename conflict policies.
+const (
+	renameConflictFail        = "fail"
+	renameConflictKeepBoth    = "keep_both"
+	renameConflictUseExisting = "use_existing_if_identical"
+)
+
+// validateRenameConflictPolicy refuses unknown policies before any input.
+// Replacing is deliberately not a policy: a rename never deletes a file.
+func validateRenameConflictPolicy(r *DesktopRenameParams) error {
+	switch r.OnConflict {
+	case "", renameConflictFail, renameConflictKeepBoth, renameConflictUseExisting:
+		return nil
+	case "replace", "overwrite", "replace_if_identical":
+		return fmt.Errorf("on_conflict %q is not supported: a rename never deletes or overwrites the existing file; use fail, keep_both or use_existing_if_identical, or ask the user to remove the existing file", r.OnConflict)
+	}
+	return fmt.Errorf("on_conflict must be fail, keep_both or use_existing_if_identical")
+}
+
+// renameKeepBothName returns the n-th Explorer style alternative of name,
+// keeping a displayed extension after the number.
+func renameKeepBothName(name string, n int, extensionShown bool) string {
+	base, ext := name, ""
+	if extensionShown {
+		if i := strings.LastIndex(name, "."); i > 0 {
+			base, ext = name[:i], name[i:]
+		}
+	}
+	return fmt.Sprintf("%s (%d)%s", base, n, ext)
+}
+
+// desktopRenameFullName reports whether full is new extended by one hidden
+// extension, or equal to it when extensions are displayed.
+func desktopRenameFullName(newName, full string) bool {
+	if full == "" {
+		return true
+	}
+	if !desktopRenameName(full) {
+		return false
+	}
+	ext, ok := strings.CutPrefix(full, newName)
+	return ok && (ext == "" || strings.HasPrefix(ext, ".") && len(ext) > 1 && !strings.ContainsAny(ext[1:], "."))
 }
 
 func desktopRenameName(s string) bool {
@@ -74,6 +125,13 @@ func runDesktopRename(ctx context.Context, p DesktopWorkflowParams, parent fanta
 	if !desktopRenameName(p.Rename.OldName) || !desktopRenameName(p.Rename.NewName) {
 		return fantasy.NewTextErrorResponse("invalid_name: rename requires safe exact leaf names"), nil
 	}
+	if !desktopRenameFullName(p.Rename.NewName, p.Rename.ExpectedFullName) {
+		return fantasy.NewTextErrorResponse("invalid_name: expected_full_name must be new_name plus at most one extension (e.g. new_name sonuc, expected_full_name sonuc.txt); no rename input sent"), nil
+	}
+	if err := validateRenameConflictPolicy(p.Rename); err != nil {
+		return errorResponse(computer.NewContractError("invalid_argument", "desktop.rename.on_conflict", err.Error()+"; no rename input sent", "Choose a supported policy and send the rename again.", "")), nil
+	}
+	rename := *p.Rename
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	child := desktopRecipeChild(parent, invoke)
@@ -114,15 +172,19 @@ func runDesktopRename(ctx context.Context, p DesktopWorkflowParams, parent fanta
 	if item.Offscreen || !item.Enabled || item.ProcessID != int(window.ProcessID) {
 		return fantasy.NewTextErrorResponse("target_not_actionable: resolve the visible Explorer item before renaming"), nil
 	}
-	if p.Rename.OldName != p.Rename.NewName {
+	if p.Rename.OldName != rename.NewName {
 		q := selector
-		q.Name = p.Rename.NewName
+		q.Name = rename.NewName
 		o, result, callErr := desktopFlowFind(ctx, q, child)
 		if desktopRecipeStopped(result, callErr) {
 			return result, callErr
 		}
 		if len(o.Elements) != 0 {
-			return fantasy.NewTextErrorResponse("name_conflict: replacement item already exists; no rename input sent"), nil
+			resolved, done, r := resolveRenameConflict(ctx, window, rename, child)
+			if done {
+				return r, nil
+			}
+			rename = resolved
 		}
 		if r, err = desktopFlowIdentity(ctx, window, false, child); desktopRecipeStopped(r, err) {
 			return r, err
@@ -173,10 +235,10 @@ func runDesktopRename(ctx context.Context, p DesktopWorkflowParams, parent fanta
 		if r, err = key("hotkey", "a", "ctrl", ""); desktopRecipeStopped(r, err) {
 			return r, err
 		}
-		if r, err = key("type", "", "", p.Rename.NewName); desktopRecipeStopped(r, err) {
+		if r, err = key("type", "", "", rename.NewName); desktopRecipeStopped(r, err) {
 			return r, err
 		}
-		if _, r, err = readEditor(p.Rename.NewName, editor.ID); desktopRecipeStopped(r, err) {
+		if _, r, err = readEditor(rename.NewName, editor.ID); desktopRecipeStopped(r, err) {
 			return r, err
 		}
 		if r, err = key("key", "enter", "", ""); desktopRecipeStopped(r, err) {
@@ -204,7 +266,7 @@ func runDesktopRename(ctx context.Context, p DesktopWorkflowParams, parent fanta
 			return fantasy.NewTextErrorResponse("rename_unverified: original item remains visible"), nil
 		}
 	}
-	q := computer.AutomationRequest{WindowID: window.ID, Name: p.Rename.NewName, Role: "ControlType.ListItem", Condition: "text", Expected: p.Rename.NewName, WaitMS: 3000}
+	q := computer.AutomationRequest{WindowID: window.ID, Name: rename.NewName, Role: "ControlType.ListItem", Condition: "text", Expected: rename.NewName, WaitMS: 3000}
 	r, err = child(ctx, ComputerParams{Action: "assert", Automation: q})
 	if desktopRecipeStopped(r, err) {
 		return r, err
@@ -215,6 +277,191 @@ func runDesktopRename(ctx context.Context, p DesktopWorkflowParams, parent fanta
 	if r, err = desktopFlowIdentity(ctx, window, false, child); desktopRecipeStopped(r, err) {
 		return r, err
 	}
-	data, _ := json.Marshal(map[string]any{"workflow": map[string]any{"mode": "rename", "window_id": window.ID, "old_name": p.Rename.OldName, "actual_name": p.Rename.NewName, "condition_verified": true, "task_completion_requires_verification": true}})
+	// The display label proves the visible name only. Folder, full name and
+	// content are separate requirements; a rename can establish the first two
+	// from the shell view of this window and never the content.
+	requirements := desktopRenameRequirements(ctx, window, &rename, child)
+	full := requirements["full_name"].(map[string]any)
+	workflow := map[string]any{"mode": "rename", "window_id": window.ID, "old_name": p.Rename.OldName, "actual_name": rename.NewName, "display_name_verified": true, "condition_verified": true, "requirements": requirements, "task_completion_requires_verification": true}
+	if rename.NewName != p.Rename.NewName {
+		// keep_both chose a free name; the requested one still belongs to the
+		// existing item, which was not touched.
+		workflow["requested_name"], workflow["conflict"] = p.Rename.NewName, map[string]any{"policy": renameConflictKeepBoth, "existing_item_untouched": true}
+	}
+	data, _ := json.Marshal(map[string]any{"workflow": workflow})
+	if rename.ExpectedFullName != "" && full["verified"] != true {
+		// The rename itself happened; only the requested full name is unproven.
+		return fantasy.NewTextErrorResponse("full_name_unverified: the item was renamed to the display name " + rename.NewName + ", but its file-system name was not confirmed as " + rename.ExpectedFullName + ". Do not rename again; inspect Explorer properties. " + string(data)), nil
+	}
 	return fantasy.NewTextResponse(string(data)), nil
+}
+
+// desktopRenameRequirements reads the renamed item's file-system name and
+// folder from the Explorer view and reports each requirement separately.
+func desktopRenameRequirements(ctx context.Context, window desktopWindowInfo, rename *DesktopRenameParams, child desktopFlowChild) map[string]any {
+	full := map[string]any{"verified": false, "display_name": rename.NewName, "source": "shell_view_item"}
+	folder := map[string]any{"verified": false}
+	if rename.ExpectedFullName != "" {
+		full["expected"] = rename.ExpectedFullName
+	}
+	q := computer.AutomationRequest{WindowID: window.ID, Name: rename.NewName, Role: "ControlType.ListItem", Condition: "file_name", Expected: rename.ExpectedFullName}
+	r, err := child(ctx, ComputerParams{Action: "assert", Automation: q})
+	var read struct {
+		Passed    bool    `json:"passed"`
+		Actual    *string `json:"actual"`
+		Truncated bool    `json:"actual_truncated"`
+		WindowID  string  `json:"window_id"`
+		Folder    string  `json:"folder_path"`
+	}
+	if err == nil && !r.IsError && !r.StopTurn && json.Unmarshal([]byte(r.Content), &read) == nil && read.Actual != nil && *read.Actual != "" && !read.Truncated && read.WindowID == window.ID && desktopRenameFullName(rename.NewName, *read.Actual) {
+		full["actual"] = *read.Actual
+		full["verified"] = rename.ExpectedFullName == "" || read.Passed && *read.Actual == rename.ExpectedFullName
+		if read.Folder != "" {
+			folder["verified"], folder["path"], folder["source"] = true, read.Folder, "shell_current_folder"
+		}
+	} else {
+		full["reason"] = "the shell view did not resolve exactly one file-system item for this display name"
+	}
+	return map[string]any{"folder": folder, "full_name": full, "content": map[string]any{"verified": false, "reason": "a rename never reads file content; reopen and check it separately"}}
+}
+
+// renameShellFile is one Explorer item's file-system identity and digest.
+type renameShellFile struct {
+	FullName string `json:"full_name,omitempty"`
+	Folder   string `json:"folder,omitempty"`
+	Size     int64  `json:"size,omitempty"`
+	SHA256   string `json:"sha256,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
+// readRenameShellFile reads the item's file-system name and folder from this
+// Explorer window's shell view and hashes the file. It sends no input.
+func readRenameShellFile(ctx context.Context, window desktopWindowInfo, name string, child desktopFlowChild) (renameShellFile, fantasy.ToolResponse, error) {
+	q := computer.AutomationRequest{WindowID: window.ID, Name: name, Role: "ControlType.ListItem", Condition: "file_name"}
+	r, err := child(ctx, ComputerParams{Action: "assert", Automation: q})
+	var read struct {
+		Actual    *string `json:"actual"`
+		Truncated bool    `json:"actual_truncated"`
+		WindowID  string  `json:"window_id"`
+		Folder    string  `json:"folder_path"`
+	}
+	if desktopRecipeStopped(r, err) {
+		return renameShellFile{}, r, err
+	}
+	if json.Unmarshal([]byte(r.Content), &read) != nil || read.Actual == nil || *read.Actual == "" || read.Truncated || read.WindowID != window.ID || !desktopRenameFullName(name, *read.Actual) || !filepath.IsAbs(read.Folder) {
+		return renameShellFile{Error: "the shell view did not resolve exactly one file-system item for this display name"}, fantasy.ToolResponse{}, nil
+	}
+	f := renameShellFile{FullName: *read.Actual, Folder: read.Folder}
+	r, err = child(ctx, ComputerParams{Action: "file_check", File: &DesktopFileCheck{Path: filepath.Join(read.Folder, *read.Actual), Condition: "digest"}})
+	if desktopRecipeStopped(r, err) {
+		return f, r, err
+	}
+	var digest struct {
+		Passed bool   `json:"passed"`
+		Size   int64  `json:"size"`
+		SHA256 string `json:"sha256"`
+	}
+	if json.Unmarshal([]byte(r.Content), &digest) != nil || !digest.Passed || len(digest.SHA256) != 64 {
+		f.Error = "the file read returned no complete digest evidence"
+	} else {
+		f.Size, f.SHA256 = digest.Size, digest.SHA256
+	}
+	return f, fantasy.ToolResponse{}, nil
+}
+
+// resolveRenameConflict applies the rename's on_conflict policy after an
+// item named new_name was found. It either returns the rename to perform
+// (keep_both) or a final response; no path deletes or overwrites a file.
+func resolveRenameConflict(ctx context.Context, window desktopWindowInfo, rename DesktopRenameParams, child desktopFlowChild) (DesktopRenameParams, bool, fantasy.ToolResponse) {
+	source, r, err := readRenameShellFile(ctx, window, rename.OldName, child)
+	if desktopRecipeStopped(r, err) {
+		return rename, true, renameConflictStop(r, err)
+	}
+	existing, r, err := readRenameShellFile(ctx, window, rename.NewName, child)
+	if desktopRecipeStopped(r, err) {
+		return rename, true, renameConflictStop(r, err)
+	}
+	identical := source.SHA256 != "" && existing.SHA256 != "" && source.Size == existing.Size && source.SHA256 == existing.SHA256
+	policy := rename.OnConflict
+	if policy == "" {
+		policy = renameConflictFail
+	}
+	evidence := map[string]any{"requested_name": rename.NewName, "policy": policy, "source": source, "existing": existing, "identical": identical, "input_sent": false}
+	if err := ctx.Err(); err != nil {
+		return rename, true, fantasy.NewTextErrorResponse("canceled: rename conflict was not resolved; no rename input sent")
+	}
+	conflict := func(reason string) (DesktopRenameParams, bool, fantasy.ToolResponse) {
+		data, _ := json.Marshal(evidence)
+		return rename, true, errorResponse(computer.NewContractError("name_conflict", "desktop.rename.new_name",
+			fmt.Sprintf("an item named %q already exists in this folder; %s. No rename input was sent and no file was changed. Evidence: %s", rename.NewName, reason, data),
+			"Pick an outcome explicitly: on_conflict keep_both (rename to the first free \"name (N)\"), on_conflict use_existing_if_identical (only when identical is true), or a different new_name. If the task does not decide this, ask the user which outcome they want; do not delete or overwrite the existing file.", ""))
+	}
+	switch policy {
+	case renameConflictUseExisting:
+		if !identical {
+			return conflict("use_existing_if_identical requires byte-identical files, and these differ or could not be read")
+		}
+		if rename.ExpectedFullName != "" && existing.FullName != rename.ExpectedFullName {
+			return conflict(fmt.Sprintf("the existing file is named %q, not the expected %q", existing.FullName, rename.ExpectedFullName))
+		}
+		evidence["outcome"], evidence["source_kept"] = "existing_identical", true
+		data, _ := json.Marshal(map[string]any{"workflow": map[string]any{"mode": "rename", "window_id": window.ID, "old_name": rename.OldName, "actual_name": rename.NewName, "conflict": evidence, "task_completion_requires_verification": true}})
+		return rename, true, fantasy.NewTextResponse(string(data))
+	case renameConflictKeepBoth:
+		// A displayed extension stays after the number; a hidden one is
+		// appended by the file system and checked through expected_full_name.
+		extensionShown := source.FullName != "" && source.FullName == rename.OldName
+		hiddenExt := ""
+		if rename.ExpectedFullName != "" {
+			hiddenExt = strings.TrimPrefix(rename.ExpectedFullName, rename.NewName)
+		} else if !extensionShown && source.FullName != "" {
+			hiddenExt = strings.TrimPrefix(source.FullName, rename.OldName)
+		}
+		for n := 2; n <= 20; n++ {
+			candidate := renameKeepBothName(rename.NewName, n, extensionShown)
+			if !desktopRenameName(candidate) {
+				break
+			}
+			o, r, err := desktopFlowFind(ctx, computer.AutomationRequest{WindowID: window.ID, Name: candidate, Role: "ControlType.ListItem"}, child)
+			if desktopRecipeStopped(r, err) {
+				if err != nil {
+					return rename, true, fantasy.NewTextErrorResponse("canceled: rename conflict was not resolved; no rename input sent")
+				}
+				return rename, true, r
+			}
+			if len(o.Elements) != 0 {
+				continue
+			}
+			if source.Folder != "" {
+				r, err := child(ctx, ComputerParams{Action: "file_check", File: &DesktopFileCheck{Path: filepath.Join(source.Folder, candidate+hiddenExt), Condition: "absent"}})
+				if err == nil && !r.StopTurn && r.IsError && strings.HasPrefix(r.Content, "file_present:") {
+					continue
+				}
+				if desktopRecipeStopped(r, err) {
+					return rename, true, renameConflictStop(r, err)
+				}
+			}
+			resolved := rename
+			resolved.NewName = candidate
+			if rename.ExpectedFullName != "" {
+				resolved.ExpectedFullName = candidate + hiddenExt
+			}
+			return resolved, false, fantasy.ToolResponse{}
+		}
+		return conflict("keep_both found no free name up to (20)")
+	}
+	if identical {
+		return conflict("the existing file is byte-identical to the source (on_conflict use_existing_if_identical would keep both untouched and report success)")
+	}
+	return conflict("the files differ or could not be compared")
+}
+
+// renameConflictStop preserves a child's pause and metadata. A transport
+// failure remains a read failure rather than a fabricated name conflict.
+func renameConflictStop(r fantasy.ToolResponse, err error) fantasy.ToolResponse {
+	if err != nil {
+		r.IsError = true
+		r.Content += "\nfile_read_failed: " + err.Error() + "; no rename input sent"
+	}
+	return r
 }

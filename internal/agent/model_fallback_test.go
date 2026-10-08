@@ -23,6 +23,26 @@ func TestModelChainStartsOnThePrimary(t *testing.T) {
 	require.False(t, chain.Fellback())
 }
 
+func TestModelChainRefreshPreservesSelectedFallback(t *testing.T) {
+	t.Parallel()
+	primary := testModel("claude")
+	primary.Model = &finishStreamModel{text: "old primary"}
+	fallback := testModel("antigravity")
+	fallback.Model = &finishStreamModel{text: "old fallback"}
+	chain := newModelChain(primary, []Model{fallback}, 1)
+	refreshed := fallback
+	refreshed.Model = &finishStreamModel{text: "fresh fallback"}
+	chain.RefreshModels(primary, []Model{refreshed})
+	require.Same(t, refreshed.Model, chain.Provider())
+	require.True(t, chain.Fellback())
+	// A user's new model selection must not replace this turn's identity.
+	unrelated := testModel("openai")
+	unrelated.Model = &finishStreamModel{text: "unrelated selection"}
+	chain.RefreshModels(unrelated, nil)
+	require.Same(t, refreshed.Model, chain.Provider())
+	require.Equal(t, fallback.ModelCfg, chain.Current().ModelCfg)
+}
+
 func TestModelChainMovesOnRateLimit(t *testing.T) {
 	t.Parallel()
 	fallback := testModel("openai")

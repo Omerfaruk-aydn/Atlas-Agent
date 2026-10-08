@@ -85,7 +85,10 @@ func (h *hookedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 		// call so the model can see the error and try something else.
 		resp.StopTurn = result.Halt
 		resp.Metadata = hookMetadataJSON(result)
-		return resp, nil
+		// The inner tool never ran; a desktop flow relies on this
+		// adapter-owned evidence to tell a refused step from one whose
+		// effect is unknown.
+		return tools.WithComputerNotDispatched(resp, call), nil
 	}
 
 	if result.UpdatedInput != "" {

@@ -1,5 +1,25 @@
 See and control the Windows desktop: screenshots plus mouse and keyboard input.
 
+Saved-file verification uses `action:"file_check"` with
+`file:{path,condition,expected}`. Conditions are exists, absent, content, sha256
+and digest (size/hash observation without a comparison). These reads pass the
+ordinary computer hooks and file-path permissions; enabling computer-use does
+not implicitly authorize reads outside the workspace. Content is limited to
+1 MiB and its digest describes the same bytes that were compared. Cancellation
+or a file changed during reading stops verification. This action sends no UI
+input and cannot substitute for creating, saving or renaming through an app.
+
+Choose the execution boundary first: use `tool_pipeline` `desktop.mode:"sequence"`
+with `result:"checkpoints"` for several already-resolved operations and one exact
+checkpoint per requested result. Use `act.inputs` for known text plus shortcut,
+`transition.inputs` for filename plus Enter after inspecting the dialog, and
+`rename` for an observed Explorer item. Use direct Computer calls to discover an
+unresolved target or recover from a concrete error. Prefer `observation:"auto"`
+to duplicate screenshots of readable labels/values. A screenshot's native
+`input_settle.new_window_ids` are fresh observed handles, not controls or focus
+permission; guard/focus checks still apply. Historical task-owned handles do
+not establish current identity.
+
 For application tasks, prefer `tool_pipeline` desktop recipes to separate model
 turns for known operations. Start with `desktop:{"mode":"prepare","application":
 "Exact app name"}` to find or launch, verify focus and return an observation in
@@ -30,8 +50,22 @@ closure evidence; do not prepare or focus that disappeared handle again.
 Use an observation's foreground identity to select the next inspected window;
 do not enumerate again merely to recover an ID already present in that response.
 Enumerate when focus changed, metadata is absent or identity is ambiguous.
-Text input treats CRLF as one logical newline; LF and CRLF both produce the
-same line sequence. Do not rewrite unchanged text merely to switch encodings.
+Line breaks in `text` (LF or CRLF) are typed as Enter key presses inside the
+same ordered input, so multi-line content is one `type` call, not a type/Enter
+call per line. Where Enter submits or sends (chat boxes, single-line forms),
+split the text or use set_value instead.
+
+Input timing: a read sent right after an input waits until the native window
+list is stable, and `windows`/`screenshot` after an opening input (Enter,
+double-click, click, shortcut, launch_app) wait up to 1.5 s (launch 4 s) for the
+expected window change. The result carries `input_settle` with `state`
+(changed, stable, pending or unstable), `new_window_ids` and
+`task_opened_window_ids` (windows this task opened, never the pre-existing
+ones). `pending` means the window may still appear: observe again; never
+start a second open or launch for the same purpose. launch_app reports its new
+window the same way. An input sent while a window that appeared after an
+earlier input is still unreported returns `delayed_transition` naming that
+window, and nothing is sent: inspect it first.
 UIA `name` is display text; address labels may omit ampersands, and file labels
 may hide extensions. `display_path_warning` highlights observed path labels.
 `focused_element` reports the current focused control only after ancestry is
@@ -94,8 +128,17 @@ Advanced desktop actions:
 - Supply automation.window_id on pixel/keyboard input to guard against foreground-window changes. Inspect/refocus instead of retrying a possibly completed submission.
 - `focus` activates an explicit native window independently of UI accessibility and reports success only after verifying the foreground window. `focus_denied` means Windows did not grant activation; do not send input until the intended window is confirmed. `target_missing` means list windows again.
 - A screenshot or accessibility failure does not establish that the desktop is locked or that Snipping Tool/overlays caused the problem. Report the returned stage and details, distinguish observations from hypotheses, and try one fresh observation before handoff. `accessibility_unavailable` concerns UI controls; native focus and screenshot may still work. On `wrong_window`, refocus and inspect rather than dropping the window guard or sending keys blindly.
-- `handoff` persists a pause and stops this turn for CAPTCHA/passkey/manual authentication. The user resumes via `/interactions`; never bypass authentication or resume yourself.
+- `handoff` persists a pause and stops this turn only for a real user-only step or unavailable required input, not simply because a login screen appears. It requires `text` naming the exact blocked step (no secrets). The user runs `/resume-use` to return control and continue, or opens `/interactions` and presses `r`. A waiting_for_user result is not a driver failure: stop without retrying actions. Never bypass authentication challenges or resume yourself.
 - `status`/`trace` inspect parent-chat control and recent metadata. `trace_start`/`trace_stop` explicitly toggle before/after captures for supported non-text actions. Captures may contain visible personal data; text-entry actions are omitted. Desktop input is serialized across agents, and a timed-out native driver retains ownership until it finishes.
+
+Authorized login is ordinary desktop work. When the user asks you to sign in,
+operate the observed login button, account chooser and task-scoped consent
+screens, including Google sign-in; reuse the existing authenticated session.
+Perform supported credential entry without reading back password values. Keep
+secrets out of logs and use protected credential handles when available. If the
+backend lacks a protected entry path or a required value, request only that input
+or step. Do not categorically refuse password or OAuth workflows. Preserve the
+user's intended account, foreground checks and normal permission/hook controls.
 
 Efficient, evidence-based desktop execution:
 - Group known field steps with tool_pipeline desktop act.inputs and one

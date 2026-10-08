@@ -13,7 +13,7 @@ func renameFixture(t *testing.T, change func(ComputerParams, fantasy.ToolRespons
 	t.Helper()
 	calls := []ComputerParams{}
 	inspections := 0
-	invoke := func(_ context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	invoke := func(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 		var p ComputerParams
 		require.NoError(t, json.Unmarshal([]byte(call.Input), &p))
 		calls = append(calls, p)
@@ -21,6 +21,12 @@ func renameFixture(t *testing.T, change func(ComputerParams, fantasy.ToolRespons
 		var result any = map[string]any{}
 		item := desktopElement{ID: "file", Name: "hesap", Role: "ControlType.ListItem", ProcessID: 7, Enabled: true, X: 100, Y: 200, Width: 400, Height: 30}
 		switch p.Action {
+		case "file_check":
+			r := runDesktopFileCheck(ctx, *p.File)
+			if change != nil {
+				r = change(p, r)
+			}
+			return r, nil
 		case "windows":
 			result = []desktopWindowInfo{{ID: "11", Name: "deneme", ProcessID: 7, ProcessName: "explorer.exe", WindowClass: "CabinetWClass", Foreground: true}}
 		case "find":
@@ -85,7 +91,8 @@ func TestDesktopRenameVerifiesSelectionEditorAndCommit(t *testing.T) {
 			keys = append(keys, c.Key)
 		}
 	}
-	require.Equal(t, []string{"windows", "find", "find", "windows", "select", "key", "inspect", "hotkey", "type", "inspect", "key", "inspect", "assert", "assert", "windows"}, actions)
+	require.Equal(t, []string{"windows", "find", "find", "windows", "select", "key", "inspect", "hotkey", "type", "inspect", "key", "inspect", "assert", "assert", "windows", "assert"}, actions)
+	require.Equal(t, "file_name", (*calls)[len(*calls)-1].Automation.Condition, "the full name is read from the shell view, not inferred")
 	require.Equal(t, []string{"f2", "enter"}, keys)
 }
 

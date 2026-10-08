@@ -109,6 +109,9 @@ func NewJobOutputTool() fantasy.AgentTool {
 
 			status := "running"
 			switch {
+			case done && bgShell.TimedOut():
+				status = "timed out"
+				outputParts = append(outputParts, "The job exceeded its time limit and was terminated; its partial effects are unknown.")
 			case done:
 				status = "completed"
 				if err != nil {

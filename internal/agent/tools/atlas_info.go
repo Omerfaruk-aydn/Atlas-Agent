@@ -397,6 +397,7 @@ func writeOptions(b *strings.Builder, cfg *config.ConfigStore) {
 	opts = append(opts, kv{"debug", fmt.Sprintf("%v", c.Options.Debug)})
 	autoLSP := c.Options.AutoLSP == nil || *c.Options.AutoLSP
 	opts = append(opts, kv{"auto_lsp", fmt.Sprintf("%v", autoLSP)})
+	opts = append(opts, kv{"defer_tool_schemas", fmt.Sprintf("%v", c.Options.DeferToolSchemasEnabled())})
 	autoSummarize := !c.Options.DisableAutoSummarize
 	opts = append(opts, kv{"auto_summarize", fmt.Sprintf("%v", autoSummarize)})
 

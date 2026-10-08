@@ -10,6 +10,7 @@ import (
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/question"
 )
 
@@ -58,6 +59,7 @@ func (p *QuestionParams) UnmarshalJSON(data []byte) error {
 // QuestionItem is a single question from the tool input.
 type QuestionItem struct {
 	Label       string           `json:"label,omitempty" description:"Short tab header label (3 words max)."`
+	Purpose     string           `json:"purpose,omitempty" description:"Question intent: information for a missing fact or user preference, confirmation for approval to act or continue. Required in YOLO; independent of question type. Never label an approval request as information."`
 	Type        string           `json:"type" description:"The type of question: yes_no, single_choice, multi_choice, or free_text"`
 	Question    string           `json:"question" description:"The question text"`
 	Description string           `json:"description" description:"Required markdown description shown below the question"`
@@ -80,8 +82,17 @@ type QuestionChoice struct {
 	Description string `json:"description,omitempty" description:"Optional description for this choice"`
 }
 
-// NewQuestionTool creates a new question tool.
-func NewQuestionTool(svc question.Service) fantasy.AgentTool {
+// permissionModer reports the live permission mode; YOLO is ModeBypass.
+type permissionModer interface {
+	Mode() permission.PermissionMode
+}
+
+// yoloConfirmationRefusal prevents approval prompts regardless of format.
+const yoloConfirmationRefusal = "yolo_confirmation_not_needed: YOLO mode is on, so the user has already approved tool use and continuing the requested work. No question was shown. Do not ask for permission or confirmation; continue the task. If you need information only the user has, ask with purpose=information and name the missing fact or preference. Any question type, including yes_no, may gather information; changing the type of an approval request does not make it an information request."
+
+// NewQuestionTool creates a new question tool. YOLO requires an explicit
+// purpose and refuses confirmation requests regardless of their format.
+func NewQuestionTool(svc question.Service, modes ...permissionModer) fantasy.AgentTool {
 	return fantasy.NewAgentTool(
 		QuestionToolName,
 		questionDescription,
@@ -90,6 +101,22 @@ func NewQuestionTool(svc question.Service) fantasy.AgentTool {
 
 			if len(params.Questions) == 0 {
 				return fantasy.NewTextErrorResponse("at least one question is required"), nil
+			}
+			yolo := len(modes) > 0 && modes[0] != nil && modes[0].Mode() == permission.ModeBypass
+			for i, item := range params.Questions {
+				switch item.Purpose {
+				case "confirmation":
+					if yolo {
+						return fantasy.NewTextErrorResponse(yoloConfirmationRefusal), nil
+					}
+				case "information":
+				case "":
+					if yolo {
+						return fantasy.NewTextErrorResponse("question_purpose_required: No question was shown. In YOLO, each question must declare purpose=information or purpose=confirmation. Continue pre-approved work without asking for confirmation. Only ask with purpose=information when a fact or preference is missing; yes_no is allowed for factual questions."), nil
+					}
+				default:
+					return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d: invalid purpose (must be information or confirmation)", i+1)), nil
+				}
 			}
 			if len(params.Questions) > question.MaxQuestions {
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("exceeds maximum of %d questions per batch (got %d). Split into multiple batches and tell the user there will be follow-up questions", question.MaxQuestions, len(params.Questions))), nil

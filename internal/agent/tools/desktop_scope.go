@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
@@ -57,13 +58,29 @@ func (t *desktopScopeTool) Run(ctx context.Context, call fantasy.ToolCall) (fant
 }
 
 func desktopScopeViolation(ctx context.Context, name string) (fantasy.ToolResponse, bool) {
-	if !getContextValue(ctx, desktopTaskScopeKey{}, false) {
+	if !getContextValue(ctx, desktopTaskScopeKey{}, false) || !desktopScopeBlocked(name) {
 		return fantasy.ToolResponse{}, false
 	}
+	err := computer.NewContractError("task_scope_violation", "tool", "This task requires desktop application interaction; shell commands and direct file changes cannot substitute for it. Nothing executed", "Continue through computer/tool_pipeline desktop actions. If the desktop is blocked, report the blocker or use handoff.", `{"action":"windows"}`)
+	return contractResponse(err), true
+}
+
+func desktopScopeBlocked(name string) bool {
 	switch name {
 	case BashToolName, EditToolName, WriteToolName, MultiEditToolName, "apply_patch", "execution":
-		err := computer.NewContractError("task_scope_violation", "tool", "This task requires desktop application interaction; shell commands and direct file changes cannot substitute for it. Nothing executed", "Continue through computer/tool_pipeline desktop actions. If the desktop is blocked, report the blocker or use handoff.", `{"action":"windows"}`)
-		return contractResponse(err), true
+		return true
 	}
-	return fantasy.ToolResponse{}, false
+	return false
+}
+
+// ScopeToolsForDesktop omits tools the accepted GUI-only task cannot execute.
+// Apply it to both advertised tools and deferred stubs on every model step.
+// Runtime scope checks remain authoritative for direct and pipeline calls.
+func ScopeToolsForDesktop(ctx context.Context, palette []fantasy.AgentTool) []fantasy.AgentTool {
+	if !getContextValue(ctx, desktopTaskScopeKey{}, false) {
+		return palette
+	}
+	return slices.DeleteFunc(slices.Clone(palette), func(tool fantasy.AgentTool) bool {
+		return desktopScopeBlocked(tool.Info().Name)
+	})
 }

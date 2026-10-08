@@ -33,12 +33,28 @@ func requireObservedDesktopTarget(ctx context.Context, p ComputerParams) *comput
 // recordDesktopWindows accepts native discovery results, never request IDs.
 // Complete enumeration also removes closed targets. Text and images are not kept.
 func recordDesktopWindows(ctx context.Context, action string, resp fantasy.ToolResponse) {
+	if ctx.Err() != nil || resp.IsError || resp.StopTurn {
+		return
+	}
 	var root struct {
 		WindowID string          `json:"window_id"`
 		Result   json.RawMessage `json:"result"`
+		Settle   *struct {
+			New []string `json:"new_window_ids"`
+		} `json:"input_settle"`
 	}
 	if json.Unmarshal([]byte(resp.Content), &root) != nil {
-		return
+		root.WindowID, root.Result, root.Settle = "", nil, nil
+	}
+	// Native image captions are not JSON. Only adapter metadata may supply
+	// their identities; never extract handles from free-form caption text.
+	var meta struct {
+		Settle *struct {
+			New []string `json:"new_window_ids"`
+		} `json:"input_settle"`
+	}
+	if json.Unmarshal([]byte(resp.Metadata), &meta) == nil && meta.Settle != nil {
+		root.Settle = meta.Settle
 	}
 	state := desktopGuardFor(GetSessionFromContext(ctx))
 	state.mu.Lock()
@@ -80,6 +96,13 @@ func recordDesktopWindows(ctx context.Context, action string, resp fantasy.ToolR
 			if json.Unmarshal(root.Result, &result) == nil {
 				remember(result.WindowID)
 			}
+		}
+	}
+	if root.Settle != nil {
+		// Windows a native enumeration found after an input.
+		// TaskOpened is historical ownership, not a fresh observation.
+		for _, id := range root.Settle.New {
+			remember(id)
 		}
 	}
 	for id, at := range state.windows {

@@ -79,7 +79,7 @@ func NewLspRenameFileTool(
 			}
 			edit, err := client.WillRenameFiles(ctx, oldPath, newPath)
 			if err != nil && !isMethodNotFoundError(err) {
-				slog.Error("willRenameFiles request failed", "error", err, "old_path", oldPath, "new_path", newPath)
+				slog.Error("Failed to request willRenameFiles", "error", err, "old_path", oldPath, "new_path", newPath)
 				return fantasy.NewTextErrorResponse(fmt.Sprintf("willRenameFiles failed: %s", err)), nil
 			}
 

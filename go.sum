@@ -583,3 +583,5 @@ mvdan.cc/sh/moreinterp v0.0.0-20250902163504-3cf4fd5717a5 h1:mO2lyKtGwu4mGQ+Qqjx
 mvdan.cc/sh/moreinterp v0.0.0-20250902163504-3cf4fd5717a5/go.mod h1:Of9PCedbLDYT8b3EyiYG64rNnx5nOp27OLCVdDrjJyo=
 mvdan.cc/sh/v3 v3.13.1 h1:DP3TfgZhDkT7lerUdnp6PTGKyxxzz6T+cOlY/xEvfWk=
 mvdan.cc/sh/v3 v3.13.1/go.mod h1:lXJ8SexMvEVcHCoDvAGLZgFJ9Wsm2sulmoNEXGhYZD0=
+rsc.io/qr v0.2.0 h1:6vBLea5/NRMVTz8V66gipeLycZMl/+UlFmk8DvqQ6WY=
+rsc.io/qr v0.2.0/go.mod h1:IF+uZjkb9fqyeF/4tlBoynqmQxUoPfWEKh921coOuXs=

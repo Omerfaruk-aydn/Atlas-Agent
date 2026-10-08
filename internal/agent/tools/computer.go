@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
@@ -28,7 +30,7 @@ var computerDescription string
 var computerActions = []string{
 	"batch",
 	"launch_app",
-	"observe", "health",
+	"observe", "health", "file_check",
 	"screenshot", "screen_size", "cursor_position", "move",
 	"click", "double_click", "right_click", "drag",
 	"scroll", "type", "key", "hotkey",
@@ -36,6 +38,7 @@ var computerActions = []string{
 }
 
 type ComputerParams struct {
+	File        *DesktopFileCheck          `json:"file,omitempty" description:"For file_check only: verify a saved file through file-path permission checks; reads no desktop input."`
 	Batch       *ComputerBatchParams       `json:"batch,omitempty" description:"For action batch: 1-24 groups of known inputs with mandatory checkpoints, processed in order in one call. Other actions must omit batch."`
 	Observation string                     `json:"observation,omitempty" description:"Observation mode for observe: visual (default), semantic (UIA text without a screenshot), or auto (semantic when usable, otherwise visual; small truncated scans may expand once to 150)."`
 	SnapshotID  string                     `json:"snapshot_id,omitempty" description:"ID returned by observe; required with element."`
@@ -43,7 +46,7 @@ type ComputerParams struct {
 	Automation  computer.AutomationRequest `json:"automation,omitempty" description:"Parameters for accessibility actions: window_id required except windows/monitors/ocr. Name, role or element_id select a fresh element."`
 	Width       int                        `json:"width,omitempty" description:"Native pixel width for capture_region and ocr regions. ocr needs x, y, width and height together at the top level, or none of them for the full screen."`
 	Height      int                        `json:"height,omitempty" description:"Native pixel height for capture_region and ocr regions; see width."`
-	Action      string                     `json:"action" enum:"batch,launch_app,observe,health,screenshot,screen_size,cursor_position,move,click,double_click,right_click,drag,scroll,type,key,hotkey,windows,focus,inspect,find,select,invoke,set_value,assert,monitors,ocr,capture_region,capture_window,handoff,status,trace,trace_start,trace_stop" description:"Desktop action: batch (multiple checkpointed input groups in one call); launch_app/observe/health; screenshot/screen_size/cursor_position/move/click/double_click/right_click/drag/scroll/type/key/hotkey; windows/focus/inspect/find/select/invoke/set_value/assert/monitors/ocr/capture_region/capture_window; handoff/status/trace/trace_start/trace_stop. See tool description."`
+	Action      string                     `json:"action" enum:"batch,launch_app,observe,health,file_check,screenshot,screen_size,cursor_position,move,click,double_click,right_click,drag,scroll,type,key,hotkey,windows,focus,inspect,find,select,invoke,set_value,assert,monitors,ocr,capture_region,capture_window,handoff,status,trace,trace_start,trace_stop" description:"Desktop action: batch (multiple checkpointed input groups in one call); launch_app/observe/health; file_check (permission-checked saved-file verification); screenshot/screen_size/cursor_position/move/click/double_click/right_click/drag/scroll/type/key/hotkey; windows/focus/inspect/find/select/invoke/set_value/assert/monitors/ocr/capture_region/capture_window; handoff/status/trace/trace_start/trace_stop. See tool description."`
 	// X and Y are screen coordinates in physical pixels, matching the
 	// screenshot image 1:1. Required for move, click, double_click,
 	// right_click, and drag (start point).
@@ -103,6 +106,8 @@ type computerToolState struct {
 	backend              computer.Backend
 	enabled              func() bool
 	actionTimeout        time.Duration
+	// settleTiming bounds input transition waits; zero selects defaults.
+	settleTiming desktopSettleTiming
 }
 
 func newComputerTool(
@@ -125,11 +130,22 @@ func newComputerTool(
 		state.overlay = overlayConfig[0].Overlay == nil || *overlayConfig[0].Overlay
 		state.overlayReducedMotion = overlayConfig[0].OverlayReducedMotion
 	}
+	return newComputerToolWithState(state, description)
+}
+
+// newComputerToolWithState builds the computer tool around an existing state,
+// so tests can run the complete tool (permissions, guards, input settle and
+// the desktop lease) with their own backend and settle timing.
+func newComputerToolWithState(state *computerToolState, description string) fantasy.AgentTool {
+	workingDir := state.workingDir
 	return fantasy.NewAgentTool(
 		ComputerToolName,
 		description,
 		func(ctx context.Context, params ComputerParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			action := strings.ToLower(strings.TrimSpace(params.Action))
+			if params.File != nil && action != "file_check" {
+				return fantasy.NewTextErrorResponse("file parameters require action file_check"), nil
+			}
 			if params.Batch != nil && action != "batch" {
 				return fantasy.NewTextErrorResponse("batch parameters require action batch"), nil
 			}
@@ -141,6 +157,9 @@ func newComputerTool(
 				return fantasy.NewTextErrorResponse(
 					"computer-use is off. Ask the user to run /computer-use to turn it on, then retry.",
 				), nil
+			}
+			if action == "file_check" {
+				return state.checkFile(ctx, params, call)
 			}
 			if state.backend == nil {
 				return fantasy.NewTextErrorResponse(
@@ -179,22 +198,28 @@ func newComputerTool(
 					Safe:        true,
 				},
 			)
+			// A refused or interrupted permission request returns before
+			// any input; the outcome says so, so a durable flow can tell a
+			// step that never ran from one whose effect is unknown.
 			if err != nil {
-				return fantasy.ToolResponse{}, err
+				return withToolOutcome(fantasy.ToolResponse{}, computerOutcome(action, params, fantasy.ToolResponse{}, false)), err
 			}
 			if !p {
-				return NewPermissionDeniedResponse(state.permissions), nil
+				resp := NewPermissionDeniedResponse(state.permissions)
+				return withToolOutcome(resp, computerOutcome(action, params, resp, false)), nil
 			}
 
 			if action == "handoff" {
+				step, err := handoffStep(params.Text)
+				if err != nil {
+					return contractResponse(err), nil
+				}
 				state.observations.clear()
-				interaction.Default.Pause(controlID, "Desktop user intervention required")
+				interaction.Default.Pause(controlID, step)
 				if err := interaction.Default.Record(workingDir, controlID, interaction.Entry{Time: time.Now(), Resource: "desktop", Action: action, Status: "paused"}); err != nil {
 					return fantasy.NewTextErrorResponse(err.Error()), nil
 				}
-				response := fantasy.NewTextResponse("Automation paused. Complete the required step, then resume from /interactions.")
-				response.StopTurn = true
-				return response, nil
+				return handoffResponse(step, "on the desktop"), nil
 			}
 			if action == "status" || action == "trace" {
 				data, _ := json.Marshal(interaction.Default.ToolSnapshot(controlID, action == "trace"))
@@ -216,6 +241,40 @@ func newComputerTool(
 	)
 }
 
+type computerDispatchContextKey struct{}
+
+// computerDispatch tracks input separately from preflight reads. Closing the
+// tracker on cancellation prevents a late validation result from sending input
+// after the caller has already reported that nothing was dispatched.
+type computerDispatch struct {
+	mu     sync.Mutex
+	sent   atomic.Bool
+	closed bool
+}
+
+func (d *computerDispatch) close() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.closed = true
+	return d.sent.Load()
+}
+
+func beginComputerDispatch(ctx context.Context) error {
+	if d, ok := ctx.Value(computerDispatchContextKey{}).(*computerDispatch); ok {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if d.closed {
+			return context.Canceled
+		}
+		d.sent.Store(true)
+		return nil
+	}
+	return ctx.Err()
+}
+
 // runWithTimeout bounds every backend call: a stuck driver must fail
 // the action, never the agent loop. The backend has no context
 // plumbing (blocking Win32 syscalls), so the call runs on a goroutine
@@ -229,10 +288,13 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	dispatch := &computerDispatch{}
+	ctx = context.WithValue(ctx, computerDispatchContextKey{}, dispatch)
 
 	type result struct {
-		resp fantasy.ToolResponse
-		err  error
+		resp     fantasy.ToolResponse
+		delivery *desktopSettleDelivery
+		err      error
 	}
 	done := make(chan result, 1)
 	go func() {
@@ -240,7 +302,8 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 		var operation activity.Operation
 		release, err := interaction.Default.Acquire(ctx, controlID, "desktop")
 		if err != nil {
-			done <- result{resp: fantasy.NewTextErrorResponse(err.Error())}
+			resp := interactionAcquireResponse(err)
+			done <- result{resp: withToolOutcome(resp, computerOutcome(action, params, resp, false))}
 			return
 		}
 		defer release()
@@ -274,10 +337,8 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 		if recordImages {
 			before = captureComputerTrace(s.backend, s.workingDir, controlID)
 		}
-		resp, err := s.runComputerAction(ctx, action, params)
-		if getContextValue(ctx, desktopGuardContextKey{}, false) && err == nil && !resp.IsError && !resp.StopTurn && ctx.Err() == nil {
-			recordDesktopWindows(ctx, action, resp)
-		}
+		delivery := &desktopSettleDelivery{}
+		resp, err := s.runTrackedComputerAction(ctx, controlID, action, params, dispatch, delivery)
 		resp = withInteractionFailure(resp)
 		if recordImages {
 			after = captureComputerTrace(s.backend, s.workingDir, controlID)
@@ -291,20 +352,75 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 		if traceErr := interaction.Default.Record(s.workingDir, controlID, interaction.Entry{Time: started, Resource: "desktop", OwnerID: GetSessionFromContext(ctx), Before: before, After: after, Target: params.Automation.WindowID, Action: action, Status: status, DurationMS: time.Since(started).Milliseconds()}); traceErr != nil {
 			slog.Warn("Failed to persist interaction trace", "error", traceErr)
 		}
-		done <- result{resp: resp, err: err}
+		resp = withToolOutcome(resp, computerOutcome(action, params, resp, dispatch.sent.Load()))
+		done <- result{resp: resp, err: err, delivery: delivery}
 	}()
 
+	interrupted := func() (fantasy.ToolResponse, error) {
+		sent := dispatch.close()
+		if ctx.Err() == context.DeadlineExceeded {
+			message := fmt.Sprintf("computer action %q timed out after %s before input was dispatched; no input was sent.", action, timeout)
+			if sent {
+				message = fmt.Sprintf("computer action %q timed out after %s; the result may be unknown. Inspect before repeating input.", action, timeout)
+			}
+			resp := fantasy.NewTextErrorResponse(message)
+			return withToolOutcome(resp, computerOutcome(action, params, resp, sent)), nil
+		}
+		resp := fantasy.NewTextErrorResponse(ctx.Err().Error())
+		return withToolOutcome(resp, computerOutcome(action, params, resp, sent)), ctx.Err()
+	}
 	select {
 	case <-ctx.Done():
-		if ctx.Err() == context.DeadlineExceeded {
-			return fantasy.NewTextErrorResponse(
-				fmt.Sprintf("computer action %q timed out after %s.", action, timeout),
-			), nil
-		}
-		return fantasy.ToolResponse{}, ctx.Err()
+		return interrupted()
 	case r := <-done:
+		if ctx.Err() != nil {
+			return interrupted()
+		}
+		if r.err == nil && !r.resp.StopTurn && (!r.resp.IsError || r.delivery != nil && r.delivery.refusal) {
+			r.delivery.acknowledge()
+		}
+		if getContextValue(ctx, desktopGuardContextKey{}, false) && r.err == nil && !r.resp.IsError && !r.resp.StopTurn {
+			recordDesktopWindows(ctx, action, r.resp)
+		}
 		return r.resp, r.err
 	}
+}
+
+// runTrackedComputerAction surrounds one action with input transition
+// tracking: an input waits for an earlier unresolved open or is refused when
+// a window it did not know about appeared, and a read right after input
+// waits until the window list settles. Backends that cannot enumerate
+// windows natively run the action unchanged.
+func (s *computerToolState) runTrackedComputerAction(ctx context.Context, controlID, action string, params ComputerParams, dispatch *computerDispatch, delivery *desktopSettleDelivery) (fantasy.ToolResponse, error) {
+	tracker := s.transitionTracker(ctx, controlID)
+	if tracker == nil {
+		return s.runComputerAction(ctx, action, params)
+	}
+	if desktopMutation(action) && action != "move" && action != "scroll" {
+		refusal, baseline := tracker.beforeInput(ctx, action, params, delivery)
+		if refusal != nil {
+			return *refusal, nil
+		}
+		resp, err := s.runComputerAction(ctx, action, params)
+		tracker.afterInput(action, params, baseline, resp, err == nil && dispatch.sent.Load())
+		if action == "launch_app" && err == nil && !resp.IsError && !resp.StopTurn {
+			// Report the launched window in the same result instead of
+			// leaving the model to poll for it.
+			delivery.tracker, delivery.report = tracker, tracker.settle(ctx, "windows")
+			resp = annotateSettle(resp, delivery.report)
+		}
+		return resp, err
+	}
+	var report *desktopSettleReport
+	if desktopSettledRead(action) {
+		report = tracker.settle(ctx, action)
+	}
+	resp, err := s.runComputerAction(ctx, action, params)
+	if err != nil {
+		return resp, err
+	}
+	delivery.tracker, delivery.report = tracker, report
+	return annotateSettle(resp, report), nil
 }
 
 // validatePoint checks coordinates against the live screen size, so
@@ -423,6 +539,9 @@ func (s *computerToolState) runComputerAction(ctx context.Context, action string
 		if err := s.validatePoint(params.X, params.Y); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
+		if err := beginComputerDispatch(ctx); err != nil {
+			return fantasy.ToolResponse{}, err
+		}
 		if err := backend.MoveTo(params.X, params.Y); err != nil {
 			return fantasy.NewTextErrorResponse("move failed: " + err.Error()), nil
 		}
@@ -435,6 +554,9 @@ func (s *computerToolState) runComputerAction(ctx context.Context, action string
 		if err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
+		if err := beginComputerDispatch(ctx); err != nil {
+			return fantasy.ToolResponse{}, err
+		}
 		if err := backend.Click(params.X, params.Y, button); err != nil {
 			return fantasy.NewTextErrorResponse("click failed: " + err.Error()), nil
 		}
@@ -443,6 +565,9 @@ func (s *computerToolState) runComputerAction(ctx context.Context, action string
 		if err := s.validatePoint(params.X, params.Y); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
+		if err := beginComputerDispatch(ctx); err != nil {
+			return fantasy.ToolResponse{}, err
+		}
 		if err := backend.DoubleClick(params.X, params.Y); err != nil {
 			return fantasy.NewTextErrorResponse("double_click failed: " + err.Error()), nil
 		}
@@ -450,6 +575,9 @@ func (s *computerToolState) runComputerAction(ctx context.Context, action string
 	case "right_click":
 		if err := s.validatePoint(params.X, params.Y); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
+		if err := beginComputerDispatch(ctx); err != nil {
+			return fantasy.ToolResponse{}, err
 		}
 		if err := backend.Click(params.X, params.Y, computer.ButtonRight); err != nil {
 			return fantasy.NewTextErrorResponse("right_click failed: " + err.Error()), nil
@@ -462,6 +590,9 @@ func (s *computerToolState) runComputerAction(ctx context.Context, action string
 		if err := s.validatePoint(params.EndX, params.EndY); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
+		if err := beginComputerDispatch(ctx); err != nil {
+			return fantasy.ToolResponse{}, err
+		}
 		if err := backend.Drag(params.X, params.Y, params.EndX, params.EndY); err != nil {
 			return fantasy.NewTextErrorResponse("drag failed: " + err.Error()), nil
 		}
@@ -470,6 +601,9 @@ func (s *computerToolState) runComputerAction(ctx context.Context, action string
 		dy := params.ScrollY
 		if params.ScrollX == 0 && dy == 0 {
 			dy = 3
+		}
+		if err := beginComputerDispatch(ctx); err != nil {
+			return fantasy.ToolResponse{}, err
 		}
 		if err := backend.Scroll(params.ScrollX, dy); err != nil {
 			return fantasy.NewTextErrorResponse("scroll failed: " + err.Error()), nil
@@ -481,6 +615,9 @@ func (s *computerToolState) runComputerAction(ctx context.Context, action string
 		}
 		// CRLF is one logical line break, not two keyboard input characters.
 		text := strings.ReplaceAll(params.Text, "\r\n", "\n")
+		if err := beginComputerDispatch(ctx); err != nil {
+			return fantasy.ToolResponse{}, err
+		}
 		if err := backend.TypeText(text); err != nil {
 			return fantasy.NewTextErrorResponse("type failed: " + err.Error()), nil
 		}
@@ -512,6 +649,9 @@ func (s *computerToolState) runComputerAction(ctx context.Context, action string
 		if _, ok := computer.ResolveKey(key); !ok {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("unknown key %q.", params.Key)), nil
 		}
+		if err := beginComputerDispatch(ctx); err != nil {
+			return fantasy.ToolResponse{}, err
+		}
 		if err := backend.KeyPress(key); err != nil {
 			return fantasy.NewTextErrorResponse("key failed: " + err.Error()), nil
 		}
@@ -527,6 +667,9 @@ func (s *computerToolState) runComputerAction(ctx context.Context, action string
 		key := strings.ToLower(strings.TrimSpace(params.Key))
 		if _, ok := computer.ResolveKey(key); !ok {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("unknown key %q.", params.Key)), nil
+		}
+		if err := beginComputerDispatch(ctx); err != nil {
+			return fantasy.ToolResponse{}, err
 		}
 		if err := backend.Hotkey(mods, key); err != nil {
 			return fantasy.NewTextErrorResponse("hotkey failed: " + err.Error()), nil

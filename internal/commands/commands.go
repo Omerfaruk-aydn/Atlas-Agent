@@ -60,7 +60,12 @@ type commandSource struct {
 // LoadCustomCommands loads custom commands from multiple sources including
 // XDG config directory, home directory, and project directory.
 func LoadCustomCommands(cfg *config.Config) ([]CustomCommand, error) {
-	return loadAll(buildCommandSources(cfg))
+	loaded, err := loadAll(buildCommandSources(cfg))
+	if err != nil {
+		return nil, err
+	}
+	loaded = append(loaded, qualityCommands()...)
+	return append(loaded, cliBridgeCommands()...), nil
 }
 
 // FromSkillCatalog converts user-invocable catalog entries into custom

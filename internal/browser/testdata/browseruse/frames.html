@@ -1,0 +1,18 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Frames fixture</title></head>
+<body>
+<settings-panel></settings-panel>
+<iframe id="outer" title="Outer frame" src="outer.html"></iframe>
+<script>
+customElements.define('settings-panel', class extends HTMLElement {
+  constructor() {
+    super();
+    const root = this.attachShadow({mode: 'open'});
+    root.innerHTML = '<section aria-label="Shadow settings"><label>Nickname <input id="nick"></label><button id="apply">Apply</button><span id="status"></span></section>';
+    root.getElementById('apply').addEventListener('click', () => {
+      root.getElementById('status').textContent = 'Applied ' + root.getElementById('nick').value;
+    });
+  }
+});
+</script>
+</body></html>

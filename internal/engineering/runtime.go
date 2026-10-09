@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/lock"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/outcome"
 	"github.com/google/uuid"
 )
 
@@ -44,6 +45,7 @@ type Operation struct {
 	CallID          string `json:"call_id"`
 	Tool            string `json:"tool"`
 	TaskID          string `json:"task_id,omitempty"`
+	TaskFingerprint string `json:"task_fingerprint,omitempty"`
 	Fingerprint     string `json:"fingerprint"`
 	Status          string `json:"status"`
 	StartedAt       int64  `json:"started_at"`
@@ -82,6 +84,7 @@ type Workspace struct {
 type State struct {
 	Paused           bool                         `json:"paused,omitempty"`
 	SemanticEdits    map[string]SemanticEditState `json:"semantic_edits,omitempty"`
+	Outcomes         outcome.Ledger               `json:"outcomes,omitempty"`
 	Recipe           *RecipeBinding               `json:"recipe,omitempty"`
 	ContractRoot     string                       `json:"contract_root,omitempty"`
 	TaskContractRefs map[string][]Record          `json:"task_contract_refs,omitempty"`
@@ -323,7 +326,7 @@ func (s *Store) Begin(ctx context.Context, session, call, tool, input, task stri
 		if len(st.Operations) >= 256 {
 			kept := make([]Operation, 0, 256)
 			for _, op := range st.Operations {
-				if op.Status == "running" {
+				if op.Status == "running" || unknownOperationOutcome(st, op.ID) {
 					kept = append(kept, op)
 				}
 			}
@@ -331,7 +334,7 @@ func (s *Store) Begin(ctx context.Context, session, call, tool, input, task stri
 				return errors.New("too many unresolved operations; inspect recovery status")
 			}
 			for _, op := range st.Operations[max(0, len(st.Operations)-64):] {
-				if op.Status != "running" {
+				if op.Status != "running" && !unknownOperationOutcome(st, op.ID) {
 					kept = append(kept, op)
 				}
 			}
@@ -436,15 +439,40 @@ func (s *Store) Resolve(ctx context.Context, id, operation, resolution, evidence
 		return errors.New("recovery requires inspection evidence and completed/failed/abandoned resolution")
 	}
 	return s.Update(ctx, id, func(st *State) error {
+		now := time.Now().UnixMilli()
+		found := false
 		for i := range st.Operations {
-			if st.Operations[i].ID == operation && st.Operations[i].Status == "running" {
-				st.Operations[i].Status = resolution
-				st.Operations[i].FinishedAt = time.Now().UnixMilli()
-				st.Checks = append(st.Checks, Check{Name: "recovery " + operation, Tool: "inspection", Passed: resolution == "completed", Evidence: evidence, CheckedAt: time.Now().UnixMilli()})
-				return nil
+			op := &st.Operations[i]
+			if op.ID == operation && (op.Status == "running" || unknownOperationOutcome(st, operation)) {
+				op.Status, op.FinishedAt = resolution, now
+				op.EvidenceHash, op.OutcomeObserved = Hash(evidence), true
+				found = true
+				break
 			}
 		}
-		return errors.New("unresolved operation not found")
+		// Older state compaction could drop the operation before the shared
+		// ledger learned its outcome was unknown. Explicit inspection can
+		// still settle that retained record without inventing execution.
+		if !found && !unknownOperationOutcome(st, operation) {
+			return errors.New("unresolved operation not found")
+		}
+		phase := outcome.PhaseCanceled
+		switch resolution {
+		case "completed":
+			phase = outcome.PhaseApplied
+		case "failed":
+			phase = outcome.PhaseFailed
+		}
+		st.Outcomes.Resolve(operation, phase)
+		st.Outcomes.Add(outcome.Evidence{ID: "recovery:" + operation, Kind: outcome.KindObservation, Source: operation, Subject: operation, Claim: evidence, ObservedAt: now})
+		st.Checks = append(st.Checks, Check{Name: "recovery " + operation, Tool: "inspection", Passed: resolution == "completed", Evidence: evidence, CheckedAt: now})
+		return nil
+	})
+}
+
+func unknownOperationOutcome(st *State, id string) bool {
+	return slices.ContainsFunc(st.Outcomes.Records, func(record outcome.Record) bool {
+		return record.OpID == id && (record.Phase == outcome.PhaseUnknown || record.Phase == outcome.PhaseDispatched)
 	})
 }
 

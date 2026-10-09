@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Field frames</title></head>
+<body>
+<!-- The top document and each frame carry fields with the same labels, so
+     a write into the wrong document is visible in the others. -->
+<label for="title">Title</label><input id="title" value="main">
+<label for="mode">Mode</label>
+<select id="mode"><option value="f">Fast</option><option value="s">Slow</option></select>
+<iframe id="fa" title="Frame A" src="fieldframe.html?name=A&amp;nest=1" style="width:640px;height:330px"></iframe>
+<iframe id="fb" title="Frame B" src="fieldframe.html?name=B" style="width:640px;height:200px"></iframe>
+</body>
+</html>

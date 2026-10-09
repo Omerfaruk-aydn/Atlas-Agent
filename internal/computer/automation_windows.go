@@ -50,6 +50,23 @@ func (b *windowsBackend) Automation(ctx context.Context, p AutomationRequest) (j
 	if err != nil {
 		return nil, err
 	}
+	// OCR runs in its own process: WinRT keeps the image file mapped in a
+	// long-lived process, so it could not be rewritten or removed.
+	if p.Action != "ocr" && os.Getenv("ATLAS_COMPUTER_AUTOMATION_WORKER") != "0" {
+		output, used, err := b.automation.run(ctx, p, data)
+		if used {
+			if err != nil {
+				return nil, err
+			}
+			return automationResult(output)
+		}
+	}
+	return b.automationOnce(ctx, data)
+}
+
+// automationOnce runs one request in a new PowerShell process. It is the
+// fallback when the persistent worker cannot be used.
+func (b *windowsBackend) automationOnce(ctx context.Context, data []byte) (json.RawMessage, error) {
 	// Load the embedded script from a private temporary file so growing UIA
 	// helpers cannot exceed Windows' 32767-character command-line limit.
 	file, err := os.CreateTemp("", "atlas-automation-*.ps1")
@@ -87,7 +104,13 @@ func (b *windowsBackend) Automation(ctx context.Context, p AutomationRequest) (j
 	if output.Len() > 4*1024*1024 {
 		return nil, fmt.Errorf("accessibility output exceeded limit")
 	}
-	result := bytes.TrimSpace(bytes.TrimPrefix(output.Bytes(), []byte{0xef, 0xbb, 0xbf}))
+	return automationResult(output.Bytes())
+}
+
+// automationResult validates one script result and turns a reported
+// failure into an error carrying its code.
+func automationResult(output []byte) (json.RawMessage, error) {
+	result := bytes.TrimSpace(bytes.TrimPrefix(output, []byte{0xef, 0xbb, 0xbf}))
 	if !json.Valid(result) {
 		return nil, fmt.Errorf("invalid Windows automation response")
 	}

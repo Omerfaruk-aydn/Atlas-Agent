@@ -1,0 +1,99 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Design fixture</title>
+<style>
+body{margin:0;font:13px sans-serif;display:flex;height:100vh}
+#canvas{flex:1;background:#eee;position:relative}
+#panel{width:260px;border-left:1px solid #ccc;padding:8px}
+.row{display:flex;gap:6px;align-items:center;margin:4px 0}
+.layer{position:absolute;border:1px solid #888;background:#fff}
+#toast{position:fixed;bottom:12px;left:12px;background:#333;color:#fff;padding:8px}
+#export{position:fixed;top:40px;left:40px;z-index:5;background:#fff;border:1px solid #888;padding:8px}
+</style></head>
+<body>
+<div id="canvas" role="application" aria-label="Canvas"></div>
+<aside id="panel" aria-label="Design panel">
+  <h3>Design</h3>
+  <section aria-label="Layout">
+    <div class="row"><label for="w">W</label><input id="w" aria-label="Width" value="100"></div>
+    <div class="row"><label for="h">H</label><input id="h" aria-label="Height" value="100"></div>
+  </section>
+  <section aria-label="Appearance">
+    <div class="row" data-tooltip="Corner radius" id="radius-row"><span class="icon">&#9701;</span><input id="radius" value="0"></div>
+    <div class="row"><input id="fill" aria-label="Fill color" value="FFFFFF"></div>
+    <div class="row"><label for="opacity">Opacity</label><input id="opacity" value="100"></div>
+  </section>
+  <section aria-label="Layers">
+    <h4>Layers</h4>
+    <div id="layers" role="tree"></div>
+    <button id="close-layers" aria-label="Close">Close</button>
+  </section>
+</aside>
+<div role="dialog" aria-label="Export" id="export"><p>Export settings</p><button aria-label="Close">Close</button></div>
+<div id="toast" role="status" aria-label="Notification">Saved to drafts <button aria-label="Dismiss">Dismiss</button></div>
+<script>
+// A model of an editor whose property fields commit on Enter (or blur for
+// fill), asynchronously, clamp some values and remount the radius input.
+const model = {w: 100, h: 100, radius: 0, fill: '#FFFFFF', opacity: 100, commits: []};
+const frame = document.createElement('div'); frame.className = 'layer'; frame.id = 'frame';
+document.getElementById('canvas').appendChild(frame);
+function render() {
+  frame.style.width = model.w + 'px'; frame.style.height = model.h + 'px';
+  frame.style.borderRadius = model.radius + 'px'; frame.style.background = model.fill;
+  document.getElementById('w').value = model.w; document.getElementById('h').value = model.h;
+  document.getElementById('fill').value = model.fill.replace('#', '').toUpperCase();
+  document.getElementById('layers').innerHTML = '<div role="treeitem" aria-label="Frame 1">Frame 1</div>';
+}
+function bindRadius(input) {
+  input.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const v = parseFloat(input.value);
+    setTimeout(() => {
+      model.radius = isNaN(v) ? model.radius : Math.max(0, v); model.commits.push('radius');
+      // Remount: the committed value arrives on a fresh node, as frameworks do.
+      const fresh = document.createElement('input'); fresh.id = 'radius'; fresh.value = model.radius;
+      input.replaceWith(fresh); bindRadius(fresh); render();
+    }, 250);
+  });
+  input.addEventListener('blur', () => { setTimeout(() => { input.value = model.radius; }, 30); });
+}
+bindRadius(document.getElementById('radius'));
+for (const [id, key, max] of [['w', 'w', 4000], ['h', 'h', 2000]]) {
+  const input = document.getElementById(id);
+  input.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const v = parseFloat(input.value);
+    setTimeout(() => { if (!isNaN(v)) model[key] = Math.min(max, Math.max(1, Math.round(v))); model.commits.push(key); render(); }, 200);
+  });
+  input.addEventListener('blur', () => { setTimeout(() => { input.value = model[key]; }, 30); });
+}
+// Opacity commits only when focus leaves the field; Enter does nothing, so
+// typed text stays visible without being applied until blur.
+const opacity = document.getElementById('opacity');
+opacity.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+opacity.addEventListener('blur', () => {
+  const v = parseFloat(opacity.value);
+  if (!isNaN(v)) { model.opacity = Math.min(100, Math.max(0, v)); model.commits.push('opacity'); }
+  opacity.value = model.opacity;
+});
+document.getElementById('fill').addEventListener('change', e => {
+  const v = e.target.value.trim().replace('#', '');
+  if (/^[0-9a-fA-F]{6}$/.test(v)) { model.fill = '#' + v.toLowerCase(); model.commits.push('fill'); }
+  render();
+});
+document.querySelector('#export button').addEventListener('click', () => { document.getElementById('export').remove(); });
+document.getElementById('close-layers').addEventListener('click', () => { document.querySelector('[aria-label="Layers"]').remove(); });
+document.querySelector('#toast button').addEventListener('click', () => { document.getElementById('toast').remove(); });
+render();
+window.model = model;
+// Dense variant: an editor-sized page with a toolbar and a long layer tree,
+// like a real design tool, to measure output size at realistic density.
+if (location.search.includes('dense')) {
+  const bar = document.createElement('nav'); bar.setAttribute('aria-label', 'Toolbar');
+  for (let i = 1; i <= 40; i++) { const b = document.createElement('button'); b.textContent = 'Tool ' + i; bar.appendChild(b); }
+  document.body.prepend(bar);
+  const tree = document.getElementById('layers');
+  for (let i = 1; i <= 80; i++) { const row = document.createElement('div'); row.setAttribute('role', 'treeitem'); row.setAttribute('aria-label', 'Layer ' + i); row.textContent = 'Layer ' + i; tree.appendChild(row); }
+  document.getElementById('panel').style.overflow = 'auto';
+}
+</script>
+</body></html>

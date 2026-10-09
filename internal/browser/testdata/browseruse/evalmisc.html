@@ -1,0 +1,59 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Evaluation fixture</title>
+<style>body{font:13px sans-serif}[role=row]{padding:4px;border-bottom:1px solid #ddd}</style></head>
+<body>
+<!--
+Mechanics for the browser evaluation set, not a real application:
+- The layer list reuses its row nodes: "Scroll layers" shows the next items in
+  the same elements, so an old ref now names another layer.
+- "Load results" adds a Result button 3 s later (a slow asynchronous update).
+- "Delete layer" asks for confirmation with a native confirm dialog.
+-->
+<section aria-label="Layers">
+  <div role="grid" aria-label="Layer list" id="rows"></div>
+  <button id="scroll">Scroll layers</button>
+</section>
+<section aria-label="Results">
+  <button id="load">Load results</button>
+  <div id="slot"></div>
+</section>
+<section aria-label="Danger zone">
+  <button id="delete">Delete layer</button>
+  <p id="deleted" role="status">Nothing deleted</p>
+</section>
+<script>
+window.model = {selected: null, offset: 0, deleted: [], result: 0};
+const names = ['Header', 'Title', 'Phone name', 'Primary action', 'Pairing guidance', 'Help link'];
+const rows = document.getElementById('rows');
+const nodes = [0, 1, 2].map(() => {
+  const row = document.createElement('div');
+  row.setAttribute('role', 'row');
+  row.addEventListener('click', () => { model.selected = row.getAttribute('aria-label'); });
+  rows.appendChild(row);
+  return row;
+});
+function draw() {
+  nodes.forEach((row, i) => {
+    const name = names[(model.offset + i) % names.length];
+    row.setAttribute('aria-label', name);
+    row.textContent = name;
+  });
+}
+draw();
+document.getElementById('scroll').addEventListener('click', () => { model.offset += 3; draw(); });
+document.getElementById('load').addEventListener('click', () => {
+  setTimeout(() => {
+    const b = document.createElement('button');
+    b.textContent = 'Result';
+    b.addEventListener('click', () => model.result++);
+    document.getElementById('slot').appendChild(b);
+  }, 3000);
+});
+document.getElementById('delete').addEventListener('click', () => {
+  if (confirm('Delete the selected layer?')) {
+    model.deleted.push(model.selected);
+    document.getElementById('deleted').textContent = 'Deleted ' + model.selected;
+  }
+});
+</script>
+</body></html>

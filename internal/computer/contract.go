@@ -19,6 +19,9 @@ type ContractError struct {
 	Code    string `json:"code"`
 	Field   string `json:"field,omitempty"`
 	Message string `json:"message"`
+	// ExpectedType names the JSON type Field must have when the call was
+	// rejected for a wrong argument type.
+	ExpectedType string `json:"expected_type,omitempty"`
 	// InputSent reports whether any desktop input left the process.
 	InputSent bool `json:"input_sent"`
 	// Effect is none, applied or unknown.
@@ -46,6 +49,16 @@ func (e *ContractError) Error() string {
 
 // ContractCode lets generic wrappers keep the code-first message intact.
 func (e *ContractError) ContractCode() string { return e.Code }
+
+// ContractMetadata is the tool metadata document for this refusal, so a
+// generic decoder can return it beside the code-first message.
+func (e *ContractError) ContractMetadata() string {
+	data, err := json.Marshal(map[string]any{"tool_contract": e})
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
 
 // NewContractError builds a pre-dispatch rejection: no input was sent and the
 // desktop state is unchanged.

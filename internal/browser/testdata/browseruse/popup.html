@@ -1,0 +1,14 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Work tab</title></head>
+<body>
+<button id="login">Sign in with Provider</button>
+<p id="state" role="status">Signed out</p>
+<script>
+document.getElementById('login').addEventListener('click', () => {
+  window.open(location.pathname.replace('popup.html', 'auth.html'), 'auth', 'width=400,height=400');
+});
+window.addEventListener('message', e => {
+  if (e.data === 'authorized') document.getElementById('state').textContent = 'Signed in';
+});
+</script>
+</body></html>

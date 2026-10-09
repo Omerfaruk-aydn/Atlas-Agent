@@ -189,6 +189,10 @@ func (s *Store) PutRecord(ctx context.Context, namespace, key string, expected u
 }
 
 // PutRecordStrict rejects a stale writer even when its bytes match the winner.
+// ErrRecordRevisionConflict reports that a record changed after the caller
+// read the revision it expected to replace.
+var ErrRecordRevisionConflict = errors.New("record revision conflict")
+
 func (s *Store) PutRecordStrict(ctx context.Context, namespace, key string, expected uint64, data []byte, linked ...ArtifactRef) (Record, error) {
 	return s.putRecord(ctx, namespace, key, expected, data, false, linked...)
 }
@@ -216,7 +220,7 @@ func (s *Store) putRecord(ctx context.Context, namespace, key string, expected u
 			}
 			return old, nil
 		}
-		return Record{}, fmt.Errorf("record revision conflict")
+		return Record{}, ErrRecordRevisionConflict
 	}
 	if expected == ^uint64(0) || !exists && len(manifest.Records) >= 128 {
 		return Record{}, fmt.Errorf("record collection or revision limit exceeded")

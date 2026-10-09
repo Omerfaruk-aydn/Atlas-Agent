@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Provider consent</title></head>
+<body><button id="allow">Allow</button>
+<script>
+document.getElementById('allow').addEventListener('click', () => {
+  window.opener.postMessage('authorized', '*');
+  window.close();
+});
+</script>
+</body></html>

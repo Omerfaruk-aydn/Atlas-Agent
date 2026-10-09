@@ -111,8 +111,10 @@ function(event) {
       // Paints a frame rendered by Atlas's Go character engine.
       mascot(w,h,data){
         if(!this.visible)return null;
-        const ctx=this.mascotContext||(this.mascotContext=mascotCanvas.getContext&&mascotCanvas.getContext('2d'));
-        if(!ctx)return null;
+        // This tiny pixel-fed canvas uses software backing so Chromium
+        // cannot lose a painted frame during GPU context transitions.
+        const ctx=this.mascotContext||(this.mascotContext=mascotCanvas.getContext&&mascotCanvas.getContext('2d',{willReadFrequently:true}));
+        if(!ctx||ctx.isContextLost?.()){mascotCanvas.hidden=true;mascotStatic.hidden=false;return null;}
         if(mascotCanvas.width!==w||mascotCanvas.height!==h){mascotCanvas.width=w;mascotCanvas.height=h}
         const bytes=atob(data),image=ctx.createImageData(w,h),px=image.data;
         if(bytes.length!==px.length)return null;

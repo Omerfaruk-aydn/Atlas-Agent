@@ -8,6 +8,12 @@ import (
 )
 
 // Usage represents token usage statistics for a model call.
+// Usage is token accounting for one model request. Every provider adapter
+// reports it with the same partition so totals are never double counted:
+// InputTokens excludes CacheReadTokens and CacheCreationTokens, and the
+// prompt size of the request is InputTokens + CacheReadTokens +
+// CacheCreationTokens. Streaming adapters report the request's final
+// totals, not the sum of per-chunk snapshots.
 type Usage struct {
 	InputTokens         int64 `json:"input_tokens"`
 	OutputTokens        int64 `json:"output_tokens"`

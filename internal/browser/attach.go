@@ -87,6 +87,13 @@ func ensureRemoteBrowser(opts Options) (string, error) {
 		// the first thing the agent sees.
 		"--no-first-run",
 		"--no-default-browser-check",
+		// A window covered by other windows is reported hidden and its
+		// timers and animation frames are throttled; canvas editors then
+		// stop rendering and target checks stall. The launched browser
+		// (as chromedp's own launch does) keeps running at full rate.
+		"--disable-backgrounding-occluded-windows",
+		"--disable-renderer-backgrounding",
+		"--disable-background-timer-throttling",
 	}
 	if opts.initialURL != "" {
 		// Open the authorized destination and adopt its startup tab.

@@ -11,6 +11,7 @@ import (
 	"image/png"
 	"log/slog"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"time"
 	"unicode/utf16"
@@ -130,6 +131,9 @@ type bitmapInfo struct {
 type windowsBackend struct {
 	pointerFeedback atomic.Pointer[pointerFeedback]
 	pointerHeld     atomic.Bool
+	// automation is the persistent UI Automation worker, started on first
+	// use and stopped after it has been idle.
+	automation automationWorker
 }
 
 func openPlatform() (Backend, error) {
@@ -538,6 +542,9 @@ func abs(n int) int {
 	return n
 }
 
+// vkReturn is the Enter virtual key.
+const vkReturn = 0x0D
+
 // typeUnicode sends one UTF-16 code unit as a key down/up pair.
 func typeUnicode(unit uint16) []winInput {
 	return []winInput{
@@ -550,11 +557,23 @@ func (b *windowsBackend) TypeText(text string) error {
 	if text == "" {
 		return fmt.Errorf("computer-use: nothing to type")
 	}
+	return sendInputs(textInputs(text))
+}
+
+// textInputs builds the ordered keyboard input for text. A line break is a
+// real Enter key press, as a person types it: a Unicode LF packet is not a
+// line break in many editors. CRLF and lone CR count as one break.
+func textInputs(text string) []winInput {
 	var inputs []winInput
+	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
 	for _, unit := range utf16.Encode([]rune(text)) {
+		if unit == '\n' {
+			inputs = append(inputs, pressVK(vkReturn)...)
+			continue
+		}
 		inputs = append(inputs, typeUnicode(unit)...)
 	}
-	return sendInputs(inputs)
+	return inputs
 }
 
 func pressVK(vk uint16) []winInput {

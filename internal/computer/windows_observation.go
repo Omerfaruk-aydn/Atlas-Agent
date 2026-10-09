@@ -94,6 +94,12 @@ func observeNativeWindow(hwnd, token uintptr) uintptr {
 	return 1
 }
 
+// ListWindows enumerates visible top-level windows natively. It is cheap
+// enough to poll while an input transition settles.
+func (b *windowsBackend) ListWindows(ctx context.Context) (json.RawMessage, error) {
+	return b.listNativeWindows(ctx)
+}
+
 // listNativeWindows avoids starting PowerShell or querying UIA providers.
 func (b *windowsBackend) listNativeWindows(ctx context.Context) (json.RawMessage, error) {
 	if err := ctx.Err(); err != nil {

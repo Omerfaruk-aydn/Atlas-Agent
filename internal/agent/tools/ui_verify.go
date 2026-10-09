@@ -67,7 +67,7 @@ func NewUIVerifyTool(store *engineering.Store, invoke ToolInvoker, roots ...stri
 			return resp, err
 		}
 		metrics, _ := json.Marshal(map[string]any{"width": p.Width, "height": p.Height, "deviceScaleFactor": 1, "mobile": false})
-		if _, err := run(BrowserParams{Action: "cdp", CDPMethod: "Emulation.setDeviceMetricsOverride", CDPParams: metrics}); err != nil {
+		if _, err := run(BrowserParams{Action: "cdp", CDPMethod: "Emulation.setDeviceMetricsOverride", CDPParams: BrowserCDPParams(metrics)}); err != nil {
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		if _, err := run(BrowserParams{Action: "navigate", URL: p.URL}); err != nil {

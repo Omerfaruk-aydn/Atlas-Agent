@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Panel</title>
+<style>
+  body { font: 14px sans-serif; display: flex; gap: 24px; }
+  [role=option] { padding: 4px 8px; cursor: pointer; }
+  [role=option][aria-selected=true] { background: #dde; }
+  label { display: block; margin-top: 6px; }
+</style></head>
+<body>
+<!-- A design-tool style property panel: one Width/Height panel edits
+     whichever card is selected. State persists in localStorage under the
+     "doc" query parameter, so a reload keeps the values but loads a new
+     document. -->
+<section aria-label="Layers">
+  <div role="listbox" aria-label="Layer list">
+    <div role="option" id="opt-a" aria-selected="true">Card A</div>
+    <div role="option" id="opt-b" aria-selected="false">Card B</div>
+  </div>
+</section>
+<section aria-label="Design">
+  <label for="w">Width</label><input id="w">
+  <label for="h">Height</label><input id="h">
+</section>
+<script>
+const params = new URLSearchParams(location.search);
+const key = 'panel-' + (params.get('doc') || '1');
+const initial = {a: {w: Number(params.get('aw') || 100), h: 50}, b: {w: Number(params.get('bw') || 200), h: 80}};
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem(key)); } catch (_) {}
+window.cards = saved || initial;
+window.selected = 'a';
+const w = document.getElementById('w'), h = document.getElementById('h');
+function save() { localStorage.setItem(key, JSON.stringify(cards)); }
+function render() {
+  for (const id of ['a', 'b']) document.getElementById('opt-' + id).setAttribute('aria-selected', String(id === selected));
+  w.value = cards[selected].w; h.value = cards[selected].h;
+}
+function select(id) { selected = id; render(); }
+document.getElementById('opt-a').addEventListener('click', () => select('a'));
+document.getElementById('opt-b').addEventListener('click', () => select('b'));
+function commit(input, prop) {
+  const v = Number(input.value);
+  if (!isNaN(v) && input.value.trim() !== '') { cards[selected][prop] = v; save(); }
+  input.value = cards[selected][prop];
+}
+for (const [input, prop] of [[w, 'w'], [h, 'h']]) {
+  input.addEventListener('change', () => commit(input, prop));
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') commit(input, prop); });
+}
+save();
+render();
+</script>
+</body>
+</html>

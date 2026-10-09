@@ -238,6 +238,10 @@ func (c *ProviderConfig) SetupAntigravity() {
 	if c.OAuthToken == nil {
 		return
 	}
+	// Migrate the legacy Gemini CLI endpoint to Antigravity's model service.
+	if c.BaseURL == "https://cloudcode-pa.googleapis.com" {
+		c.BaseURL = "https://daily-cloudcode-pa.googleapis.com"
+	}
 	if c.ExtraParams == nil {
 		c.ExtraParams = map[string]string{}
 	}
@@ -625,7 +629,7 @@ type Options struct {
 	// verbatim. After defaulting the stored value is always absolute.
 	DataDirectory             string       `json:"data_directory,omitempty" jsonschema:"description=Directory for storing application data. Relative paths are resolved against the working directory; absolute paths are used as-is.,default=.atlas,example=.atlas"`
 	DisabledTools             []string     `json:"disabled_tools,omitempty" jsonschema:"description=List of built-in tools to disable and hide from the agent,example=bash,example=sourcegraph"`
-	DeferToolSchemas          bool         `json:"defer_tool_schemas,omitempty" jsonschema:"description=Expose core tool schemas initially and load other allowed tools through tool_search on subsequent steps,default=false"`
+	DeferToolSchemas          *bool        `json:"defer_tool_schemas,omitempty" jsonschema:"description=Send only core tool schemas initially and load other allowed tools on demand through tool_search. Set false to send every allowed tool schema in every request,default=true"`
 	DisableProviderAutoUpdate bool         `json:"disable_provider_auto_update,omitempty" jsonschema:"description=Disable providers auto-update. Atlas Agent ships an embedded provider catalog and uses it by default; enable this flag to opt out and use the catalog as-is,default=true"`
 	DisableDefaultProviders   bool         `json:"disable_default_providers,omitempty" jsonschema:"description=Ignore all default/embedded providers. When enabled\\, providers must be fully specified in the config file with base_url\\, models\\, and api_key - no merging with defaults occurs,default=false"`
 	Attribution               *Attribution `json:"attribution,omitempty" jsonschema:"description=Attribution settings for generated content"`
@@ -691,6 +695,14 @@ type Options struct {
 	// a Windows Job Object. See the Sandbox type doc for exactly what
 	// this does and does not protect against.
 	Sandbox *Sandbox `json:"sandbox,omitempty" jsonschema:"description=Contain shell-spawned processes in an OS-level container. Currently Windows only (Job Objects); a no-op elsewhere."`
+}
+
+// DeferToolSchemasEnabled reports whether tool schemas outside the core
+// palette are loaded on demand through tool_search. Unset means enabled; an
+// explicit false in any config layer keeps every allowed schema in every
+// request. Read the option through this method, not the field.
+func (o *Options) DeferToolSchemasEnabled() bool {
+	return o == nil || o.DeferToolSchemas == nil || *o.DeferToolSchemas
 }
 
 // Sandbox configures Job Object containment (internal/sandbox) for every
@@ -1081,6 +1093,7 @@ type Tools struct {
 	Browser  ToolBrowser  `json:"browser,omitzero"`
 	Debugger ToolDebugger `json:"debugger,omitzero"`
 	Computer ToolComputer `json:"computer,omitzero"`
+	Devices  ToolDevices  `json:"devices,omitzero"`
 	Teams    ToolTeams    `json:"teams,omitzero"`
 
 	CodeIntel ToolCodeIntel `json:"code_intel,omitzero"`
@@ -1627,6 +1640,14 @@ func allToolNames() []string {
 		"mutation_test",
 		"worktree",
 		"ui_verify",
+		"stress_journey",
+		"undo_feature",
+		"handover",
+		"time_lab",
+		"dataset_forge",
+		"assumption_check",
+		"data_boundary",
+		"cli_bridge",
 		"scenario",
 		"usage",
 		"view",
@@ -1645,6 +1666,15 @@ func allToolNames() []string {
 		"browser",
 		"debugger",
 		"computer",
+		// Devices
+		"isolated_desktop",
+		"android",
+		"remote_node",
+		"screen_mark",
+		"app_loop",
+		// Integrations hub and local apps.
+		"integrations",
+		"local_app",
 		"agent_jobs",
 		"task_board",
 		"source_memory",
@@ -1769,6 +1799,13 @@ func (c *Config) agentModel(id string, def SelectedModelType) SelectedModelType 
 }
 
 func (c *ProviderConfig) TestConnection(resolver VariableResolver) error {
+	return c.TestConnectionContext(context.Background(), resolver)
+}
+
+// TestConnectionContext validates the provider's credentials with a cheap,
+// free request (a model or credit listing, never a completion). It stops
+// when ctx ends.
+func (c *ProviderConfig) TestConnectionContext(ctx context.Context, resolver VariableResolver) error {
 	var (
 		providerID = catwalk.InferenceProvider(c.ID)
 		testURL    = ""
@@ -1837,7 +1874,7 @@ func (c *ProviderConfig) TestConnection(resolver VariableResolver) error {
 		return errors.New("not a valid vercel api key")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	client := &http.Client{}

@@ -23,16 +23,17 @@ type MeasuredCheckMetadata struct {
 }
 
 func measuredCheckTool(name string) bool {
-	return slices.Contains([]string{"api_probe", "migration_rehearse", "visual_diff", "mutation_test"}, name)
+	return slices.Contains([]string{"api_probe", "migration_rehearse", "visual_diff", "mutation_test", "stress_journey", "handover", "time_lab", "assumption_check", "data_boundary", "cli_bridge"}, name)
 }
 
 type VerificationStep struct {
 	Name  string          `json:"name" description:"Observable check name."`
-	Tool  string          `json:"tool" description:"bash, test_run, lint_run, api_probe, migration_rehearse, visual_diff or mutation_test. Ordinary permissions remain enforced."`
+	Tool  string          `json:"tool" description:"bash, test_run, lint_run, api_probe, migration_rehearse, visual_diff, mutation_test, stress_journey, handover, time_lab, assumption_check, data_boundary or cli_bridge (action run only). Ordinary permissions remain enforced."`
 	Input json.RawMessage `json:"input" description:"Arguments for the chosen tool; use foreground commands."`
 }
 
 type VerifyParams struct {
+	TaskID        string             `json:"task_id,omitempty" description:"Existing todo ID whose acceptance criteria these actual checks verify. Binds evidence to that task; does not grant permissions or mark it complete."`
 	FindingID     string             `json:"finding_id,omitempty" description:"Runtime finding identity associated with executed checks."`
 	FindingReview string             `json:"finding_review,omitempty" description:"Runtime source and independent review binding for finding checks."`
 	ContractHash  string             `json:"contract_hash,omitempty" description:"Optional runtime contract revision hash bound to actual executed checks; does not grant permissions."`
@@ -44,6 +45,9 @@ type VerifyParams struct {
 func ToolOutcomeObserved(tool string, resp fantasy.ToolResponse, err error) bool {
 	if err != nil || resp.StopTurn {
 		return false
+	}
+	if native, ok := ResponseOutcome(resp); ok {
+		return native.Verified && !resp.IsError
 	}
 	var meta struct {
 		OK         *bool `json:"ok"`
@@ -151,6 +155,13 @@ func DiscoverVerification(root string) []VerificationStep {
 
 func NewVerifyTool(root string, store *engineering.Store, invoke ToolInvoker, available ...[]string) fantasy.AgentTool {
 	return fantasy.NewAgentTool("verify", "Discover and execute a project verification plan using existing tools and their permissions. Failures are recorded and stop the plan; investigate, repair, then run again. No check passes from a model assertion. Unsupported stacks need explicit foreground commands. No command is run by action plan.", func(ctx context.Context, p VerifyParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		if p.TaskID != "" {
+			scope := engineering.GetScope(ctx, GetSessionFromContext(ctx))
+			if scope.TaskID != "" && scope.TaskID != p.TaskID {
+				return fantasy.NewTextErrorResponse("task_id cannot override the assigned task"), nil
+			}
+			ctx = engineering.WithScope(ctx, scope.SessionID, p.TaskID)
+		}
 		checks := p.Checks
 		if len(checks) == 0 {
 			checks = DiscoverVerification(root)
@@ -188,6 +199,14 @@ func NewVerifyTool(root string, store *engineering.Store, invoke ToolInvoker, av
 		for _, c := range checks {
 			if c.Name == "" || len(c.Name) > 128 || len(c.Input) > 16*1024 || !json.Valid(c.Input) || !engineering.IsVerificationTool(c.Tool) {
 				return fantasy.NewTextErrorResponse("invalid verification check"), nil
+			}
+			if c.Tool == BrowserToolName || c.Tool == ComputerToolName {
+				var input struct {
+					Action string `json:"action"`
+				}
+				if json.Unmarshal(c.Input, &input) != nil || input.Action != "assert" {
+					return fantasy.NewTextErrorResponse("browser and computer verification checks require read-only action assert"), nil
+				}
 			}
 		}
 		var results []map[string]any

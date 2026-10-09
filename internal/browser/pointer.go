@@ -46,6 +46,7 @@ func (s *chromedpSession) presentMouseEvent(m *activity.Manager, id uint64, para
 	switch params["type"] {
 	case "mousePressed":
 		s.pointerHeld, s.pointerDragged = true, false
+		s.pointerButton, _ = params["button"].(string)
 		kind = "press"
 	case "mouseMoved":
 		kind = "move"
@@ -60,6 +61,7 @@ func (s *chromedpSession) presentMouseEvent(m *activity.Manager, id uint64, para
 			kind = "release"
 		}
 		s.pointerHeld, s.pointerDragged = false, false
+		s.pointerButton = ""
 	}
 	s.mu.Unlock()
 	presentPointer(m, id, kind, x, y)

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/outcome"
 	"github.com/google/uuid"
 )
 
@@ -175,16 +176,31 @@ func PlanResume(ctx context.Context, input ResumeInput) (ResumePlan, error) {
 		}
 	}
 	ops := map[string]bool{}
+	ambiguous := map[string]bool{}
 	for _, op := range input.State.Operations {
 		ops[op.ID] = true
 		if op.Status != "completed" && op.Status != "failed" && op.Status != "abandoned" {
-			plan.AmbiguousOperations = append(plan.AmbiguousOperations, op.ID)
+			ambiguous[op.ID] = true
+		}
+	}
+	// An operational failure can still have unknown external effects. Looking
+	// at something later does not establish what this dispatch actually did.
+	for _, record := range input.State.Outcomes.Records {
+		if record.Phase == outcome.PhaseUnknown {
+			ambiguous[record.OpID] = true
+		} else if record.Resolved {
+			// Explicit inspection can settle a legacy operation that rolling
+			// state discarded while its unknown ledger record survived.
+			ops[record.OpID] = true
 		}
 	}
 	for _, id := range cp.Operations {
 		if !ops[id] {
-			plan.AmbiguousOperations = append(plan.AmbiguousOperations, id)
+			ambiguous[id] = true
 		}
+	}
+	for id := range ambiguous {
+		plan.AmbiguousOperations = append(plan.AmbiguousOperations, id)
 	}
 	for id, spec := range input.TaskSpecs {
 		if err := ctx.Err(); err != nil {

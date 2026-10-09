@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/outcome"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
@@ -70,4 +71,45 @@ func TestEditPlanResumeIsAmbiguousUntilRecovered(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, plan.AmbiguousOperations, "semantic-edit:edit")
 	require.Empty(t, plan.ReadyTasks)
+}
+
+func TestResumeUnknownLedgerOverridesTerminalOperation(t *testing.T) {
+	t.Parallel()
+	cp := Checkpoint{ID: uuid.NewString(), Root: t.TempDir(), SessionID: "session", SourceFingerprint: Hash("source"), PlanFingerprint: Hash("plan"), TaskFingerprints: map[string]string{"next": Hash("task")}}
+	for _, status := range []string{"running", "failed", "completed", "abandoned", "missing"} {
+		t.Run(status, func(t *testing.T) {
+			t.Parallel()
+			state := State{Outcomes: outcome.Ledger{Records: []outcome.Record{{OpID: "unknown", Tool: "mcp_write", Phase: outcome.PhaseUnknown, Mutation: true, Observed: true}}}}
+			if status != "missing" {
+				state.Operations = []Operation{{ID: "unknown", Status: status}}
+			}
+			plan, err := PlanResume(t.Context(), ResumeInput{Checkpoint: cp, State: state, Source: cp.SourceFingerprint, TaskSpecs: cp.TaskFingerprints, TaskStates: map[string]string{"next": "pending"}})
+			require.NoError(t, err)
+			require.Equal(t, []string{"unknown"}, plan.AmbiguousOperations)
+			require.Empty(t, plan.ReadyTasks)
+		})
+	}
+}
+
+func TestResumeLegacyLedgerOnlyOutcomeAfterInspection(t *testing.T) {
+	t.Parallel()
+	store := NewStore(t.TempDir())
+	cp := Checkpoint{ID: uuid.NewString(), Root: t.TempDir(), SessionID: "session", SourceFingerprint: Hash("source"), PlanFingerprint: Hash("plan"), Operations: []string{"evicted"}, TaskFingerprints: map[string]string{"next": Hash("task")}}
+	require.NoError(t, store.Update(t.Context(), "session", func(st *State) error {
+		st.Outcomes.Record(outcome.Record{OpID: "evicted", Tool: "mcp_write", Phase: outcome.PhaseUnknown, Mutation: true})
+		return nil
+	}))
+	state, err := store.Read(t.Context(), "session")
+	require.NoError(t, err)
+	input := ResumeInput{Checkpoint: cp, State: state, Source: cp.SourceFingerprint, TaskSpecs: cp.TaskFingerprints, TaskStates: map[string]string{"next": "pending"}}
+	plan, err := PlanResume(t.Context(), input)
+	require.NoError(t, err)
+	require.Equal(t, []string{"evicted"}, plan.AmbiguousOperations)
+	require.NoError(t, store.Resolve(t.Context(), "session", "evicted", "abandoned", "Inspected actual remote effects"))
+	input.State, err = store.Read(t.Context(), "session")
+	require.NoError(t, err)
+	plan, err = PlanResume(t.Context(), input)
+	require.NoError(t, err)
+	require.Empty(t, plan.AmbiguousOperations)
+	require.Equal(t, []string{"next"}, plan.ReadyTasks)
 }

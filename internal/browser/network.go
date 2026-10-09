@@ -52,4 +52,5 @@ func (s *chromedpSession) startRequest(id string) {
 		}
 	}
 	s.requests[id] = time.Now()
+	s.lastRequestAt = time.Now()
 }

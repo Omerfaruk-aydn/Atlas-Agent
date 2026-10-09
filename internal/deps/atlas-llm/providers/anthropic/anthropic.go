@@ -55,7 +55,8 @@ func defaultsToAdaptiveThinking(model string) bool {
 		strings.Contains(model, "claude-mythos-5") ||
 		strings.Contains(model, "claude-fable-") ||
 		strings.Contains(model, "claude-opus-5") ||
-		strings.Contains(model, "claude-sonnet-5")
+		strings.Contains(model, "claude-sonnet-5") ||
+		strings.Contains(model, "claude-haiku-5-5")
 }
 
 func requiresAdaptiveThinking(model string) bool {

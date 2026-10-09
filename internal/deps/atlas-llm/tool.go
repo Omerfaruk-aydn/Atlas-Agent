@@ -106,13 +106,14 @@ func NewAgentTool[TInput any](
 	fn func(ctx context.Context, input TInput, call ToolCall) (ToolResponse, error),
 ) AgentTool {
 	var input TInput
-	schema := schema.Generate(reflect.TypeOf(input))
+	generated := schema.Generate(reflect.TypeOf(input))
+	schema.CompactRepeated(&generated)
 
 	return &funcToolWrapper[TInput]{
 		name:        name,
 		description: description,
 		fn:          fn,
-		schema:      schema,
+		schema:      generated,
 		parallel:    false, // Default to sequential execution
 	}
 }
@@ -150,6 +151,23 @@ func (w *funcToolWrapper[TInput]) ProviderOptions() ProviderOptions {
 	return w.providerOptions
 }
 
+// ShapeAgentToolSchema narrows the generated input schema of a tool built by
+// NewAgentTool, for example to remove a field the runtime always rejects in a
+// nested position. shape must only tighten the contract the tool's runtime
+// validation already enforces. Tools without a generated schema are returned
+// unchanged.
+func ShapeAgentToolSchema(tool AgentTool, shape func(*Schema)) AgentTool {
+	if shaper, ok := tool.(interface{ shapeSchema(func(*Schema)) }); ok {
+		shaper.shapeSchema(shape)
+	}
+	return tool
+}
+
+func (w *funcToolWrapper[TInput]) shapeSchema(shape func(*Schema)) {
+	shape(&w.schema)
+	schema.CompactRepeated(&w.schema)
+}
+
 func (w *funcToolWrapper[TInput]) SetParallel(parallel bool) {
 	w.parallel = parallel
 }
@@ -173,7 +191,12 @@ func (w *funcToolWrapper[TInput]) Run(ctx context.Context, params ToolCall) (Too
 		// Contract errors carry their own code-first, structured message.
 		var coded interface{ ContractCode() string }
 		if errors.As(err, &coded) {
-			return NewTextErrorResponse(err.Error()), nil
+			resp := NewTextErrorResponse(err.Error())
+			// Keep the structured refusal readable by guards and the model.
+			if documented, ok := coded.(interface{ ContractMetadata() string }); ok {
+				resp.Metadata = documented.ContractMetadata()
+			}
+			return resp, nil
 		}
 		return NewTextErrorResponse(fmt.Sprintf("invalid parameters: %s", err)), nil
 	}

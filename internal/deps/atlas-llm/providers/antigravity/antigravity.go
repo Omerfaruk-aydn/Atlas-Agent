@@ -5,13 +5,10 @@
 // than the public Gemini API or Vertex AI, both of which use a different
 // request envelope.
 //
-// Scope: this only speaks the native Gemini request/response shape, and
-// is wired up for the Gemini-family models Antigravity serves
-// (gemini-3.x). Antigravity also fronts Claude and GPT-OSS models
-// through this same account, but those go through per-model-family
-// request/response translation on Google's side that this package does
-// not attempt to reproduce -- using it for a non-Gemini model id is
-// unsupported and will likely fail or behave incorrectly.
+// The account endpoint accepts the Gemini-shaped envelope for Gemini,
+// Claude and GPT-OSS. Model-family translation happens on the server.
+// Selectable model IDs are resolved to the account's effort-specific
+// routes rather than sending public-provider IDs or thinking settings.
 package antigravity
 
 import (
@@ -36,7 +33,7 @@ import (
 // catwalk.Type by the coordinator's provider dispatch.
 const Name = "antigravity"
 
-const defaultBaseURL = "https://cloudcode-pa.googleapis.com"
+const defaultBaseURL = "https://daily-cloudcode-pa.googleapis.com"
 
 type options struct {
 	apiKey  string
@@ -226,11 +223,12 @@ type generateContentRequest struct {
 // AI: project, model and a request id sit alongside the request body
 // instead of being encoded in the URL path.
 type envelope struct {
-	Project   string                 `json:"project"`
-	Model     string                 `json:"model"`
-	Request   generateContentRequest `json:"request"`
-	UserAgent string                 `json:"userAgent"`
-	RequestID string                 `json:"requestId"`
+	Project     string                 `json:"project"`
+	Model       string                 `json:"model"`
+	Request     generateContentRequest `json:"request"`
+	UserAgent   string                 `json:"userAgent"`
+	RequestID   string                 `json:"requestId"`
+	RequestType string                 `json:"requestType"`
 }
 
 type usageMetadata struct {
@@ -254,9 +252,98 @@ type generateContentResponse struct {
 	} `json:"error"`
 }
 
+func (r *generateContentResponse) UnmarshalJSON(data []byte) error {
+	type plain generateContentResponse
+	var wrapped struct {
+		Response json.RawMessage `json:"response"`
+	}
+	if err := json.Unmarshal(data, &wrapped); err != nil {
+		return err
+	}
+	if len(wrapped.Response) > 0 && string(wrapped.Response) != "null" {
+		data = wrapped.Response
+	}
+	var decoded plain
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*r = generateContentResponse(decoded)
+	return nil
+}
+
+func resolveModel(modelID, effort string) (string, bool, error) {
+	// Explicit account routes may appear in custom model configurations.
+	// Honor their suffix by default and keep selected effort changes routed.
+	for _, level := range []string{"low", "medium", "high"} {
+		base, found := strings.CutSuffix(modelID, "-"+level)
+		if !found {
+			continue
+		}
+		switch base {
+		case "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-pro",
+			"claude-sonnet-5-5", "claude-opus-5-5", "gpt-oss-120b":
+			modelID, effort = base, cmp.Or(effort, level)
+		}
+		break
+	}
+	switch modelID {
+	case "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash":
+		effort = cmp.Or(effort, "medium")
+		if effort != "low" && effort != "medium" && effort != "high" {
+			return "", true, fmt.Errorf("antigravity: %s supports low, medium or high effort", modelID)
+		}
+	case "gemini-3.1-pro":
+		effort = cmp.Or(effort, "high")
+		if effort != "low" && effort != "high" {
+			return "", true, errors.New("antigravity: Gemini 3.1 Pro supports low or high effort")
+		}
+	case "claude-sonnet-5-5", "claude-opus-5-5":
+		effort = cmp.Or(effort, "medium")
+		if effort != "low" && effort != "medium" && effort != "high" {
+			return "", true, fmt.Errorf("antigravity: %s supports low, medium or high effort", modelID)
+		}
+	case "gpt-oss-120b":
+		effort = cmp.Or(effort, "medium")
+		if effort != "medium" {
+			return "", true, errors.New("antigravity: GPT-OSS 120B supports only medium effort")
+		}
+	default:
+		return modelID, false, nil
+	}
+	return modelID + "-" + effort, true, nil
+}
+
 // -- request building ---------------------------------------------------
 
 func (m *languageModel) buildEnvelope(call fantasy.Call) (envelope, []fantasy.CallWarning, error) {
+	var effort string
+	if opts, ok := call.ProviderOptions[Name].(*ProviderOptions); ok {
+		effort = opts.ThinkingLevel
+	}
+	modelID, routed, err := resolveModel(m.modelID, effort)
+	if err != nil {
+		return envelope{}, nil, err
+	}
+	// Account limits come from fetchAvailableModels, not the public APIs.
+	// Reject unsupported input locally instead of issuing a doomed request.
+	var maxTokens int64
+	switch modelID {
+	case "claude-sonnet-5-5-low", "claude-sonnet-5-5-medium", "claude-sonnet-5-5-high",
+		"claude-opus-5-5-low", "claude-opus-5-5-medium", "claude-opus-5-5-high":
+		maxTokens = 128000
+	case "gpt-oss-120b-medium":
+		maxTokens = 32768
+		for _, msg := range call.Prompt {
+			for _, part := range msg.Content {
+				if _, ok := fantasy.AsMessagePart[fantasy.FilePart](part); ok {
+					return envelope{}, nil, errors.New("antigravity: GPT-OSS 120B does not support attachments; select a Gemini or Claude model")
+				}
+			}
+		}
+	}
+	if maxTokens > 0 && call.MaxOutputTokens != nil && (*call.MaxOutputTokens <= 0 || *call.MaxOutputTokens > maxTokens) {
+		return envelope{}, nil, fmt.Errorf("antigravity: %s requires max output tokens between 1 and %d", modelID, maxTokens)
+	}
 	system, contents, warnings := toGeminiPrompt(call.Prompt)
 
 	req := generateContentRequest{
@@ -288,7 +375,7 @@ func (m *languageModel) buildEnvelope(call fantasy.Call) (envelope, []fantasy.Ca
 	}
 
 	if v, ok := call.ProviderOptions[Name]; ok {
-		if opts, ok := v.(*ProviderOptions); ok && opts.ThinkingLevel != "" {
+		if opts, ok := v.(*ProviderOptions); ok && opts.ThinkingLevel != "" && !routed {
 			cfg.ThinkingConfig = &thinkingConfig{
 				ThinkingLevel:   opts.ThinkingLevel,
 				IncludeThoughts: true,
@@ -325,11 +412,12 @@ func (m *languageModel) buildEnvelope(call fantasy.Call) (envelope, []fantasy.Ca
 	}
 
 	return envelope{
-		Project:   m.options.project,
-		Model:     m.modelID,
-		Request:   req,
-		UserAgent: "antigravity",
-		RequestID: uuid.NewString(),
+		Project:     m.options.project,
+		Model:       modelID,
+		Request:     req,
+		UserAgent:   "antigravity",
+		RequestID:   "agent-" + uuid.NewString(),
+		RequestType: "agent",
 	}, warnings, nil
 }
 
@@ -501,26 +589,53 @@ func (m *languageModel) Generate(ctx context.Context, call fantasy.Call) (*fanta
 		return nil, err
 	}
 
-	resp, err := m.do(ctx, "generateContent", env)
+	// Antigravity serves generation through SSE, including non-streaming calls.
+	resp, err := m.do(ctx, "streamGenerateContent", env)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
 	if resp.StatusCode != http.StatusOK {
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
 		return nil, &fantasy.ProviderError{StatusCode: resp.StatusCode, Message: string(body)}
 	}
 
 	var gr generateContentResponse
-	if err := json.Unmarshal(body, &gr); err != nil {
-		return nil, fmt.Errorf("decode antigravity response: %w", err)
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	for scanner.Scan() {
+		data, ok := strings.CutPrefix(scanner.Text(), "data:")
+		if !ok || strings.TrimSpace(data) == "" {
+			continue
+		}
+		var chunk generateContentResponse
+		if err := json.Unmarshal([]byte(strings.TrimSpace(data)), &chunk); err != nil {
+			return nil, fmt.Errorf("decode antigravity response: %w", err)
+		}
+		if chunk.Error != nil {
+			return nil, fmt.Errorf("antigravity: %s", chunk.Error.Message)
+		}
+		if chunk.UsageMetadata != nil {
+			gr.UsageMetadata = chunk.UsageMetadata
+		}
+		if len(chunk.Candidates) == 0 {
+			continue
+		}
+		if len(gr.Candidates) == 0 {
+			gr.Candidates = []responseCandidate{{}}
+		}
+		candidate := chunk.Candidates[0]
+		gr.Candidates[0].Content.Parts = append(gr.Candidates[0].Content.Parts, candidate.Content.Parts...)
+		if candidate.FinishReason != "" {
+			gr.Candidates[0].FinishReason = candidate.FinishReason
+		}
 	}
-	if gr.Error != nil {
-		return nil, fmt.Errorf("antigravity: %s", gr.Error.Message)
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read antigravity response: %w", err)
 	}
 
 	return mapResponse(gr, warnings)
@@ -580,8 +695,10 @@ func mapUsage(u *usageMetadata) fantasy.Usage {
 	if u == nil {
 		return fantasy.Usage{}
 	}
+	// promptTokenCount includes cachedContentTokenCount; the shared Usage
+	// contract keeps cache reads out of InputTokens.
 	return fantasy.Usage{
-		InputTokens:     int64(u.PromptTokenCount),
+		InputTokens:     max(int64(u.PromptTokenCount)-int64(u.CachedContentTokenCount), 0),
 		OutputTokens:    int64(u.CandidatesTokenCount),
 		TotalTokens:     int64(u.TotalTokenCount),
 		ReasoningTokens: int64(u.ThoughtsTokenCount),

@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"image/png"
 	"path/filepath"
 	"time"
 
@@ -132,6 +133,9 @@ func (b *scenarioBackend) Run(ctx context.Context, scenario scenarios.Scenario) 
 	if scenario.Target == "web" {
 		return b.web(ctx, scenario, run)
 	}
+	if scenarios.NativeTarget(scenario.Target) {
+		return b.native(ctx, scenario, run)
+	}
 	return b.terminal(ctx, scenario, run)
 }
 
@@ -203,11 +207,22 @@ func ExecuteScenario(ctx context.Context, services ScenarioServices, scenario sc
 
 func (b *scenarioBackend) registerEvidence(ctx context.Context, scenario scenarios.Scenario, run scenarios.ScenarioRun) error {
 	for _, ref := range run.Artifacts {
-		if scenario.Target == "web" && ref.Kind != "scenario-screenshot" || scenario.Target == "tui" && ref.Kind != "pty-transcript" {
+		if (scenario.Target == "web" || scenarios.NativeTarget(scenario.Target)) && ref.Kind != "scenario-screenshot" || scenario.Target == "tui" && ref.Kind != "pty-transcript" {
 			continue
 		}
 		proof := b.record.Ref
 		evidence := engineering.UIEvidence{ID: run.ID, TaskID: b.saved.TaskID, Path: filepath.Join(b.Store.Dir(), "artifacts", ref.Hash+".blob"), Hash: ref.Hash, Width: scenario.Width, Height: scenario.Height, Target: scenario.Target, SourceFingerprint: run.SourceFingerprint, AssertionsPassed: true, Origin: "Observed scenario; visual inspection remains required", RecordedAt: time.Now().UnixMilli(), ScenarioStore: b.Store.Dir(), ScenarioProof: &proof}
+		if scenarios.NativeTarget(scenario.Target) {
+			data, err := b.Store.ReadArtifact(ctx, ref)
+			if err != nil {
+				return err
+			}
+			cfg, err := png.DecodeConfig(bytes.NewReader(data))
+			if err != nil {
+				return err
+			}
+			evidence.Width, evidence.Height = cfg.Width, cfg.Height
+		}
 		for _, step := range scenario.Steps {
 			if step.Action == "resize" {
 				evidence.Width = step.Width

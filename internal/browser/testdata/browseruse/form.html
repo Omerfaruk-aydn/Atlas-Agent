@@ -1,0 +1,33 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Form fixture</title></head>
+<body>
+<form id="signup" aria-label="Signup" novalidate>
+  <label>Email <input name="email" type="email" required></label>
+  <label>Age <input name="age" type="number" min="18" max="120" required></label>
+  <label>Country <select name="country"><option value="">Choose</option><option value="tr">Türkiye</option><option value="de">Germany</option></select></label>
+  <label>Start <input name="start" type="date"></label>
+  <label><input name="terms" type="checkbox" required> Accept terms</label>
+  <div role="combobox" id="plan" aria-label="Plan" aria-expanded="false" tabindex="0">Free</div>
+  <ul role="listbox" id="plans" hidden><li role="option">Free</li><li role="option">Pro</li><li role="option">Team</li></ul>
+  <p id="email-error" role="alert"></p>
+  <button type="submit">Create account</button>
+</form>
+<p id="result" role="status"></p>
+<script>
+const form = document.getElementById('signup');
+window.submissions = 0;
+const plan = document.getElementById('plan'), plans = document.getElementById('plans');
+plan.addEventListener('click', () => { plans.hidden = false; plan.setAttribute('aria-expanded', 'true'); });
+for (const li of plans.children) li.addEventListener('click', () => { plan.textContent = li.textContent; plans.hidden = true; plan.setAttribute('aria-expanded', 'false'); });
+form.email.addEventListener('change', () => {
+  const ok = /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(form.email.value);
+  form.email.setAttribute('aria-invalid', String(!ok));
+  form.email.setAttribute('aria-errormessage', 'email-error');
+  document.getElementById('email-error').textContent = ok ? '' : 'Enter a valid email address';
+});
+form.addEventListener('submit', e => {
+  e.preventDefault(); window.submissions++;
+  setTimeout(() => { document.getElementById('result').textContent = 'Account created #' + window.submissions; }, 300);
+});
+</script>
+</body></html>

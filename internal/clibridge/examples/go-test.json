@@ -1,0 +1,43 @@
+{
+  "kind": "atlas.cli-bridge.profile",
+  "version": 1,
+  "id": "go-test",
+  "description": "Run Go tests for one package pattern with literal arguments. Builds and runs project test code, which can do anything the tests do.",
+  "executable": {
+    "name": "go"
+  },
+  "operations": [
+    {
+      "id": "package",
+      "description": "go test -count=1 for a ./-relative package pattern, optionally filtered with -run.",
+      "args": [
+        "test",
+        "-count=1",
+        "{run}",
+        "{package}"
+      ],
+      "params": [
+        {
+          "name": "package",
+          "type": "string",
+          "description": "Package pattern such as ./internal/clibridge or ./...",
+          "required": true,
+          "max_length": 256,
+          "pattern": "\\./[A-Za-z0-9_./-]*"
+        },
+        {
+          "name": "run",
+          "type": "string",
+          "description": "Test name regular expression; becomes -run VALUE.",
+          "flag": "-run",
+          "max_length": 256,
+          "pattern": "[A-Za-z0-9_|^$.*()/\\[\\]-]+"
+        }
+      ],
+      "timeout_seconds": 900,
+      "max_output_bytes": 131072,
+      "expected_exit_codes": [0],
+      "background": true
+    }
+  ]
+}

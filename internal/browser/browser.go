@@ -8,6 +8,7 @@ package browser
 import (
 	"context"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -140,6 +141,96 @@ type SnapshotElement struct {
 	// is inside the current viewport.
 	Rect    ElementRect `json:"rect"`
 	Visible bool        `json:"visible"`
+	// State that the model needs to resolve targets and verify effects.
+	// Every field is optional so older consumers keep working.
+	Context  string `json:"context,omitempty"`
+	Hint     string `json:"hint,omitempty"`
+	Checked  string `json:"checked,omitempty"`
+	Expanded string `json:"expanded,omitempty"`
+	Error    string `json:"error,omitempty"`
+	Selected bool   `json:"selected,omitempty"`
+	Disabled bool   `json:"disabled,omitempty"`
+	Focused  bool   `json:"focused,omitempty"`
+	Invalid  bool   `json:"invalid,omitempty"`
+	Shadow   bool   `json:"shadow,omitempty"`
+}
+
+// PageObservation is one observation of the selected page. Document
+// changes on every navigation; together with TabID it decides whether an
+// earlier observation is still a valid base for a change-focused result.
+type PageObservation struct {
+	TabID       string            `json:"tab_id,omitempty"`
+	Document    string            `json:"doc"`
+	URL         string            `json:"url"`
+	Title       string            `json:"title"`
+	Elements    []SnapshotElement `json:"elements"`
+	ScanLimited bool              `json:"scan_limited,omitempty"`
+	Error       string            `json:"error,omitempty"`
+	Count       int               `json:"count,omitempty"`
+}
+
+// ObserveRequest selects what an observation covers.
+type ObserveRequest struct {
+	Full  bool   `json:"full"`
+	Scope string `json:"scope,omitempty"`
+	// Identify asks only for the current identity of these refs.
+	Identify []string `json:"identify,omitempty"`
+}
+
+// RefIdentity is what an observation reported for one ref: its role and
+// accessible name. A node keeps its ref when an application reuses it for
+// another item, so the pair, not the ref, identifies the target.
+type RefIdentity struct {
+	Role string `json:"role"`
+	Name string `json:"name"`
+}
+
+// RefIdentitySession reports the current identity of issued refs without
+// dispatching input. A missing entry means the ref is gone.
+type RefIdentitySession interface {
+	RefIdentities(ctx context.Context, refs []string) (map[string]RefIdentity, error)
+}
+
+// ScreenshotRefSession reports identities labeled in the last capture.
+// These are captured alongside annotation, not inferred from a later DOM.
+type ScreenshotRefSession interface {
+	ScreenshotReferences() (ExecutionIdentity, map[string]RefIdentity)
+}
+
+var _ RefIdentitySession = (*chromedpSession)(nil)
+
+// RefIdentities reads the current role and name of each ref in the selected
+// tab, using the same naming as observation.
+func (s *chromedpSession) RefIdentities(ctx context.Context, refs []string) (map[string]RefIdentity, error) {
+	for _, ref := range refs {
+		if ref == "" || len(ref) > 32 || strings.ContainsAny(ref, `"[]\`) {
+			return nil, fmt.Errorf("invalid ref %q", ref)
+		}
+	}
+	params, _ := json.Marshal(ObserveRequest{Identify: refs})
+	var raw string
+	if err := s.runContext(ctx, chromedp.Evaluate(strings.Replace(observeScript, "__PARAMS__", string(params), 1), &raw)); err != nil {
+		return nil, err
+	}
+	var out struct {
+		Identities map[string]*RefIdentity `json:"identities"`
+	}
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil, fmt.Errorf("parsing ref identities: %w", err)
+	}
+	found := map[string]RefIdentity{}
+	for ref, id := range out.Identities {
+		if id != nil {
+			found[ref] = *id
+		}
+	}
+	return found, nil
+}
+
+// ObservingSession is implemented by drivers that report document identity
+// and container context with their element list.
+type ObservingSession interface {
+	Observe(ctx context.Context, req ObserveRequest) (PageObservation, error)
 }
 
 // ElementRect is a bounding box in CSS pixels, as reported by
@@ -187,76 +278,15 @@ const (
 	maxPendingDialogs = 20
 )
 
-// snapshotScript walks the DOM for interactive elements and returns
-// them as a JSON array of {ref, role, tag, name, value, rect, visible}.
-// A ref is a
-// short, stable id (data-atlas-ref="e3") assigned the first time an
-// element is seen and reused on every later snapshot of the same page
-// -- it does not survive a navigation, since that replaces the DOM the
-// attribute was attached to. %v is a Go bool literal (true/false)
-// selecting whether elements currently scrolled out of the viewport are
-// included.
-const snapshotScript = `(function(full) {
-	var counter = window.__atlasRefCounter || 0;
-	var out = [];
-	var seen = new Set();
-	var candidates = document.querySelectorAll(
-		'a[href], button, input, textarea, select, [role], [contenteditable=""], [contenteditable="true"], [onclick], [tabindex]'
-	);
-	var vw = window.innerWidth, vh = window.innerHeight;
-	for (var i = 0; i < candidates.length; i++) {
-		var el = candidates[i];
-		if (seen.has(el)) continue;
-		seen.add(el);
-		var style = window.getComputedStyle(el);
-		if (style.display === 'none' || style.visibility === 'hidden') continue;
-		var rect = el.getBoundingClientRect();
-		if (rect.width === 0 || rect.height === 0) continue;
-		var visible = !(rect.bottom < 0 || rect.top > vh || rect.right < 0 || rect.left > vw);
-		if (!full && !visible) continue;
-
-		var ref = el.getAttribute('data-atlas-ref');
-		if (!ref) {
-			counter++;
-			ref = 'e' + counter;
-			el.setAttribute('data-atlas-ref', ref);
-		}
-
-		var tag = el.tagName.toLowerCase();
-		var role = el.getAttribute('role');
-		if (!role) {
-			if (tag === 'a') role = 'link';
-			else if (tag === 'select') role = 'combobox';
-			else if (tag === 'textarea') role = 'textbox';
-			else if (tag === 'input') {
-				var t = (el.getAttribute('type') || 'text').toLowerCase();
-				role = (t === 'checkbox' || t === 'radio') ? t : (t === 'submit' || t === 'button') ? 'button' : 'textbox';
-			} else {
-				role = tag;
-			}
-		}
-
-		var name = el.getAttribute('aria-label') || el.getAttribute('placeholder') ||
-			el.getAttribute('alt') || el.getAttribute('title') || '';
-		if (!name) {
-			var labelledby = el.getAttribute('aria-labelledby');
-			var lbl = labelledby && document.getElementById(labelledby);
-			if (lbl) name = lbl.innerText;
-		}
-		if (!name && el.labels && el.labels.length) name = el.labels[0].innerText;
-		if (!name) name = el.innerText || '';
-		name = name.replace(/\s+/g, ' ').trim().slice(0, 120);
-
-		var value = '';
-		if (tag === 'input' || tag === 'textarea' || tag === 'select') value = el.value || '';
-
-		out.push({ref: ref, role: role, tag: tag, name: name, value: value,
-			rect: {x: rect.left, y: rect.top, width: rect.width, height: rect.height},
-			visible: visible});
-	}
-	window.__atlasRefCounter = counter;
-	return JSON.stringify(out);
-})(%v)`
+// observeScript walks the document and open shadow roots for interactive
+// elements, dialogs, live regions and invalid fields. A ref is a short
+// stable id (data-atlas-ref="e3") assigned the first time an element is
+// seen and reused on every later observation of the same page; it does not
+// survive a navigation, since that replaces the DOM the attribute was
+// attached to. __PARAMS__ receives {full, scope}.
+//
+//go:embed observe.js
+var observeScript string
 
 // imagesScript lists every <img> on the page as a JSON array of
 // {src, alt}, capped so a page with thousands of images does not
@@ -300,6 +330,9 @@ type chromedpSession struct {
 	activityManager       *activity.Manager
 	activityNative        activity.Renderer
 	observedTabs          map[string]bool
+	tabRecords            map[string]*TabRecord
+	destroyedTabs         map[string]bool
+	lastRequestAt         time.Time
 	downloads             map[string]browserDownload
 	downloadFrames        map[string]bool
 	activityEnabled       bool
@@ -310,14 +343,23 @@ type chromedpSession struct {
 	activityMascot        mascotStream
 	pointerHeld           bool
 	pointerDragged        bool
+	pointerButton         string
 	pointerX, pointerY    float64
-	ctx                   context.Context
-	rootCtx               context.Context
-	tabCancels            []context.CancelFunc
-	cancel                context.CancelFunc
-	actionTimeout         time.Duration
-	closeOnce             sync.Once
-	ownedBrowser          bool
+	// inputMu serializes typed input and protects pending recovery.
+	inputMu       sync.Mutex
+	inputRecovery *inputRecovery
+	// viewports holds recent screenshot grants that pointer input must
+	// match; mu guards it.
+	viewports            []Viewport
+	screenshotReferences map[string]RefIdentity
+	screenshotIdentity   ExecutionIdentity
+	ctx                  context.Context
+	rootCtx              context.Context
+	tabCancels           []context.CancelFunc
+	cancel               context.CancelFunc
+	actionTimeout        time.Duration
+	closeOnce            sync.Once
+	ownedBrowser         bool
 
 	// mu guards console and dialogs, which the CDP event listener
 	// (chromedp.ListenTarget's callback, invoked synchronously and
@@ -331,6 +373,9 @@ type chromedpSession struct {
 	activityEndpoint          string
 	initialNavigation         string
 	callContext               context.Context
+	// instance identifies this browser connection; a reconnect is a new
+	// session with a new instance, which invalidates evidence from before.
+	instance string
 }
 
 func newChromedpSession(opts Options) (Session, error) {
@@ -409,6 +454,7 @@ func newChromedpSessionContext(parent context.Context, opts Options) (Session, e
 		activityReducedMotion: opts.OverlayReducedMotion,
 		activityEndpoint:      opts.RemoteURL,
 		initialNavigation:     opts.initialURL,
+		instance:              newBrowserInstanceID(),
 	}
 
 	// Register reporting before the first destination loads, so startup
@@ -416,7 +462,7 @@ func newChromedpSessionContext(parent context.Context, opts Options) (Session, e
 	initialActions := []chromedp.Action{
 		chromedp.ActionFunc(func(ctx context.Context) error {
 			s.listenBrowserTarget(ctx)
-			chromedp.ListenBrowser(ctx, s.handleDownloadEvent)
+			chromedp.ListenBrowser(ctx, s.handleBrowserEvent)
 			return nil
 		}),
 		runtime.Enable(), page.Enable(), network.Enable(),
@@ -549,11 +595,40 @@ func (s *chromedpSession) run(actions ...chromedp.Action) error {
 	defer cancel()
 	parent := s.operationContext()
 	if err := parent.Err(); err != nil {
-		return err
+		return s.explainFailure(err)
 	}
 	stop := context.AfterFunc(parent, cancel)
 	defer stop()
-	return chromedp.Run(runCtx, actions...)
+	if err := chromedp.Run(runCtx, actions...); err != nil {
+		return s.explainFailure(err)
+	}
+	return nil
+}
+
+// runContext is run bounded additionally by ctx, for calls that carry
+// their own caller context.
+func (s *chromedpSession) runContext(ctx context.Context, actions ...chromedp.Action) error {
+	if ctx == nil {
+		return s.run(actions...)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	timeout := s.actionTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	runCtx, cancel := context.WithTimeout(s.currentContext(), timeout)
+	defer cancel()
+	stop := context.AfterFunc(ctx, cancel)
+	defer stop()
+	parent := s.operationContext()
+	stopParent := context.AfterFunc(parent, cancel)
+	defer stopParent()
+	if err := chromedp.Run(runCtx, actions...); err != nil {
+		return s.explainFailure(err)
+	}
+	return nil
 }
 
 func (s *chromedpSession) Navigate(url string) error {
@@ -566,7 +641,16 @@ func (s *chromedpSession) Navigate(url string) error {
 		// redirects. Do not issue it a second time through the ordinary action.
 		return nil
 	}
-	return s.run(chromedp.Navigate(url))
+	if err := s.run(chromedp.Navigate(url)); err != nil {
+		return err
+	}
+	// The tab Atlas navigates is the one it works in. A background tab
+	// suspends animation frames, which canvas editors render with and
+	// target checks wait on, so it is brought to the front.
+	_ = s.run(chromedp.ActionFunc(func(ctx context.Context) error {
+		return page.BringToFront().Do(ctx)
+	}))
+	return nil
 }
 
 func (s *chromedpSession) Click(selector string) error {
@@ -605,6 +689,9 @@ func (s *chromedpSession) Click(selector string) error {
 // pixels -- the coordinate fallback when a selector click fails but a
 // fresh snapshot still knows where the element is.
 func (s *chromedpSession) ClickAt(x, y float64) error {
+	if err := s.recoverInput(s.operationContext()); err != nil {
+		return err
+	}
 	m, id := s.pointerOwner()
 	presentPointer(m, id, "aim", x, y)
 	err := s.run(chromedp.ActionFunc(func(ctx context.Context) error {
@@ -639,6 +726,9 @@ func (s *chromedpSession) PressKey(name string) error {
 	if !ok {
 		return fmt.Errorf("unsupported key %q (supported: %v)", name, SupportedKeys())
 	}
+	if err := s.recoverInput(s.operationContext()); err != nil {
+		return err
+	}
 	return s.run(chromedp.KeyEvent(key))
 }
 
@@ -652,6 +742,29 @@ func (s *chromedpSession) Forward() error {
 
 func (s *chromedpSession) Scroll(dx, dy int) error {
 	return s.run(chromedp.Evaluate(fmt.Sprintf("window.scrollBy(%d, %d)", dx, dy), nil))
+}
+
+// EvalContext evaluates expression, awaiting a returned promise for at
+// most timeout. A promise that waits on a permission prompt or never
+// settles returns eval_timeout instead of holding the tool for the whole
+// action timeout. The page-side promise itself cannot be canceled.
+func (s *chromedpSession) EvalContext(ctx context.Context, expression string, timeout time.Duration) (string, error) {
+	if timeout <= 0 || timeout > 30*time.Second {
+		timeout = 10 * time.Second
+	}
+	evalCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	var result json.RawMessage
+	err := s.runContext(evalCtx, chromedp.Evaluate(expression, &result, func(params *runtime.EvaluateParams) *runtime.EvaluateParams {
+		return params.WithAwaitPromise(true)
+	}))
+	if err != nil {
+		if ctx.Err() == nil && evalCtx.Err() != nil {
+			return "", fmt.Errorf("eval_timeout: the expression did not settle within %s (a pending permission prompt or a promise that never resolves). Nothing else was retried; observe the page", timeout)
+		}
+		return "", err
+	}
+	return string(result), nil
 }
 
 func (s *chromedpSession) Eval(expression string) (string, error) {
@@ -720,6 +833,10 @@ func (s *chromedpSession) URL() (string, error) {
 }
 
 func (s *chromedpSession) AnnotatedScreenshot(fullPage bool) ([]byte, error) {
+	before := s.ExecutionIdentity(s.operationContext())
+	s.mu.Lock()
+	s.screenshotReferences = nil
+	s.mu.Unlock()
 	var dpr float64
 	if err := s.run(chromedp.Evaluate(`window.devicePixelRatio || 1`, &dpr)); err != nil {
 		return nil, fmt.Errorf("reading device pixel ratio: %w", err)
@@ -741,24 +858,75 @@ func (s *chromedpSession) AnnotatedScreenshot(fullPage bool) ([]byte, error) {
 		}
 		elements = visible
 	}
-	return AnnotateScreenshotPNG(data, elements, dpr, MaxScreenshotWidth)
+	data, refs, err := annotateScreenshotPNG(data, elements, dpr, MaxScreenshotWidth)
+	if err != nil {
+		return nil, err
+	}
+	if after := s.ExecutionIdentity(s.operationContext()); after == before && after.Document != "" {
+		s.mu.Lock()
+		s.screenshotIdentity, s.screenshotReferences = after, refs
+		s.mu.Unlock()
+	}
+	return data, nil
+}
+
+// ScreenshotReferences returns a copy of the last capture's target grants.
+func (s *chromedpSession) ScreenshotReferences() (ExecutionIdentity, map[string]RefIdentity) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	refs := make(map[string]RefIdentity, len(s.screenshotReferences))
+	for ref, identity := range s.screenshotReferences {
+		refs[ref] = identity
+	}
+	return s.screenshotIdentity, refs
 }
 
 func (s *chromedpSession) Snapshot(full bool) ([]SnapshotElement, error) {
-	restore, hideErr := s.suspendActivity()
-	if hideErr != nil {
-		return nil, hideErr
-	}
-	defer restore()
-	var raw string
-	if err := s.run(chromedp.Evaluate(fmt.Sprintf(snapshotScript, full), &raw)); err != nil {
+	obs, err := s.observe(s.operationContext(), ObserveRequest{Full: full})
+	if err != nil {
 		return nil, err
 	}
-	var elements []SnapshotElement
-	if err := json.Unmarshal([]byte(raw), &elements); err != nil {
-		return nil, fmt.Errorf("parsing snapshot: %w", err)
+	return obs.Elements, nil
+}
+
+// Observe returns the current elements with document and tab identity.
+func (s *chromedpSession) Observe(ctx context.Context, req ObserveRequest) (PageObservation, error) {
+	if len(req.Scope) > 4096 {
+		return PageObservation{}, errors.New("scope exceeds limit")
 	}
-	return elements, nil
+	if err := ctx.Err(); err != nil {
+		return PageObservation{}, err
+	}
+	return s.observe(ctx, req)
+}
+
+func (s *chromedpSession) observe(ctx context.Context, req ObserveRequest) (PageObservation, error) {
+	restore, hideErr := s.suspendActivity()
+	if hideErr != nil {
+		return PageObservation{}, hideErr
+	}
+	defer restore()
+	params, _ := json.Marshal(req)
+	var raw string
+	var tab string
+	err := s.runContext(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+		if c := chromedp.FromContext(ctx); c != nil && c.Target != nil {
+			tab = string(c.Target.TargetID)
+		}
+		return chromedp.Evaluate(strings.Replace(observeScript, "__PARAMS__", string(params), 1), &raw).Do(ctx)
+	}))
+	if err != nil {
+		return PageObservation{}, err
+	}
+	var obs PageObservation
+	if err := json.Unmarshal([]byte(raw), &obs); err != nil {
+		return PageObservation{}, fmt.Errorf("parsing snapshot: %w", err)
+	}
+	if obs.Error != "" {
+		return PageObservation{}, fmt.Errorf("target_resolution_failed: %s (%d matches); refine the scope", obs.Error, obs.Count)
+	}
+	obs.TabID = tab
+	return obs, nil
 }
 
 func (s *chromedpSession) Images() ([]ImageInfo, error) {
@@ -816,6 +984,11 @@ func (s *chromedpSession) HandleDialog(accept bool, promptText string) error {
 }
 
 func (s *chromedpSession) RawCDP(method string, params map[string]any) (map[string]any, error) {
+	if strings.HasPrefix(method, "Input.") {
+		if err := s.recoverInput(s.operationContext()); err != nil {
+			return nil, err
+		}
+	}
 	m, pointerID := s.pointerOwner()
 	if method == "Input.dispatchMouseEvent" && (params["type"] == "mousePressed" || params["type"] == "mouseReleased") {
 		s.presentMouseAim(m, pointerID, params)
@@ -1044,7 +1217,13 @@ func (m *Manager) reapLocked() []retiredSession {
 				continue
 			}
 		}
-		if m.pending[id] == nil && (m.opts.IdleTimeout > 0 && last.Before(cutoff)) {
+		// A session whose browser is gone can never act again; handing it
+		// out would fail every later call with a bare "context canceled".
+		dead := false
+		if probe, ok := m.sessions[id].(interface{ disconnected() bool }); ok {
+			dead = probe.disconnected()
+		}
+		if m.pending[id] == nil && (dead || (m.opts.IdleTimeout > 0 && last.Before(cutoff))) {
 			retired = append(retired, m.dropLocked(id))
 		}
 	}

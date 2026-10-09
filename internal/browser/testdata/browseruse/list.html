@@ -1,0 +1,29 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>List fixture</title>
+<style>#viewport{height:300px;overflow-y:auto;position:relative;border:1px solid #999}#spacer{position:relative}.row{position:absolute;left:0;right:0;height:30px}</style></head>
+<body>
+<div id="viewport" role="grid" aria-rowcount="250" aria-label="Orders"><div id="spacer"></div></div>
+<nav aria-label="Pages"><button id="next">Next page</button></nav>
+<script>
+// Virtualized list: only rows near the viewport exist in the DOM.
+const total = 250, rowH = 30, vp = document.getElementById('viewport'), spacer = document.getElementById('spacer');
+let page = 0;
+spacer.style.height = total * rowH + 'px';
+function draw() {
+  const first = Math.max(0, Math.floor(vp.scrollTop / rowH) - 2), last = Math.min(total, first + 16);
+  spacer.innerHTML = '';
+  for (let i = first; i < last; i++) {
+    const r = document.createElement('div'); r.className = 'row'; r.setAttribute('role', 'row');
+    r.setAttribute('aria-rowindex', String(i + 1)); r.dataset.id = 'p' + page + '-order-' + (i + 1);
+    r.style.top = i * rowH + 'px'; r.textContent = 'Page ' + (page + 1) + ' order ' + (i + 1);
+    spacer.appendChild(r);
+  }
+}
+vp.addEventListener('scroll', () => requestAnimationFrame(draw));
+document.getElementById('next').addEventListener('click', () => {
+  if (page < 1) { page++; vp.scrollTop = 0; draw(); }
+  if (page >= 1) document.getElementById('next').disabled = true;
+});
+draw();
+</script>
+</body></html>

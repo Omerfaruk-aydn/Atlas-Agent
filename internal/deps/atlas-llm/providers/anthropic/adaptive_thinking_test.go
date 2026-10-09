@@ -9,7 +9,7 @@ import (
 
 func TestCurrentClaudeAdaptiveThinking(t *testing.T) {
 	t.Parallel()
-	for _, model := range []string{"claude-fable-5-1", "claude-mythos-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "us.anthropic.claude-opus-5-5", "claude-fable-5-1@default"} {
+	for _, model := range []string{"claude-fable-5-1", "claude-mythos-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "us.anthropic.claude-haiku-5-5", "us.anthropic.claude-opus-5-5", "claude-fable-5-1@default"} {
 		require.True(t, defaultsToAdaptiveThinking(model), model)
 		require.True(t, requiresAdaptiveThinking(model), model)
 	}

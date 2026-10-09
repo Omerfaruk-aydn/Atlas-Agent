@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -15,12 +16,16 @@ func usageIsZero(usage fantasy.Usage) bool {
 		usage.CacheReadTokens == 0
 }
 
-func fallbackStepUsage(messages []fantasy.Message, step fantasy.StepResult) (fantasy.Usage, bool) {
+// fallbackStepUsage returns the provider-reported usage, or an estimate
+// marked as such when the provider reported none. The estimate covers the
+// advertised tool definitions too: they are sent with every request and can
+// be the largest part of it.
+func fallbackStepUsage(messages []fantasy.Message, step fantasy.StepResult, advertised ...fantasy.AgentTool) (fantasy.Usage, bool) {
 	if !usageIsZero(step.Usage) {
 		return step.Usage, false
 	}
 
-	inputTokens := estimateMessageTokens(messages)
+	inputTokens := estimateMessageTokens(messages) + estimateToolDefinitionTokens(advertised)
 	outputTokens := estimateStepCompletionTokens(step)
 	if inputTokens == 0 && outputTokens == 0 {
 		return fantasy.Usage{}, false
@@ -173,4 +178,16 @@ func approxTokenCount(s string) int64 {
 		return 0
 	}
 	return int64((len(s) + 3) / 4)
+}
+
+func estimateToolDefinitionTokens(ts []fantasy.AgentTool) int64 {
+	var tokens int64
+	for _, tool := range ts {
+		info := tool.Info()
+		data, err := json.Marshal(map[string]any{"name": info.Name, "description": info.Description, "parameters": info.Parameters, "required": info.Required})
+		if err == nil {
+			tokens += approxTokenCount(string(data))
+		}
+	}
+	return tokens
 }

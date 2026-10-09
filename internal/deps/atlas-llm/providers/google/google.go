@@ -369,6 +369,9 @@ func toGooglePrompt(prompt fantasy.Prompt, isVertexAI bool) (*genai.Content, []*
 
 	finishedSystemBlock := false
 	for _, msg := range prompt {
+		if msg.Role != fantasy.MessageRoleSystem {
+			finishedSystemBlock = true
+		}
 		switch msg.Role {
 		case fantasy.MessageRoleSystem:
 			if finishedSystemBlock {
@@ -376,8 +379,6 @@ func toGooglePrompt(prompt fantasy.Prompt, isVertexAI bool) (*genai.Content, []*
 				// TODO: see if we need to send error here?
 				continue
 			}
-			finishedSystemBlock = true
-
 			var systemMessages []string
 			for _, part := range msg.Content {
 				text, ok := fantasy.AsMessagePart[fantasy.TextPart](part)
@@ -387,13 +388,12 @@ func toGooglePrompt(prompt fantasy.Prompt, isVertexAI bool) (*genai.Content, []*
 				systemMessages = append(systemMessages, text.Text)
 			}
 			if len(systemMessages) > 0 {
-				systemInstructions = &genai.Content{
-					Parts: []*genai.Part{
-						{
-							Text: strings.Join(systemMessages, "\n"),
-						},
-					},
+				if systemInstructions == nil {
+					systemInstructions = &genai.Content{}
 				}
+				systemInstructions.Parts = append(systemInstructions.Parts, &genai.Part{
+					Text: strings.Join(systemMessages, "\n"),
+				})
 			}
 		case fantasy.MessageRoleUser:
 			var parts []*genai.Part
@@ -862,14 +862,9 @@ func (g *languageModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.
 			// we need to make sure that there is actual tokendata
 			if resp.UsageMetadata != nil && resp.UsageMetadata.TotalTokenCount != 0 {
 				currentUsage := mapUsage(resp.UsageMetadata)
-				// if first usage chunk
-				if usage == nil {
-					usage = &currentUsage
-				} else {
-					usage.OutputTokens += currentUsage.OutputTokens
-					usage.ReasoningTokens += currentUsage.ReasoningTokens
-					usage.CacheReadTokens += currentUsage.CacheReadTokens
-				}
+				// usageMetadata is a cumulative snapshot of the request,
+				// so the latest one replaces earlier ones.
+				usage = &currentUsage
 			}
 
 			if len(resp.Candidates) > 0 && resp.Candidates[0].FinishReason != "" {
@@ -1140,13 +1135,9 @@ func (g *languageModel) streamObjectWithJSONMode(ctx context.Context, call fanta
 			// we need to make sure that there is actual tokendata
 			if resp.UsageMetadata != nil && resp.UsageMetadata.TotalTokenCount != 0 {
 				currentUsage := mapUsage(resp.UsageMetadata)
-				if usage == nil {
-					usage = &currentUsage
-				} else {
-					usage.OutputTokens += currentUsage.OutputTokens
-					usage.ReasoningTokens += currentUsage.ReasoningTokens
-					usage.CacheReadTokens += currentUsage.CacheReadTokens
-				}
+				// usageMetadata is a cumulative snapshot of the request,
+				// so the latest one replaces earlier ones.
+				usage = &currentUsage
 			}
 
 			if len(resp.Candidates) > 0 && resp.Candidates[0].FinishReason != "" {
@@ -1491,8 +1482,10 @@ func mapFinishReason(reason genai.FinishReason) fantasy.FinishReason {
 }
 
 func mapUsage(usage *genai.GenerateContentResponseUsageMetadata) fantasy.Usage {
+	// Gemini's promptTokenCount includes cachedContentTokenCount; the
+	// shared Usage contract keeps cache reads out of InputTokens.
 	return fantasy.Usage{
-		InputTokens:         int64(usage.PromptTokenCount),
+		InputTokens:         max(int64(usage.PromptTokenCount)-int64(usage.CachedContentTokenCount), 0),
 		OutputTokens:        int64(usage.CandidatesTokenCount),
 		TotalTokens:         int64(usage.TotalTokenCount),
 		ReasoningTokens:     int64(usage.ThoughtsTokenCount),

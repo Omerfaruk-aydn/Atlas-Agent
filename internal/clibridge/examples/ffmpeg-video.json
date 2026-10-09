@@ -1,0 +1,73 @@
+{
+  "kind": "atlas.cli-bridge.profile",
+  "version": 1,
+  "id": "video",
+  "description": "Convert one project video to an H.264/AAC MP4 with ffmpeg. Reads one input file and creates one new output file; never overwrites.",
+  "executable": {
+    "name": "ffmpeg"
+  },
+  "operations": [
+    {
+      "id": "convert",
+      "description": "Re-encode a video to H.264 video and AAC audio in an MP4 container.",
+      "args": [
+        "-hide_banner",
+        "-nostdin",
+        "-n",
+        "-i",
+        "{input}",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "{preset}",
+        "-crf",
+        "{crf}",
+        "-c:a",
+        "aac",
+        "{output}"
+      ],
+      "params": [
+        {
+          "name": "input",
+          "type": "input_file",
+          "description": "Source video inside the project.",
+          "required": true,
+          "extensions": [".mp4", ".mov", ".mkv", ".webm", ".avi"]
+        },
+        {
+          "name": "preset",
+          "type": "enum",
+          "description": "x264 speed/size trade-off.",
+          "values": ["veryfast", "fast", "medium", "slow"],
+          "default": "medium"
+        },
+        {
+          "name": "crf",
+          "type": "integer",
+          "description": "Constant rate factor; lower is higher quality.",
+          "min": 0,
+          "max": 51,
+          "default": 23
+        },
+        {
+          "name": "output",
+          "type": "output_file",
+          "description": "New MP4 file inside the project; must not exist yet.",
+          "required": true,
+          "extensions": [".mp4"]
+        }
+      ],
+      "working_dir": ".",
+      "timeout_seconds": 1800,
+      "max_output_bytes": 65536,
+      "expected_exit_codes": [0],
+      "outputs": [
+        {
+          "param": "output",
+          "min_bytes": 1024
+        }
+      ],
+      "background": true
+    }
+  ]
+}

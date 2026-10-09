@@ -70,7 +70,7 @@ func ValidateUIArtifact(ctx context.Context, evidence UIEvidence) error {
 		}
 		found := false
 		for _, ref := range run.Artifacts {
-			if ref.Hash == evidence.Hash && (evidence.Target == "web" && ref.Kind == "scenario-screenshot" || evidence.Target == "tui" && ref.Kind == "pty-transcript") {
+			if ref.Hash == evidence.Hash && ((evidence.Target == "web" || evidence.Target == "desktop" || evidence.Target == "android") && ref.Kind == "scenario-screenshot" || evidence.Target == "tui" && ref.Kind == "pty-transcript") {
 				actual, err := store.ReadArtifact(ctx, ref)
 				if err != nil {
 					return err
@@ -85,7 +85,7 @@ func ValidateUIArtifact(ctx context.Context, evidence UIEvidence) error {
 			return fmt.Errorf("UI scenario lacks a real terminal result")
 		}
 	}
-	if evidence.Target == "web" {
+	if evidence.Target == "web" || evidence.Target == "desktop" || evidence.Target == "android" {
 		config, _, err := image.DecodeConfig(strings.NewReader(string(data)))
 		if err != nil || config.Width <= 0 || config.Height <= 0 || config.Width > 16384 || config.Height > 32768 {
 			return fmt.Errorf("UI artifact is not a bounded rendered image")

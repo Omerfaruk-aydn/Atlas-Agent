@@ -337,3 +337,13 @@ func TestUpdateSessionUsageAddsProviderCost(t *testing.T) {
 	require.Equal(t, int64(2000), currentSession.CompletionTokens)
 	require.False(t, currentSession.EstimatedUsage)
 }
+
+func TestFallbackEstimateCountsAdvertisedToolDefinitions(t *testing.T) {
+	t.Parallel()
+	step := fantasy.StepResult{}
+	step.Content = fantasy.ResponseContent{fantasy.TextContent{Text: "ok"}}
+	without, estimated := fallbackStepUsage(nil, step)
+	require.True(t, estimated)
+	with, _ := fallbackStepUsage(nil, step, fixturePalette([]string{"bash", "browser"})...)
+	require.Greater(t, with.InputTokens, without.InputTokens)
+}

@@ -1,0 +1,97 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Canvas text fixture</title>
+<style>
+body{margin:0;font:13px sans-serif;height:100vh;overflow:hidden}
+#toolbar{position:fixed;left:0;top:0;right:0;height:36px;background:#2c2c2c;display:flex;gap:4px;padding:2px;z-index:2}
+#toolbar button{color:#fff;background:#444;border:0;padding:4px 10px}
+#canvas{position:fixed;left:0;top:36px}
+#layers{position:fixed;right:0;top:36px;width:180px;background:#fff;z-index:2}
+#focus-target{position:fixed;left:0;top:0;width:1px;height:1px;opacity:0}
+#text-proxy{position:fixed;left:-10000px;top:0;width:1px;height:1px;opacity:0;white-space:pre}
+#text-proxy.overlay{left:0;top:0;width:auto;height:auto;min-width:20px;opacity:1;color:transparent;caret-color:transparent;pointer-events:none}
+</style></head>
+<body>
+<!--
+A local model of how session 14b5c83a failed in Figma's web editor. It is not
+Figma and proves nothing about Figma; it reproduces the reported mechanics.
+- Text is drawn on a <canvas>. Text editing goes through one persistent
+  contenteditable proxy (role=document), hidden off screen, or laid over the
+  canvas with transparent text when the page is opened with ?overlay.
+- When nothing is being edited, focus rests on a read-only focus target
+  (role=application). The "t" key there arms the text tool.
+- With the text tool armed, a canvas click on empty space creates a new
+  text layer and focuses the proxy, empty. A double click on a text layer
+  edits it; the proxy then holds its text.
+- Escape ends editing, but the proxy KEEPS focus. Anything typed into it
+  afterwards is appended to the last edited layer, and a "t" typed there is
+  text, not the text tool. This is the concatenation seen in the session.
+- The Text toolbar button arms the text tool; focus moves to the button.
+-->
+<div id="toolbar" role="toolbar" aria-label="Editor">
+  <button id="tool-move" aria-label="Move">Move</button>
+  <button id="tool-text" aria-label="Text">Text</button>
+</div>
+<canvas id="canvas" role="img" aria-label="Canvas"></canvas>
+<input id="focus-target" role="application" aria-label="Canvas Design" readonly>
+<div id="text-proxy" role="document" contenteditable="true"></div>
+<div id="layers" role="tree" aria-label="Layers"></div>
+<script>
+const model = {tool: 'move', texts: [], editing: null, last: null};
+window.model = model;
+const overlay = location.search.includes('overlay');
+const canvas = document.getElementById('canvas');
+const proxy = document.getElementById('text-proxy');
+const target = document.getElementById('focus-target');
+if (overlay) proxy.classList.add('overlay');
+function size() { canvas.width = innerWidth - 180; canvas.height = innerHeight - 36; draw(); }
+function draw() {
+  const g = canvas.getContext('2d');
+  g.fillStyle = '#e5e5e5'; g.fillRect(0, 0, canvas.width, canvas.height);
+  g.fillStyle = '#111'; g.font = '16px sans-serif';
+  for (const t of model.texts) g.fillText(t.text, t.x, t.y + 16);
+}
+function renderLayers() {
+  const list = document.getElementById('layers'); list.innerHTML = '';
+  for (const t of model.texts) {
+    const row = document.createElement('div'); row.setAttribute('role', 'treeitem');
+    row.setAttribute('aria-label', t.text || '(empty text)'); row.textContent = t.text || '(empty text)'; list.appendChild(row);
+  }
+}
+function layerAt(x, y) { return model.texts.find(t => x >= t.x && x <= t.x + Math.max(30, t.text.length * 9) && y >= t.y && y <= t.y + 20); }
+function startEditing(layer, x, y) {
+  model.editing = layer; model.last = layer;
+  proxy.textContent = layer.text;
+  if (overlay) { proxy.style.left = x + 'px'; proxy.style.top = (y + 36) + 'px'; }
+  proxy.focus();
+  const range = document.createRange(); range.selectNodeContents(proxy); range.collapse(false);
+  getSelection().removeAllRanges(); getSelection().addRange(range);
+}
+canvas.addEventListener('mousedown', e => {
+  const r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  e.preventDefault();
+  const hit = layerAt(x, y);
+  if (e.detail >= 2 && hit) { startEditing(hit, hit.x, hit.y); return; }
+  if (model.tool === 'text' && !hit) {
+    const layer = {id: 't' + (model.texts.length + 1), x, y, text: ''};
+    model.texts.push(layer); model.tool = 'move';
+    startEditing(layer, x, y); renderLayers(); draw(); return;
+  }
+  model.editing = null; target.focus();
+});
+proxy.addEventListener('input', () => {
+  // While editing, the proxy is the edited layer. After escape it still
+  // feeds the last edited layer: the reported concatenation.
+  const layer = model.editing || model.last;
+  if (layer) { layer.text = proxy.textContent; renderLayers(); draw(); }
+});
+proxy.addEventListener('keydown', e => { if (e.key === 'Escape') { model.editing = null; e.preventDefault(); } });
+target.addEventListener('keydown', e => {
+  if (e.key === 't') model.tool = 'text';
+  if (e.key === 'Escape') model.tool = 'move';
+});
+document.getElementById('tool-text').addEventListener('click', () => { model.tool = 'text'; model.editing = null; });
+document.getElementById('tool-move').addEventListener('click', () => { model.tool = 'move'; model.editing = null; });
+addEventListener('resize', size);
+size(); target.focus();
+</script>
+</body></html>

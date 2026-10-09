@@ -36,6 +36,8 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/format"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/herdr"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/history"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/integrations"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/localapps"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/log"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/lsp"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
@@ -71,6 +73,11 @@ type App struct {
 	LSPManager *lsp.Manager
 
 	Skills *skills.Manager
+
+	// Integrations is the integration hub shared by /integrations and the
+	// agent's integrations tool; LocalApps manages the apps behind /app.
+	Integrations *integrations.Service
+	LocalApps    *localapps.Manager
 
 	config *config.ConfigStore
 
@@ -133,6 +140,9 @@ func New(ctx context.Context, conn *sql.DB, store *config.ConfigStore, skillsMgr
 		runCompletions:     pubsub.NewBroker[notify.RunComplete](),
 	}
 
+	app.LocalApps = localapps.NewManager(localapps.Options{StateDir: localapps.DefaultStateDir(config.GlobalConfigData())})
+	app.Integrations = integrations.NewDefault(store, app.LocalApps)
+
 	app.setupEvents()
 
 	// Initialize clipboard support. This is best-effort; if it fails
@@ -166,6 +176,12 @@ func New(ctx context.Context, conn *sql.DB, store *config.ConfigStore, skillsMgr
 		app.cleanupFuncs,
 		func(context.Context) error { return db.Release(dataDir) },
 		func(ctx context.Context) error { return mcp.Close(ctx) },
+		func(ctx context.Context) error {
+			// Apps run while Atlas runs; see localapps.Manager.StopAll.
+			app.LocalApps.StopAll(ctx)
+			app.Integrations.Shutdown()
+			return nil
+		},
 	)
 
 	// TODO: remove the concept of agent config, most likely.
@@ -775,6 +791,9 @@ func (app *App) initCoderAgent(ctx context.Context, interactive bool) error {
 		RunComplete: app.runCompletions,
 		Skills:      app.Skills,
 		Interactive: interactive,
+
+		Integrations: app.Integrations,
+		LocalApps:    app.LocalApps,
 	})
 	if err != nil {
 		slog.Error("Failed to create coder agent", "err", err)

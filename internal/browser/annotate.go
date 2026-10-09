@@ -41,9 +41,15 @@ var (
 // x/image, so it runs (and tests) on every platform even though
 // captures only originate from a live browser.
 func AnnotateScreenshotPNG(data []byte, elements []SnapshotElement, dpr float64, maxWidth int) ([]byte, error) {
+	data, _, err := annotateScreenshotPNG(data, elements, dpr, maxWidth)
+	return data, err
+}
+
+// annotateScreenshotPNG returns identities only for refs actually drawn.
+func annotateScreenshotPNG(data []byte, elements []SnapshotElement, dpr float64, maxWidth int) ([]byte, map[string]RefIdentity, error) {
 	img, err := png.Decode(bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("decoding screenshot: %w", err)
+		return nil, nil, fmt.Errorf("decoding screenshot: %w", err)
 	}
 	if dpr <= 0 {
 		dpr = 1
@@ -51,7 +57,7 @@ func AnnotateScreenshotPNG(data []byte, elements []SnapshotElement, dpr float64,
 	bounds := img.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
 	if w <= 0 || h <= 0 {
-		return nil, fmt.Errorf("unexpected screenshot size %dx%d", w, h)
+		return nil, nil, fmt.Errorf("unexpected screenshot size %dx%d", w, h)
 	}
 
 	scale := 1.0
@@ -66,6 +72,7 @@ func AnnotateScreenshotPNG(data []byte, elements []SnapshotElement, dpr float64,
 	// CSS px -> device px -> downscaled image px in one factor.
 	px := dpr * scale
 	boxes := 0
+	refs := map[string]RefIdentity{}
 	for _, el := range elements {
 		if boxes >= MaxAnnotatedBoxes {
 			break
@@ -79,14 +86,15 @@ func AnnotateScreenshotPNG(data []byte, elements []SnapshotElement, dpr float64,
 			continue
 		}
 		drawBox(dst, r, el.Ref)
+		refs[el.Ref] = RefIdentity{Role: el.Role, Name: el.Name}
 		boxes++
 	}
 
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, dst); err != nil {
-		return nil, fmt.Errorf("encoding annotated screenshot: %w", err)
+		return nil, nil, fmt.Errorf("encoding annotated screenshot: %w", err)
 	}
-	return buf.Bytes(), nil
+	return buf.Bytes(), refs, nil
 }
 
 // scaleRect maps a CSS-pixel box into image pixels, rounding outward

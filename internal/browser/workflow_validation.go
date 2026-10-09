@@ -19,18 +19,32 @@ func ValidateWorkflowRequest(p Request) error {
 			return err
 		}
 	}
+	if IsInputAction(p.Action) {
+		return ValidateInputRequest(p)
+	}
 	switch p.Action {
 	case "assert", "wait_for":
-		if !validCondition(p.Condition) && (p.Action != "wait_for" || (p.Condition != "ready" && p.Condition != "network_idle")) {
+		if !validCondition(p.Condition) && (p.Action != "wait_for" || (p.Condition != "ready" && p.Condition != "network_idle" && p.Condition != "stable")) {
 			return fmt.Errorf("unsupported condition %q", p.Condition)
 		}
-		if p.Condition == "url" || p.Condition == "title" || p.Condition == "ready" || p.Condition == "network_idle" {
+		if p.Condition == "url" || p.Condition == "title" || p.Condition == "ready" || p.Condition == "network_idle" || p.Condition == "stable" {
 			return nil
 		}
 		fallthrough
-	case "find", "semantic_click", "semantic_type":
+	case "find", "semantic_click", "semantic_type", "set_field", "read_field", "select_option", "submit":
 		if p.Selector == "" && p.Name == "" && p.Label == "" && p.Role == "" {
 			return fmt.Errorf("semantic target is required")
+		}
+		if p.Action == "select_option" && p.Value == "" && p.Text == "" {
+			return fmt.Errorf("select_option requires value naming the option")
+		}
+	case "fill_form":
+		if len(p.Fields) == 0 || len(p.Fields) > 40 {
+			return fmt.Errorf("fill_form requires 1-40 fields")
+		}
+	case "collect":
+		if p.RowSelector == "" {
+			return fmt.Errorf("collect requires row_selector")
 		}
 	case "upload":
 		if p.Selector == "" || len(p.Paths) == 0 {

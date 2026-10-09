@@ -1128,19 +1128,7 @@ func (a *agent) prepareTools(tools []AgentTool, providerDefinedTools []ProviderD
 		if len(activeTools) > 0 && !slices.Contains(activeTools, tool.Info().Name) {
 			continue
 		}
-		info := tool.Info()
-		inputSchema := map[string]any{
-			"type":       "object",
-			"properties": info.Parameters,
-			"required":   info.Required,
-		}
-		schema.Normalize(inputSchema)
-		preparedTools = append(preparedTools, FunctionTool{
-			Name:            info.Name,
-			Description:     info.Description,
-			InputSchema:     inputSchema,
-			ProviderOptions: tool.ProviderOptions(),
-		})
+		preparedTools = append(preparedTools, PrepareFunctionTool(tool))
 	}
 	for _, tool := range providerDefinedTools {
 		// If activeTools has items, only include tools in the list. If
@@ -1151,6 +1139,25 @@ func (a *agent) prepareTools(tools []AgentTool, providerDefinedTools []ProviderD
 		preparedTools = append(preparedTools, tool)
 	}
 	return preparedTools
+}
+
+// PrepareFunctionTool converts an agent tool into the function definition
+// every provider receives, so tests can inspect the exact model-visible
+// schema.
+func PrepareFunctionTool(tool AgentTool) FunctionTool {
+	info := tool.Info()
+	inputSchema := map[string]any{
+		"type":       "object",
+		"properties": info.Parameters,
+		"required":   info.Required,
+	}
+	schema.Normalize(inputSchema)
+	return FunctionTool{
+		Name:            info.Name,
+		Description:     info.Description,
+		InputSchema:     inputSchema,
+		ProviderOptions: tool.ProviderOptions(),
+	}
 }
 
 // validateAndRepairToolCall validates a tool call and attempts repair if validation fails.

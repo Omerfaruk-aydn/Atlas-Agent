@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/jsonrepair"
 	"github.com/kaptinlin/jsonschema"
@@ -72,8 +73,20 @@ func ToParameters(s Schema) map[string]any {
 	return result
 }
 
+// Provider lets a type describe its wire contract when reflection would
+// describe its Go representation instead, for example a raw JSON holder
+// whose bytes must arrive as a JSON object rather than an integer array.
+// The method must have a value receiver and must not depend on the value.
+type Provider interface {
+	JSONSchema() Schema
+}
+
+var providerType = reflect.TypeFor[Provider]()
+
 // Generate generates a JSON schema from a reflect.Type.
 // It recursively processes struct fields, arrays, maps, and primitive types.
+var timeType = reflect.TypeOf(time.Time{})
+
 func Generate(t reflect.Type) Schema {
 	return generateSchemaRecursive(t, make(map[reflect.Type]bool))
 }
@@ -81,6 +94,16 @@ func Generate(t reflect.Type) Schema {
 func generateSchemaRecursive(t reflect.Type, visited map[reflect.Type]bool) Schema {
 	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
+	}
+	if t.Implements(providerType) {
+		return reflect.Zero(t).Interface().(Provider).JSONSchema()
+	}
+
+	// time.Time marshals to an RFC 3339 string, not to its unexported
+	// struct fields; describing it as an object made every encoded value
+	// fail validation and told the model the wrong shape.
+	if t == timeType {
+		return Schema{Type: "string", Format: "date-time"}
 	}
 
 	if visited[t] {
@@ -326,14 +349,66 @@ func validateAgainstSchema(obj any, schema Schema) error {
 
 	result := validator.Validate(obj)
 	if !result.IsValid() {
-		var errMsgs []string
-		for field, validationErr := range result.Errors {
-			errMsgs = append(errMsgs, fmt.Sprintf("%s: %s", field, validationErr.Message))
-		}
-		return fmt.Errorf("validation failed: %s", strings.Join(errMsgs, "; "))
+		return fmt.Errorf("validation failed: %s", strings.Join(ValidationMessages(result), "; "))
 	}
 
 	return nil
+}
+
+// wrapperKeywords only say that a nested schema failed; the nested failure
+// carries the useful field and reason.
+var wrapperKeywords = map[string]bool{
+	"properties": true, "items": true, "prefixItems": true, "allOf": true,
+	"$ref": true, "additionalProperties": true, "patternProperties": true,
+}
+
+// ValidationMessages names each failing field by its JSON pointer and says
+// why it failed. Messages have their parameters filled in, and keywords
+// that only report a nested failure are left out when that nested failure
+// is listed, so no unresolved placeholder or bare "does not match the
+// schema" reaches the model.
+func ValidationMessages(result *jsonschema.EvaluationResult) []string {
+	list := result.ToList(false)
+	entries := append([]jsonschema.List{*list}, list.Details...)
+	var leaves, wrappers []string
+	seen := map[string]bool{}
+	for _, entry := range entries {
+		if entry.Valid && len(entry.Errors) == 0 {
+			continue
+		}
+		where := entry.InstanceLocation
+		if where == "" {
+			where = "/"
+		}
+		keys := make([]string, 0, len(entry.Errors))
+		for keyword := range entry.Errors {
+			keys = append(keys, keyword)
+		}
+		slices.Sort(keys)
+		for _, keyword := range keys {
+			message := entry.Errors[keyword]
+			if strings.Contains(message, "{") && strings.Contains(message, "}") {
+				message = keyword + " constraint failed"
+			}
+			line := fmt.Sprintf("%s: %s", where, message)
+			if seen[line] {
+				continue
+			}
+			seen[line] = true
+			if wrapperKeywords[keyword] {
+				wrappers = append(wrappers, line)
+			} else {
+				leaves = append(leaves, line)
+			}
+		}
+	}
+	if len(leaves) > 0 {
+		return leaves
+	}
+	if len(wrappers) > 0 {
+		return wrappers
+	}
+	return []string{"/: value does not match the schema"}
 }
 
 // ParseAndValidateWithRepair attempts parsing, validation, and custom repair.

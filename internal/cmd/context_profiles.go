@@ -5,12 +5,13 @@ import (
 	"fmt"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 	"github.com/spf13/cobra"
 )
 
 func init() {
 	contextCmd := &cobra.Command{Use: "context", Short: "Inspect actual model request metadata and manage optional session context"}
-	contextCmd.AddCommand(&cobra.Command{Use: "inspect SESSION", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	inspect := &cobra.Command{Use: "inspect SESSION", Args: cobra.ExactArgs(1), Short: "Show metadata of the latest model request; never prompt text or tool arguments", RunE: func(cmd *cobra.Command, args []string) error {
 		store, err := workflowStore(cmd)
 		if err != nil {
 			return err
@@ -19,11 +20,16 @@ func init() {
 		if err != nil {
 			return err
 		}
+		if summary, _ := cmd.Flags().GetBool("summary"); summary {
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(engineering.SummarizeContext(manifest))
+		}
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(struct {
 			Manifest    any `json:"manifest"`
 			Preferences any `json:"preferences"`
 		}{manifest, prefs})
-	}})
+	}}
+	inspect.Flags().Bool("summary", false, "Print a per-component size breakdown and the largest tool definitions")
+	contextCmd.AddCommand(inspect)
 	for _, action := range []string{"pin", "unpin", "exclude", "include"} {
 		contextCmd.AddCommand(&cobra.Command{Use: action + " SESSION VALUE", Args: cobra.ExactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := workflowStore(cmd)

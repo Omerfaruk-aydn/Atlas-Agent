@@ -2,7 +2,8 @@ $ErrorActionPreference = 'Stop'
 try {
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
-$p = [Console]::In.ReadToEnd() | ConvertFrom-Json
+# The persistent worker sets $AtlasRequest; the one-shot path reads stdin.
+$p = if ($null -ne $AtlasRequest) { $AtlasRequest } else { [Console]::In.ReadToEnd() | ConvertFrom-Json }
 function Out-Result($value) { ConvertTo-Json -InputObject $value -Depth 8 -Compress | Write-Output }
 if ($p.action -eq 'launch_app') {
     if (!$p.name) { throw 'Explicit installed application name required' }
@@ -27,14 +28,14 @@ if ($p.action -eq 'launch_app') {
     # ASCII identity validation must not depend on Turkish I/i case folding.
     if ($appId -cnotmatch '^[A-Za-z0-9_.!{}\\:-]+$') { throw 'Unsupported application identifier; use an explicit approved launcher' }
     Start-Process -FilePath (Join-Path $env:WINDIR 'explorer.exe') -ArgumentList @('shell:AppsFolder\' + $appId)
-    Out-Result @{launch_requested=$true;application=$apps[0].Name;application_id=$appId;verify_required=$true}; exit
+    Out-Result @{launch_requested=$true;application=$apps[0].Name;application_id=$appId;verify_required=$true}; return
 }
 if ($p.action -eq 'monitors') {
     Add-Type -AssemblyName System.Windows.Forms
     Out-Result @( [System.Windows.Forms.Screen]::AllScreens | ForEach-Object {
         @{name=$_.DeviceName;primary=$_.Primary;x=$_.Bounds.X;y=$_.Bounds.Y;width=$_.Bounds.Width;height=$_.Bounds.Height}
     })
-    exit
+    return
 }
 if ($p.action -eq 'ocr') {
     Add-Type -AssemblyName System.Runtime.WindowsRuntime
@@ -82,7 +83,7 @@ if ($p.action -eq 'ocr') {
             Out-Result @{text=$result.Text;matches=$matches;match_count=$matches.Count;unique_match=($matches.Count -eq 1);lines=@($result.Lines | Select-Object -First 200 | ForEach-Object { @{text=$_.Text;words=@($_.Words | ForEach-Object { @{text=$_.Text;x=$_.BoundingRect.X;y=$_.BoundingRect.Y;width=$_.BoundingRect.Width;height=$_.BoundingRect.Height} })} })}
         } finally { $bitmap.Dispose() }
     } finally { $stream.Dispose() }
-    exit
+    return
 }
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -182,10 +183,40 @@ function Get-ExplorerLocation($root, $shellWindows = $null) {
         return $found
     } catch { return $null }
 }
+function Get-ExplorerItemFileName($root, $element) {
+    # A UIA ListItem name is a display label: Explorer can hide the extension.
+    # The real leaf name comes from the shell view of this exact window. The
+    # display name must match exactly one file-system item of the verified
+    # current folder; otherwise nothing is claimed.
+    try {
+        $current = $root.Current
+        $display = [string]$element.Current.Name
+        if ($current.ClassName -cne 'CabinetWClass' -or $display.Length -eq 0) { return $null }
+        if ($element.Current.ControlType.ProgrammaticName -cne 'ControlType.ListItem') { return $null }
+        $shellWindows = (New-Object -ComObject Shell.Application).Windows()
+        $location = Get-ExplorerLocation $root $shellWindows
+        if ($null -eq $location) { return $null }
+        foreach ($candidate in $shellWindows) {
+            if ([long]$candidate.HWND -ne [long]$current.NativeWindowHandle) { continue }
+            $items = $candidate.Document.Folder.Items()
+            if ($items.Count -gt 5000) { return $null }
+            $found = @()
+            foreach ($item in $items) {
+                if ([string]::Equals([string]$item.Name,$display,[StringComparison]::Ordinal)) { $found += $item }
+            }
+            if ($found.Count -ne 1 -or !$found[0].IsFileSystem) { return $null }
+            $path = [string]$found[0].Path
+            $parent = [System.IO.Path]::GetDirectoryName($path)
+            if (![string]::Equals($parent,[string]$location.path,[StringComparison]::OrdinalIgnoreCase)) { return $null }
+            return @{leaf=[System.IO.Path]::GetFileName($path);folder=[string]$location.path;display=$display}
+        }
+    } catch { }
+    return $null
+}
 if ($p.action -eq 'windows') {
     $root = [System.Windows.Automation.AutomationElement]::RootElement
     $children = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
-    Out-Result @($children | ForEach-Object { Describe $_ }); exit
+    Out-Result @($children | ForEach-Object { Describe $_ }); return
 }
 if ($p.window_id -notmatch '^\d+$') { throw 'Explicit numeric window_id required' }
 $window = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]::new([long]$p.window_id))
@@ -218,13 +249,13 @@ if ($p.action -eq 'inspect') {
     $focusedDescription = $null
     try { $focusedDescription = Describe-Focused $window ([System.Windows.Automation.AutomationElement]::FocusedElement) ([System.Windows.Automation.TreeWalker]::RawViewWalker) } catch { }
     $explorerLocation = Get-ExplorerLocation $window
-    Out-Result @{window_id=$p.window_id;truncated=$truncated;scanned_count=$elements.Count;elements=@($elements | ForEach-Object { Describe $_ });focused_element=$focusedDescription;explorer_location=$explorerLocation}; exit
+    Out-Result @{window_id=$p.window_id;truncated=$truncated;scanned_count=$elements.Count;elements=@($elements | ForEach-Object { Describe $_ });focused_element=$focusedDescription;explorer_location=$explorerLocation}; return
 }
 if (!$p.element_id -and !$p.name -and !$p.role) { throw 'Element identity, name or role required' }
 $matches = @($elements | Where-Object { (!$p.element_id -or ($_.GetRuntimeId() -join ':') -eq $p.element_id) -and (!$p.name -or $_.Current.Name -eq $p.name) -and (!$p.role -or $_.Current.ControlType.ProgrammaticName -eq $p.role) })
-if ($p.action -eq 'find') { Out-Result @{count=$matches.Count;truncated=$truncated;scanned_count=$elements.Count;matches=@($matches | ForEach-Object { Describe $_ })}; exit }
+if ($p.action -eq 'find') { Out-Result @{count=$matches.Count;truncated=$truncated;scanned_count=$elements.Count;matches=@($matches | ForEach-Object { Describe $_ })}; return }
 if ($truncated -and !($p.element_id -and $matches.Count -eq 1)) { throw 'Observation incomplete; resolve a unique runtime element_id with inspect/find or use a crop' }
-if ($p.action -eq 'assert' -and $p.condition -eq 'hidden') { $hidden = ($matches.Count -eq 0 -or @($matches | Where-Object { !$_.Current.IsOffscreen }).Count -eq 0); Out-Result @{passed=$hidden;actual=$hidden;condition='hidden';window_id=$p.window_id}; exit }
+if ($p.action -eq 'assert' -and $p.condition -eq 'hidden') { $hidden = ($matches.Count -eq 0 -or @($matches | Where-Object { !$_.Current.IsOffscreen }).Count -eq 0); Out-Result @{passed=$hidden;actual=$hidden;condition='hidden';window_id=$p.window_id}; return }
 if ($p.action -eq 'assert') {
     # Hidden duplicates cannot satisfy a visible control assertion.
     $matches = @($matches | Where-Object { !$_.Current.IsOffscreen })
@@ -233,7 +264,7 @@ if ($p.action -eq 'assert') {
     if ($matches.Count -gt 0 -and $actionable.Count -eq 0) { throw 'Target is disabled or offscreen' }
     $matches = $actionable
 }
-if ($p.action -eq 'assert' -and $matches.Count -eq 0) { Out-Result @{passed=$false;reason='target_missing'}; exit }
+if ($p.action -eq 'assert' -and $matches.Count -eq 0) { Out-Result @{passed=$false;reason='target_missing'}; return }
 if ($matches.Count -eq 0) { throw 'Target missing' }
 if ($matches.Count -gt 1) { throw 'Target ambiguous' }
 $element = $matches[0]
@@ -247,14 +278,16 @@ if ($p.action -eq 'assert') {
         'value' { if ($element.Current.IsPassword) { throw 'Password inspection prohibited' }; $pattern = $null; if (!$element.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) { throw 'Pattern unavailable: Value; use observed visual input instead' }; $actual = [string]$pattern.Current.Value; $passed = [string]::Equals($actual,[string]$p.expected,[StringComparison]::Ordinal) }
         'document_text' { if ($element.Current.IsPassword) { throw 'Password inspection prohibited' }; $pattern = $null; if (!$element.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern, [ref]$pattern)) { throw 'Pattern unavailable: Text; use observed visual input instead' }; $actual = [string]$pattern.DocumentRange.GetText(4097); $passed = $actual.Length -le 4096 -and [string]::Equals($actual,[string]$p.expected,[StringComparison]::Ordinal) }
         'keyboard_focused' { $actual = $element.Current.HasKeyboardFocus; $passed = $actual }
+        'file_name' { $file = Get-ExplorerItemFileName $window $element; if ($null -eq $file) { throw 'File name unavailable: the item is not one uniquely resolved file-system item of this Explorer folder view; no name is claimed' }; $actual = [string]$file.leaf; $folderPath = [string]$file.folder; $passed = [string]::Equals($actual,[string]$p.expected,[StringComparison]::Ordinal) }
         default { throw 'Unsupported assertion condition' }
     }
     $actualTruncated = $actual -is [string] -and $actual.Length -gt 4096
     if ($actualTruncated) { $actual = $actual.Substring(0,4096) }
-    Out-Result @{passed=$passed;actual=$actual;actual_truncated=$actualTruncated;condition=$p.condition;window_id=$p.window_id}; exit
+    if ($p.condition -eq 'file_name') { Out-Result @{passed=$passed;actual=$actual;actual_truncated=$actualTruncated;condition=$p.condition;window_id=$p.window_id;folder_path=$folderPath;source='shell_view_item'}; return }
+    Out-Result @{passed=$passed;actual=$actual;actual_truncated=$actualTruncated;condition=$p.condition;window_id=$p.window_id}; return
 }
 if (!$element.Current.IsEnabled -or $element.Current.IsOffscreen) { throw 'Target is disabled or offscreen' }
-if ($p.action -eq 'select') { Out-Result (Select-VerifiedItem $element); exit }
+if ($p.action -eq 'select') { Out-Result (Select-VerifiedItem $element); return }
 if ($p.action -eq 'invoke') {
     $pattern = $null
     if (!$element.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
@@ -264,7 +297,7 @@ if ($p.action -eq 'invoke') {
         if ($roleName -eq 'ControlType.Window') { $hint = 'a window root is activated with the focus action, not invoked; target a child control instead' }
         throw ('Pattern unavailable: Invoke on ' + $roleName + ' (supported patterns: ' + ($have -join ', ') + '); no click or key was sent; ' + $hint)
     }
-    $pattern.Invoke(); Out-Result @{action_sent=$true;verify_required=$true}; exit
+    $pattern.Invoke(); Out-Result @{action_sent=$true;verify_required=$true}; return
 }
 if ($p.action -eq 'set_value') {
     if ($p.focus) {
@@ -285,7 +318,7 @@ if ($p.action -eq 'set_value') {
         } while ($true)
         if (!$verified) { throw 'Value not applied; the provider accepted the call but readback differs. Observe the field and use focused keyboard input; do not submit or retry the same pattern blindly.' }
     }
-    Out-Result @{action_sent=$true;verify_required=$true;value_verified=$verified;keyboard_focused=$element.Current.HasKeyboardFocus;element_id=($element.GetRuntimeId() -join ':');submission_required=$true}; exit
+    Out-Result @{action_sent=$true;verify_required=$true;value_verified=$verified;keyboard_focused=$element.Current.HasKeyboardFocus;element_id=($element.GetRuntimeId() -join ':');submission_required=$true}; return
 }
 throw 'Unsupported automation action'
 } catch {

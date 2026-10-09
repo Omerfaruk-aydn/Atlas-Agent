@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Async fields</title>
+<style>label{display:block;margin-top:6px}</style></head>
+<body>
+<section aria-label="Async">
+  <label for="rejected">Rejected</label><input id="rejected" value="old">
+  <label for="delayed">Delayed</label><input id="delayed" value="old">
+  <label for="remount">Remount</label><span id="remount-slot"><input id="remount" value="1"></span>
+  <label id="reuse-label" for="reuse">Reuse</label><input id="reuse" value="10">
+  <label for="flutter">Flutter</label><input id="flutter" value="a">
+  <label for="busyfield">Busy field</label><input id="busyfield" value="x">
+  <label for="fast">Fast</label><input id="fast" value="">
+  <label for="tags">Tags</label><input id="tags" value="a,b">
+  <label for="phrase">Phrase</label><input id="phrase" value="hello world">
+  <label for="spacing">Spacing</label><input id="spacing" value="100%">
+  <label for="code">Code</label><input id="code" value="secreta">
+  <label for="size">Size</label>
+  <select id="size"><option value="s">Small</option><option value="l">Large</option></select>
+</section>
+<script>
+window.state = {rejected: 'old', delayed: 'old', remount: '1', reuse: '10'};
+// Accepted at first, then rejected by a server round trip 800 ms later.
+const rejected = document.getElementById('rejected');
+rejected.addEventListener('change', () => {
+  setTimeout(() => { rejected.value = state.rejected; }, 800);
+});
+// Cleared while processing, then the accepted value arrives 700 ms later.
+const delayed = document.getElementById('delayed');
+delayed.addEventListener('change', () => {
+  const v = delayed.value;
+  delayed.value = '';
+  setTimeout(() => { state.delayed = v; delayed.value = v; }, 700);
+});
+// Enter commits; the application replaces the node 300 ms later.
+function bindRemount(input) {
+  input.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const v = input.value;
+    setTimeout(() => {
+      state.remount = v;
+      const fresh = document.createElement('input');
+      fresh.id = 'remount'; fresh.value = v;
+      input.replaceWith(fresh); bindRemount(fresh);
+    }, 300);
+  });
+}
+bindRemount(document.getElementById('remount'));
+// After the commit the same node is reused for another property.
+const reuse = document.getElementById('reuse');
+reuse.addEventListener('change', () => {
+  setTimeout(() => {
+    document.getElementById('reuse-label').textContent = 'Rotation';
+    reuse.value = '45';
+  }, 200);
+});
+// The value never settles.
+const flutter = document.getElementById('flutter');
+flutter.addEventListener('change', () => {
+  let n = 0;
+  const id = setInterval(() => { flutter.value = (n++ % 2) ? 'a' : 'b'; if (n > 200) clearInterval(id); }, 90);
+});
+// aria-busy for 600 ms, then the value is accepted.
+const busyfield = document.getElementById('busyfield');
+busyfield.addEventListener('change', () => {
+  busyfield.setAttribute('aria-busy', 'true');
+  setTimeout(() => busyfield.removeAttribute('aria-busy'), 600);
+});
+</script>
+</body>
+</html>

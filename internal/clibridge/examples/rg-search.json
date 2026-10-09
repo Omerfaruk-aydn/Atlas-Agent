@@ -1,0 +1,68 @@
+{
+  "kind": "atlas.cli-bridge.profile",
+  "version": 1,
+  "id": "rg-search",
+  "description": "Read-only text search in the project with ripgrep. Ignores user ripgrep config files; writes nothing.",
+  "executable": {
+    "name": "rg"
+  },
+  "operations": [
+    {
+      "id": "search",
+      "description": "List matching lines with line numbers. Exit 1 means no match and is an expected result.",
+      "args": [
+        "--no-config",
+        "--line-number",
+        "--color",
+        "never",
+        "--max-count",
+        "{max_count}",
+        "{fixed}",
+        "{glob}",
+        "--regexp",
+        "{pattern}",
+        "--",
+        "."
+      ],
+      "params": [
+        {
+          "name": "pattern",
+          "type": "string",
+          "description": "Regular expression (or literal text with fixed=true). Passed after --regexp, so a leading dash is safe.",
+          "required": true,
+          "min_length": 1,
+          "max_length": 256,
+          "allow_leading_dash": true
+        },
+        {
+          "name": "fixed",
+          "type": "boolean",
+          "description": "Treat pattern as literal text.",
+          "flag": "--fixed-strings",
+          "default": false
+        },
+        {
+          "name": "glob",
+          "type": "list",
+          "description": "Include/exclude globs such as *.go or !vendor/**; each item becomes --glob ITEM.",
+          "flag": "--glob",
+          "item_type": "string",
+          "max_items": 8,
+          "max_length": 128,
+          "allow_leading_dash": false
+        },
+        {
+          "name": "max_count",
+          "type": "integer",
+          "description": "Maximum matches per file.",
+          "min": 1,
+          "max": 1000,
+          "default": 50
+        }
+      ],
+      "timeout_seconds": 60,
+      "max_output_bytes": 65536,
+      "expected_exit_codes": [0, 1]
+    }
+  ]
+}

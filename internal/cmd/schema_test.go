@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -9,6 +10,22 @@ import (
 	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPublishedSchemaIncludesCurrentDeviceSettings(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("../../schema.json")
+	require.NoError(t, err)
+	var published, current map[string]any
+	require.NoError(t, json.Unmarshal(data, &published))
+	data, err = json.Marshal(new(jsonschema.Reflector).Reflect(&config.Config{}))
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(data, &current))
+	want := current["$defs"].(map[string]any)
+	got := published["$defs"].(map[string]any)
+	for _, name := range []string{"Tools", "ToolDevices"} {
+		require.Equal(t, want[name], got[name], "published %s schema drifted from configuration", name)
+	}
+}
 
 func TestSchemaNoBrokenRefs(t *testing.T) {
 	t.Parallel()

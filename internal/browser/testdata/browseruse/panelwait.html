@@ -1,0 +1,40 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Panel targeting fixture</title>
+<style>
+body{margin:0;font:13px sans-serif}
+#left{position:fixed;left:0;top:0;width:240px;bottom:0;border-right:1px solid #ccc}
+#right{position:fixed;right:0;top:0;width:240px;bottom:0;border-left:1px solid #ccc}
+#shield{position:fixed;left:0;top:0;width:240px;height:60px;background:rgba(0,0,0,.05)}
+label{display:flex;gap:4px;align-items:center}
+.icon{width:12px;height:12px;background:#999;display:inline-block}
+</style></head>
+<body>
+<!--
+Targeting mechanics from session 14b5c83a, not Figma itself:
+- Panel number fields are inputs wrapped in a <label> that has an aria-label
+  and no text (an icon), so the field has no textual label.
+- Containers are reported as `region "Left sidebar"` / `toolbar "Editor"`.
+- The Main menu button sits under a transparent role=none layer (#shield)
+  that stays until it is clicked away.
+-->
+<aside id="left" role="region" aria-label="Left sidebar">
+  <div role="toolbar" aria-label="Navigation Bar"><button id="menu" aria-label="Main menu">☰</button></div>
+</aside>
+<div id="shield" role="none"></div>
+<aside id="right" role="region" aria-label="Right sidebar">
+  <div role="group" aria-label="Auto layout">
+    <label aria-label="Left padding"><span class="icon"></span><input id="pad-l" value="69"></label>
+    <label aria-label="Right padding"><span class="icon"></span><input id="pad-r" value="69"></label>
+  </div>
+  <div role="toolbar" aria-label="Editor"><div role="group" aria-label="Text"><button aria-label="Text">T</button></div></div>
+</aside>
+<script>
+window.model = {padL: 69, padR: 69, menu: 0};
+for (const [id, key] of [['pad-l', 'padL'], ['pad-r', 'padR']]) {
+  const input = document.getElementById(id);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') setTimeout(() => { model[key] = Number(input.value); }, 30); });
+}
+document.getElementById('menu').addEventListener('click', () => model.menu++);
+document.getElementById('shield').addEventListener('click', e => e.currentTarget.remove());
+</script>
+</body></html>

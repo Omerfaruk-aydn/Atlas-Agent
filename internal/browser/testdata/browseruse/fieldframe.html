@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Frame</title></head>
+<body>
+<label for="title">Title</label><input id="title" value="">
+<label for="mode">Mode</label>
+<select id="mode"><option value="f">Fast</option><option value="s">Slow</option></select>
+<label for="tracked">Tracked</label><input id="tracked" value="">
+<div style="margin-top:8px">
+  <div id="shape" role="combobox" tabindex="0" aria-label="Shape" aria-expanded="false" style="display:inline-block;border:1px solid #888;padding:2px 8px">Circle</div>
+  <span id="shapes" role="listbox" hidden>
+    <span role="option" tabindex="-1">Circle</span>
+    <span role="option" tabindex="-1">Square</span>
+  </span>
+</div>
+<div id="host"></div>
+<script>
+// A custom combobox: choosing needs real clicks at the option's position,
+// which inside a frame must include the frame's offset.
+const shape = document.getElementById('shape'), shapes = document.getElementById('shapes');
+shape.addEventListener('click', () => { shapes.hidden = !shapes.hidden; shape.setAttribute('aria-expanded', String(!shapes.hidden)); });
+for (const o of shapes.children) o.addEventListener('click', () => { shape.textContent = o.textContent; shapes.hidden = true; shape.setAttribute('aria-expanded', 'false'); });
+const params = new URLSearchParams(location.search);
+const name = params.get('name') || '?';
+document.getElementById('title').value = 'frame ' + name;
+window.appState = {tracked: '', changes: 0};
+// A React-style controlled input: the application keeps the last value it
+// rendered on an own property of the element, ignores input events that do
+// not change it, and re-renders its own state when focus leaves.
+const tracked = document.getElementById('tracked');
+const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+let lastRendered = '';
+Object.defineProperty(tracked, 'value', {configurable: true,
+  get() { return proto.get.call(this); },
+  set(v) { lastRendered = String(v); proto.set.call(this, v); }});
+tracked.addEventListener('input', () => {
+  const v = proto.get.call(tracked);
+  if (v === lastRendered) return;
+  lastRendered = v; appState.tracked = v; appState.changes++;
+});
+tracked.addEventListener('blur', () => { tracked.value = appState.tracked; });
+const root = document.getElementById('host').attachShadow({mode: 'open'});
+root.innerHTML = '<label for="note">Shadow note</label><input id="note" value="">';
+if (params.get('nest')) {
+  const f = document.createElement('iframe');
+  f.title = 'Inner'; f.src = 'fieldframe.html?name=inner';
+  f.style.cssText = 'width:600px;height:130px';
+  document.body.appendChild(f);
+}
+</script>
+</body>
+</html>

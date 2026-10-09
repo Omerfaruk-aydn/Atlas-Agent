@@ -56,6 +56,18 @@ func TestSnapshotElementCarriesRect(t *testing.T) {
 	require.Equal(t, 45.0, y)
 }
 
+func TestScreenshotGrantsOnlyDrawnReferences(t *testing.T) {
+	t.Parallel()
+	elements := []SnapshotElement{
+		{Ref: "visible", Role: "button", Name: "Save", Rect: ElementRect{X: 10, Y: 30, Width: 40, Height: 20}},
+		{Ref: "outside", Role: "button", Name: "Hidden", Rect: ElementRect{X: 500, Y: 30, Width: 40, Height: 20}},
+		{Ref: "empty", Role: "button", Name: "Empty"},
+	}
+	_, refs, err := annotateScreenshotPNG(solidPNG(t, 200, 100), elements, 1, 0)
+	require.NoError(t, err)
+	require.Equal(t, map[string]RefIdentity{"visible": {Role: "button", Name: "Save"}}, refs)
+}
+
 func TestAnnotateDrawsBoxAndLabel(t *testing.T) {
 	t.Parallel()
 	els := []SnapshotElement{{

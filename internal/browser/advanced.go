@@ -44,6 +44,54 @@ type Request struct {
 	Width          float64   `json:"width,omitempty"`
 	Height         float64   `json:"height,omitempty"`
 	NewerThan      time.Time `json:"newer_than,omitempty"`
+	// Pointer and keyboard input for canvas-grade pages. Coordinates are
+	// pixels of the screenshot that issued ViewportID.
+	ViewportID string   `json:"viewport_id,omitempty" description:"For pointer_*: viewport_id from the latest browser screenshot. Scroll, zoom, resize, tab change or navigation invalidates it."`
+	ToX        float64  `json:"to_x,omitempty" description:"For pointer_drag: end x in screenshot pixels."`
+	ToY        float64  `json:"to_y,omitempty" description:"For pointer_drag: end y in screenshot pixels."`
+	Button     string   `json:"button,omitempty" description:"For pointer_click/pointer_drag: left (default), right or middle."`
+	ClickCount int      `json:"click_count,omitempty" description:"For pointer_click: 1 (default), 2 for double click, 3 for triple click."`
+	Modifiers  []string `json:"modifiers,omitempty" description:"Held during pointer_* or key_combo: alt, ctrl, meta, shift."`
+	Steps      int      `json:"steps,omitempty" description:"For pointer_drag: intermediate moves, 1-100 (default 12)."`
+	HoldMS     int      `json:"hold_ms,omitempty" description:"For pointer_click/pointer_drag: press duration before release or movement, 0-5000."`
+	Key        string   `json:"key,omitempty" description:"For key_combo: a letter, digit, punctuation or named key such as enter, escape, delete, space, arrowleft, f2."`
+	// Field, form and target-context parameters.
+	Within     string `json:"within,omitempty" description:"Scope the target to the one visible container (dialog, panel, card, form, region) whose accessible name or heading contains this text, e.g. \"Share\" or \"Computer\"."`
+	WithinRole string `json:"within_role,omitempty" description:"Optional role/tag narrowing within, e.g. dialog, region, article."`
+	Value      string `json:"value,omitempty" description:"For set_field/select_option: the value or option to apply. Required; an empty string clears the field (same as mode clear)."`
+	// ValueSet records that the JSON carried value, so "" (clear) and a
+	// missing value stay distinct. Atlas sets it when decoding.
+	ValueSet bool   `json:"-"`
+	Mode     string `json:"mode,omitempty" description:"For set_field: replace (default), append, clear or replace_selection. For observe: full, delta (default) or scope."`
+	Commit   string `json:"commit,omitempty" description:"For set_field: auto (default; chosen per field kind), enter, tab, blur or none."`
+	SettleMS int    `json:"settle_ms,omitempty" description:"For set_field and select_option: observation window after the commit, 0-5000 ms (default 300). The value must hold through the whole window (and 250 ms after its last change) to count as applied; raise it for applications that confirm or reject a value asynchronously."`
+	// LearnedCommit is filled by Atlas from verified history, never by the model.
+	LearnedCommit string      `json:"-"`
+	Fields        []FormField `json:"fields,omitempty" description:"For fill_form: fields to set in order, each with its own target and value."`
+	OnlyInvalid   bool        `json:"only_invalid,omitempty" description:"For fill_form: skip fields that already hold their value and pass validation; fix only the rest."`
+	URLs          []string    `json:"urls,omitempty" description:"For research: 1-8 HTTP(S) pages to read in parallel background tabs."`
+	Purpose       string      `json:"purpose,omitempty" description:"For tab_new: why the tab exists, recorded with it (e.g. \"checkout\")."`
+	RowSelector   string      `json:"row_selector,omitempty" description:"For collect: CSS selector matching one row/item."`
+	RowKey        string      `json:"row_key,omitempty" description:"For collect: attribute that identifies a row (default data-id, data-key, aria-rowindex or id)."`
+	NextSelector  string      `json:"next_selector,omitempty" description:"For collect: unique pagination control clicked when the list end is reached."`
+	MaxItems      int         `json:"max_items,omitempty" description:"For collect: stop after this many unique rows (1-2000, default 500)."`
+	MaxScrolls    int         `json:"max_scrolls,omitempty" description:"For collect: bound on scroll steps (1-200, default 40)."`
+	Cursor        int         `json:"cursor,omitempty" description:"For observe: element offset to continue a truncated list. For collect: scroll offset to resume from."`
+	AllowResubmit bool        `json:"allow_resubmit,omitempty" description:"For submit: permit repeating an identical submission. Only after verifying the first one was not accepted."`
+}
+
+// FormField is one entry of a fill_form request.
+type FormField struct {
+	Selector string `json:"selector,omitempty"`
+	Ref      string `json:"ref,omitempty"`
+	Role     string `json:"role,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Label    string `json:"label,omitempty"`
+	Within   string `json:"within,omitempty"`
+	Value    string `json:"value"`
+	Commit   string `json:"commit,omitempty"`
+	Kind     string `json:"kind,omitempty" description:"field (default) or option for selects and custom comboboxes."`
+	FrameID  string `json:"frame_id,omitempty" description:"Frame of this field when it differs from the form's frame_id."`
 }
 
 // AdvancedSession is optional so lightweight and mock drivers remain usable.
@@ -71,6 +119,11 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 	if len(p.Scope) > 4096 || len(p.ExpectedOrigin) > 2048 || len(p.Selector) > 4096 || len(p.Name) > 4096 || len(p.Label) > 4096 || len(p.Expected) > 16384 || len(p.Text) > 1024*1024 || len(p.Paths) > 32 {
 		return nil, nil, errors.New("advanced action parameters exceed limits")
 	}
+	if p.Action == "semantic_click" || p.Action == "semantic_type" {
+		if err := s.recoverInput(parent); err != nil {
+			return nil, nil, err
+		}
+	}
 	switch p.Action {
 	case "capture_region", "find", "assert", "text", "html", "accessibility", "inspect", "frames", "read", "snapshot":
 		restore, err := s.suspendActivity()
@@ -93,7 +146,19 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 	if p.TimeoutMS > 0 {
 		timeout = time.Duration(p.TimeoutMS) * time.Millisecond
 	}
-	ctx, cancel := context.WithTimeout(s.currentContext(), timeout)
+	base := s.currentContext()
+	if s.tabClosed() {
+		// The selected tab closed (a popup that closed itself). Tab
+		// inventory and selection still work through the browser; page
+		// actions report tab_closed instead of a disconnected browser.
+		switch p.Action {
+		case "tabs", "tab_select", "tab_return", "tab_new", "popup_wait":
+			base = s.rootCtx
+		default:
+			return nil, nil, ErrTabClosed
+		}
+	}
+	ctx, cancel := context.WithTimeout(base, timeout)
 	defer cancel()
 	stop := context.AfterFunc(parent, cancel)
 	defer stop()
@@ -128,7 +193,30 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 			}
 		}
 		s.rememberBrowserTabs(pages)
-		return finish(map[string]any{"tabs": pages, "active_tab": string(chromedp.FromContext(s.currentContext()).Target.TargetID)}, nil)
+		s.annotateTabs(pages)
+		active := s.ActiveTab()
+		if s.currentTabGone() {
+			active = ""
+		}
+		return finish(map[string]any{"tabs": pages, "active_tab": active}, nil)
+	case "tab_return":
+		s.ensureSessionTab()
+		id, err := s.returnTab(s.ActiveTab())
+		if err != nil {
+			return nil, nil, err
+		}
+		s.mu.Lock()
+		if s.observedTabs == nil {
+			s.observedTabs = map[string]bool{}
+		}
+		s.observedTabs[id] = true
+		s.mu.Unlock()
+		p.Action, p.TabID = "tab_select", id
+		data, image, err := s.Advanced(parent, p)
+		if err != nil {
+			return nil, nil, fmt.Errorf("tab_return to %s failed: %w", id, err)
+		}
+		return data, image, nil
 	case "tab_new", "tab_select", "tab_close":
 		if p.Action != "tab_new" {
 			if err := s.validateObservedTab(ctx, p.TabID); err != nil {
@@ -139,10 +227,17 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 			if p.TabID == "" {
 				return nil, nil, errors.New("tab_id is required")
 			}
-			if p.TabID == string(chromedp.FromContext(s.currentContext()).Target.TargetID) {
+			if p.TabID == s.ActiveTab() && !s.currentTabGone() {
 				return nil, nil, errors.New("select another tab before closing the active tab")
 			}
 			v, err := s.command(ctx, "Target.closeTarget", map[string]any{"targetId": p.TabID}, true)
+			if err == nil {
+				s.mu.Lock()
+				if rec := s.tabRecords[p.TabID]; rec != nil {
+					rec.Closed = true
+				}
+				s.mu.Unlock()
+			}
 			return finish(v, err)
 		}
 		id := p.TabID
@@ -168,6 +263,7 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 			closeTab()
 			return nil, nil, fmt.Errorf("attach browser tab: %w", err)
 		}
+		previous := s.ActiveTab()
 		// A document indicator belongs to its old tab. Remove it before
 		// switching so cancellation cannot leave it running in the background.
 		if s.activityNative == nil {
@@ -181,6 +277,10 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 		s.requestTrackingIncomplete = false
 		s.mu.Unlock()
 		id = string(chromedp.FromContext(next).Target.TargetID)
+		s.ensureSessionTab()
+		if p.Action == "tab_new" {
+			s.recordTab(TabRecord{ID: id, Opener: previous, CreatedBy: "tab_new", Owned: true, Purpose: p.Purpose})
+		}
 		s.mu.Lock()
 		if s.observedTabs == nil {
 			s.observedTabs = map[string]bool{}
@@ -197,6 +297,11 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 			return nil, nil, err
 		}
 		_, err = s.RawCDP("Page.enable", map[string]any{})
+		if err == nil {
+			// Attaching a target does not activate its tab. Background tabs
+			// can suspend animation frames used to verify stable click targets.
+			_, err = s.command(next, "Page.bringToFront", map[string]any{}, false)
+		}
 		if err == nil && s.activityNative != nil && p.Action == "tab_select" {
 			err = s.activityCleanup(activityRemove)
 		}
@@ -340,7 +445,9 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 		return nil, nil, errors.New("a selector or semantic target is required")
 	}
 	encoded, _ := json.Marshal(p)
-	script := strings.ReplaceAll(semanticScript, "__PARAMS__", string(encoded))
+	script := strings.Replace(strings.Replace(semanticScript, "__TARGET_LIB__", targetLibScript, 1), "__PARAMS__", string(encoded), 1)
+	var last map[string]any
+	waits := newResolutionWaits(time.Now(), p)
 	for {
 		if err := s.guardBrowserDocument(ctx, p); err != nil {
 			return nil, nil, err
@@ -357,10 +464,12 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 			}
 			continue
 		}
+		last = v
 		reason, _ := v["reason"].(string)
 		scopeCount, _ := v["count"].(float64)
-		if reason == "target_scan_limit" || (reason == "scope_not_unique" && scopeCount > 1) || reason == "password inspection prohibited" {
-			return nil, nil, fmt.Errorf("target_resolution_failed: %s; refine the target or scope", reason)
+		if reason == "target_scan_limit" || (reason == "scope_not_unique" && scopeCount > 1) || reason == "password inspection prohibited" || (reason == "within_not_unique" && scopeCount > 1) {
+			candidates, _ := json.Marshal(v["candidates"])
+			return nil, nil, fmt.Errorf("target_resolution_failed: %s; refine the target or scope %s", reason, candidates)
 		}
 		if p.Action == "find" {
 			if tree, err := s.command(ctx, "Page.getFrameTree", map[string]any{}, false); err == nil {
@@ -397,7 +506,7 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 				if err == nil {
 					presentPointer(m, id, "click", x+dx, y+dy)
 				}
-				return finish(map[string]any{"action_sent": err == nil, "verify_required": true}, err)
+				return finish(map[string]any{"action_sent": err == nil, "verify_required": true, "target": v["target"]}, err)
 			}
 			if err := s.guardBrowserDocument(ctx, p); err != nil {
 				return nil, nil, err
@@ -410,14 +519,18 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 				return nil, nil, errors.New("target_changed_before_dispatch: no text was sent")
 			}
 			_, err = s.command(ctx, "Input.insertText", map[string]any{"text": p.Text}, false)
-			return finish(map[string]any{"action_sent": err == nil, "verify_required": true}, err)
+			return finish(map[string]any{"action_sent": err == nil, "verify_required": true, "committed": false, "target": v["target"], "next": "Text was inserted but not committed. Use set_field for fields whose value must be applied and read back."}, err)
 		}
 		if count, _ := v["count"].(float64); count > 1 && p.Condition != "hidden" && p.Condition != "count" {
-			return nil, nil, errors.New("ambiguous_target: refine role, name, label or selector")
+			candidates, _ := json.Marshal(v["candidates"])
+			return nil, nil, fmt.Errorf("ambiguous_target: %d visible matches %s; refine with within, scope, role, name or label. Nothing was dispatched", int(count), candidates)
+		}
+		if err := waits.check(time.Now(), v); err != nil {
+			return nil, nil, err
 		}
 		select {
 		case <-ctx.Done():
-			return nil, nil, fmt.Errorf("condition_timeout: expected state not reached: %w", ctx.Err())
+			return nil, nil, fmt.Errorf("condition_timeout: expected %s not reached; last observed %s: %w", describeWait(p), describeLastState(last), ctx.Err())
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
@@ -425,10 +538,58 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 
 func validCondition(c string) bool {
 	switch c {
-	case "visible", "hidden", "text", "value", "enabled", "url", "title", "checked", "selected", "count":
+	case "visible", "hidden", "text", "value", "enabled", "url", "title", "checked", "selected", "count", "text_contains", "value_not", "not_busy":
 		return true
 	}
 	return false
+}
+
+// describeWait names what a wait or assertion was looking for, so a
+// timeout says which condition failed rather than only that time ran out.
+func describeWait(p Request) string {
+	target := p.Selector
+	if target == "" {
+		target = strings.TrimSpace(strings.Join([]string{p.Role, quoteIf(p.Name), quoteIf(p.Label)}, " "))
+	}
+	if p.Within != "" {
+		target += " within " + quoteIf(p.Within)
+	}
+	condition := p.Condition
+	if condition == "" {
+		condition = p.Action
+	}
+	if p.Expected != "" {
+		condition += "=" + quoteIf(p.Expected)
+	}
+	if target == "" {
+		return condition
+	}
+	return condition + " of " + target
+}
+
+func quoteIf(s string) string {
+	if s == "" {
+		return ""
+	}
+	return fmt.Sprintf("%q", s)
+}
+
+// describeLastState summarizes the final poll of a wait for its error.
+func describeLastState(v map[string]any) string {
+	if v == nil {
+		return "nothing (page not evaluable)"
+	}
+	keep := map[string]any{}
+	for _, key := range []string{"count", "actual", "blocker", "reason", "target", "candidates"} {
+		if value, ok := v[key]; ok && value != nil && value != "" {
+			keep[key] = value
+		}
+	}
+	data, _ := json.Marshal(keep)
+	if len(data) > 600 {
+		data = append(data[:600], []byte("...")...)
+	}
+	return string(data)
 }
 
 // Semantic observations cross open shadow roots and never emit password values.
@@ -462,11 +623,11 @@ func (s *chromedpSession) frameOffset(ctx context.Context, id string) (float64, 
 	if _, ok := parents[id]; !ok {
 		return 0, 0, errors.New("target_missing: frame disappeared")
 	}
+	// DOM.getBoxModel reports quads in the main frame's viewport, so the
+	// innermost frame owner's content box already includes every ancestor
+	// frame's offset; adding the ancestors again double-counts nesting.
 	var x, y float64
-	for depth := 0; parents[id] != ""; depth++ {
-		if depth >= 32 {
-			return 0, 0, errors.New("frame nesting exceeds limit")
-		}
+	for depth := 0; parents[id] != "" && depth < 1; depth++ {
 		owner, err := s.command(ctx, "DOM.getFrameOwner", map[string]any{"frameId": id}, false)
 		if err != nil {
 			return 0, 0, err
@@ -484,7 +645,6 @@ func (s *chromedpSession) frameOffset(ctx context.Context, id string) (float64, 
 		qy, _ := quad[1].(float64)
 		x += qx
 		y += qy
-		id = parents[id]
 	}
 	return x, y, nil
 }

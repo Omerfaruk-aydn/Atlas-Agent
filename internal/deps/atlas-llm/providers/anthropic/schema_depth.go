@@ -28,8 +28,7 @@ func boundedToolSchema(schema map[string]any, depth, limit int) map[string]any {
 		return schema
 	}
 	if depth >= limit-2 {
-		data, _ := json.Marshal(schema)
-		return map[string]any{"description": "Use a JSON value matching this schema (validated locally): " + string(data)}
+		return depthStub(schema)
 	}
 	out := make(map[string]any, len(schema))
 	for key, value := range schema {
@@ -71,10 +70,25 @@ func boundedToolSchema(schema map[string]any, depth, limit int) map[string]any {
 	// Unusual nested enum/default/extension values also count toward the API
 	// limit. Preserve their full meaning in guidance rather than invalid JSON.
 	if schemaContainerDepth(out)+depth-1 > limit {
-		data, _ := json.Marshal(schema)
-		return map[string]any{"description": "Use a JSON value matching this schema (validated locally): " + string(data)}
+		return depthStub(schema)
 	}
 	return out
+}
+
+// depthStub replaces a subtree that exceeds the depth limit. It keeps the
+// subtree's JSON type: a typeless stub whose only content is JSON text invited
+// models to send the value as a string holding JSON instead of as the object
+// the tool decodes. The type keyword adds no container depth.
+func depthStub(schema map[string]any) map[string]any {
+	data, _ := json.Marshal(schema)
+	stub := map[string]any{"description": "Use a JSON value matching this schema (validated locally): " + string(data)}
+	if kind, ok := schema["type"].(string); ok && kind != "" {
+		stub["type"] = kind
+		if kind == "object" || kind == "array" {
+			stub["description"] = "Send a JSON " + kind + " directly, never a string containing JSON. It must match this schema (validated locally): " + string(data)
+		}
+	}
+	return stub
 }
 
 func schemaContainerDepth(value any) int {

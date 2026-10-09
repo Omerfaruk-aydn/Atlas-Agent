@@ -1,0 +1,225 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Figma-like fixture</title>
+<style>
+body{margin:0;font:13px sans-serif;display:flex;height:100vh}
+#left{width:220px;border-right:1px solid #ccc;padding:6px;overflow:auto}
+#stage{flex:1;position:relative;background:#e5e5e5}
+#canvas{position:absolute;left:0;top:0}
+#right{width:240px;border-left:1px solid #ccc;padding:6px}
+[role=row]{padding:3px 6px;cursor:default}
+[role=row][aria-selected=true]{background:#cde}
+#editor{position:absolute;min-width:40px;outline:1px solid #18a0fb;background:transparent;font:16px sans-serif;white-space:pre-wrap;max-width:320px}
+</style></head>
+<body>
+<!--
+A local model of the editor behaviors that broke session aaae8f0a. It is
+not Figma and proves nothing about Figma: it reproduces mechanics only.
+- Canvas content has no DOM refs; selection and text placement use pointer
+  input on a <canvas>. The "t" key arms the text tool; a canvas click opens
+  a focused contenteditable editor; escape commits it into the model.
+- The property field's accessible name carries its value ("Font size: 12
+  px"); a commit is applied asynchronously and the panel is re-rendered,
+  so the field node is replaced (remount) under a new name.
+- window.switchSelectionOnCommit moves the selection to another layer
+  while the commit lands, as when the panel ends up showing a different
+  object; that other layer already has the requested size.
+- Layer rows can be re-rendered (refs vanish) with rerenderRows().
+-->
+<aside id="left" role="region" aria-label="Left sidebar">
+  <div id="pages"><button id="add-page" aria-label="Add new page">+</button><div id="page-list"></div></div>
+  <div role="grid" aria-label="Layers" id="rows"></div>
+</aside>
+<main id="stage" role="region" aria-label="Canvas area">
+  <canvas id="canvas" width="560" height="560" role="application" aria-label="Canvas"></canvas>
+</main>
+<div role="group" aria-label="Instance" style="position:fixed;right:250px;top:10px;background:#fff;padding:6px"><button id="role-combo" role="combobox" aria-label="Role" aria-expanded="false">Agent</button><div role="listbox" id="role-list" hidden><div role="option">Agent</div><div role="option">User</div></div></div>
+<fieldset aria-label="Resizing" style="position:fixed;left:240px;bottom:10px;background:#fff">
+  <div><div><div><div><div><div><div><input role="combobox" aria-label="Horizontal resizing" aria-controls="missing-list" id="hr" value="Hug"></div></div></div></div></div></div><div><div><div role="listbox"><div role="option">Fixed width</div><div role="option">Fill container</div></div></div></div></div>
+  <div><div><div><div><div><div><div><input role="combobox" aria-label="Vertical resizing" aria-controls="missing-list" id="vr" value="Hug"></div></div></div></div></div></div><div><div><div role="listbox"><div role="option">Fixed height</div><div role="option">Fill container</div></div></div></div></div>
+</fieldset>
+<!-- Like Figma's W field: a text input inside a role=listbox box. Clicking
+the input only focuses it; the chevron opens a popup list. Closed lists
+stay rendered, parked above the page (y<0). The field keeps the number
+and shows the chosen mode ("Fill") beside it. -->
+<div role="group" aria-label="Dimensions" style="position:fixed;left:520px;bottom:10px;background:#fff;padding:4px">
+  <div role="listbox" id="w-box"><input role="combobox" aria-label="Width mode" aria-expanded="false" id="wm" value="163"><span id="w-mode"></span><span id="w-chevron" style="cursor:pointer;padding:0 6px">&#8964;</span></div>
+</div>
+<div role="listbox" style="position:fixed;left:520px;top:-600px"><div role="option" aria-selected="true">Fill container</div></div>
+<div role="listbox" id="w-popup" style="position:fixed;left:520px;bottom:60px;background:#fff" hidden><div role="option">Fixed width</div><div role="option">Fill container</div></div>
+<!-- Like Figma's panel tabs: the label is drawn twice in the same box. -->
+<div id="tabs" style="position:fixed;left:240px;top:40px;background:#fff"><div id="proto-tab" style="position:relative;cursor:pointer"><span>Prototype</span><span style="position:absolute;left:0;top:0">Prototype</span></div></div>
+<div role="dialog" aria-label="Variable and style creation" style="position:fixed;right:250px;bottom:10px;background:#fff;padding:6px"><button id="create-style"><i18n-text style="display:contents">Create style</i18n-text></button></div>
+<aside id="right" role="region" aria-label="Right sidebar"><div role="region" aria-label="Properties" style="display:contents"><div id="props"></div></div></aside>
+<script>
+const model = {
+  layers: [
+    {id: '1:2', name: '01 · Sohbet', kind: 'frame', x: 20, y: 20, w: 180, h: 390, fontSize: 12, width: 360},
+    {id: '1:3', name: '06 · Oturumlar', kind: 'frame', x: 220, y: 20, w: 180, h: 390, fontSize: 14, width: 360},
+  ],
+  selected: '1:2', tool: 'move', commits: [], texts: []
+};
+window.model = model;
+model.styles = 0;
+window.switchSelectionOnCommit = false;
+const canvas = document.getElementById('canvas');
+const ctx2d = canvas.getContext('2d');
+function layer(id) { return model.layers.find(l => l.id === id); }
+function draw() {
+  ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+  for (const l of model.layers) {
+    if (l.kind !== 'frame') continue;
+    ctx2d.fillStyle = '#fff'; ctx2d.fillRect(l.x, l.y, l.w, l.h);
+    ctx2d.strokeStyle = l.id === model.selected ? '#18a0fb' : '#999'; ctx2d.strokeRect(l.x, l.y, l.w, l.h);
+  }
+  for (const t of model.texts) { ctx2d.fillStyle = '#111'; ctx2d.font = '12px sans-serif'; ctx2d.fillText(t.text.slice(0, 30), t.x, t.y); }
+}
+function renderRows() {
+  const rows = document.getElementById('rows');
+  rows.innerHTML = '';
+  for (const l of model.layers) {
+    const row = document.createElement('div');
+    row.setAttribute('role', 'row');
+    row.setAttribute('data-layer-id', l.id);
+    row.setAttribute('aria-selected', String(l.id === model.selected));
+    row.setAttribute('aria-label', l.name);
+    row.textContent = l.name;
+    row.addEventListener('click', () => select(l.id));
+    rows.appendChild(row);
+  }
+}
+window.rerenderRows = renderRows;
+function renderProps() {
+  const l = layer(model.selected);
+  const props = document.getElementById('props');
+  props.innerHTML = '';
+  if (!l) return;
+  const group = document.createElement('div');
+  group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'Typography');
+  const size = document.createElement('input');
+  size.setAttribute('role', 'combobox');
+  size.setAttribute('aria-label', 'Font size: ' + l.fontSize + ' px');
+  size.value = String(l.fontSize);
+  size.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const v = parseFloat(size.value);
+    const target = model.selected;
+    setTimeout(() => {
+      if (isNaN(v)) { renderProps(); return; }
+      layer(target).fontSize = v;
+      model.commits.push('fontSize:' + target);
+      if (window.switchSelectionOnCommit) {
+        const other = model.layers.find(x => x.id !== target && x.kind === 'frame');
+        other.fontSize = v;
+        model.selected = other.id;
+        renderRows();
+      }
+      renderProps(); draw();
+    }, 150);
+  });
+  const width = document.createElement('input');
+  width.setAttribute('aria-label', 'Width');
+  width.value = String(l.width);
+  width.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const v = parseFloat(width.value);
+    setTimeout(() => { if (!isNaN(v)) { l.width = v; model.commits.push('width:' + l.id); } renderProps(); }, 60);
+  });
+  // A field rebuilt after its commit: the edited node is reused for
+  // another property at once, and the rebuilt field appears only later.
+  const height = document.createElement('input');
+  height.setAttribute('aria-label', 'Height');
+  height.value = String(l.height || 483);
+  height.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const v = parseFloat(height.value);
+    height.setAttribute('aria-label', 'Minimum height'); height.value = '';
+    l.height = v; model.commits.push('height:' + l.id);
+    setTimeout(() => renderProps(), 700);
+  });
+  group.append(height);
+  // Like Figma's size field: "Vertical resizing" while it hugs; the same
+  // node is renamed "Height" once a number fixes the size.
+  const vsize = document.createElement('input');
+  vsize.setAttribute('role', 'combobox');
+  vsize.setAttribute('aria-label', l.fixedH ? 'Height' : 'Vertical resizing');
+  vsize.value = String(l.fixedH || 805);
+  vsize.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const v = parseFloat(vsize.value);
+    setTimeout(() => { l.fixedH = v; model.commits.push('fixedH:' + l.id); vsize.setAttribute('aria-label', 'Height'); }, 60);
+  });
+  group.append(vsize);
+  // Like Figma's resizing menus: a closed listbox whose selected option
+  // names the current size, which a font-size edit changes.
+  const menu = document.createElement('div');
+  menu.setAttribute('role', 'listbox'); menu.style.display = 'none';
+  menu.innerHTML = '<div role="option" aria-selected="true">Fixed height (' + Math.round(l.fontSize * 1.2) + ')</div>';
+  group.append(size, width, menu);
+  props.appendChild(group);
+}
+function select(id) { model.selected = id; renderRows(); renderProps(); draw(); }
+document.addEventListener('keydown', e => {
+  if (e.target !== document.body) return;
+  if (e.key === 't') model.tool = 'text';
+  if (e.key === 'Escape') model.tool = 'move';
+});
+canvas.addEventListener('mousedown', e => {
+  const r = canvas.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  if (model.tool === 'text') {
+    const editor = document.createElement('div');
+    editor.id = 'editor'; editor.contentEditable = 'true';
+    editor.style.left = x + 'px'; editor.style.top = y + 'px';
+    document.getElementById('stage').appendChild(editor);
+    editor.addEventListener('keydown', ev => {
+      if (ev.key !== 'Escape') return;
+      ev.stopPropagation();
+      const id = '2:' + (model.texts.length + 1);
+      model.texts.push({id, x, y, text: editor.innerText});
+      model.layers.push({id, name: editor.innerText.slice(0, 40), kind: 'text', fontSize: 16, width: 320});
+      editor.remove(); model.tool = 'move'; select(id);
+    });
+    setTimeout(() => editor.focus(), 0);
+    e.preventDefault();
+    return;
+  }
+  const hit = model.layers.filter(l => l.kind === 'frame' && x >= l.x && x <= l.x + l.w && y >= l.y && y <= l.y + l.h).pop();
+  if (hit) select(hit.id);
+});
+// Pages rename inline: the name input exists only while editing and is
+// replaced by a row named with the committed value.
+model.pages = ['Page 1'];
+function renderPages() {
+  const list = document.getElementById('page-list');
+  list.innerHTML = '';
+  for (const name of model.pages) { const row = document.createElement('div'); row.setAttribute('role', 'row'); row.textContent = name; list.appendChild(row); }
+}
+document.getElementById('add-page').addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.setAttribute('aria-label', 'Page name'); input.value = 'Page ' + (model.pages.length + 1);
+  input.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const value = input.value;
+    setTimeout(() => { model.pages.push(value); input.remove(); renderPages(); }, 80);
+  });
+  document.getElementById('page-list').appendChild(input);
+  input.focus(); input.select();
+});
+renderPages();
+// A custom combobox built on a <button>, like Figma's variant picker.
+const combo = document.getElementById('role-combo'), list = document.getElementById('role-list');
+combo.addEventListener('click', () => { list.hidden = !list.hidden; combo.setAttribute('aria-expanded', String(!list.hidden)); });
+for (const o of list.querySelectorAll('[role=option]')) o.addEventListener('click', () => { combo.textContent = o.textContent; list.hidden = true; combo.setAttribute('aria-expanded', 'false'); model.role = o.textContent; });
+// Two resizing menus that both offer "Fill container", always rendered.
+for (const id of ['hr', 'vr']) {
+  const input = document.getElementById(id);
+  for (const o of input.closest('fieldset > div').querySelectorAll('[role=option]')) o.addEventListener('click', () => { input.value = o.textContent; model[id] = o.textContent; });
+}
+const wm = document.getElementById('wm'), wpop = document.getElementById('w-popup');
+document.getElementById('w-chevron').addEventListener('click', () => { wpop.hidden = false; wm.setAttribute('aria-expanded', 'true'); });
+for (const o of wpop.querySelectorAll('[role=option]')) o.addEventListener('click', () => { const fill = o.textContent === 'Fill container'; wm.value = fill ? '254' : '163'; document.getElementById('w-mode').textContent = fill ? 'Fill' : ''; model.wm = o.textContent; wpop.hidden = true; wm.setAttribute('aria-expanded', 'false'); });
+document.getElementById('proto-tab').addEventListener('click', () => { model.tab = 'prototype'; });
+document.getElementById('create-style').addEventListener('click', () => { model.styles++; });
+select(model.selected);
+</script>
+</body></html>

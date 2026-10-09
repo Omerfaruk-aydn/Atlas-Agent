@@ -748,25 +748,19 @@ func (s *ConfigStore) refreshOAuthTokenLocked(ctx context.Context, scope Scope, 
 				return s.applyToken(providerConfig, diskToken, providerID)
 			}
 			slog.Info("Retrying exchange with refresh token rotated by another session", "provider", providerID)
-			refreshedToken, refreshErr = s.exchange(ctx, providerID, diskToken.RefreshToken)
+			entryToken = diskToken
+			refreshedToken, refreshErr = s.exchange(ctx, providerID, entryToken.RefreshToken)
 		}
 	}
 	if refreshErr != nil {
 		return fmt.Errorf("failed to refresh OAuth token for provider %s: %w", providerID, refreshErr)
 	}
+	if refreshedToken == nil || refreshedToken.AccessToken == "" {
+		return fmt.Errorf("refresh for provider %s returned no access token", providerID)
+	}
 
 	slog.Info("Successfully refreshed OAuth token", "provider", providerID)
-	// Some providers only include account metadata (e.g. a decoded id_token
-	// claim, or a discovered Cloud project id) in the initial code exchange
-	// and omit it from a plain refresh_token grant. Carry it forward so a
-	// provider that needs it in a header (ChatGPT, Antigravity) does not go
-	// dark on the exchange after the token's first refresh.
-	if refreshedToken.AccountID == "" {
-		refreshedToken.AccountID = entryToken.AccountID
-	}
-	if refreshedToken.PlanType == "" {
-		refreshedToken.PlanType = entryToken.PlanType
-	}
+	refreshedToken = preserveRefreshMetadata(refreshedToken, entryToken)
 	if err := s.applyToken(providerConfig, refreshedToken, providerID); err != nil {
 		return err
 	}
@@ -778,6 +772,37 @@ func (s *ConfigStore) refreshOAuthTokenLocked(ctx context.Context, scope Scope, 
 		return fmt.Errorf("failed to persist refreshed token: %w", err)
 	}
 	return nil
+}
+
+// preserveRefreshMetadata keeps grant state omitted by a refresh response.
+// A replacement refresh token takes precedence; its absence is not revocation.
+func preserveRefreshMetadata(refreshed, previous *oauth.Token) *oauth.Token {
+	merged := *refreshed
+	if merged.RefreshToken == "" {
+		merged.RefreshToken = previous.RefreshToken
+	}
+	if merged.AccountID == "" {
+		merged.AccountID = previous.AccountID
+	}
+	if merged.PlanType == "" {
+		merged.PlanType = previous.PlanType
+	}
+	if merged.Email == "" {
+		merged.Email = previous.Email
+	}
+	if merged.OrgID == "" {
+		merged.OrgID = previous.OrgID
+	}
+	if merged.OrgName == "" {
+		merged.OrgName = previous.OrgName
+	}
+	if merged.IssuedAt == 0 {
+		merged.IssuedAt = previous.IssuedAt
+	}
+	if merged.Client == nil {
+		merged.Client = previous.Client
+	}
+	return &merged
 }
 
 // WaitForTokenChange blocks until SignalAuthComplete is called for the

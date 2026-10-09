@@ -32,7 +32,7 @@ func (b *scenarioBackend) browserAction(ctx context.Context, params BrowserParam
 
 func (b *scenarioBackend) viewport(ctx context.Context, width, height int) error {
 	data, _ := json.Marshal(map[string]any{"width": width, "height": height, "deviceScaleFactor": 1, "mobile": false})
-	_, err := b.browserAction(ctx, BrowserParams{Action: "cdp", CDPMethod: "Emulation.setDeviceMetricsOverride", CDPParams: data})
+	_, err := b.browserAction(ctx, BrowserParams{Action: "cdp", CDPMethod: "Emulation.setDeviceMetricsOverride", CDPParams: BrowserCDPParams(data)})
 	return err
 }
 
@@ -84,7 +84,7 @@ func (b *scenarioBackend) web(ctx context.Context, s scenarios.Scenario, run sce
 		}
 	}
 	passed := true
-	for _, a := range s.Assertions {
+	for i, a := range s.Assertions {
 		selector, _ := json.Marshal(a.Selector)
 		expected, _ := json.Marshal(a.Expected)
 		expression := "false"
@@ -109,7 +109,7 @@ func (b *scenarioBackend) web(ctx context.Context, s scenarios.Scenario, run sce
 		}
 		if !ok {
 			passed = false
-			run.Gaps = append(run.Gaps, "Assertion failed: "+a.Kind)
+			run.Gaps = append(run.Gaps, fmt.Sprintf("Assertion failed: %s #%d %s", a.Kind, i+1, a.Selector))
 		}
 	}
 	for _, capture := range []struct {

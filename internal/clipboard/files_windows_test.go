@@ -3,6 +3,7 @@
 package clipboard
 
 import (
+	"encoding/binary"
 	"path/filepath"
 	"runtime"
 	"syscall"
@@ -26,6 +27,7 @@ var (
 	procGlobalFree       = kernel32.NewProc("GlobalFree")
 	procGlobalLock       = kernel32.NewProc("GlobalLock")
 	procGlobalUnlock     = kernel32.NewProc("GlobalUnlock")
+	procCopyMemory       = kernel32.NewProc("RtlMoveMemory")
 	procEmptyClipboard   = user32.NewProc("EmptyClipboard")
 	procSetClipboardData = user32.NewProc("SetClipboardData")
 )
@@ -65,8 +67,16 @@ func writeClipboardFiles(t *testing.T, paths []string) {
 
 	p, _, _ := procGlobalLock.Call(hMem)
 	require.NotZero(t, p, "GlobalLock failed")
-	*(*dropFiles)(unsafe.Pointer(p)) = header
-	copy(unsafe.Slice((*uint16)(unsafe.Pointer(p+uintptr(header.pFiles))), len(list)), list)
+	// Encode in Go-owned memory, then copy through the native ABI. The
+	// foreign allocation address remains an integer, never a Go pointer.
+	payload := make([]byte, size)
+	binary.LittleEndian.PutUint32(payload[:4], header.pFiles)
+	binary.LittleEndian.PutUint32(payload[16:20], uint32(header.fWide))
+	for i, value := range list {
+		binary.LittleEndian.PutUint16(payload[int(header.pFiles)+2*i:], value)
+	}
+	procCopyMemory.Call(p, uintptr(unsafe.Pointer(unsafe.SliceData(payload))), uintptr(size)) //nolint:errcheck
+	runtime.KeepAlive(payload)
 	procGlobalUnlock.Call(hMem) //nolint:errcheck
 
 	var opened bool

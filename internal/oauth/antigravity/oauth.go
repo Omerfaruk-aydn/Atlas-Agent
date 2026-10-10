@@ -17,11 +17,8 @@
 // Only login and project discovery live here. The resulting token is used
 // for model calls by internal/deps/atlas-llm/providers/antigravity, which
 // speaks Google's internal v1internal:generateContent envelope (distinct
-// from both the public Gemini API and Vertex AI) for the Gemini-family
-// models an Antigravity account exposes. Claude and GPT-OSS models also
-// served through Antigravity go through additional per-family request and
-// response translation on Google's side that is not reproduced here, so
-// they are not usable through this login.
+// from both the public Gemini API and Vertex AI). Gemini, Claude and
+// GPT-OSS share that account envelope; the server translates model families.
 package antigravity
 
 import (
@@ -110,7 +107,7 @@ func RequestHeaders() map[string]string {
 	}
 	return map[string]string{
 		"Client-Metadata": string(meta),
-		"User-Agent":      "antigravity/1.15.8 " + runtime.GOOS + "/" + runtime.GOARCH,
+		"User-Agent":      "antigravity/2.21.0 " + runtime.GOOS + "/" + runtime.GOARCH,
 	}
 }
 
@@ -187,8 +184,19 @@ func (s *AuthSession) handleCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	result := callback.Result{
 		Subject:          "Antigravity",
+		Pending:          true,
 		ErrorCode:        q.Get("error"),
 		ErrorDescription: q.Get("error_description"),
+	}
+	if q.Get("state") != s.state {
+		result.ErrorCode = "invalid_state"
+		result.ErrorDescription = "This callback does not match the active login. Return to Atlas and retry."
+		_ = callback.Serve(w, result)
+		return
+	}
+	if !result.Failed() && q.Get("code") == "" {
+		result.ErrorCode = "missing_code"
+		result.ErrorDescription = "Google did not return an authorization code."
 	}
 	if err := callback.Serve(w, result); err != nil {
 		s.send(authResult{err: fmt.Errorf("render callback page: %w", err)})
@@ -356,12 +364,14 @@ type loadCodeAssistRequest struct {
 }
 
 type tierInfo struct {
-	ID string `json:"id"`
+	ID        string `json:"id"`
+	IsDefault bool   `json:"isDefault"`
 }
 
 type loadCodeAssistResponse struct {
 	CloudaicompanionProject string     `json:"cloudaicompanionProject"`
 	CurrentTier             *tierInfo  `json:"currentTier"`
+	PaidTier                *tierInfo  `json:"paidTier"`
 	AllowedTiers            []tierInfo `json:"allowedTiers"`
 }
 
@@ -372,6 +382,11 @@ type onboardUserRequest struct {
 }
 
 type onboardUserResponse struct {
+	Name  string `json:"name"`
+	Error *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
 	Done     bool `json:"done"`
 	Response struct {
 		CloudaicompanionProject struct {
@@ -401,9 +416,18 @@ func discoverProject(ctx context.Context, accessToken string, report func(string
 		tierID = load.CurrentTier.ID
 	} else if len(load.AllowedTiers) > 0 {
 		tierID = load.AllowedTiers[0].ID
+		for _, allowed := range load.AllowedTiers {
+			if allowed.IsDefault && allowed.ID != "" {
+				tierID = allowed.ID
+				break
+			}
+		}
 	}
 
 	if load.CloudaicompanionProject != "" {
+		if load.PaidTier != nil && load.PaidTier.ID != "" {
+			tierID = load.PaidTier.ID
+		}
 		return load.CloudaicompanionProject, tierID, nil
 	}
 
@@ -430,13 +454,19 @@ func discoverProject(ctx context.Context, accessToken string, report func(string
 	backoff := rateLimitBackoff
 	var lastDone bool
 	var attempts, rateLimited, consecutiveRateLimits int
+	var operation string
 	for {
 		attempts++
 		report(fmt.Sprintf("Setting up your Cloud project (attempt %d, %s elapsed)...", attempts, time.Since(started).Round(time.Second)))
-		onboard, err := postCodeAssist[onboardUserResponse](ctx, accessToken, "onboardUser", onboardUserRequest{
-			TierID:   tierID,
-			Metadata: metadata(),
-		})
+		var onboard *onboardUserResponse
+		var err error
+		if operation != "" {
+			onboard, err = getCodeAssistOperation(ctx, accessToken, operation)
+		} else {
+			onboard, err = postCodeAssist[onboardUserResponse](ctx, accessToken, "onboardUser", onboardUserRequest{
+				TierID: tierID, Metadata: metadata(),
+			})
+		}
 		if err != nil {
 			var codeErr *codeAssistError
 			if !errors.As(err, &codeErr) || codeErr.statusCode != http.StatusTooManyRequests {
@@ -462,8 +492,17 @@ func discoverProject(ctx context.Context, accessToken string, report func(string
 		backoff = rateLimitBackoff
 		consecutiveRateLimits = 0
 		lastDone = onboard.Done
+		if onboard.Name != "" {
+			operation = onboard.Name
+		}
+		if onboard.Error != nil {
+			return "", "", fmt.Errorf("project setup failed (code %d): %s", onboard.Error.Code, onboard.Error.Message)
+		}
 		if onboard.Done && onboard.Response.CloudaicompanionProject.ID != "" {
 			return onboard.Response.CloudaicompanionProject.ID, tierID, nil
+		}
+		if onboard.Done {
+			return "", "", errors.New("account setup completed without returning a Cloud project; check this account's Antigravity eligibility and retry")
 		}
 		select {
 		case <-time.After(pollDelay):
@@ -489,6 +528,20 @@ func (e *codeAssistError) Error() string {
 	return fmt.Sprintf("%s failed: %s: %s", e.method, e.status, e.body)
 }
 
+func getCodeAssistOperation(ctx context.Context, accessToken, name string) (*onboardUserResponse, error) {
+	// Operation names are relative backend paths, never external URLs.
+	for _, segment := range strings.Split(name, "/") {
+		if segment == "" || segment == "." || segment == ".." || strings.ContainsAny(segment, "?#:%\\") {
+			return nil, errors.New("invalid operation name returned by Google")
+		}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, codeAssistEndpoint+"/v1internal/"+name, nil)
+	if err != nil {
+		return nil, err
+	}
+	return requestCodeAssist[onboardUserResponse](req, accessToken, "getOperation")
+}
+
 func postCodeAssist[T any](ctx context.Context, accessToken, method string, body any) (*T, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -499,8 +552,15 @@ func postCodeAssist[T any](ctx context.Context, accessToken, method string, body
 	if err != nil {
 		return nil, err
 	}
+	return requestCodeAssist[T](req, accessToken, method)
+}
+
+func requestCodeAssist[T any](req *http.Request, accessToken, method string) (*T, error) {
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
+	for key, value := range RequestHeaders() {
+		req.Header.Set(key, value)
+	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)

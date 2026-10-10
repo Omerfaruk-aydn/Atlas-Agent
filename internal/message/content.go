@@ -627,10 +627,11 @@ func (m *Message) ToAIMessage() []fantasy.Message {
 					content = fantasy.ToolResultOutputContentMedia{
 						Data:      result.Data,
 						MediaType: result.MIMEType,
+						Text:      result.Content,
 					}
 				} else {
 					content = fantasy.ToolResultOutputContentText{
-						Text: mediaLoadFailedPlaceholder,
+						Text: strings.TrimSpace(result.Content + "\n\n" + mediaLoadFailedPlaceholder),
 					}
 				}
 			} else {

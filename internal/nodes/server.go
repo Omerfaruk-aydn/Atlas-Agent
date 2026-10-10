@@ -1,0 +1,537 @@
+package nodes
+
+import (
+	"bytes"
+	"context"
+	"crypto/tls"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/procown"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/taskstate"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/transfer"
+)
+
+const (
+	maxJSONBody      = 1 << 20
+	maxOutputBytes   = 256 << 10
+	defaultExecLimit = 10 * time.Minute
+	maxExecLimit     = time.Hour
+	observationTTL   = 2 * time.Minute
+)
+
+// ServerOptions configures a node.
+type ServerOptions struct {
+	// StateDir holds the certificate, device list and journal.
+	StateDir string
+	// Root is the only directory commands and transfers may use.
+	Root         string
+	Name         string
+	Capabilities []Capability
+	Isolated     bool
+	MaxFileBytes int64
+	// Desktop is the interactive session backend, nil when unavailable.
+	Desktop       computer.Backend
+	DesktopReason string
+	Hosts         []string
+	Logger        *slog.Logger
+}
+
+// Server is one node's HTTPS API.
+type Server struct {
+	opts    ServerOptions
+	id      Identity
+	auth    *Auth
+	journal *Journal
+
+	mu    sync.Mutex
+	procs map[string]*procown.Proc
+
+	desktopMu sync.Mutex
+	obs       *observationState
+
+	limitMu  sync.Mutex
+	failures map[string][]time.Time
+}
+
+type observationState struct {
+	id   string
+	size computer.Size
+	at   time.Time
+}
+
+// NewServer prepares a node: identity, device list and journal.
+func NewServer(opts ServerOptions) (*Server, error) {
+	if opts.StateDir == "" || !filepath.IsAbs(opts.Root) {
+		return nil, errors.New("node needs a state directory and an absolute root")
+	}
+	if info, err := os.Stat(opts.Root); err != nil || !info.IsDir() {
+		return nil, fmt.Errorf("node root %s is not a directory", opts.Root)
+	}
+	if opts.MaxFileBytes <= 0 {
+		opts.MaxFileBytes = transfer.DefaultMaxBytes
+	}
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
+	}
+	if opts.Name == "" {
+		opts.Name, _ = os.Hostname()
+	}
+	id, err := LoadOrCreateIdentity(opts.StateDir, opts.Hosts)
+	if err != nil {
+		return nil, err
+	}
+	auth, err := LoadAuth(opts.StateDir)
+	if err != nil {
+		return nil, err
+	}
+	journal, err := OpenJournal(filepath.Join(opts.StateDir, "ops"))
+	if err != nil {
+		return nil, err
+	}
+	return &Server{opts: opts, id: id, auth: auth, journal: journal, procs: map[string]*procown.Proc{}, failures: map[string][]time.Time{}}, nil
+}
+
+// Identity returns the node certificate identity.
+func (s *Server) Identity() Identity { return s.id }
+
+// Auth exposes pairing and revocation for the CLI.
+func (s *Server) Auth() *Auth { return s.auth }
+
+// TLSConfig serves the node certificate.
+func (s *Server) TLSConfig() *tls.Config {
+	return &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{s.id.Certificate}}
+}
+
+func (s *Server) has(c Capability) bool { return slices.Contains(s.opts.Capabilities, c) }
+
+// Handler returns the routed API.
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/node/hello", s.handleHello)
+	mux.HandleFunc("POST /v1/node/pair", s.handlePair)
+	mux.HandleFunc("GET /v1/node/info", s.authed(s.handleInfo))
+	mux.HandleFunc("POST /v1/node/revoke", s.authed(s.handleRevoke))
+	mux.HandleFunc("POST /v1/node/exec", s.authed(s.require(CapExec, s.handleExec)))
+	mux.HandleFunc("GET /v1/node/ops/{id}", s.authed(s.handleGetOp))
+	mux.HandleFunc("POST /v1/node/ops/{id}/cancel", s.authed(s.handleCancelOp))
+	mux.HandleFunc("PUT /v1/node/files", s.authed(s.require(CapFiles, s.handlePutFile)))
+	mux.HandleFunc("GET /v1/node/files", s.authed(s.require(CapFiles, s.handleGetFile)))
+	mux.HandleFunc("GET /v1/node/desktop/observe", s.authed(s.require(CapDesktop, s.handleObserve)))
+	mux.HandleFunc("POST /v1/node/desktop/input", s.authed(s.require(CapDesktop, s.handleInput)))
+	mux.HandleFunc("POST /v1/node/desktop/automation", s.authed(s.require(CapDesktop, s.handleAutomation)))
+	mux.HandleFunc("POST /v1/node/desktop/launch", s.authed(s.require(CapDesktop, s.handleLaunch)))
+	return mux
+}
+
+type deviceKey struct{}
+
+func deviceFrom(r *http.Request) Device {
+	d, _ := r.Context().Value(deviceKey{}).(Device)
+	return d
+}
+
+func remoteHost(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// limited reports whether host exceeded 20 auth failures in a minute.
+func (s *Server) limited(host string) bool {
+	s.limitMu.Lock()
+	defer s.limitMu.Unlock()
+	cutoff := time.Now().Add(-time.Minute)
+	kept := s.failures[host][:0]
+	for _, t := range s.failures[host] {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	s.failures[host] = kept
+	return len(kept) >= 20
+}
+
+func (s *Server) recordFailure(host string) {
+	s.limitMu.Lock()
+	defer s.limitMu.Unlock()
+	s.failures[host] = append(s.failures[host], time.Now())
+}
+
+func (s *Server) authed(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		host := remoteHost(r)
+		if s.limited(host) {
+			writeError(w, http.StatusTooManyRequests, "rate_limited", "too many failed authentications; wait a minute", false, "none")
+			return
+		}
+		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if !ok {
+			s.recordFailure(host)
+			writeError(w, http.StatusUnauthorized, "unauthorized", ErrUnauthorized.Error(), false, "none")
+			return
+		}
+		d, err := s.auth.Authenticate(token)
+		if err != nil {
+			s.recordFailure(host)
+			writeError(w, http.StatusUnauthorized, "unauthorized", err.Error(), false, "none")
+			return
+		}
+		next(w, r.WithContext(context.WithValue(r.Context(), deviceKey{}, d)))
+	}
+}
+
+func (s *Server) require(c Capability, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.has(c) {
+			writeError(w, http.StatusForbidden, "capability_denied", fmt.Sprintf("this node does not grant %q; the node operator must restart it with --allow including %s", c, c), false, "none")
+			return
+		}
+		if c == CapDesktop && s.opts.Desktop == nil {
+			writeError(w, http.StatusConflict, "desktop_unavailable", "desktop control is not available on this node: "+s.opts.DesktopReason, false, "none")
+			return
+		}
+		next(w, r)
+	}
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, code, message string, inputSent bool, effect string) {
+	writeJSON(w, status, APIError{Code: code, Message: message, InputSent: inputSent, Effect: effect})
+}
+
+func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxJSONBody))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), false, "none")
+		return false
+	}
+	return true
+}
+
+func (s *Server) hello() Hello {
+	return Hello{Protocol: ProtocolVersion, NodeID: s.id.NodeID, Name: s.opts.Name, Fingerprint: s.id.Fingerprint}
+}
+
+func (s *Server) info(d Device) Info {
+	host, _ := os.Hostname()
+	return Info{Hello: s.hello(), OS: runtime.GOOS, Arch: runtime.GOARCH, Hostname: host, Root: s.opts.Root, Capabilities: s.opts.Capabilities, Desktop: s.has(CapDesktop) && s.opts.Desktop != nil, DesktopReason: s.opts.DesktopReason, Isolated: s.opts.Isolated, DeviceID: d.ID, MaxFileBytes: s.opts.MaxFileBytes}
+}
+
+func (s *Server) handleHello(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, s.hello())
+}
+
+func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
+	host := remoteHost(r)
+	if s.limited(host) {
+		writeError(w, http.StatusTooManyRequests, "rate_limited", "too many failed attempts; wait a minute", false, "none")
+		return
+	}
+	var req PairRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	d, token, err := s.auth.Pair(req.Code, req.DeviceName)
+	if err != nil {
+		s.recordFailure(host)
+		code := "pairing_invalid"
+		if errors.Is(err, ErrPairingLocked) {
+			code = "pairing_locked"
+		}
+		writeError(w, http.StatusForbidden, code, err.Error(), false, "none")
+		return
+	}
+	s.opts.Logger.Info("Node paired with controller", "device", d.ID, "name", d.Name, "remote", host)
+	writeJSON(w, http.StatusOK, PairResponse{DeviceID: d.ID, Token: token, Info: s.info(d)})
+}
+
+func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.info(deviceFrom(r)))
+}
+
+func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request) {
+	d := deviceFrom(r)
+	if err := s.auth.Revoke(d.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "persist_failed", err.Error(), false, "unknown")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"revoked": d.ID})
+}
+
+// boundedBuffer keeps the first limit bytes and notes truncation.
+type boundedBuffer struct {
+	mu        sync.Mutex
+	buf       bytes.Buffer
+	limit     int
+	truncated bool
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if room := b.limit - b.buf.Len(); room > 0 {
+		if len(p) > room {
+			b.buf.Write(p[:room])
+			b.truncated = true
+		} else {
+			b.buf.Write(p)
+		}
+	} else if len(p) > 0 {
+		b.truncated = true
+	}
+	return len(p), nil
+}
+
+func (b *boundedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func (s *Server) resolveDir(rel string) (string, error) {
+	if rel == "" || rel == "." {
+		return filepath.EvalSymlinks(s.opts.Root)
+	}
+	dir, err := transfer.Resolve(s.opts.Root, rel)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return "", fmt.Errorf("cwd %q is not a directory under the node root", rel)
+	}
+	return dir, nil
+}
+
+func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
+	var req ExecRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	if len(req.Argv) == 0 || req.Argv[0] == "" || len(req.Argv) > 256 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "argv must contain 1-256 literal arguments", false, "none")
+		return
+	}
+	limit := defaultExecLimit
+	if req.TimeoutMS > 0 {
+		limit = min(time.Duration(req.TimeoutMS)*time.Millisecond, maxExecLimit)
+	}
+	dir, err := s.resolveDir(req.Cwd)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_path", err.Error(), false, "none")
+		return
+	}
+	d := deviceFrom(r)
+	hashed := req
+	hashed.Wait = nil
+	op, existing, err := s.journal.Begin(Operation{ID: req.OperationID, Kind: "exec", DeviceID: d.ID, RequestHash: RequestHash(hashed), Argv: req.Argv, Cwd: req.Cwd})
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, ErrOperationConflict) {
+			status = http.StatusConflict
+		}
+		writeError(w, status, "operation_conflict", err.Error(), false, "none")
+		return
+	}
+	if existing {
+		writeJSON(w, http.StatusOK, op)
+		return
+	}
+	stdout, stderr := &boundedBuffer{limit: maxOutputBytes}, &boundedBuffer{limit: maxOutputBytes}
+	proc, err := procown.Start(procown.Spec{Argv: req.Argv, Dir: dir, Stdout: stdout, Stderr: stderr})
+	if err != nil {
+		final, ferr := s.journal.Finish(op.ID, func(o *Operation) {
+			o.State, o.Effect, o.Error = taskstate.Failed, "none", "start: "+err.Error()
+		})
+		if ferr != nil {
+			writeError(w, http.StatusInternalServerError, "persist_failed", ferr.Error(), false, "none")
+			return
+		}
+		writeJSON(w, http.StatusOK, final)
+		return
+	}
+	s.mu.Lock()
+	s.procs[op.ID] = proc
+	s.mu.Unlock()
+	finished := make(chan Operation, 1)
+	go s.superviseExec(op.ID, proc, limit, stdout, stderr, finished)
+	if req.Wait != nil && !*req.Wait {
+		current, _ := s.journal.Get(op.ID, d.ID)
+		writeJSON(w, http.StatusAccepted, current)
+		return
+	}
+	select {
+	case final := <-finished:
+		writeJSON(w, http.StatusOK, final)
+	case <-r.Context().Done():
+		// The controller went away; the operation keeps running and is
+		// reconciled later through GET /v1/node/ops/{id}.
+	}
+}
+
+func (s *Server) superviseExec(id string, proc *procown.Proc, limit time.Duration, stdout, stderr *boundedBuffer, finished chan<- Operation) {
+	timer := time.NewTimer(limit)
+	defer timer.Stop()
+	timedOut := false
+	select {
+	case <-proc.Done():
+	case <-timer.C:
+		timedOut = true
+		proc.Stop(3 * time.Second)
+		<-proc.Done()
+	}
+	code, _ := proc.Result()
+	s.mu.Lock()
+	delete(s.procs, id)
+	s.mu.Unlock()
+	final, err := s.journal.Finish(id, func(o *Operation) {
+		o.Stdout, o.Stderr = stdout.String(), stderr.String()
+		o.Truncated = stdout.truncated || stderr.truncated
+		o.ExitCode = &code
+		o.Effect = "applied"
+		switch {
+		case timedOut:
+			o.State, o.Error = taskstate.Failed, fmt.Sprintf("timed out after %s; process tree stopped", limit)
+		case code == 0:
+			o.State = taskstate.Completed
+		default:
+			o.State, o.Error = taskstate.Failed, "exit status "+strconv.Itoa(code)
+		}
+	})
+	if err != nil {
+		s.opts.Logger.Error("Failed to persist node operation result", "operation", id, "error", err)
+		final.State, final.Error = taskstate.Failed, err.Error()
+	}
+	finished <- final
+}
+
+func (s *Server) handleGetOp(w http.ResponseWriter, r *http.Request) {
+	op, ok := s.journal.Get(r.PathValue("id"), deviceFrom(r).ID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "not_found", "no operation with that id for this device", false, "none")
+		return
+	}
+	writeJSON(w, http.StatusOK, op)
+}
+
+func (s *Server) handleCancelOp(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	d := deviceFrom(r)
+	op, ok := s.journal.Get(id, d.ID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "not_found", "no operation with that id for this device", false, "none")
+		return
+	}
+	if op.State.Terminal() {
+		writeJSON(w, http.StatusOK, op)
+		return
+	}
+	s.mu.Lock()
+	proc := s.procs[id]
+	s.mu.Unlock()
+	if proc != nil {
+		// Mark canceled first so the supervisor's later result cannot turn
+		// the operation back into a success.
+		final, err := s.journal.Finish(id, func(o *Operation) {
+			o.State, o.Effect, o.Error = taskstate.Canceled, "unknown", "canceled by controller; partial effects possible"
+		})
+		proc.Stop(3 * time.Second)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "persist_failed", err.Error(), true, "unknown")
+			return
+		}
+		writeJSON(w, http.StatusOK, final)
+		return
+	}
+	writeJSON(w, http.StatusOK, op)
+}
+
+func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request) {
+	d := deviceFrom(r)
+	rel := r.URL.Query().Get("path")
+	sha := strings.ToLower(r.Header.Get("X-Atlas-SHA256"))
+	size, err := strconv.ParseInt(r.Header.Get("X-Atlas-Size"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "X-Atlas-Size header is required", false, "none")
+		return
+	}
+	overwrite := r.URL.Query().Get("overwrite") == "1"
+	opID := r.Header.Get("X-Atlas-Operation")
+	op, existing, err := s.journal.Begin(Operation{ID: opID, Kind: "push", DeviceID: d.ID, RequestHash: RequestHash([]any{rel, sha, size, overwrite}), Path: rel, SHA256: sha, Size: size})
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, ErrOperationConflict) {
+			status = http.StatusConflict
+		}
+		writeError(w, status, "operation_conflict", err.Error(), false, "none")
+		return
+	}
+	if existing {
+		if op.State == taskstate.Completed {
+			writeJSON(w, http.StatusOK, FileResult{Path: op.Path, SHA256: op.SHA256, Size: op.Size, Replayed: true})
+			return
+		}
+		writeError(w, http.StatusConflict, "operation_"+string(op.State), "this transfer already ran: "+op.Error, false, op.Effect)
+		return
+	}
+	_, rerr := transfer.Receive(s.opts.Root, rel, r.Body, size, sha, s.opts.MaxFileBytes, overwrite)
+	final, ferr := s.journal.Finish(op.ID, func(o *Operation) {
+		if rerr != nil {
+			o.State, o.Effect, o.Error = taskstate.Failed, "none", rerr.Error()
+			return
+		}
+		o.State, o.Effect = taskstate.Completed, "applied"
+	})
+	if ferr != nil {
+		writeError(w, http.StatusInternalServerError, "persist_failed", ferr.Error(), true, "unknown")
+		return
+	}
+	if rerr != nil {
+		writeError(w, http.StatusBadRequest, transfer.Code(rerr), rerr.Error(), false, "none")
+		return
+	}
+	writeJSON(w, http.StatusOK, FileResult{Path: final.Path, SHA256: final.SHA256, Size: final.Size})
+}
+
+func (s *Server) handleGetFile(w http.ResponseWriter, r *http.Request) {
+	f, size, sum, err := transfer.Open(s.opts.Root, r.URL.Query().Get("path"), s.opts.MaxFileBytes)
+	if err != nil {
+		status := http.StatusBadRequest
+		if transfer.Code(err) == "not_found" {
+			status = http.StatusNotFound
+		}
+		writeError(w, status, transfer.Code(err), err.Error(), false, "none")
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("X-Atlas-SHA256", sum)
+	w.Header().Set("X-Atlas-Size", strconv.FormatInt(size, 10))
+	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.Copy(w, f)
+}

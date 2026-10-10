@@ -69,6 +69,7 @@ type OAuth struct {
 	interval        int
 	token           *oauth.Token
 	cancelFunc      context.CancelFunc
+	progressText    string
 }
 
 var _ Dialog = (*OAuth)(nil)
@@ -128,6 +129,9 @@ func (m *OAuth) ID() string {
 func (m *OAuth) HandleMsg(msg tea.Msg) Action {
 	switch msg := msg.(type) {
 	case spinner.TickMsg:
+		if provider, ok := m.oAuthProvider.(interface{ progressStatus() string }); ok {
+			m.progressText = provider.progressStatus()
+		}
 		switch m.State {
 		case OAuthStateInitializing, OAuthStateDisplay, OAuthStateSaving:
 			var cmd tea.Cmd
@@ -171,7 +175,7 @@ func (m *OAuth) HandleMsg(msg tea.Msg) Action {
 				return nil
 
 			default:
-				return ActionClose{}
+				return ActionCmd{tea.Sequence(m.oAuthProvider.stopPolling, func() tea.Msg { return ActionClose{} })}
 			}
 		}
 
@@ -348,11 +352,22 @@ func (m *OAuth) innerDialogContent() string {
 			Padding(0, 1).
 			Render("Browser not opening? Pay a visit to:\n" + link)
 
+		status := m.com.Text("Verifying... (a brand-new account can take up to a couple of minutes)")
+		if m.progressText != "" {
+			switch {
+			case strings.HasPrefix(m.progressText, "Setting up your Cloud project"):
+				status = m.com.Text("Google account setup is in progress...")
+			case strings.HasPrefix(m.progressText, "Google rate-limited"):
+				status = m.com.Text("Google requested a pause; retrying account setup...")
+			default:
+				status = m.com.Text(m.progressText)
+			}
+		}
 		waiting := statusTextStyle.
 			Width(innerWidth).
 			Padding(0, 1).
 			Render(
-				successStyle.Render(m.spinner.View()) + statusTextStyle.Render(m.com.Text("Verifying... (a brand-new account can take up to a couple of minutes)")),
+				successStyle.Render(m.spinner.View()) + statusTextStyle.Render(status),
 			)
 
 		elements := []string{""}

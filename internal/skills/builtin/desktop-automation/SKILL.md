@@ -44,7 +44,7 @@ The role's preferred skill binding is a starting recipe, not additional access.
 
 10. Distinguish requested item, current selection and actual active result. Opening a page does not prove playback or submission.
 
-11. Handle secrets through the existing credential vault when available. Secure desktop, CAPTCHA and second-factor challenges require supported authorized flows or user handoff.
+11. Handle secrets through the existing credential vault when available. Secure desktop, CAPTCHA and second-factor challenges require supported authorized flows, an observed ordinary attempt where one is possible, or a handoff naming the exact step.
 
 12. Report tool calls, recovery steps, elapsed time, observed final state and blockers. Atlas uses its own computer backend; this skill does not install @oai/sky.
 
@@ -125,6 +125,15 @@ Do not infer the correct album row from a previous screenshot.
 
 Credentials and challenges follow the legitimate protected account flow.
 Operating-system consent and user handoff remain real dependencies.
+
+Authorized login is ordinary work: operate the observed sign-in button, intended
+account chooser and task-scoped consent screens, including Google sign-in.
+Reuse the existing session and supported protected credential path. A login form
+or password field alone does not require handoff or justify refusing the task.
+Do not read back passwords or substitute unprotected logging for secret entry.
+Ask only for missing input or the exact user-only step that blocks progress.
+After an actual handoff the user runs `/resume-use`; waiting_for_user stops the
+turn without retrying input or resuming control on the user's behalf.
 
 Record actual final application state and any instrumented duration. Separate
 provider latency and backend work only when the measurements support it.

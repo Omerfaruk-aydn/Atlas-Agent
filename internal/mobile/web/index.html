@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161c" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Atlas">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Atlas Remote</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="bar">
+  <button class="icon-btn hidden" id="back" type="button" aria-label="Back">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+  </button>
+  <h1 id="title">Atlas</h1>
+  <span class="conn" id="conn" role="status" aria-live="polite"></span>
+  <button class="icon-btn" id="settings-btn" type="button" aria-label="Settings">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" /></svg>
+  </button>
+</header>
+<div class="banner hidden" id="banner" role="alert"></div>
+<main id="main" tabindex="-1">
+  <section id="view-pair" class="view hidden" aria-labelledby="pair-h">
+    <h2 id="pair-h" data-i18n="pair_title"></h2>
+    <div id="pair-start">
+      <p class="muted" data-i18n="pair_intro"></p>
+      <label class="field"><span data-i18n="device_name"></span><input id="pair-name" autocomplete="off" maxlength="48"></label>
+      <button class="btn primary block" id="pair-go" type="button" data-i18n="pair_button"></button>
+    </div>
+    <div id="pair-wait" class="hidden">
+      <p data-i18n="pair_compare"></p>
+      <p class="code" id="pair-code" aria-live="polite"></p>
+      <p class="muted" id="pair-status" role="status" data-i18n="pair_waiting"></p>
+    </div>
+    <div id="pair-none" class="hidden">
+      <p data-i18n="pair_need_qr"></p>
+    </div>
+  </section>
+
+  <section id="view-list" class="view hidden" aria-labelledby="list-h">
+    <h2 id="list-h" class="sr-only" data-i18n="tasks"></h2>
+    <ul class="cards" id="task-list"></ul>
+    <p class="empty hidden" id="list-empty" data-i18n="no_tasks"></p>
+  </section>
+
+  <section id="view-task" class="view hidden" aria-labelledby="task-h">
+    <div class="task-head">
+      <h2 id="task-h"></h2>
+      <p class="meta" id="task-meta"></p>
+      <div class="controls" id="task-controls">
+        <button class="btn" id="ctl-pause" type="button" data-i18n="pause"></button>
+        <button class="btn" id="ctl-resume" type="button" data-i18n="resume"></button>
+        <button class="btn danger" id="ctl-stop" type="button" data-i18n="stop"></button>
+        <button class="btn" id="ctl-preview" type="button" data-i18n="preview"></button>
+      </div>
+    </div>
+    <div id="pending"></div>
+    <img id="preview-img" class="preview hidden" alt="">
+    <ol class="messages" id="messages" aria-live="polite"></ol>
+    <form class="composer" id="composer">
+      <label class="sr-only" for="prompt" data-i18n="message"></label>
+      <textarea id="prompt" rows="2" maxlength="16000"></textarea>
+      <div class="composer-row">
+        <label class="btn" id="attach-label"><input type="file" id="attach" accept="image/png,image/jpeg,image/gif,image/webp,text/plain,application/pdf" class="sr-only"><span data-i18n="attach"></span></label>
+        <span class="muted small" id="attach-info"></span>
+        <button class="btn primary" type="submit" id="send" data-i18n="send"></button>
+      </div>
+    </form>
+  </section>
+
+  <section id="view-settings" class="view hidden" aria-labelledby="settings-h">
+    <h2 id="settings-h" data-i18n="settings"></h2>
+    <dl class="kv">
+      <dt data-i18n="this_device"></dt><dd id="set-device"></dd>
+      <dt data-i18n="certificate"></dt><dd id="set-fp" class="mono small"></dd>
+      <dt data-i18n="previews"></dt><dd id="set-previews"></dd>
+    </dl>
+    <label class="switch"><input type="checkbox" id="notify"><span data-i18n="notifications"></span></label>
+    <p class="muted small" id="notify-note" data-i18n="notify_note"></p>
+    <aside class="install-guide hidden" id="iphone-install" aria-labelledby="iphone-install-title">
+      <h3 id="iphone-install-title" data-i18n="iphone_install_title"></h3>
+      <p data-i18n="iphone_install_steps"></p>
+      <p class="muted small" data-i18n="iphone_install_note"></p>
+    </aside>
+    <button class="btn danger block" id="logout" type="button" data-i18n="sign_out"></button>
+  </section>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

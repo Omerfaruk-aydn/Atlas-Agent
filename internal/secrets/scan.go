@@ -191,6 +191,20 @@ func scanFile(path string, opts Options) ([]Finding, error) {
 	return findings, nil
 }
 
+// ScanText applies the same line rules to in-memory text, so a document
+// can be checked before it is ever written to disk. name labels findings.
+func ScanText(name, text string, opts Options) []Finding {
+	var findings []Finding
+	for i, line := range strings.Split(text, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		if len(line) > maxLineLength || !isMostlyText(line) {
+			continue
+		}
+		findings = append(findings, scanLine(name, i+1, line, opts)...)
+	}
+	return findings
+}
+
 func scanLine(path string, lineNo int, line string, opts Options) []Finding {
 	// A line that disables the check is honoured, so a documented test
 	// fixture or a rotated key does not have to be reported forever.

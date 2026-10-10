@@ -51,3 +51,31 @@ func TestParallelBrowserOwnersAndPersistedPause(t *testing.T) {
 	state.History[0].Action = "modified"
 	require.Equal(t, "handoff", fresh.Snapshot("parent").History[0].Action)
 }
+
+func TestCancellationDuringHandoffSurvivesRestartAndStaysScoped(t *testing.T) {
+	t.Parallel()
+	c := New()
+	root := t.TempDir()
+	require.False(t, c.MarkCanceled("chat-a"), "an active conversation has no handoff to cancel")
+	c.Pause("chat-a", "Approve the sign-in on your phone")
+	c.Pause("chat-b", "Insert the security key")
+	require.True(t, c.MarkCanceled("chat-a"))
+	require.False(t, c.MarkCanceled("chat-a"), "repeated cancels do not bump the revision")
+	require.NoError(t, c.Record(root, "chat-a", Entry{Resource: "control", Action: "cancel", Status: "canceled"}))
+
+	restored := New()
+	require.NoError(t, restored.Load(root, "chat-a"))
+	state := restored.Snapshot("chat-a")
+	require.True(t, state.Paused)
+	require.True(t, state.Canceled, "cancellation must survive a restart")
+	require.Equal(t, "Approve the sign-in on your phone", state.Reason)
+
+	c.Resume("chat-a")
+	require.False(t, c.Snapshot("chat-a").Paused)
+	require.False(t, c.Snapshot("chat-a").Canceled)
+	require.True(t, c.Snapshot("chat-b").Paused, "resuming one conversation must not resume another")
+	require.False(t, c.Snapshot("chat-b").Canceled)
+
+	c.Pause("chat-a", "Solve the image challenge")
+	require.False(t, c.Snapshot("chat-a").Canceled, "a new handoff starts uncanceled")
+}

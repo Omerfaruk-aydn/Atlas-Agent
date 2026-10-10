@@ -42,8 +42,12 @@ type State struct {
 	LastResource    string   `json:"last_resource,omitempty"`
 	Paused          bool     `json:"paused"`
 	Reason          string   `json:"reason,omitempty"`
-	Active          string   `json:"active,omitempty"`
-	History         []Entry  `json:"history"`
+	// Canceled records that the user canceled the conversation's work
+	// while control was handed to them. Resuming control then must not
+	// restart the canceled task.
+	Canceled bool    `json:"canceled,omitempty"`
+	Active   string  `json:"active,omitempty"`
+	History  []Entry `json:"history"`
 }
 
 // Controller serializes a shared desktop and each session's browser.
@@ -56,6 +60,21 @@ type Controller struct {
 }
 
 var Default = New()
+
+// PausedError identifies a user handoff without treating it as a driver
+// failure. SessionID names the conversation whose user must resume.
+type PausedError struct {
+	SessionID    string
+	Reason       string
+	OtherSession bool
+}
+
+func (e *PausedError) Error() string {
+	if e.OtherSession {
+		return fmt.Sprintf("interaction_paused: session %s has handed control to the user", e.SessionID)
+	}
+	return fmt.Sprintf("interaction_paused: %s; user must resume control", e.Reason)
+}
 
 // New constructs an independent controller.
 func New() *Controller {
@@ -110,14 +129,14 @@ func (c *Controller) Acquire(ctx context.Context, id, resource string, observe .
 			if other != id && state.Paused {
 				c.mu.Unlock()
 				<-lease
-				return nil, fmt.Errorf("interaction_paused: another session has handed control to the user")
+				return nil, &PausedError{SessionID: other, Reason: state.Reason, OtherSession: true}
 			}
 		}
 	}
 	if s.Paused && !observation {
 		c.mu.Unlock()
 		<-lease
-		return nil, fmt.Errorf("interaction_paused: %s; user must resume control", s.Reason)
+		return nil, &PausedError{SessionID: id, Reason: s.Reason}
 	}
 	if c.active[id] == nil {
 		c.active[id] = map[string]int{}
@@ -158,11 +177,27 @@ func (c *Controller) Pause(id, reason string) {
 	c.mu.Lock()
 	s := c.states[id]
 	s.Paused = true
+	s.Canceled = false
 	s.ControlRevision++
 	s.Reason = reason
 	c.states[id] = s
 	c.mu.Unlock()
 	activity.ClearSession(id)
+}
+
+// MarkCanceled records a user cancellation for a paused conversation and
+// reports whether the state changed. Callers persist it with Record.
+func (c *Controller) MarkCanceled(id string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	s := c.states[id]
+	if !s.Paused || s.Canceled {
+		return false
+	}
+	s.Canceled = true
+	s.ControlRevision++
+	c.states[id] = s
+	return true
 }
 
 // StartActivity invalidates visual starts that race with a control handoff.
@@ -186,6 +221,7 @@ func (c *Controller) Resume(id string) {
 	defer c.mu.Unlock()
 	s := c.states[id]
 	s.Paused = false
+	s.Canceled = false
 	s.ControlRevision++
 	s.Reason = ""
 	c.states[id] = s

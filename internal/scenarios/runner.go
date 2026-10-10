@@ -80,7 +80,7 @@ func Run(ctx context.Context, scenario Scenario, backend Backend) (ScenarioRun, 
 		hasTranscript = hasTranscript || ref.Kind == "pty-transcript" && len(data) > 0 && !strings.ContainsRune(string(data), 0)
 		hasScreenshot = hasScreenshot || ref.Kind == "scenario-screenshot" && len(data) > 0
 	}
-	if scenario.Target == "tui" && (!hasTranscript || !strings.HasPrefix(observed.Result.Backend, "pty-") || observed.Result.RunID != run.ID || !observed.Result.Done || observed.Result.ExitCode == nil) || scenario.Target == "web" && !hasScreenshot {
+	if scenario.Target == "tui" && (!hasTranscript || !strings.HasPrefix(observed.Result.Backend, "pty-") || observed.Result.RunID != run.ID || !observed.Result.Done || observed.Result.ExitCode == nil) || (scenario.Target == "web" || NativeTarget(scenario.Target)) && !hasScreenshot {
 		observed.Passed, observed.Status = false, "failed"
 		observed.Gaps = append(observed.Gaps, "required real observation evidence missing")
 	}

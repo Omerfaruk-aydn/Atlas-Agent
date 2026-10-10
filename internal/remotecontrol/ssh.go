@@ -51,7 +51,7 @@ type SSHDialer struct {
 // Dial connects and authenticates within the profile's timeout.
 func (d *SSHDialer) Dial(ctx context.Context, p config.RemoteProfile, secret []byte) (Runner, error) {
 	timeout := time.Duration(p.Timeout()) * time.Second
-	auth, closer, err := d.authMethods(p, secret)
+	auth, closer, err := d.authMethods(ctx, p, secret)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (d *SSHDialer) Dial(ctx context.Context, p config.RemoteProfile, secret []b
 	return &sshRunner{client: client, closer: closer, remote: remote}, nil
 }
 
-func (d *SSHDialer) authMethods(p config.RemoteProfile, secret []byte) ([]ssh.AuthMethod, io.Closer, error) {
+func (d *SSHDialer) authMethods(ctx context.Context, p config.RemoteProfile, secret []byte) ([]ssh.AuthMethod, io.Closer, error) {
 	switch p.SSHAuth {
 	case AuthKey:
 		if msg := CheckKeyFile(p.SSHKeyFile); !msg.IsZero() {
@@ -125,7 +125,7 @@ func (d *SSHDialer) authMethods(p config.RemoteProfile, secret []byte) ([]ssh.Au
 	case AuthAgent:
 		open := d.Agent
 		if open == nil {
-			open = openAgent
+			open = func() (io.ReadWriteCloser, error) { return openAgent(ctx) }
 		}
 		conn, err := open()
 		if err != nil {

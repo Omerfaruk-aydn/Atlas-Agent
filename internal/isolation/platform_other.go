@@ -18,7 +18,7 @@ func DefaultPlatform() Platform { return otherPlatform{} }
 func (otherPlatform) Probe(context.Context) Facts { return Facts{GOOS: runtime.GOOS} }
 
 func (otherPlatform) Launch(context.Context, string) ([]procown.Identity, error) {
-	return nil, errors.New("Windows Sandbox is only available on Windows")
+	return nil, errors.New("windows sandbox is only available on Windows")
 }
 
 func (otherPlatform) Focus([]procown.Identity) error {

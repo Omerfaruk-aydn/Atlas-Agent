@@ -3,14 +3,19 @@ package shell
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 const (
@@ -24,12 +29,31 @@ const (
 type syncBuffer struct {
 	buf bytes.Buffer
 	mu  sync.RWMutex
+	// limit, when positive, keeps only roughly the last limit bytes so a
+	// long-running job cannot grow memory without bound. total counts
+	// every byte written.
+	limit int
+	total int64
 }
 
 func (sb *syncBuffer) Write(p []byte) (n int, err error) {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
-	return sb.buf.Write(p)
+	sb.total += int64(len(p))
+	n, err = sb.buf.Write(p)
+	if sb.limit > 0 && sb.buf.Len() > 2*sb.limit {
+		keep := bytes.Clone(sb.buf.Bytes()[sb.buf.Len()-sb.limit:])
+		sb.buf.Reset()
+		sb.buf.Write(keep)
+	}
+	return n, err
+}
+
+// Total reports how many bytes were written, including discarded ones.
+func (sb *syncBuffer) Total() int64 {
+	sb.mu.RLock()
+	defer sb.mu.RUnlock()
+	return sb.total
 }
 
 func (sb *syncBuffer) WriteString(s string) (n int, err error) {
@@ -59,6 +83,7 @@ type BackgroundShell struct {
 	done        chan struct{}
 	exitErr     error
 	completedAt atomic.Int64 // Unix timestamp when job completed (0 if still running)
+	timedOut    atomic.Bool
 }
 
 // BackgroundShellManager manages background shell instances.
@@ -91,6 +116,43 @@ func GetBackgroundShellManager() *BackgroundShellManager {
 
 // Start creates and starts a new background shell with the given command.
 func (m *BackgroundShellManager) Start(ctx context.Context, workingDir string, blockFuncs []BlockFunc, command string, description string) (*BackgroundShell, error) {
+	return m.start(ctx, workingDir, blockFuncs, command, description, 0, 0, func(ctx context.Context, sh *Shell, stdout, stderr io.Writer) error {
+		return sh.ExecStream(ctx, command, stdout, stderr)
+	})
+}
+
+// ArgvOutputLimit bounds the output a literal argv job keeps per stream.
+const ArgvOutputLimit = 1 << 20
+
+// StartArgv starts literal argv as a background job. No shell parses the
+// arguments. A positive timeout ends the job when it expires; the job then
+// reports TimedOut. Output kept per stream is bounded by ArgvOutputLimit.
+func (m *BackgroundShellManager) StartArgv(ctx context.Context, workingDir string, blockFuncs []BlockFunc, argv []string, description string, timeout time.Duration) (*BackgroundShell, error) {
+	if err := ValidateArgv(argv); err != nil {
+		return nil, err
+	}
+	if BlockedArgv(blockFuncs, argv) {
+		return nil, fmt.Errorf("command blocked by policy")
+	}
+	return m.start(ctx, workingDir, blockFuncs, QuoteArgv(argv), description, timeout, ArgvOutputLimit, func(ctx context.Context, sh *Shell, stdout, stderr io.Writer) error {
+		return sh.ExecArgvStream(ctx, argv, stdout, stderr)
+	})
+}
+
+// QuoteArgv renders argv for display only; it is never executed.
+func QuoteArgv(argv []string) string {
+	parts := make([]string, len(argv))
+	for i, arg := range argv {
+		quoted, err := syntax.Quote(arg, syntax.LangBash)
+		if err != nil {
+			quoted = strconv.Quote(arg)
+		}
+		parts[i] = quoted
+	}
+	return strings.Join(parts, " ")
+}
+
+func (m *BackgroundShellManager) start(ctx context.Context, workingDir string, blockFuncs []BlockFunc, command, description string, timeout time.Duration, limit int, run func(context.Context, *Shell, io.Writer, io.Writer) error) (*BackgroundShell, error) {
 	// Check job limit
 	if m.shells.Len() >= MaxBackgroundJobs {
 		return nil, fmt.Errorf("maximum number of background jobs (%d) reached. Please terminate or wait for some jobs to complete", MaxBackgroundJobs)
@@ -104,6 +166,12 @@ func (m *BackgroundShellManager) Start(ctx context.Context, workingDir string, b
 	})
 
 	shellCtx, cancel := context.WithCancel(ctx)
+	if timeout > 0 {
+		var cancelTimeout context.CancelFunc
+		shellCtx, cancelTimeout = context.WithTimeout(shellCtx, timeout)
+		cancelParent := cancel
+		cancel = func() { cancelTimeout(); cancelParent() }
+	}
 
 	bgShell := &BackgroundShell{
 		ID:          id,
@@ -114,8 +182,8 @@ func (m *BackgroundShellManager) Start(ctx context.Context, workingDir string, b
 		Shell:       shell,
 		ctx:         shellCtx,
 		cancel:      cancel,
-		stdout:      &syncBuffer{},
-		stderr:      &syncBuffer{},
+		stdout:      &syncBuffer{limit: limit},
+		stderr:      &syncBuffer{limit: limit},
 		done:        make(chan struct{}),
 	}
 
@@ -123,7 +191,10 @@ func (m *BackgroundShellManager) Start(ctx context.Context, workingDir string, b
 	m.Publish(pubsub.UpdatedEvent, JobEvent{Type: JobEventStarted, Info: bgShell.info()})
 
 	go func() {
-		err := shell.ExecStream(shellCtx, command, bgShell.stdout, bgShell.stderr)
+		err := run(shellCtx, shell, bgShell.stdout, bgShell.stderr)
+		if timeout > 0 && errors.Is(shellCtx.Err(), context.DeadlineExceeded) {
+			bgShell.timedOut.Store(true)
+		}
 
 		bgShell.exitErr = err
 		bgShell.completedAt.Store(time.Now().Unix())
@@ -285,6 +356,16 @@ func (bs *BackgroundShell) GetOutput() (stdout string, stderr string, done bool,
 	default:
 		return bs.stdout.String(), bs.stderr.String(), false, nil
 	}
+}
+
+// TimedOut reports that the job's own time limit, not a kill or the
+// command itself, ended it.
+func (bs *BackgroundShell) TimedOut() bool { return bs.timedOut.Load() }
+
+// OutputBytes reports how many bytes each stream produced in total,
+// including bytes no longer retained.
+func (bs *BackgroundShell) OutputBytes() (stdout, stderr int64) {
+	return bs.stdout.Total(), bs.stderr.Total()
 }
 
 // IsDone checks if the background shell has finished execution.

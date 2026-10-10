@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 
@@ -139,7 +140,10 @@ var redaction = struct {
 func Register(session, value string) error {
 	redaction.Lock()
 	defer redaction.Unlock()
-	if len(redaction.values[session]) >= 128 || len(redaction.values) >= 4096 {
+	if value == "" || slices.Contains(redaction.values[session], value) {
+		return nil
+	}
+	if len(redaction.values[session]) >= 128 || len(redaction.values) >= 4096 && len(redaction.values[session]) == 0 {
 		return errors.New("credential protection budget exhausted; restart before filling more secrets")
 	}
 	redaction.values[session] = append(redaction.values[session], value)

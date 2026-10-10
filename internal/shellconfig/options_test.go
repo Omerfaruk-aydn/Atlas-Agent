@@ -300,3 +300,16 @@ func TestOption_UnknownKey(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unknown key")
 }
+
+func TestOptionDeferToolSchemas(t *testing.T) {
+	t.Parallel()
+	for value, want := range map[string]bool{"true": true, "false": false} {
+		data, err := LoadShellConfig(t.Context(), filepath.Join(t.TempDir(), "atlasrc"), []byte("option defer-tool-schemas "+value))
+		require.NoError(t, err)
+		var result struct {
+			Options map[string]any `json:"options"`
+		}
+		require.NoError(t, json.Unmarshal(data, &result))
+		require.Equal(t, want, result.Options["defer_tool_schemas"])
+	}
+}

@@ -176,6 +176,7 @@ type (
 // UI represents the main user interface model.
 type UI struct {
 	voice        voiceState
+	devices      devicesState
 	draftGen     uint64
 	workflow     workflowPanel
 	com          *common.Common
@@ -619,6 +620,10 @@ func (m *UI) Init() tea.Cmd {
 		cmds = append(cmds, cmd)
 	}
 	cmds = append(cmds, m.checkPendingMCPAuth())
+	// Reconnect remote access that /rc turned on in an earlier run.
+	if cmd := m.autoStartRemote(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	if cmd := m.startBannerAnim(); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
@@ -814,6 +819,21 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.handleVoice(msg))
 	case clipboardMsg:
 		cmds = append(cmds, m.handleClipboard(msg))
+	case screenMarkMsg:
+		cmds = append(cmds, m.handleScreenMark(msg))
+	case mobileReadyMsg:
+		cmds = append(cmds, m.handleMobileReady(msg))
+	case interactionResumedMsg:
+		cmds = append(cmds, m.handleInteractionResumed(msg))
+	case homeNetworkMsg:
+		cmds = append(cmds, m.handleHomeNetwork(msg))
+	case remoteSavedMsg, remoteConfigMsg, remoteGatewayMsg, remoteDisabledMsg, remoteDraftMsg, remoteRetryMsg:
+		cmds = append(cmds, m.handleRemoteMsg(msg))
+	case mobileStoppedMsg:
+		if msg.generation == m.devices.remote.generation.Load() {
+			m.setGateway(nil)
+			cmds = append(cmds, util.ReportInfo(m.com.Text("Phone control stopped")))
+		}
 	case tea.EnvMsg:
 		// Is this Windows Terminal?
 		if !m.sendProgressBar {
@@ -1687,6 +1707,24 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				"response", string(msg.Payload),
 				"options", msg.Options)
 		}
+	case dialog.RemoteTick:
+		if d := m.remoteDialog(); d != nil {
+			if cmd := m.dispatchDialogAction(d.HandleMsg(msg)); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+	case dialog.IntegrationsTick, dialog.IntegrationsLoaded, dialog.IntegrationsDone:
+		if d := m.integrationsDialog(); d != nil {
+			if cmd := m.dispatchDialogAction(d.HandleMsg(msg)); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+	case dialog.AppsTick, dialog.AppsLoaded, dialog.AppsDone:
+		if d := m.appsDialog(); d != nil {
+			if cmd := m.dispatchDialogAction(d.HandleMsg(msg)); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
 	case dialog.ActionMCPAuthStarted:
 		cmds = append(cmds, m.authenticateMCP(msg.Ctx, msg.Name))
 	case dialog.ActionMCPAuthComplete, dialog.ActionMCPAuthErrored:
@@ -2358,6 +2396,54 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 	case dialog.ActionToggleComputerUse:
 		m.dialog.CloseDialog(dialog.CommandsID)
 		cmds = append(cmds, m.toggleComputerUse)
+	case dialog.ActionScreenMark:
+		m.dialog.CloseDialog(dialog.CommandsID)
+		cmds = append(cmds, m.screenMarkCmd())
+	case dialog.ActionOpenMobile:
+		m.dialog.CloseDialog(dialog.CommandsID)
+		cmds = append(cmds, m.openMobile())
+	case dialog.ActionStopMobile:
+		m.dialog.CloseDialog(dialog.MobileID)
+		cmds = append(cmds, m.stopMobile())
+	case dialog.ActionOpenRemote:
+		cmds = append(cmds, m.openRemote())
+	case dialog.ActionOpenIntegrations:
+		cmds = append(cmds, m.openIntegrations())
+	case dialog.ActionIntegrationsMCPLogin:
+		cmds = append(cmds, m.integrationsMCPLogin(msg.Name))
+	case dialog.ActionOpenApps:
+		cmds = append(cmds, m.openApps(msg.AppID))
+	case dialog.ActionAppsCreate:
+		cmds = append(cmds, m.createApp(msg.Request))
+	case dialog.ActionAppsUpdate:
+		cmds = append(cmds, m.updateApp(msg.ID, msg.Request))
+	case dialog.ActionAppsOpenURL:
+		cmds = append(cmds, m.openAppURL(msg.URL))
+	case dialog.ActionResumeInteraction:
+		m.dialog.CloseDialog(dialog.CommandsID)
+		cmds = append(cmds, m.resumeInteraction())
+	case dialog.ActionRemoteSaveProfile:
+		cmds = append(cmds, m.saveRemoteProfile(msg.Draft))
+	case dialog.ActionRemoteSetActive:
+		cmds = append(cmds, m.setRemoteActive(msg.ID))
+	case dialog.ActionRemoteDeleteProfile:
+		cmds = append(cmds, m.deleteRemoteProfile(msg.ID))
+	case dialog.ActionRemoteEnable:
+		cmds = append(cmds, m.enableRemote(msg.ID))
+	case dialog.ActionRemoteDisable:
+		cmds = append(cmds, m.disableRemote())
+	case dialog.ActionRemotePair:
+		cmds = append(cmds, m.pairRemote())
+	case dialog.ActionRemoteLAN:
+		if msg.Address == "" {
+			cmds = append(cmds, m.discoverHomeNetwork())
+		} else {
+			cmds = append(cmds, m.startHomeNetwork(msg.Address))
+		}
+	case dialog.ActionRemoteBrowserHelp:
+		cmds = append(cmds, m.remoteBrowserHelp())
+	case dialog.ActionRemoteImportDraft:
+		cmds = append(cmds, m.importRemoteDraft())
 	case dialog.ActionCyclePermissionMode:
 		mode := m.cyclePermissionMode()
 		cmds = append(cmds, util.ReportInfo(m.com.Text("Permission mode: ")+permissionModeLabel(mode)))
@@ -5507,13 +5593,15 @@ func (m *UI) slashCommandItems() []completions.CommandCompletionValue {
 	all := commandsDialog.AllItems()
 	items := make([]completions.CommandCompletionValue, 0, len(all))
 	for _, cmd := range all {
-		items = append(items, completions.CommandCompletionValue{
-			Name:    cmp.Or(cmd.SlashName(), slashName(cmd.ID())),
-			Detail:  cmp.Or(cmd.Summary(), cmd.Title()),
-			Hint:    cmd.Shortcut(),
-			Aliases: append([]string{cmd.Title()}, cmd.Aliases()...),
-			Action:  cmd.Action(),
-		})
+		for _, name := range append([]string{cmp.Or(cmd.SlashName(), slashName(cmd.ID()))}, cmd.SlashAliases()...) {
+			items = append(items, completions.CommandCompletionValue{
+				Name:    name,
+				Detail:  cmp.Or(cmd.Summary(), cmd.Title()),
+				Hint:    cmd.Shortcut(),
+				Aliases: append([]string{cmd.Title()}, cmd.Aliases()...),
+				Action:  cmd.Action(),
+			})
+		}
 	}
 	return items
 }

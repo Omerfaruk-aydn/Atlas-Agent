@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -111,6 +113,13 @@ func documentedExamples(t *testing.T) map[string]string {
 	for source, text := range sources {
 		for i, match := range exampleBlock.FindAllStringSubmatch(text, -1) {
 			body := match[1]
+			// Windows desktop examples use a native fixture path on other
+			// hosts; target syntax and every decoder assertion stay intact.
+			if runtime.GOOS != "windows" {
+				fixturePath, err := json.Marshal(filepath.Join(t.TempDir(), "hesap.txt"))
+				require.NoError(t, err)
+				body = strings.ReplaceAll(body, `"C:\\Users\\me\\Desktop\\Atlas-Test\\hesap.txt"`, string(fixturePath))
+			}
 			for placeholder, value := range examplePlaceholders {
 				body = strings.ReplaceAll(body, placeholder, value)
 			}

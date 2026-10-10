@@ -20,7 +20,7 @@ import (
 // the file system, not only from the Explorer view.
 func valuesWorkflow(t *testing.T, folder string) string {
 	t.Helper()
-	quoted, err := json.Marshal(folder)
+	quoted, err := json.Marshal(filepath.Join(folder, "hesap.txt"))
 	require.NoError(t, err)
 	dir := strings.Trim(string(quoted), `"`)
 	note := `1234 * 56 = 69104\n69104 / 8 = 8638\n8638 + 362 = 9000`
@@ -32,9 +32,9 @@ func valuesWorkflow(t *testing.T, folder string) string {
 		{note + `\nKontrol: 9000"},"next":"save_again"}`, note + `\nKontrol: {{result}}"},"next":"save_again"}`},
 		{note + `\nKontrol: 9000"},"next":"close_reopened"}`, note + `\nKontrol: {{result}}"},"next":"close_reopened"}`},
 		{`"condition":"visible"},"next":"close_editor"},`, `"condition":"visible"},"next":"saved_check"},
- {"id":"saved_check","kind":"file_check","file":{"path":"` + dir + `\\hesap.txt","condition":"content","expected":"` + note + `\nKontrol: {{result}}"},"next":"close_editor"},`},
+	 {"id":"saved_check","kind":"file_check","file":{"path":"` + dir + `","condition":"content","expected":"` + note + `\nKontrol: {{result}}"},"next":"close_editor"},`},
 		{`"expected_full_name":"sonuc.txt"},"next":"old_gone"},`, `"expected_full_name":"sonuc.txt"},"next":"old_file_gone"},
- {"id":"old_file_gone","kind":"file_check","file":{"path":"` + dir + `\\hesap.txt","condition":"absent"},"next":"old_gone"},`},
+	 {"id":"old_file_gone","kind":"file_check","file":{"path":"` + dir + `","condition":"absent"},"next":"old_gone"},`},
 	} {
 		require.Equal(t, 1, strings.Count(flow, r[0]), r[0])
 		flow = strings.Replace(flow, r[0], r[1], 1)

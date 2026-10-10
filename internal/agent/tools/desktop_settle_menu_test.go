@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -215,12 +216,16 @@ func TestClosedTargetIsReportedAsChange(t *testing.T) {
 // timeout, so the observation is abandoned after settle saw the change.
 type slowListDesktop struct {
 	*delayedDesktop
-	delay time.Duration
+	delayMu sync.Mutex
+	delay   time.Duration
 }
 
 func (d *slowListDesktop) Automation(ctx context.Context, p computer.AutomationRequest) (json.RawMessage, error) {
 	if p.Action == "windows" {
-		time.Sleep(d.delay)
+		d.delayMu.Lock()
+		delay := d.delay
+		d.delayMu.Unlock()
+		time.Sleep(delay)
 	}
 	return d.delayedDesktop.Automation(ctx, p)
 }
@@ -255,7 +260,9 @@ func TestUndeliveredObservationDoesNotAcknowledgeWindow(t *testing.T) {
 	require.False(t, acknowledged, "an undelivered observation acknowledged the transition")
 
 	s.actionTimeout = 5 * time.Second
+	slow.delayMu.Lock()
 	slow.delay = 0
+	slow.delayMu.Unlock()
 	resp = runDesktop(t, s, ctx, "focus", ComputerParams{Automation: computer.AutomationRequest{WindowID: notepadDraft.ID}})
 	require.True(t, resp.IsError, resp.Content)
 	require.Contains(t, resp.Content, "delayed_transition")

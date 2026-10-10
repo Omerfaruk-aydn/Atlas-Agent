@@ -334,7 +334,7 @@ func TestDesktopFileCheckConditions(t *testing.T) {
 	require.Contains(t, r.Content, `"first_difference":{"actual":"Sonuç: 9000","expected":"Sonuç: 8638","line":1}`)
 	for _, bad := range []DesktopFileCheck{
 		{Path: "sonuc.txt", Condition: "exists"},
-		{Path: path + `\..\x`, Condition: "exists"},
+		{Path: path + string(filepath.Separator) + ".." + string(filepath.Separator) + "x", Condition: "exists"},
 		{Path: path, Condition: "exists", Expected: "x"},
 		{Path: path, Condition: "sha256", Expected: "abc"},
 		{Path: path, Condition: "size"},
@@ -366,7 +366,7 @@ func TestDesktopFlowFileCheckUsesCapture(t *testing.T) {
 	}
 	p := calcToNotepadFlow()
 	p.Flow.Nodes[3].Next = "saved"
-	p.Flow.Nodes = append(p.Flow.Nodes, DesktopFlowNode{ID: "saved", Kind: "file_check", File: &DesktopFileCheck{Path: `C:\{{result}}.txt`, Condition: "exists"}})
+	p.Flow.Nodes = append(p.Flow.Nodes, DesktopFlowNode{ID: "saved", Kind: "file_check", File: &DesktopFileCheck{Path: filepath.Join(t.TempDir(), "{{result}}.txt"), Condition: "exists"}})
 	r, err := runDesktopWorkflow(t.Context(), p, fantasy.ToolCall{}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
 		t.Fatal("Invalid plan dispatched a child")
 		return fantasy.ToolResponse{}, nil

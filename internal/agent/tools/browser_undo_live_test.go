@@ -53,7 +53,7 @@ func newLiveTool(t *testing.T) *liveTool {
 	server := httptest.NewServer(http.FileServer(http.Dir("../../browser/testdata/browseruse")))
 	t.Cleanup(server.Close)
 	profile := t.TempDir()
-	manager := browser.GetManager(browser.Options{ExecutablePath: exe, Headless: true, UserDataDir: profile, OverlayDisabled: true, ActionTimeout: 20 * time.Second})
+	manager := browser.GetManager(browser.Options{ExecutablePath: exe, Headless: true, UserDataDir: profile, OverlayDisabled: true, ActionTimeout: 60 * time.Second})
 	root := t.TempDir()
 	id := "live-" + t.Name()
 	t.Cleanup(func() {

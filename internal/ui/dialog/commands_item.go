@@ -19,13 +19,15 @@ type CommandItem struct {
 	description string
 	summary     string
 	slash       string
-	action      Action
-	aliases     []string
-	t           *styles.Styles
-	m           fuzzy.Match
-	cache       map[int]string
-	focused     bool
-	hideInfo    bool
+	// slashAliases are extra "/" names for the same action.
+	slashAliases []string
+	action       Action
+	aliases      []string
+	t            *styles.Styles
+	m            fuzzy.Match
+	cache        map[int]string
+	focused      bool
+	hideInfo     bool
 }
 
 var _ ListItem = &CommandItem{Versioned: list.NewVersioned()}
@@ -62,6 +64,16 @@ func (c *CommandItem) WithSlash(name string) *CommandItem {
 	c.slash = name
 	return c
 }
+
+// WithSlashAliases adds further "/" names that run the same command, such as
+// a short form. The palette still lists the command once.
+func (c *CommandItem) WithSlashAliases(names ...string) *CommandItem {
+	c.slashAliases = names
+	return c
+}
+
+// SlashAliases returns the extra "/" names of the command.
+func (c *CommandItem) SlashAliases() []string { return c.slashAliases }
 
 // SlashName returns the explicit "/" popup name, or the empty string
 // when the command is content with the one derived from its id.

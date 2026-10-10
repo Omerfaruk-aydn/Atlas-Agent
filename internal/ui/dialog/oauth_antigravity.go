@@ -2,12 +2,15 @@ package dialog
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/catwalk"
 	tea "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ui/v2"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/antigravity"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/common"
 )
@@ -27,8 +30,16 @@ func NewOAuthAntigravity(
 }
 
 type OAuthAntigravity struct {
-	session    *antigravity.AuthSession
+	mu         sync.Mutex
+	session    antigravityLoginSession
 	cancelFunc func()
+	status     string
+	stopped    bool
+}
+
+type antigravityLoginSession interface {
+	WaitWithProgress(context.Context, func(string)) (*oauth.Token, error)
+	Close()
 }
 
 var _ OAuthProvider = (*OAuthAntigravity)(nil)
@@ -45,7 +56,14 @@ func (m *OAuthAntigravity) initiateAuth() tea.Msg {
 	if err != nil {
 		return ActionOAuthErrored{Error: fmt.Errorf("failed to start Antigravity sign-in: %w", err)}
 	}
+	m.mu.Lock()
+	if m.stopped {
+		m.mu.Unlock()
+		session.Close()
+		return nil
+	}
 	m.session = session
+	m.mu.Unlock()
 
 	return ActionInitiateOAuth{
 		DeviceCode:      "",
@@ -62,11 +80,23 @@ func (m *OAuthAntigravity) initiateAuth() tea.Msg {
 func (m *OAuthAntigravity) startPolling(_ string, expiresIn int) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(expiresIn)*time.Second)
+		defer cancel()
+		m.mu.Lock()
+		if m.stopped {
+			m.mu.Unlock()
+			return nil
+		}
 		m.cancelFunc = cancel
+		session := m.session
+		m.mu.Unlock()
 
-		token, err := m.session.Wait(ctx)
+		token, err := session.WaitWithProgress(ctx, func(status string) {
+			m.mu.Lock()
+			m.status = status
+			m.mu.Unlock()
+		})
 		if err != nil {
-			if ctx.Err() != nil {
+			if errors.Is(ctx.Err(), context.Canceled) {
 				return nil // cancelled, don't report error.
 			}
 			return ActionOAuthErrored{Error: err}
@@ -77,11 +107,21 @@ func (m *OAuthAntigravity) startPolling(_ string, expiresIn int) tea.Cmd {
 }
 
 func (m *OAuthAntigravity) stopPolling() tea.Msg {
-	if m.cancelFunc != nil {
-		m.cancelFunc()
+	m.mu.Lock()
+	m.stopped = true
+	cancel, session := m.cancelFunc, m.session
+	m.mu.Unlock()
+	if cancel != nil {
+		cancel()
 	}
-	if m.session != nil {
-		m.session.Close()
+	if session != nil {
+		session.Close()
 	}
 	return nil
+}
+
+func (m *OAuthAntigravity) progressStatus() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.status
 }

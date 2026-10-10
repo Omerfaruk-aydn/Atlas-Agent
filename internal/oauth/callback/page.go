@@ -40,6 +40,9 @@ type Result struct {
 	// Optional; when empty the page simply omits it.
 	Subject string
 
+	// Pending means the redirect arrived but account setup is not complete.
+	Pending bool
+
 	// ErrorCode is the OAuth error code (for example "access_denied").
 	// A non-empty value renders the page in its failure state.
 	ErrorCode string
@@ -123,6 +126,12 @@ func Write(w io.Writer, r Result) error {
 		// A failed page keeps itself open: the reader needs the reason,
 		// and closing the tab out from under them would take it away.
 		data.Status = "Close this tab and run the command again."
+	} else if r.Pending {
+		data.Title = "Authorization received — ATLAS-AGENT"
+		data.Kind = "ok"
+		data.Heading = "Authorization received"
+		data.Detail = "Google sign-in received for"
+		data.Status = "Return to Atlas to follow account setup. Connection is not complete yet."
 	} else {
 		data.Title = "Authorized — ATLAS-AGENT"
 		data.Kind = "ok"

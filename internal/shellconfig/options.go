@@ -235,6 +235,8 @@ var optionSpecs = map[string]optionSpec{
 	"auto-lsp":  {jsonKey: "auto_lsp", kind: optBool},
 	"progress":  {jsonKey: "progress", kind: optBool},
 
+	"defer-tool-schemas": {jsonKey: "defer_tool_schemas", kind: optBool},
+
 	// Boolean fields exposed positively but stored as their negation.
 	"metrics":              {jsonKey: "disable_metrics", kind: optBool, inverted: true},
 	"auto-summarize":       {jsonKey: "disable_auto_summarize", kind: optBool, inverted: true},

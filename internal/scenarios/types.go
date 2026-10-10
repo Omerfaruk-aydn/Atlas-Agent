@@ -32,7 +32,11 @@ type Assertion struct {
 type Scenario struct {
 	ID         string      `json:"id"`
 	Version    int         `json:"version"`
-	Target     string      `json:"target"`
+	Target     string      `json:"target" enum:"web,tui,desktop,android"`
+	Node       string      `json:"node,omitempty" description:"desktop: paired isolated node (default sandbox); never the host desktop."`
+	WindowID   string      `json:"window_id,omitempty" description:"desktop: numeric window_id from isolated_desktop windows."`
+	Serial     string      `json:"serial,omitempty" description:"android: exact device serial."`
+	Package    string      `json:"package,omitempty" description:"android: expected foreground package; an app switch rejects input."`
 	URL        string      `json:"url,omitempty"`
 	Argv       []string    `json:"argv,omitempty"`
 	Steps      []Step      `json:"steps"`
@@ -73,6 +77,9 @@ func webURL(value string) bool {
 }
 
 func dimensions(target string, width, height int) bool {
+	if NativeTarget(target) {
+		return width == 0 && height == 0 || width > 0 && width <= 16384 && height > 0 && height <= 16384
+	}
 	if target == "web" {
 		return width >= 240 && width <= 3840 && height >= 240 && height <= 2160
 	}
@@ -83,8 +90,14 @@ func Validate(ctx context.Context, scenario Scenario) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if scenario.Version != 1 || scenario.ID == "" || len(scenario.ID) > 128 || strings.ContainsAny(scenario.ID, "\x00\r\n") || scenario.Target != "web" && scenario.Target != "tui" || len(scenario.Steps) > 64 || len(scenario.Assertions) < 1 || len(scenario.Assertions) > 64 || scenario.TimeoutMS < 0 || scenario.TimeoutMS > 600000 || !dimensions(scenario.Target, scenario.Width, scenario.Height) {
+	if scenario.Version != 1 || scenario.ID == "" || len(scenario.ID) > 128 || strings.ContainsAny(scenario.ID, "\x00\r\n") || scenario.Target != "web" && scenario.Target != "tui" && !NativeTarget(scenario.Target) || len(scenario.Steps) > 64 || len(scenario.Assertions) < 1 || len(scenario.Assertions) > 64 || scenario.TimeoutMS < 0 || scenario.TimeoutMS > 600000 || !dimensions(scenario.Target, scenario.Width, scenario.Height) {
 		return fmt.Errorf("invalid scenario identity, version, limits or viewport")
+	}
+	if NativeTarget(scenario.Target) {
+		return validateNative(scenario)
+	}
+	if scenario.Node != "" || scenario.WindowID != "" || scenario.Serial != "" || scenario.Package != "" {
+		return fmt.Errorf("device identity fields require a desktop or android target")
 	}
 	if scenario.Target == "web" {
 		if !webURL(scenario.URL) || len(scenario.Argv) != 0 {

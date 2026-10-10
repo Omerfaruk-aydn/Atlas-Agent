@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -127,41 +129,93 @@ func (s *Shell) Exec(ctx context.Context, command string) (string, string, error
 // ExecArgv executes literal arguments without parsing or expanding source.
 // It uses the same interpreter handlers and execution binding as Exec.
 func (s *Shell) ExecArgv(ctx context.Context, argv []string) (string, string, error) {
+	var stdout, stderr bytes.Buffer
+	err := s.ExecArgvStream(ctx, argv, &stdout, &stderr)
+	return stdout.String(), stderr.String(), err
+}
+
+// ExecArgvStream is ExecArgv writing output to the given writers as it is
+// produced, so callers can bound how much they keep.
+func (s *Shell) ExecArgvStream(ctx context.Context, argv []string, stdout, stderr io.Writer) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return "", "", err
+		return err
 	}
-	if len(argv) == 0 || len(argv) > 128 || argv[0] == "" {
-		return "", "", fmt.Errorf("invalid literal command arguments")
+	if err := ValidateArgv(argv); err != nil {
+		return err
 	}
-	total := 0
-	for _, arg := range argv {
-		total += len(arg)
-		if strings.ContainsRune(arg, 0) || len(arg) > 4096 || total > 16*1024 {
-			return "", "", fmt.Errorf("literal command arguments exceed bounds")
-		}
+	if BlockedArgv(s.blockFuncs, argv) {
+		return fmt.Errorf("command blocked by policy")
 	}
-	for _, block := range s.blockFuncs {
-		if block(argv) {
-			return "", "", fmt.Errorf("command blocked by policy")
-		}
-	}
-	var stdout, stderr bytes.Buffer
 	if execution.HasBinding(ctx) {
-		err := execution.RunArgv(ctx, s.cwd, argv, s.env, &stdout, &stderr)
-		return stdout.String(), stderr.String(), err
+		return execution.RunArgv(ctx, s.cwd, argv, s.env, stdout, stderr)
 	}
 	words := make([]*syntax.Word, len(argv))
 	for i, arg := range argv {
 		words[i] = &syntax.Word{Parts: []syntax.WordPart{&syntax.SglQuoted{Value: arg}}}
 	}
-	runner, err := s.newInterp(nil, &stdout, &stderr)
+	runner, err := s.newInterp(nil, stdout, stderr)
 	if err != nil {
-		return "", "", err
+		return err
 	}
-	err = runner.Run(ctx, &syntax.File{Stmts: []*syntax.Stmt{{Cmd: &syntax.CallExpr{Args: words}}}})
-	return stdout.String(), stderr.String(), err
+	return runner.Run(ctx, &syntax.File{Stmts: []*syntax.Stmt{{Cmd: &syntax.CallExpr{Args: words}}}})
+}
+
+// ValidateArgv enforces the literal argv bounds shared by every argv path.
+func ValidateArgv(argv []string) error {
+	if len(argv) == 0 || len(argv) > 128 || argv[0] == "" {
+		return fmt.Errorf("invalid literal command arguments")
+	}
+	total := 0
+	for _, arg := range argv {
+		total += len(arg)
+		if strings.ContainsRune(arg, 0) || len(arg) > 4096 || total > 16*1024 {
+			return fmt.Errorf("literal command arguments exceed bounds")
+		}
+	}
+	return nil
+}
+
+// BlockedArgv applies block rules to argv as given and, when argv[0] names
+// a file by path, to its bare program name as well. Command rules are
+// written against names such as "curl"; spelling the same program as
+// /usr/bin/curl or C:\tools\curl.exe must not escape them.
+func BlockedArgv(blocks []BlockFunc, argv []string) bool {
+	if len(argv) == 0 {
+		return false
+	}
+	candidates := [][]string{argv}
+	if name := ProgramName(argv[0]); name != argv[0] {
+		candidates = append(candidates, append([]string{name}, argv[1:]...))
+	}
+	for _, block := range blocks {
+		for _, candidate := range candidates {
+			if block(candidate) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ProgramName reduces a path-like argv[0] to the bare name block rules use:
+// the base name, and on Windows also without an executable extension and
+// lowercased.
+func ProgramName(arg string) string {
+	if !strings.ContainsAny(arg, `/\`) {
+		return arg
+	}
+	name := filepath.Base(filepath.FromSlash(arg))
+	if runtime.GOOS == "windows" {
+		name = strings.ToLower(name)
+		for _, ext := range []string{".exe", ".com", ".bat", ".cmd"} {
+			if trimmed, ok := strings.CutSuffix(name, ext); ok {
+				return trimmed
+			}
+		}
+	}
+	return name
 }
 
 // ExecStream executes a command in the shell with streaming output to provided writers

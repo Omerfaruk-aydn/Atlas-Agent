@@ -1,4 +1,4 @@
-﻿# https://taskfile.dev
+# https://taskfile.dev
 
 version: "3"
 
@@ -40,10 +40,21 @@ tasks:
     env:
       GOEXPERIMENT: null
 
+  relaybin:
+    desc: Bundle the Linux relay that /rc installs
+    cmds:
+      - go generate ./internal/remotecontrol/relaybin
+    sources:
+      - cmd/atlas-mobile-relay/**/*.go
+      - internal/mobilerelay/**/*.go
+    generates:
+      - internal/remotecontrol/relaybin/files/manifest.json
+
   build:
     desc: Run build
     vars:
-      LDFLAGS: '{{if .VERSION}}-ldflags="-X github.com/charmbracelet/Atlas-Agent/internal/version.Version={{.VERSION}}"{{end}}'
+      LDFLAGS: '{{if .VERSION}}-ldflags="-X github.com/Omerfaruk-aydn/Atlas-Agent/internal/version.Version={{.VERSION}}"{{end}}'
+    deps: [relaybin]
     cmds:
       - "go build -v {{if .RACE}}-race{{end}} {{.LDFLAGS}} ."
     sources:
@@ -116,7 +127,7 @@ tasks:
   install:
     desc: Install the application
     vars:
-      LDFLAGS: '{{if .VERSION}}-ldflags="-X github.com/charmbracelet/Atlas-Agent/internal/version.Version={{.VERSION}}"{{end}}'
+      LDFLAGS: '{{if .VERSION}}-ldflags="-X github.com/Omerfaruk-aydn/Atlas-Agent/internal/version.Version={{.VERSION}}"{{end}}'
     cmds:
       - task: fetch-tags
       - go install {{.LDFLAGS}} -v .

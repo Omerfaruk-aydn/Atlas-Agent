@@ -60,8 +60,7 @@ func startProcess(req execution.Request, size execution.TerminalSize) (processTe
 		return processTerminal{}, err
 	}
 	defer attributes.Delete()
-	//nolint:govet // Windows expects HPCON as lpValue, not its address.
-	if err := attributes.Update(windows.PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, unsafe.Pointer(console), unsafe.Sizeof(console)); err != nil {
+	if err := bindPseudoConsole(attributes, console); err != nil {
 		return processTerminal{}, err
 	}
 	job, err := windows.CreateJobObject(nil, nil)
@@ -187,4 +186,21 @@ func startProcess(req execution.Request, size execution.TerminalSize) (processTe
 			_ = inputWrite.Close()
 		},
 	}, nil
+}
+
+// bindPseudoConsole passes HPCON as the attribute value itself. The generic
+// pointer wrapper would put this integer handle in a Go pointer slice; using
+// the native uintptr ABI avoids misrepresenting a handle as a Go pointer.
+func bindPseudoConsole(attributes *windows.ProcThreadAttributeListContainer, console windows.Handle) error {
+	proc := windows.NewLazySystemDLL("kernel32.dll").NewProc("UpdateProcThreadAttribute")
+	ok, _, err := proc.Call(uintptr(unsafe.Pointer(attributes.List())), 0,
+		windows.PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, uintptr(console), unsafe.Sizeof(console), 0, 0)
+	runtime.KeepAlive(attributes)
+	if ok == 0 {
+		if err == windows.ERROR_SUCCESS {
+			return windows.ERROR_INVALID_PARAMETER
+		}
+		return err
+	}
+	return nil
 }

@@ -50,7 +50,7 @@ func TestToAIMessage_CorruptedMediaData(t *testing.T) {
 
 	textContent, ok := part.Output.(fantasy.ToolResultOutputContentText)
 	require.True(t, ok, "corrupted media should be downgraded to text")
-	require.Equal(t, mediaLoadFailedPlaceholder, textContent.Text)
+	require.Equal(t, "Loaded image/png content\n\n"+mediaLoadFailedPlaceholder, textContent.Text)
 }
 
 func TestToAIMessage_ValidMediaData(t *testing.T) {
@@ -84,6 +84,7 @@ func TestToAIMessage_ValidMediaData(t *testing.T) {
 	require.True(t, ok, "valid media should remain as media")
 	require.Equal(t, validBase64, mediaContent.Data)
 	require.Equal(t, "image/png", mediaContent.MediaType)
+	require.Equal(t, "Loaded image/png content", mediaContent.Text)
 }
 
 func TestToAIMessage_ASCIIButInvalidBase64(t *testing.T) {
@@ -113,7 +114,30 @@ func TestToAIMessage_ASCIIButInvalidBase64(t *testing.T) {
 
 	textContent, ok := part.Output.(fantasy.ToolResultOutputContentText)
 	require.True(t, ok, "ASCII but invalid base64 should be downgraded to text")
-	require.Equal(t, mediaLoadFailedPlaceholder, textContent.Text)
+	require.Equal(t, "Loaded image/png content\n\n"+mediaLoadFailedPlaceholder, textContent.Text)
+}
+
+func TestPersistedScreenshotRetainsViewportTextWhenReloaded(t *testing.T) {
+	t.Parallel()
+	svc, sessionID := newTestService(t)
+	caption := `Viewport: {"viewport_id":"vp-persisted","image_width":1600,"image_height":765,"image_scale":0.8333333333333334}`
+	data := base64.StdEncoding.EncodeToString([]byte("image bytes"))
+	created, err := svc.Create(t.Context(), sessionID, CreateMessageParams{
+		Role:  Tool,
+		Parts: []ContentPart{ToolResult{ToolCallID: "screenshot-call", Name: "browser", Content: caption, Data: data, MIMEType: "image/png"}},
+	})
+	require.NoError(t, err)
+	reloaded, err := svc.Get(t.Context(), created.ID)
+	require.NoError(t, err)
+	messages := reloaded.ToAIMessage()
+	require.Len(t, messages, 1)
+	part, ok := messages[0].Content[0].(fantasy.ToolResultPart)
+	require.True(t, ok)
+	media, ok := part.Output.(fantasy.ToolResultOutputContentMedia)
+	require.True(t, ok)
+	require.Equal(t, caption, media.Text)
+	require.Equal(t, data, media.Data)
+	require.Equal(t, "screenshot-call", part.ToolCallID)
 }
 
 func BenchmarkPromptWithTextAttachments(b *testing.B) {

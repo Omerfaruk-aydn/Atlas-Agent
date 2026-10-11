@@ -298,3 +298,53 @@ func TestLANDiscoveryFindsTheHostByCodeAlone(t *testing.T) {
 	require.Equal(t, h.NodeID(), res.remote.RemoteDeviceID)
 }
 
+// Scenario 2: wrong, expired and reused codes.
+func TestWrongExpiredAndReusedCodes(t *testing.T) {
+	t.Parallel()
+	t.Run("wrong code then lockout", func(t *testing.T) {
+		t.Parallel()
+		h := startHost(t, nil)
+		info := offerLAN(t, h, Presets["diagnose"])
+		wrong, err := NewPairingCode()
+		require.NoError(t, err)
+		for i := range maxCodeAttempts {
+			c := startController(t, nil)
+			_, err := c.Join(t.Context(), wrong.String()+"@"+h.LANAddress(), nil)
+			if i < maxCodeAttempts-1 {
+				require.Equal(t, CodePairingInvalid, CodeOf(err), "attempt %d", i)
+			} else {
+				require.Equal(t, CodePairingRateLimited, CodeOf(err))
+			}
+		}
+		// The right code no longer works either: the offer is burned.
+		c := startController(t, nil)
+		_, err = c.Join(t.Context(), info.Code+"@"+h.LANAddress(), nil)
+		require.Error(t, err)
+		require.Nil(t, h.Status().Session)
+	})
+	t.Run("expired", func(t *testing.T) {
+		t.Parallel()
+		h := startHost(t, nil)
+		info, err := h.Offer(OfferOptions{Capabilities: Presets["diagnose"], LAN: true, CodeTTL: 50 * time.Millisecond})
+		require.NoError(t, err)
+		require.Eventually(t, func() bool { return h.Status().State == StateExpired }, 5*time.Second, 10*time.Millisecond)
+		c := startController(t, nil)
+		_, err = c.Join(t.Context(), info.Code+"@"+h.LANAddress(), nil)
+		require.Equal(t, CodePairingExpired, CodeOf(err))
+		require.Equal(t, StateExpired, c.Status().State)
+	})
+	t.Run("reused", func(t *testing.T) {
+		t.Parallel()
+		h := startHost(t, nil)
+		c := startController(t, nil)
+		info := offerLAN(t, h, Presets["diagnose"])
+		ch := startJoin(c, info.Code+"@"+h.LANAddress())
+		require.NoError(t, h.Decide(waitPending(t, h).ID, true, nil))
+		require.NoError(t, (<-ch).err)
+		other := startController(t, nil)
+		_, err := other.Join(t.Context(), info.Code+"@"+h.LANAddress(), nil)
+		require.Equal(t, CodePairingUsed, CodeOf(err))
+		require.Equal(t, c.Fingerprint(), h.Status().Session.Peer.Fingerprint, "the first session is untouched")
+	})
+}
+

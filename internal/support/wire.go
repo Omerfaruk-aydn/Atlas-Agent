@@ -102,3 +102,100 @@ func writeFrame(w io.Writer, v any) error {
 	return err
 }
 
+// readFrame reads exactly one frame, never buffering beyond it, so the
+// connection can switch to HTTP/2 right after the handshake.
+func readFrame(r io.Reader, v any) error {
+	var hdr [4]byte
+	if _, err := io.ReadFull(r, hdr[:]); err != nil {
+		return err
+	}
+	n := binary.BigEndian.Uint32(hdr[:])
+	if n == 0 || n > maxFrame {
+		return Errorf(CodeProtocol, "invalid handshake frame of %d bytes", n)
+	}
+	data := make([]byte, n)
+	if _, err := io.ReadFull(r, data); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, v); err != nil {
+		return Errorf(CodeProtocol, "invalid handshake frame: %v", err)
+	}
+	return nil
+}
+
+func hostTLSConfig(id nodes.Identity) *tls.Config {
+	return &tls.Config{
+		MinVersion:   tls.VersionTLS13,
+		Certificates: []tls.Certificate{id.Certificate},
+		// The controller's certificate is its device identity. It is not
+		// chained to anything; the code proof and the owner's acceptance
+		// decide trust, and the fingerprint is what the owner is shown.
+		ClientAuth: tls.RequireAnyClientCert,
+		NextProtos: []string{alpnProtocol},
+	}
+}
+
+// controllerTLSConfig pins the host when its fingerprint is known (a
+// resume); a first join learns it and the code proof authenticates it.
+func controllerTLSConfig(id nodes.Identity, pin string) *tls.Config {
+	return &tls.Config{
+		MinVersion:         tls.VersionTLS13,
+		Certificates:       []tls.Certificate{id.Certificate},
+		InsecureSkipVerify: true, //nolint:gosec // Replaced by the code proof and the pin below.
+		ServerName:         "atlas-support",
+		NextProtos:         []string{alpnProtocol},
+		VerifyPeerCertificate: func(raw [][]byte, _ [][]*x509.Certificate) error {
+			if len(raw) == 0 {
+				return errors.New("host presented no certificate")
+			}
+			if pin != "" && nodes.Fingerprint(raw[0]) != pin {
+				return Errorf(CodeWrongTarget, "the computer answering is not the one this session was established with")
+			}
+			return nil
+		},
+	}
+}
+
+func peerFingerprint(cs tls.ConnectionState) string {
+	if len(cs.PeerCertificates) == 0 {
+		return ""
+	}
+	return nodes.Fingerprint(cs.PeerCertificates[0].Raw)
+}
+
+func exporter(conn *tls.Conn) ([]byte, error) {
+	cs := conn.ConnectionState()
+	if cs.NegotiatedProtocol != alpnProtocol {
+		return nil, Errorf(CodeProtocol, "peer does not speak %s", alpnProtocol)
+	}
+	return cs.ExportKeyingMaterial(exporterLabel, nil, 32)
+}
+
+func handshakeDeadline(conn net.Conn, d time.Duration) func() {
+	_ = conn.SetDeadline(time.Now().Add(d))
+	return func() { _ = conn.SetDeadline(time.Time{}) }
+}
+
+// contextConn closes conn when ctx ends, so a blocked handshake read stops.
+func contextConn(ctx context.Context, conn net.Conn) func() bool {
+	return context.AfterFunc(ctx, func() { _ = conn.Close() })
+}
+
+func shortFP(fp string) string {
+	if len(fp) > 7+16 {
+		return fp[7:15] + "…" + fp[len(fp)-8:]
+	}
+	return fp
+}
+
+// ShortFingerprint formats a device fingerprint for display.
+func ShortFingerprint(fp string) string { return shortFP(fp) }
+
+func errFrame(e *Error) serverMsg { return serverMsg{Type: "error", Error: e} }
+
+func describe(err error) string {
+	if e := AsError(err); e != nil {
+		return e.Message
+	}
+	return fmt.Sprint(err)
+}

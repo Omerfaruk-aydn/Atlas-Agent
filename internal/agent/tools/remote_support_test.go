@@ -129,3 +129,31 @@ func TestRemoteSupportWithoutAConnectedComputerNeverRunsLocally(t *testing.T) {
 	require.Equal(t, string(support.CodeNoTarget), errCode(got))
 }
 
+// Scenarios 5 and 6: the supporter's auto-approve cannot widen the owner's
+// grant, and a call naming another device sends nothing.
+func TestRemoteSupportAutoApproveCannotWidenTheGrantOrChangeTarget(t *testing.T) {
+	t.Parallel()
+	f := newSupportFixture(t, []support.Capability{support.CapSystemInfo})
+	work := t.TempDir()
+	tool := NewRemoteSupportTool(yolo(t), work, func() *support.Controller { return f.ctl })
+
+	got := callSupport(t, tool, "c1", map[string]any{"action": "exec", "device_id": f.remote.RemoteDeviceID, "argv": supportHelper(t, "mark"), "cwd": "Work"})
+	require.Equal(t, string(support.CodeCapabilityDenied), errCode(got))
+	require.Equal(t, false, got.body["input_sent"])
+	require.Equal(t, "none", got.outcome.Dispatch)
+	require.NoFileExists(t, filepath.Join(f.root, "marks.txt"))
+
+	got = callSupport(t, tool, "c2", map[string]any{"action": "system_info", "device_id": "node-0000000000000000"})
+	require.Equal(t, string(support.CodeWrongTarget), errCode(got))
+	got = callSupport(t, tool, "c3", map[string]any{"action": "system_info"})
+	require.Equal(t, string(support.CodeWrongTarget), errCode(got), "device_id is mandatory")
+
+	got = callSupport(t, tool, "c4", map[string]any{"action": "system_info", "device_id": f.remote.RemoteDeviceID})
+	require.False(t, got.resp.IsError, got.resp.Content)
+	device := got.body["device"].(map[string]any)
+	require.Equal(t, f.remote.RemoteDeviceID, device["remote_device_id"])
+	require.Equal(t, f.remote.SessionID, device["session_id"])
+	require.Equal(t, []string{"remote:" + f.remote.RemoteDeviceID}, got.outcome.Subjects)
+	require.Empty(t, f.host.Status().Session.Recent, "nothing ran on the remote computer")
+}
+

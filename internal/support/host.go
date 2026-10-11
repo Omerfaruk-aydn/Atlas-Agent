@@ -317,3 +317,119 @@ func (h *Host) notify() {
 
 var rootLabel = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,39}$`)
 
+// Offer creates a one-time code and starts listening on the chosen paths.
+func (h *Host) Offer(o OfferOptions) (OfferInfo, error) {
+	if !h.beginWork() {
+		return OfferInfo{}, Errorf(CodeSessionRevoked, "the support host is closed")
+	}
+	defer h.work.Done()
+	o.Capabilities = Normalize(o.Capabilities)
+	if len(o.Capabilities) == 0 {
+		return OfferInfo{}, errors.New("choose at least one permission")
+	}
+	if !o.LAN && !o.Internet {
+		return OfferInfo{}, errors.New("choose local network, internet or both")
+	}
+	if o.Internet && !h.opts.Relay.Configured() {
+		return OfferInfo{}, Errorf(CodeRelayNotConfigured, "internet mode needs a support relay you operate; set support_relay_url, or use local network mode")
+	}
+	if o.CodeTTL <= 0 {
+		o.CodeTTL = defaultCodeTTL
+	}
+	o.CodeTTL = min(o.CodeTTL, 30*time.Minute)
+	if o.SessionDuration <= 0 {
+		o.SessionDuration = defaultSessionDuration
+	}
+	o.SessionDuration = min(o.SessionDuration, 8*time.Hour)
+	seen := map[string]bool{}
+	for i, r := range o.Roots {
+		if !rootLabel.MatchString(r.Label) || seen[r.Label] {
+			return OfferInfo{}, fmt.Errorf("folder label %q must be unique, 1-40 letters, digits, spaces, '.', '_' or '-'", r.Label)
+		}
+		seen[r.Label] = true
+		if !filepath.IsAbs(r.Path) {
+			return OfferInfo{}, fmt.Errorf("folder %q must be an absolute path", r.Path)
+		}
+		info, err := os.Stat(r.Path)
+		if err != nil || !info.IsDir() {
+			return OfferInfo{}, fmt.Errorf("folder %q does not exist", r.Path)
+		}
+		o.Roots[i].Path = filepath.Clean(r.Path)
+	}
+	code, err := NewPairingCode()
+	if err != nil {
+		return OfferInfo{}, err
+	}
+	h.mu.Lock()
+	h.workMu.Lock()
+	closed := h.closed
+	h.workMu.Unlock()
+	if closed {
+		h.mu.Unlock()
+		return OfferInfo{}, Errorf(CodeSessionRevoked, "the support host is closed")
+	}
+	if h.session != nil || h.pending != nil {
+		h.mu.Unlock()
+		return OfferInfo{}, errors.New("a support session is already active; end it first")
+	}
+	h.stopOfferLocked()
+	h.machine = NewMachine()
+	if err := h.machine.Move(StateHosting, "code created"); err != nil {
+		h.mu.Unlock()
+		return OfferInfo{}, err
+	}
+	h.code, h.codeKey, h.codeUsed, h.attempts = code, code.key(), false, 0
+	h.offer = &o
+	ctx, cancel := context.WithCancel(h.ctx)
+	h.offerCancel = cancel
+	info := OfferInfo{Code: code.String(), ExpiresAt: time.Now().Add(o.CodeTTL)}
+	var lanAddr string
+	if o.LAN {
+		if err := h.listenLocked(); err != nil {
+			h.mu.Unlock()
+			cancel()
+			return OfferInfo{}, fmt.Errorf("local network listener: %w", err)
+		}
+		bound := h.listener.Addr().(*net.TCPAddr)
+		if bound.IP.IsUnspecified() {
+			for _, ip := range LocalAddresses() {
+				info.LANAddresses = append(info.LANAddresses, net.JoinHostPort(ip, strconv.Itoa(bound.Port)))
+			}
+		} else {
+			// A listener bound to one address is reachable only there.
+			info.LANAddresses = []string{bound.String()}
+		}
+		if len(info.LANAddresses) > 0 {
+			lanAddr = info.LANAddresses[0]
+		}
+	}
+	if o.Internet {
+		info.RelayURL = h.opts.Relay.URL
+		h.relayStatus = "connecting"
+		h.goWork(func() { h.relayOfferLoop(ctx, code.SlotID()) })
+	}
+	info.Link = JoinLink(code, info.RelayURL, lanAddr)
+	h.offerInfo = &info
+	machine := h.machine
+	h.mu.Unlock()
+	h.afterFunc(o.CodeTTL, func() {
+		if st, _, _ := machine.State(); st == StateHosting {
+			_ = machine.Move(StateExpired, "code expired")
+			h.mu.Lock()
+			// The listener stays open so a late join hears pairing_expired
+			// instead of a refused connection; the relay registration and
+			// discovery end now.
+			if h.machine == machine && h.session == nil && h.pending == nil && h.offerCancel != nil {
+				h.offerCancel()
+				h.offerCancel = nil
+				h.relayStatus = ""
+			}
+			h.mu.Unlock()
+			h.notify()
+		}
+	})
+	_ = h.history.Append(Event{SessionID: "offer-" + code.SlotID()[:16], Role: "host", Kind: "code_created", Device: h.id.NodeID, Fields: map[string]string{"capabilities": strings.Join(Strings(o.Capabilities), ","), "lan": strconv.FormatBool(o.LAN), "internet": strconv.FormatBool(o.Internet)}})
+	h.notify()
+	return info, nil
+}
+

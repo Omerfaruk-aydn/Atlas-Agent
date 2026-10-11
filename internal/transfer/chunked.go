@@ -235,3 +235,56 @@ func (u *Uploads) store(rec uploadRecord) error {
 // ErrUploadConflict means the operation key was used for other content.
 var ErrUploadConflict = errors.New("upload key was already used for a different file")
 
+// Create starts an upload or returns the existing one for the same owner,
+// key and content, which is how an interrupted upload resumes.
+func (u *Uploads) Create(spec UploadSpec, maxBytes int64) (UploadStatus, error) {
+	if maxBytes <= 0 {
+		maxBytes = DefaultMaxBytes
+	}
+	if spec.Owner == "" || spec.Key == "" {
+		return UploadStatus{}, fail("invalid_request", "upload needs an owner and an operation id")
+	}
+	if !ValidSHA256(spec.SHA256) {
+		return UploadStatus{}, fail("invalid_hash", "sha256 must be 64 lowercase hex characters")
+	}
+	if spec.Size < 0 || spec.Size > maxBytes {
+		return UploadStatus{}, fail("too_large", "transfer of %d bytes exceeds the %d byte limit", spec.Size, maxBytes)
+	}
+	if _, err := ParseConflict(string(spec.Conflict)); err != nil {
+		return UploadStatus{}, err
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	id := uploadID(spec.Owner, spec.Key)
+	if rec, err := u.load(id); err == nil {
+		if rec.Spec != spec {
+			return UploadStatus{}, ErrUploadConflict
+		}
+		return rec.Status, nil
+	}
+	// Fail early when the destination cannot be written at all.
+	if _, err := Destination(spec.Root, spec.Rel, spec.Conflict); err != nil {
+		return UploadStatus{}, err
+	}
+	if err := os.WriteFile(u.partPath(id), nil, 0o600); err != nil {
+		return UploadStatus{}, err
+	}
+	rec := uploadRecord{Spec: spec, Status: UploadStatus{ID: id, OperationID: spec.Key, Rel: spec.Rel, Size: spec.Size, SHA256: spec.SHA256, Conflict: spec.Conflict, State: "receiving"}}
+	if err := u.store(rec); err != nil {
+		return UploadStatus{}, err
+	}
+	return rec.Status, nil
+}
+
+func (u *Uploads) owned(id, owner string) (uploadRecord, error) {
+	rec, err := u.load(id)
+	if err != nil {
+		return rec, err
+	}
+	if rec.Spec.Owner != owner {
+		// Another session's upload is indistinguishable from a missing one.
+		return uploadRecord{}, fail("not_found", "unknown upload")
+	}
+	return rec, nil
+}
+

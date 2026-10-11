@@ -97,3 +97,85 @@ func TestChunkedUploadHashMismatchFailsAndDeliversNothing(t *testing.T) {
 	require.NoFileExists(t, filepath.Join(root, "f.txt"))
 }
 
+func TestConflictPolicies(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "report.pdf"), []byte("old"), 0o644))
+	src := filepath.Join(t.TempDir(), "src")
+	data := []byte("new")
+	require.NoError(t, os.WriteFile(src, data, 0o644))
+
+	_, err := Install(root, "report.pdf", src, 3, HashBytes(data), ConflictError)
+	require.Equal(t, "exists", Code(err))
+
+	renamed, err := Install(root, "report.pdf", src, 3, HashBytes(data), ConflictRename)
+	require.NoError(t, err)
+	require.Equal(t, "report (1).pdf", filepath.Base(renamed))
+	old, _ := os.ReadFile(filepath.Join(root, "report.pdf"))
+	require.Equal(t, "old", string(old))
+
+	replaced, err := Install(root, "report.pdf", src, 3, HashBytes(data), ConflictOverwrite)
+	require.NoError(t, err)
+	got, _ := os.ReadFile(replaced)
+	require.Equal(t, "new", string(got))
+
+	_, err = ParseConflict("clobber")
+	require.Error(t, err)
+}
+
+func TestInstallRejectsSubstitutedSource(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	src := filepath.Join(t.TempDir(), "src")
+	require.NoError(t, os.WriteFile(src, []byte("evil"), 0o644))
+	_, err := Install(root, "f", src, 4, HashBytes([]byte("good")), ConflictError)
+	require.Equal(t, "hash_mismatch", Code(err))
+	require.NoFileExists(t, filepath.Join(root, "f"))
+}
+
+func TestJunctionEscapeIsRejected(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS != "windows" {
+		t.Skip("junctions are a Windows feature")
+	}
+	root := t.TempDir()
+	outside := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("secret"), 0o644))
+	link := filepath.Join(root, "junction")
+	// PowerShell quotes the paths itself; cmd would split on "&".
+	script := "New-Item -ItemType Junction -Path $env:ATLAS_LINK -Target $env:ATLAS_TARGET | Out-Null"
+	cmd := exec.CommandContext(t.Context(), "powershell", "-NoProfile", "-NonInteractive", "-Command", script)
+	cmd.Env = append(os.Environ(), "ATLAS_LINK="+link, "ATLAS_TARGET="+outside)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("junctions unavailable: %v %s", err, out)
+	}
+	_, err := Resolve(root, "junction/secret.txt")
+	require.Equal(t, "symlink_escape", Code(err))
+	_, err = Resolve(root, "junction")
+	require.Equal(t, "symlink_escape", Code(err))
+	_, _, _, err = Open(root, "junction/secret.txt", 0)
+	require.Error(t, err)
+	data := []byte("x")
+	_, err = Receive(root, "junction/new.txt", bytes.NewReader(data), 1, HashBytes(data), 0, false)
+	require.Equal(t, "symlink_escape", Code(err))
+	require.NoFileExists(t, filepath.Join(outside, "new.txt"))
+	_, _, err = List(root, "junction", 0)
+	require.Equal(t, "symlink_escape", Code(err))
+}
+
+func TestListReportsLinksWithoutFollowing(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "a.txt"), []byte("abc"), 0o644))
+	require.NoError(t, os.Mkdir(filepath.Join(root, "sub"), 0o755))
+	entries, truncated, err := List(root, "", 0)
+	require.NoError(t, err)
+	require.False(t, truncated)
+	require.Len(t, entries, 2)
+	_, _, err = List(root, "../", 0)
+	require.Equal(t, "path_traversal", Code(err))
+	entries, truncated, err = List(root, "", 1)
+	require.NoError(t, err)
+	require.True(t, truncated)
+	require.Len(t, entries, 1)
+}

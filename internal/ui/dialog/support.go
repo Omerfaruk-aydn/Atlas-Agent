@@ -500,3 +500,88 @@ func (d *Support) createOffer() Action {
 	})
 }
 
+func (d *Support) hostKey(msg tea.KeyPressMsg) Action {
+	st := d.host
+	switch {
+	case key.Matches(msg, d.keyMap.Back):
+		d.back()
+		return nil
+	case st.Pending != nil && key.Matches(msg, d.keyMap.Accept, d.keyMap.Reject):
+		id, accept := st.Pending.ID, key.Matches(msg, d.keyMap.Accept)
+		return d.hostDo("decide", func(h *support.Host) (string, error) {
+			if err := h.Decide(id, accept, nil); err != nil {
+				return "", err
+			}
+			if accept {
+				return d.com.Text("Connection accepted. The banner shows while support is active."), nil
+			}
+			return d.com.Text("Connection rejected; the code no longer works."), nil
+		})
+	case st.Permission != nil && key.Matches(msg, d.keyMap.Grant, d.keyMap.Deny):
+		p, grant := *st.Permission, key.Matches(msg, d.keyMap.Grant)
+		return d.hostDo("permission", func(h *support.Host) (string, error) {
+			if err := h.AnswerPermission(p.ID, p.Revision, grant); err != nil {
+				return "", err
+			}
+			if grant {
+				return d.com.Text("Permission granted for this session."), nil
+			}
+			return d.com.Text("Permission denied."), nil
+		})
+	case key.Matches(msg, d.keyMap.Copy) && st.Offer != nil:
+		return ActionCmd{Cmd: common.CopyToClipboard(st.Offer.Code, d.com.Text("Code copied to clipboard"))}
+	case key.Matches(msg, d.keyMap.CopyLink) && st.Offer != nil:
+		return ActionCmd{Cmd: common.CopyToClipboard(st.Offer.Link, d.com.Text("Link copied to clipboard"))}
+	case key.Matches(msg, d.keyMap.QR):
+		d.showQR = !d.showQR
+	case key.Matches(msg, d.keyMap.PauseAgent) && st.Session != nil:
+		paused := !st.Session.AgentPaused
+		return d.hostDo("pause", func(h *support.Host) (string, error) {
+			if err := h.PauseAgent(paused); err != nil {
+				return "", err
+			}
+			if paused {
+				return d.com.Text("Support task paused: no changes are accepted until you resume."), nil
+			}
+			return d.com.Text("Support task resumed."), nil
+		})
+	case key.Matches(msg, d.keyMap.PauseInput) && st.Session != nil:
+		paused := !st.Session.InputPaused
+		return d.hostDo("pause-input", func(h *support.Host) (string, error) {
+			if err := h.PauseInput(paused); err != nil {
+				return "", err
+			}
+			if paused {
+				return d.com.Text("Screen control paused: no mouse or keyboard input until you resume."), nil
+			}
+			return d.com.Text("Screen control resumed."), nil
+		})
+	case key.Matches(msg, d.keyMap.Files) && st.Session != nil:
+		caps := st.Session.Capabilities
+		fileCaps := []support.Capability{support.CapFileRead, support.CapFileSend, support.CapFileReceive, support.CapFileModify}
+		narrowed := slices.DeleteFunc(slices.Clone(caps), func(c support.Capability) bool { return slices.Contains(fileCaps, c) })
+		if len(narrowed) == len(caps) {
+			d.say(d.com.Text("File access is already off. A new permission request is needed to turn it on."), false)
+			return nil
+		}
+		return d.hostDo("files", func(h *support.Host) (string, error) {
+			return d.com.Text("File access turned off for this session."), h.SetCapabilities(narrowed)
+		})
+	case key.Matches(msg, d.keyMap.Disconnect):
+		switch {
+		case st.Session != nil:
+			d.confirm = "host-disconnect"
+		case st.Pending != nil || st.Offer != nil:
+			return d.hostDo("cancel", func(h *support.Host) (string, error) {
+				h.Disconnect("the owner withdrew the code")
+				return d.com.Text("Code withdrawn."), nil
+			})
+		default:
+			d.view = supportHostSetup
+		}
+	case key.Matches(msg, d.keyMap.Enter) && st.Session == nil && st.Offer == nil && st.Pending == nil:
+		d.view = supportHostSetup
+	}
+	return nil
+}
+

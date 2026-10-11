@@ -784,3 +784,73 @@ func TestRestartDoesNotReviveSessions(t *testing.T) {
 	require.Nil(t, h2.Status().Session)
 }
 
+// Internet mode goes only through a configured relay, and fails clearly
+// without one.
+func TestRelayModeAndItsAbsence(t *testing.T) {
+	t.Parallel()
+	t.Run("not configured", func(t *testing.T) {
+		t.Parallel()
+		h := startHost(t, nil)
+		_, err := h.Offer(OfferOptions{Capabilities: Presets["diagnose"], Internet: true})
+		require.Equal(t, CodeRelayNotConfigured, CodeOf(err))
+		require.Equal(t, StateIdle, h.Status().State, "no fake hosting state")
+
+		code, _ := NewPairingCode()
+		c := startController(t, nil)
+		_, err = c.Join(t.Context(), code.String(), nil)
+		require.Equal(t, CodeRemoteOffline, CodeOf(err))
+		require.Contains(t, err.Error(), "support_relay_url")
+		require.Equal(t, StateFailed, c.Status().State)
+
+		link := JoinLink(code, "https://relay.example.invalid", "")
+		_, err = c.Join(t.Context(), link, nil)
+		require.Equal(t, CodeRelayNotConfigured, CodeOf(err), "a link cannot make Atlas contact an unconfigured relay")
+	})
+	t.Run("through relay with reconnect", func(t *testing.T) {
+		t.Parallel()
+		var logs bytes.Buffer
+		relay := NewRelayServer(RelayServerOptions{Token: "relay-secret", Logger: slogTo(&logs)})
+		srv := httptest.NewServer(relay)
+		t.Cleanup(srv.Close)
+		cfg := &RelayConfig{URL: srv.URL, Token: "relay-secret"}
+
+		h := startHost(t, func(o *HostOptions) { o.Relay = cfg })
+		c := startController(t, func(o *ControllerOptions) { o.Relay = cfg })
+		info, err := h.Offer(OfferOptions{Capabilities: Presets["diagnose"], Internet: true})
+		require.NoError(t, err)
+		require.Empty(t, info.LANAddresses)
+		require.Eventually(t, func() bool { return relay.Waiting() == 1 }, 10*time.Second, 10*time.Millisecond)
+
+		ch := startJoin(c, info.Link)
+		p := waitPending(t, h)
+		require.Equal(t, "relay", p.Network)
+		require.NoError(t, h.Decide(p.ID, true, nil))
+		res := <-ch
+		require.NoError(t, res.err)
+		require.Equal(t, "relay", res.remote.Network)
+		_, err = client(t, c).SystemInfo(t.Context())
+		require.NoError(t, err)
+
+		// Reconnect through the relay's resume slot.
+		require.Eventually(t, func() bool { return relay.Waiting() == 1 }, 10*time.Second, 10*time.Millisecond)
+		c.mu.Lock()
+		_ = c.conn.Close()
+		c.mu.Unlock()
+		require.Eventually(t, func() bool {
+			st := c.Status()
+			return st.State == StateConnected && st.Remote.Generation == 2
+		}, 15*time.Second, 20*time.Millisecond)
+		_, err = client(t, c).SystemInfo(t.Context())
+		require.NoError(t, err)
+
+		require.NotContains(t, logs.String(), info.Code)
+		require.NotContains(t, logs.String(), res.remote.SessionID)
+
+		// Wrong relay token: a configuration error, not a fake connection.
+		bad := startController(t, func(o *ControllerOptions) { o.Relay = &RelayConfig{URL: srv.URL, Token: "wrong"} })
+		code, _ := NewPairingCode()
+		_, err = bad.Join(t.Context(), code.String(), nil)
+		require.Equal(t, CodeRelayNotConfigured, CodeOf(err))
+	})
+}
+

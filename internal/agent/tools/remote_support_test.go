@@ -80,3 +80,52 @@ func newSupportFixture(t *testing.T, caps []support.Capability, configure ...fun
 	return supportFixture{host: h, ctl: c, remote: r, root: root}
 }
 
+// yolo approves everything on the supporter's side, like auto-approve mode.
+func yolo(t *testing.T) permission.Service {
+	return permission.NewPermissionService(t.TempDir(), true, nil)
+}
+
+type supportCall struct {
+	resp    fantasy.ToolResponse
+	body    map[string]any
+	outcome ToolOutcome
+}
+
+func callSupport(t *testing.T, tool fantasy.AgentTool, id string, args map[string]any) supportCall {
+	t.Helper()
+	data, err := json.Marshal(args)
+	require.NoError(t, err)
+	resp, err := tool.Run(t.Context(), fantasy.ToolCall{ID: id, Name: RemoteSupportToolName, Input: string(data)})
+	require.NoError(t, err)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal([]byte(resp.Content), &body), resp.Content)
+	got, ok := ResponseOutcome(resp)
+	require.True(t, ok, "every result carries outcome metadata")
+	return supportCall{resp: resp, body: body, outcome: got}
+}
+
+func errCode(c supportCall) string {
+	e, _ := c.body["error"].(map[string]any)
+	code, _ := e["code"].(string)
+	return code
+}
+
+func TestRemoteSupportWithoutAConnectedComputerNeverRunsLocally(t *testing.T) {
+	t.Parallel()
+	work := t.TempDir()
+	tool := NewRemoteSupportTool(yolo(t), work, func() *support.Controller { return nil })
+	got := callSupport(t, tool, "c1", map[string]any{"action": "exec", "device_id": "node-x", "argv": supportHelper(t, "mark")})
+	require.True(t, got.resp.IsError)
+	require.Equal(t, string(support.CodeNoTarget), errCode(got))
+	require.Equal(t, "none", got.outcome.Dispatch)
+	require.NoFileExists(t, filepath.Join(work, "marks.txt"))
+
+	// A controller that is not connected is just as unusable.
+	c, err := support.NewController(context.Background(), support.ControllerOptions{StateDir: t.TempDir(), DiscoveryPort: -1})
+	require.NoError(t, err)
+	t.Cleanup(c.Close)
+	tool = NewRemoteSupportTool(yolo(t), work, func() *support.Controller { return c })
+	got = callSupport(t, tool, "c2", map[string]any{"action": "observe", "device_id": "node-x"})
+	require.Equal(t, string(support.CodeNoTarget), errCode(got))
+}
+

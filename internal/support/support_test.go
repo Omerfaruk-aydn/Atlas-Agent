@@ -646,3 +646,62 @@ func TestTransfersVerifyStopAndStayInside(t *testing.T) {
 	require.NoFileExists(t, filepath.Join(root.Path, "big.bin"))
 }
 
+func putChunk(t *testing.T, c *Controller, id string, offset int64, data []byte) error {
+	t.Helper()
+	_, cl, err := c.Target()
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(data)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodPut, cl.BaseURL+"/v1/node/uploads/"+id+"?offset="+strconv.FormatInt(offset, 10), bytes.NewReader(data))
+	req.Header.Set("Authorization", "Bearer "+cl.Token)
+	req.Header.Set("X-Atlas-Chunk-SHA256", hex.EncodeToString(sum[:]))
+	resp, err := cl.HTTP.Do(req)
+	if err != nil {
+		return err
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return errors.New(resp.Status)
+	}
+	return nil
+}
+
+// Scenario 14: permission answers bind to the request id, revision and
+// session they were shown for.
+func TestPermissionAnswersBindToTheRequest(t *testing.T) {
+	t.Parallel()
+	h := startHost(t, nil)
+	c := startController(t, nil)
+	connect(t, h, c, []Capability{CapSystemInfo})
+
+	first, err := c.RequestPermission(t.Context(), []Capability{CapCommand}, "check the event log")
+	require.NoError(t, err)
+	require.Equal(t, PermissionPending, first.State)
+	require.Equal(t, first.ID, h.Status().Permission.ID)
+
+	// A newer request supersedes it; an answer to the old one is stale.
+	second, err := c.RequestPermission(t.Context(), []Capability{CapCommand, CapInstall}, "install the printer driver")
+	require.NoError(t, err)
+	require.ErrorIs(t, h.AnswerPermission(first.ID, first.Revision, true), ErrStaleAnswer)
+	require.ErrorIs(t, h.AnswerPermission(second.ID, second.Revision-1, true), ErrStaleAnswer)
+
+	// A canceled request cannot be answered back to life.
+	_, err = c.CancelPermission(t.Context(), second.ID)
+	require.NoError(t, err)
+	require.ErrorIs(t, h.AnswerPermission(second.ID, second.Revision, true), ErrStaleAnswer)
+	r, err := c.Refresh(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, []Capability{CapSystemInfo}, r.Capabilities)
+
+	third, err := c.RequestPermission(t.Context(), []Capability{CapCommand}, "check the event log")
+	require.NoError(t, err)
+	require.NoError(t, h.AnswerPermission(third.ID, third.Revision, true))
+	status, err := c.PermissionStatus(t.Context(), third.ID)
+	require.NoError(t, err)
+	require.Equal(t, PermissionGranted, status.State)
+	r = *c.Status().Remote
+	require.Contains(t, r.Capabilities, CapCommand)
+	require.NotContains(t, r.Capabilities, CapInstall, "only what was asked and answered is granted")
+}
+

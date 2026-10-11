@@ -283,3 +283,56 @@ func TestRemoteSupportLiveBrowserWorkflow(t *testing.T) {
 	require.NotContains(t, read.resp.Content, "denied")
 }
 
+func TestRemoteSupportNestedMutationClassification(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		tool, input string
+		mutates     bool
+	}{
+		{"browser", `{"action":"observe"}`, false},
+		{"browser", `{"action":"set_field","advanced":{"label":"Name","value":"new"}}`, true},
+		{"computer", `{"action":"windows"}`, false},
+		{"computer", `{"action":"key","key":"escape"}`, true},
+		{"tool_pipeline", `{"help":"desktop_flow"}`, false},
+	} {
+		input := fmt.Sprintf(`{"action":"tool","tool":%q,"arguments":%s}`, tc.tool, tc.input)
+		require.Equal(t, tc.mutates, CallMutates(RemoteSupportToolName, input), input)
+	}
+}
+
+func TestRemoteSupportDurableDesktopFlow(t *testing.T) {
+	d := newSimDesktop()
+	user := d.open("other", "Rapor.docx - Word", 7777, "WINWORD.EXE", "OpusApp")
+	folder := d.open("explorer", "Atlas-Test", 4100, "explorer.exe", "CabinetWClass")
+	folder.folder = d.desktopDir + `\Atlas-Test`
+	d.foreground = user.info.ID
+	f := newSupportFixture(t, []support.Capability{support.CapScreenView, support.CapInput}, func(o *support.HostOptions) {
+		o.Desktop = d
+		o.Executor = NewSupportExecutor(o.StateDir, d, config.ToolBrowser{})
+	})
+	tool := NewRemoteSupportTool(yolo(t), t.TempDir(), func() *support.Controller { return f.ctl })
+	args := map[string]any{
+		"action": "tool", "tool": "tool_pipeline", "device_id": f.remote.RemoteDeviceID, "session_id": f.remote.SessionID, "generation": f.remote.Generation,
+		"arguments": map[string]any{"desktop": map[string]any{"mode": "prepare", "application": "Hesap Makinesi", "observation": "semantic"}},
+	}
+	prepare := callSupport(t, tool, "prepare-native", args)
+	require.False(t, prepare.resp.IsError, prepare.resp.Content)
+	var plan map[string]any
+	require.NoError(t, json.Unmarshal([]byte(acceptanceWorkflow), &plan))
+	args["arguments"] = plan
+	got := callSupport(t, tool, "native-flow", args)
+	require.False(t, got.resp.IsError, got.resp.Content)
+	native := got.body["result"].(map[string]any)["content"].(string)
+	require.Len(t, flowReportOf(t, native).Flow.Nodes, 23)
+	d.mu.Lock()
+	require.Equal(t, acceptanceNote+"\nKontrol: 9000", d.files[folder.folder+`\sonuc.txt`])
+	inputs := len(d.inputs)
+	require.NotNil(t, d.window(user.info.ID))
+	d.mu.Unlock()
+	plan["desktop"].(map[string]any)["flow"].(map[string]any)["resume"] = true
+	resumed := callSupport(t, tool, "native-resume", args)
+	require.False(t, resumed.resp.IsError, resumed.resp.Content)
+	d.mu.Lock()
+	require.Len(t, d.inputs, inputs, "completed native flow must not send inputs again")
+	d.mu.Unlock()
+}

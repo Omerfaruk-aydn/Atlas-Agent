@@ -15,7 +15,7 @@ import (
 var builtinNames = []string{
 	"architect", "backend", "browser-operator", "data-analyst", "debug",
 	"desktop-operator", "docs", "documents", "frontend", "integration-engineer",
-	"motion-designer", "operations", "planner", "presentations", "product-designer",
+	"it-support", "motion-designer", "operations", "planner", "presentations", "product-designer",
 	"refactor", "research", "review", "security", "template-builder", "test", "visual-qa",
 }
 

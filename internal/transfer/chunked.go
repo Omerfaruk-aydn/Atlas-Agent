@@ -288,3 +288,63 @@ func (u *Uploads) owned(id, owner string) (uploadRecord, error) {
 	return rec, nil
 }
 
+// Status reads an upload owned by owner.
+func (u *Uploads) Status(id, owner string) (UploadStatus, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	rec, err := u.owned(id, owner)
+	return rec.Status, err
+}
+
+// Write appends one chunk at offset, which must equal the bytes already
+// received. A chunk whose hash does not match is discarded.
+func (u *Uploads) Write(id, owner string, offset int64, src io.Reader, n int64, chunkSHA string) (UploadStatus, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	rec, err := u.owned(id, owner)
+	if err != nil {
+		return UploadStatus{}, err
+	}
+	st := rec.Status
+	if st.State != "receiving" {
+		return st, fail("upload_"+st.State, "upload is %s", st.State)
+	}
+	if offset != st.Received {
+		return st, fail("offset_mismatch", "upload has %d bytes; send from that offset", st.Received)
+	}
+	if n <= 0 || n > MaxChunkBytes || offset+n > st.Size {
+		return st, fail("invalid_request", "chunk must be 1-%d bytes and stay within the file size", MaxChunkBytes)
+	}
+	f, err := os.OpenFile(u.partPath(id), os.O_WRONLY, 0o600)
+	if err != nil {
+		return st, err
+	}
+	defer f.Close()
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return st, err
+	}
+	h := sha256.New()
+	got, err := io.Copy(io.MultiWriter(f, h), io.LimitReader(src, n+1))
+	discard := func(code, msg string) (UploadStatus, error) {
+		_ = f.Truncate(offset)
+		return st, fail(code, "%s", msg)
+	}
+	if err != nil {
+		return discard("interrupted", fmt.Sprintf("chunk interrupted after %d bytes: %v", got, err))
+	}
+	if got != n {
+		return discard("size_mismatch", fmt.Sprintf("chunk had %d bytes, expected %d", got, n))
+	}
+	if chunkSHA != "" && hex.EncodeToString(h.Sum(nil)) != chunkSHA {
+		return discard("hash_mismatch", "chunk sha256 does not match")
+	}
+	if err := f.Sync(); err != nil {
+		return discard("io_error", err.Error())
+	}
+	rec.Status.Received = offset + n
+	if err := u.store(rec); err != nil {
+		return discard("io_error", err.Error())
+	}
+	return rec.Status, nil
+}
+

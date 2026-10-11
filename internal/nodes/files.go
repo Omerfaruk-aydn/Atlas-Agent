@@ -225,3 +225,63 @@ func (s *Server) handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+func (s *Server) handleUploadAbort(w http.ResponseWriter, r *http.Request) {
+	g := grantFrom(r)
+	st, err := s.uploads.Abort(r.PathValue("id"), g.Device.ID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, transfer.Code(err), err.Error(), false, "none")
+		return
+	}
+	if st.State == "aborted" {
+		_, _ = s.finish(g, st.OperationID, func(o *Operation) {
+			o.State, o.Effect, o.Error = taskstate.Canceled, "none", "upload canceled; partial data discarded"
+		})
+	}
+	writeJSON(w, http.StatusOK, s.uploadResult(g, st, false))
+}
+
+func (s *Server) handleSysinfo(w http.ResponseWriter, r *http.Request) {
+	g := grantFrom(r)
+	var dirs []string
+	for _, root := range g.Roots {
+		dirs = append(dirs, root.Path)
+	}
+	if len(dirs) == 0 {
+		dirs = append(dirs, s.opts.Root)
+	}
+	info := CollectSystemInfo(dirs)
+	info.NodeID, info.SessionID, info.Generation = s.id.NodeID, g.SessionID, g.Generation
+	writeJSON(w, http.StatusOK, info)
+}
+
+// CancelRunning ends every operation of the grant's device that has not
+// ended, stops running commands and records them canceled with an unknown
+// effect. It is what an owner's disconnect does to work already started;
+// the records say so honestly. An operation that is journaled but whose
+// process has not started yet is caught here too: handleExec checks the
+// journal again after registering the process.
+func (s *Server) CancelRunning(g Grant) []Operation {
+	var out []Operation
+	for _, id := range s.journal.Running(g.Device.ID) {
+		final, err := s.finish(g, id, func(o *Operation) {
+			o.State, o.Effect, o.Error = taskstate.Canceled, "unknown", "session ended by the computer owner; partial effects possible"
+		})
+		s.mu.Lock()
+		proc := s.procs[id]
+		s.mu.Unlock()
+		if proc != nil {
+			proc.Stop(3 * time.Second)
+		}
+		if err == nil {
+			out = append(out, final)
+		}
+	}
+	return out
+}
+
+// WaitOperations drains command journal writers after callers have stopped
+// admitting requests and canceled running commands. No new execution may
+// start concurrently with this shutdown barrier.
+func (s *Server) WaitOperations() {
+	s.execWorkers.Wait()
+}

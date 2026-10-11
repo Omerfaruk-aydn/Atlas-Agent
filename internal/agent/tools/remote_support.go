@@ -127,3 +127,72 @@ type supportResult struct {
 	StopTurn       bool             `json:"waiting_for_user,omitempty"`
 }
 
+type supportDevice struct {
+	RemoteDeviceID string `json:"remote_device_id,omitempty"`
+	Name           string `json:"name,omitempty"`
+	Fingerprint    string `json:"fingerprint,omitempty"`
+	OS             string `json:"os,omitempty"`
+	SessionID      string `json:"session_id,omitempty"`
+	Generation     uint64 `json:"generation,omitempty"`
+}
+
+// supportCheck tells a resumed task what to check before continuing.
+type supportCheck struct {
+	SessionID      string `json:"session_id"`
+	RemoteDeviceID string `json:"remote_device_id"`
+	Generation     uint64 `json:"generation"`
+	OperationID    string `json:"operation_id,omitempty"`
+	ReconcileWith  string `json:"reconcile_with,omitempty"`
+}
+
+func deviceOf(r support.Remote) supportDevice {
+	return supportDevice{RemoteDeviceID: r.RemoteDeviceID, Name: r.RemoteName, Fingerprint: support.ShortFingerprint(r.RemoteFingerprint), OS: r.OS, SessionID: r.SessionID, Generation: r.Generation}
+}
+
+var remoteSupportMutations = []string{"exec", "verify_install", "push", "pull", "input", "launch", "cancel", "tool"}
+
+func remoteSupportMutates(action string) bool { return slices.Contains(remoteSupportMutations, action) }
+
+func remoteSupportCallMutates(p RemoteSupportParams) bool {
+	if p.Action != "tool" {
+		return remoteSupportMutates(p.Action)
+	}
+	if p.Arguments == nil || !slices.Contains([]string{BrowserToolName, ComputerToolName, ToolPipelineName}, p.Tool) {
+		return true
+	}
+	data, err := json.Marshal(p.Arguments)
+	if err != nil {
+		return true
+	}
+	return CallMutates(p.Tool, string(data))
+}
+
+// record keeps the supporter's side of the session history: what was asked
+// of which device, its operation id and outcome, never arguments or data.
+func record(ctl *support.Controller, p RemoteSupportParams, res supportResult) {
+	if ctl == nil || p.Action == "status" {
+		return
+	}
+	detail := p.Action
+	switch {
+	case len(p.Argv) > 0:
+		detail += ": " + support.CommandSummary(p.Argv)
+	case p.RemotePath != "":
+		detail += ": " + p.RemotePath
+	}
+	state := "ok"
+	if !res.OK {
+		state = "failed"
+		if res.Error != nil {
+			state = string(res.Error.Code)
+		}
+	}
+	fields := map[string]string{"action": p.Action, "verification": res.Verified, "device": res.Device.RemoteDeviceID}
+	if m, ok := res.Result.(map[string]any); ok {
+		if sum, ok := m["sha256"].(string); ok {
+			fields["sha256"] = sum
+		}
+	}
+	ctl.Record(support.Event{Kind: "operation", OperationID: res.OperationID, State: state, Effect: string(res.Effect), Detail: detail, Fields: fields})
+}
+

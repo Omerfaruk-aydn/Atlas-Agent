@@ -481,3 +481,8 @@ BIOS virtualization off (no hypervisor), no Android SDK installed.
 
 Known limits are listed with each section above; nothing silently degrades
 to host input.
+
+Helping another person's computer, with their acceptance and their own
+permission choices, is `/support`; see [remote-support.md](remote-support.md).
+Its host reuses the node API, journal and transfer code described here under
+session-scoped access instead of paired-device tokens.

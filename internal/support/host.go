@@ -987,3 +987,67 @@ func (h *Host) resume(conn *tls.Conn, hello clientHello, network string) {
 	h.serveH2(conn, newGen, s.id)
 }
 
+func (h *Host) serveH2(conn *tls.Conn, gen uint64, sessionID string) {
+	h.mu.Lock()
+	if h.session == nil || h.session.id != sessionID {
+		h.mu.Unlock()
+		_ = conn.Close()
+		return
+	}
+	h.conns[gen] = conn
+	h.mu.Unlock()
+	ctx := context.WithValue(h.ctx, connKey{}, connInfo{generation: gen, session: sessionID})
+	srv := &http2.Server{MaxConcurrentStreams: 64, MaxReadFrameSize: 1 << 20, ReadIdleTimeout: 30 * time.Second, PingTimeout: 15 * time.Second}
+	srv.ServeConn(conn, &http2.ServeConnOpts{Context: ctx, Handler: h.handler, BaseConfig: &http.Server{ReadHeaderTimeout: 30 * time.Second}})
+	_ = conn.Close()
+	h.connClosed(gen, sessionID)
+}
+
+// connClosed handles a dropped connection: the session waits for the
+// supporter to reconnect, then ends. Operations already running keep
+// their journaled outcome for reconciliation.
+func (h *Host) connClosed(gen uint64, sessionID string) {
+	h.mu.Lock()
+	if h.conns[gen] != nil {
+		delete(h.conns, gen)
+	}
+	s := h.session
+	if s == nil || s.id != sessionID {
+		h.mu.Unlock()
+		return
+	}
+	if err := h.machine.MoveIf(gen, StateReconnecting, "connection lost"); err != nil {
+		h.mu.Unlock()
+		return
+	}
+	if s.reconnect != nil {
+		s.reconnect.Stop()
+	}
+	s.reconnect = h.afterFunc(h.opts.ReconnectWindow, func() {
+		if st, cur, _ := h.machine.State(); st == StateReconnecting && cur == gen {
+			h.endSession(sessionID, StateDisconnected, "the connection was lost and not restored")
+		}
+	})
+	h.mu.Unlock()
+	_ = h.history.Append(Event{SessionID: sessionID, Role: "host", Kind: "connection_lost", Generation: gen})
+	h.notify()
+}
+
+// Disconnect ends the active session at the owner's request. New input is
+// refused before this returns; running commands are stopped and recorded.
+func (h *Host) Disconnect(reason string) {
+	h.mu.Lock()
+	s := h.session
+	pending := h.pending
+	h.mu.Unlock()
+	if s != nil {
+		h.endSession(s.id, StateRevoked, reason)
+		return
+	}
+	if pending != nil {
+		_ = h.Decide(pending.ID, false, nil)
+		return
+	}
+	h.CancelOffer()
+}
+

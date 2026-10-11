@@ -47,6 +47,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/skills"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/support"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/anim"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/styles"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/update"
@@ -78,6 +79,9 @@ type App struct {
 	// agent's integrations tool; LocalApps manages the apps behind /app.
 	Integrations *integrations.Service
 	LocalApps    *localapps.Manager
+	// Support is /support: this computer receiving or giving remote IT
+	// support. The /support screen and the remote_support tool share it.
+	Support *support.Service
 
 	config *config.ConfigStore
 
@@ -142,6 +146,7 @@ func New(ctx context.Context, conn *sql.DB, store *config.ConfigStore, skillsMgr
 
 	app.LocalApps = localapps.NewManager(localapps.Options{StateDir: localapps.DefaultStateDir(config.GlobalConfigData())})
 	app.Integrations = integrations.NewDefault(store, app.LocalApps)
+	app.Support = newSupportService(store)
 
 	app.setupEvents()
 
@@ -180,6 +185,8 @@ func New(ctx context.Context, conn *sql.DB, store *config.ConfigStore, skillsMgr
 			// Apps run while Atlas runs; see localapps.Manager.StopAll.
 			app.LocalApps.StopAll(ctx)
 			app.Integrations.Shutdown()
+			// Ends any support session so the other computer sees it end.
+			app.Support.Close()
 			return nil
 		},
 	)
@@ -794,6 +801,7 @@ func (app *App) initCoderAgent(ctx context.Context, interactive bool) error {
 
 		Integrations: app.Integrations,
 		LocalApps:    app.LocalApps,
+		Support:      app.Support,
 	})
 	if err != nil {
 		slog.Error("Failed to create coder agent", "err", err)

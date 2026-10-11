@@ -167,3 +167,117 @@ func newSupportHostCommand() *cobra.Command {
 	return c
 }
 
+func runSupportHost(cmd *cobra.Command, _ []string) error {
+	allow, _ := cmd.Flags().GetString("allow")
+	caps, err := support.ParseCapabilities(allow)
+	if err != nil {
+		return err
+	}
+	var roots []nodes.Root
+	folders, _ := cmd.Flags().GetStringArray("folder")
+	for _, f := range folders {
+		label, path, ok := strings.Cut(f, "=")
+		if !ok {
+			return fmt.Errorf("--folder %q must be Label=absolute-path", f)
+		}
+		roots = append(roots, nodes.Root{Label: strings.TrimSpace(label), Path: strings.TrimSpace(path)})
+	}
+	relay, err := supportRelayFlags(cmd)
+	if err != nil {
+		return err
+	}
+	name, _ := cmd.Flags().GetString("name")
+	listen, _ := cmd.Flags().GetString("listen")
+	lan, _ := cmd.Flags().GetBool("lan")
+	internet, _ := cmd.Flags().GetBool("internet")
+	duration, _ := cmd.Flags().GetDuration("duration")
+	noDiscovery, _ := cmd.Flags().GetBool("no-discovery")
+	discovery := 0
+	if noDiscovery {
+		discovery = -1
+	}
+	desk, reason := computer.OpenOrNil(), ""
+	if desk == nil {
+		reason = "desktop control is not available in this session"
+	}
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+	defer stop()
+	out := cmd.OutOrStdout()
+	changed := make(chan struct{}, 1)
+	h, err := support.StartHost(ctx, support.HostOptions{
+		StateDir: supportStateDir(cmd, "host"), Name: name, LANListen: listen, DiscoveryPort: discovery, Relay: relay,
+		Desktop: desk, DesktopReason: reason, Overlay: &support.ActivityOverlay{}, Logger: slog.Default(), Executor: tools.NewSupportExecutor(supportStateDir(cmd, "host"), desk, config.ToolBrowser{}),
+		OnChange: func() {
+			select {
+			case changed <- struct{}{}:
+			default:
+			}
+		},
+	})
+	if err != nil {
+		return err
+	}
+	defer h.Close()
+	info, err := h.Offer(support.OfferOptions{Capabilities: caps, Roots: roots, SessionDuration: duration, LAN: lan, Internet: internet})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Support code: %s (single use, valid until %s)\n", info.Code, info.ExpiresAt.Format("15:04:05"))
+	fmt.Fprintf(out, "This computer: %s, device %s, fingerprint %s\n", h.Status().Name, h.NodeID(), support.ShortFingerprint(h.Fingerprint()))
+	fmt.Fprintf(out, "Permissions: %s\n", strings.Join(support.Strings(caps), ", "))
+	for _, a := range info.LANAddresses {
+		fmt.Fprintf(out, "Local network: atlas support join %s@%s\n", info.Code, a)
+	}
+	if info.RelayURL != "" {
+		fmt.Fprintf(out, "Internet: through %s\n", info.RelayURL)
+	}
+	fmt.Fprintln(out, "Waiting for a connection request. Ctrl+C ends support.")
+
+	stdin := bufio.NewReader(cmd.InOrStdin())
+	decided := map[string]bool{}
+	var last support.HostStatus
+	for {
+		select {
+		case <-ctx.Done():
+			h.Disconnect("the owner ended support from the terminal")
+			fmt.Fprintln(out, "Support ended.")
+			return nil
+		case <-changed:
+		case <-time.After(time.Second):
+		}
+		st := h.Status()
+		if p := st.Pending; p != nil && !decided[p.ID] {
+			decided[p.ID] = true
+			fmt.Fprintf(out, "\nConnection request from %q (name sent by the device, unverified)\n", p.Peer.Name)
+			fmt.Fprintf(out, "Verified device %s, %s/%s, via %s from %s\n", support.ShortFingerprint(p.Peer.Fingerprint), p.Peer.OS, p.Peer.Arch, p.Network, p.RemoteAddr)
+			fmt.Fprintf(out, "Verification code %s must match the supporter's screen. Accept? [y/N] ", p.Verification)
+			answer, readErr := readSupportAnswer(ctx, stdin)
+			if readErr != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return fmt.Errorf("read support decision: %w", readErr)
+			}
+			accept := strings.EqualFold(strings.TrimSpace(answer), "y") || strings.EqualFold(strings.TrimSpace(answer), "yes")
+			if err := h.Decide(p.ID, accept, nil); err != nil {
+				fmt.Fprintln(out, err)
+			}
+			continue
+		}
+		if st.State != last.State || (st.Session != nil && last.Session != nil && st.Session.Active != last.Session.Active) {
+			fmt.Fprintf(out, "[%s] %s", time.Now().Format("15:04:05"), st.State)
+			if st.Reason != "" {
+				fmt.Fprintf(out, " (%s)", st.Reason)
+			}
+			if st.Session != nil && st.Session.Active != nil {
+				fmt.Fprintf(out, " · now: %s", st.Session.Active.Summary)
+			}
+			fmt.Fprintln(out)
+		}
+		last = st
+		if st.State.Terminal() && st.Session == nil {
+			return nil
+		}
+	}
+}
+

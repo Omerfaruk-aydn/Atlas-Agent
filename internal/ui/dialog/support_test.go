@@ -212,3 +212,39 @@ func TestSupportDialogEveryPresetCreatesCodeWithoutFolderInput(t *testing.T) {
 	}
 }
 
+func TestSupportDialogNonFileOfferDoesNotRequireFolder(t *testing.T) {
+	t.Parallel()
+	svc := support.NewService(t.TempDir(), func() support.ServiceConfig {
+		return support.ServiceConfig{DiscoveryPort: -1, LANListen: "127.0.0.1:0", Overlay: quietOverlay{}}
+	}, nil)
+	t.Cleanup(svc.Close)
+	d := NewSupport(supportCommon("tr"), svc)
+	supportPress(t, d, "1")
+	d.caps = map[support.Capability]bool{support.CapSystemInfo: true}
+	d.fileRoots = func() ([]nodes.Root, error) {
+		return nil, errors.New("Drive discovery unavailable")
+	}
+	a := supportPress(t, d, "enter")
+	require.Nil(t, supportPress(t, d, "enter"), "repeated Enter cannot replace a pending offer")
+	runAction(t, d, a)
+	require.NotNil(t, svc.ActiveHost().Status().Offer)
+}
+
+func TestSupportDialogRelayErrorVisibleInShortTerminal(t *testing.T) {
+	t.Parallel()
+	svc := support.NewService(t.TempDir(), func() support.ServiceConfig {
+		return support.ServiceConfig{DiscoveryPort: -1, Overlay: quietOverlay{}}
+	}, nil)
+	t.Cleanup(svc.Close)
+	d := NewSupport(supportCommon("en"), svc)
+	supportPress(t, d, "1")
+	d.caps = map[support.Capability]bool{support.CapSystemInfo: true}
+	supportPress(t, d, "w")
+	runAction(t, d, supportPress(t, d, "enter"))
+	require.Equal(t, supportHostSetup, d.view)
+	require.True(t, d.noticeErr)
+	scr := uv.NewScreenBuffer(80, 24)
+	d.Draw(scr, image.Rect(0, 0, 80, 24))
+	require.Contains(t, scr.String(), "internet mode needs a support relay")
+	require.Contains(t, scr.String(), "use local network mode")
+}

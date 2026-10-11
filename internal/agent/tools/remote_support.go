@@ -399,3 +399,37 @@ func (t *remoteSupportTool) status(ctx context.Context, ctl *support.Controller,
 	return t.respond(res, false)
 }
 
+func (t *remoteSupportTool) approve(ctx context.Context, call fantasy.ToolCall, p RemoteSupportParams, remote support.Remote) *support.Error {
+	if t.permissions == nil {
+		return nil
+	}
+	where := fmt.Sprintf("%s (%s, %s)", remote.RemoteName, remote.RemoteDeviceID, remote.OS)
+	var what string
+	switch p.Action {
+	case "verify_install":
+		what = "Verify an installation on " + where + ": " + strings.Join(p.VerifyArgv, " ")
+	case "tool":
+		what = "Run " + p.Tool + " on " + where
+	case "exec":
+		what = "Run on " + where + ": " + strings.Join(p.Argv, " ")
+	case "launch":
+		what = "Open on " + where + ": " + strings.Join(p.Argv, " ")
+	case "push":
+		what = fmt.Sprintf("Send %s from this workspace to %s:%s", p.LocalPath, where, p.RemotePath)
+	case "pull":
+		what = fmt.Sprintf("Copy %s:%s into this workspace at %s", where, p.RemotePath, p.LocalPath)
+	case "input":
+		what = fmt.Sprintf("%s on the screen of %s", p.InputAction, where)
+	case "cancel":
+		what = "Stop operation " + p.OperationID + " on " + where
+	}
+	ok, err := t.permissions.Request(ctx, permission.CreatePermissionRequest{SessionID: GetSessionFromContext(ctx), ToolCallID: call.ID, ToolName: RemoteSupportToolName, Action: p.Action, Description: what, Params: p, Path: t.workingDir})
+	if err != nil {
+		return support.Errorf(support.CodeCapabilityDenied, "%v", err)
+	}
+	if !ok {
+		return support.Errorf(support.CodeCapabilityDenied, "you declined this remote action; nothing was sent")
+	}
+	return nil
+}
+

@@ -1127,3 +1127,102 @@ func (h *Host) PauseAgent(paused bool) error {
 	return nil
 }
 
+// PauseInput stops (or allows) mouse, keyboard and launches only.
+func (h *Host) PauseInput(paused bool) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.session == nil {
+		return errors.New("no active session")
+	}
+	h.session.inputPaused = paused
+	_ = h.history.Append(Event{SessionID: h.session.id, Role: "host", Kind: map[bool]string{true: "input_paused", false: "input_resumed"}[paused]})
+	go h.notify()
+	return nil
+}
+
+// SetCapabilities changes what the active session may do, effective for
+// the next request.
+func (h *Host) SetCapabilities(caps []Capability) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.session == nil {
+		return errors.New("no active session")
+	}
+	h.session.caps = Normalize(caps)
+	_ = h.history.Append(Event{SessionID: h.session.id, Role: "host", Kind: "permissions_changed", Fields: map[string]string{"capabilities": strings.Join(Strings(h.session.caps), ",")}})
+	go h.notify()
+	return nil
+}
+
+// Status is the owner's current view.
+func (h *Host) Status() HostStatus {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	st, gen, reason := h.machine.State()
+	out := HostStatus{State: st, Reason: reason, Generation: gen, NodeID: h.id.NodeID, Name: h.opts.Name}
+	if h.offerInfo != nil {
+		info := *h.offerInfo
+		info.RelayStatus = h.relayStatus
+		out.Offer = &info
+	}
+	if h.pending != nil {
+		p := *h.pending
+		out.Pending = &p
+	}
+	if s := h.session; s != nil {
+		view := &SessionView{ID: s.id, Peer: s.peer, Capabilities: slices.Clone(s.caps), Roots: slices.Clone(s.roots), ExpiresAt: s.expires, StartedAt: s.started, AgentPaused: s.agentPaused, InputPaused: s.inputPaused, Network: s.network, Recent: slices.Clone(s.recent)}
+		for _, op := range s.active {
+			o := *op
+			view.Active = &o
+		}
+		out.Session = view
+	}
+	if h.permission != nil && h.permission.State == "pending" {
+		p := *h.permission
+		out.Permission = &p
+	}
+	return out
+}
+
+// Close ends any session, withdraws the offer and releases listeners.
+func (h *Host) Close() {
+	h.closeOnce.Do(h.close)
+}
+
+func (h *Host) close() {
+	h.workMu.Lock()
+	h.closed = true
+	h.workMu.Unlock()
+	h.mu.Lock()
+	s := h.session
+	h.mu.Unlock()
+	if s != nil {
+		h.endSession(s.id, StateDisconnected, "Atlas was closed on this computer")
+	}
+	h.mu.Lock()
+	if h.pending != nil {
+		select {
+		case h.pending.decision <- joinDecision{}:
+		default:
+		}
+	}
+	if h.linger != nil {
+		h.linger.Stop()
+		h.linger = nil
+	}
+	h.stopOfferLocked()
+	h.mu.Unlock()
+	h.cancel()
+	done := make(chan struct{})
+	go func() {
+		h.work.Wait()
+		h.node.WaitOperations()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		h.logger.Warn("Support host connections did not stop in time")
+	}
+}
+

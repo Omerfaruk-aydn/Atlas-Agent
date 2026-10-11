@@ -328,3 +328,161 @@ step whose connection drops reports an unknown outcome and is not resent.`,
 	return c
 }
 
+func runSupportJoin(cmd *cobra.Command, args []string) error {
+	relay, err := supportRelayFlags(cmd)
+	if err != nil {
+		return err
+	}
+	name, _ := cmd.Flags().GetString("name")
+	noDiscovery, _ := cmd.Flags().GetBool("no-discovery")
+	discovery := 0
+	if noDiscovery {
+		discovery = -1
+	}
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+	defer stop()
+	out := cmd.OutOrStdout()
+	c, err := support.NewController(ctx, support.ControllerOptions{StateDir: supportStateDir(cmd, "controller"), Name: name, Relay: relay, DiscoveryPort: discovery, Logger: slog.Default()})
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	fmt.Fprintf(out, "This device: %s\n", support.ShortFingerprint(c.Fingerprint()))
+	remote, err := c.Join(ctx, args[0], func(p support.JoinPrompt) {
+		fmt.Fprintf(out, "Found %s (%s/%s) via %s. Verification code: %s — compare it with the other screen. Waiting for acceptance…\n", p.Host.Name, p.Host.OS, p.Host.Arch, p.Network, p.Verification)
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Connected to %s, device %s, %s/%s, session %s, connection %d, permissions %s, folders %s\n",
+		remote.RemoteName, remote.RemoteDeviceID, remote.OS, remote.Arch, remote.SessionID, remote.Generation, strings.Join(support.Strings(remote.Capabilities), ","), strings.Join(remote.Roots, ","))
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	step := 0
+	emit := func(action string, result any, err error) {
+		step++
+		r, _, _ := c.Target()
+		rec := map[string]any{"step": step, "action": action, "remote_device_id": r.RemoteDeviceID, "session_id": r.SessionID, "generation": r.Generation}
+		if op, ok := result.(nodes.Operation); ok && err == nil {
+			err = supportCommandOperationError(op)
+			if err != nil {
+				rec["result"] = op
+			}
+		}
+		if err != nil {
+			rec["ok"], rec["error"] = false, support.Classify(err, r.RemoteDeviceID, "")
+		} else {
+			rec["ok"], rec["result"] = true, result
+		}
+		_ = enc.Encode(rec)
+	}
+	client := func() (*nodes.Client, error) {
+		_, cl, err := c.Target()
+		return cl, err
+	}
+	opID := func(kind string, i int) string {
+		return nodes.OperationID("cli", remote.SessionID, kind, fmt.Sprint(i), fmt.Sprint(time.Now().UnixNano()))
+	}
+	if ok, _ := cmd.Flags().GetBool("sysinfo"); ok {
+		cl, err := client()
+		if err == nil {
+			var info nodes.SystemInfo
+			info, err = cl.SystemInfo(ctx)
+			emit("system_info", info, err)
+		} else {
+			emit("system_info", nil, err)
+		}
+	}
+	pushes, _ := cmd.Flags().GetStringArray("push")
+	for i, p := range pushes {
+		local, rel, ok := strings.Cut(p, ":")
+		if ok && len(local) == 1 {
+			// A Windows drive letter: split at the next colon instead.
+			if j := strings.Index(rel, ":"); j >= 0 {
+				local, rel = local+":"+rel[:j], rel[j+1:]
+			}
+		}
+		cl, err := client()
+		if err != nil {
+			emit("push", nil, err)
+			continue
+		}
+		res, err := cl.Upload(ctx, opID("push", i), local, rel, transfer.ConflictError, 0, nil)
+		emit("push", res, err)
+	}
+	pulls, _ := cmd.Flags().GetStringArray("pull")
+	for _, p := range pulls {
+		rel, local, ok := strings.Cut(p, ":")
+		if !ok {
+			emit("pull", nil, fmt.Errorf("--pull %q must be remote:local", p))
+			continue
+		}
+		cl, err := client()
+		if err != nil {
+			emit("pull", nil, err)
+			continue
+		}
+		wd, _ := os.Getwd()
+		res, err := cl.Pull(ctx, rel, wd, local, false, 0)
+		emit("pull", res, err)
+	}
+	execs, _ := cmd.Flags().GetStringArray("exec")
+	for i, line := range execs {
+		cl, err := client()
+		if err != nil {
+			emit("exec", nil, err)
+			continue
+		}
+		op, err := cl.Exec(ctx, nodes.ExecRequest{OperationID: opID("exec", i), Argv: strings.Fields(line)})
+		emit("exec", op, err)
+	}
+	launches, _ := cmd.Flags().GetStringArray("launch")
+	for i, line := range launches {
+		cl, err := client()
+		if err != nil {
+			emit("launch", nil, err)
+			continue
+		}
+		op, err := cl.Launch(ctx, opID("launch", i), strings.Fields(line))
+		emit("launch", op, err)
+	}
+	if ok, _ := cmd.Flags().GetBool("observe"); ok {
+		cl, err := client()
+		if err == nil {
+			var obs nodes.DesktopObservation
+			obs, err = cl.Observe(ctx, false)
+			emit("observe", obs, err)
+		} else {
+			emit("observe", nil, err)
+		}
+	}
+	if wait, _ := cmd.Flags().GetBool("wait"); wait {
+		fmt.Fprintln(out, "Connected. Ctrl+C disconnects.")
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+				if st := c.Status(); st.State.Terminal() {
+					fmt.Fprintf(out, "Session ended: %s (%s)\n", st.State, st.Reason)
+					return nil
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// supportCommandOperationError interprets the journal after HTTP success.
+func supportCommandOperationError(op nodes.Operation) error {
+	if op.State == "completed" && op.Effect != "unknown" {
+		return nil
+	}
+	code := support.Code("operation_failed")
+	if !op.State.Terminal() || op.Effect == "unknown" {
+		code = support.CodeOutcomeUnknown
+	}
+	return &support.Error{Code: code, Message: "Remote operation " + string(op.State) + ": " + op.Error, OperationID: op.ID, InputSent: op.Effect != "none", Effect: support.Effect(op.Effect)}
+}

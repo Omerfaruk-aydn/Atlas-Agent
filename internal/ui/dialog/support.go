@@ -720,3 +720,111 @@ func (d *Support) saveSettings() Action {
 	})
 }
 
+// Draw implements Dialog.
+func (d *Support) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
+	t := d.com.Styles
+	width := max(0, min(92, area.Dx()-t.Dialog.View.GetHorizontalBorderSize()))
+	inner := max(10, width-t.Dialog.View.GetHorizontalFrameSize())
+	text := inner - 1
+	rc := NewRenderContext(t, width)
+	rc.Title = d.com.Text("Remote support")
+	if sub := d.subtitle(); sub != "" {
+		rc.TitleInfo = t.Dialog.SecondaryText.Padding(0).Render(" · " + sub)
+	}
+	height := max(4, area.Dy()-t.Dialog.View.GetVerticalFrameSize()-6)
+
+	var cur *tea.Cursor
+	var input *textinput.Model
+	switch {
+	case d.view == supportConnect && !d.joining && !d.connected():
+		input = &d.codeInput
+	case d.view == supportSettings && d.settingSel < len(d.settings):
+		input = &d.settings[d.settingSel]
+	}
+	if input != nil {
+		input.SetWidth(dialogInputTextWidth(t, *input, inner))
+		rc.AddPart(t.Dialog.InputPrompt.Render(input.View()))
+		cur = InputCursor(t, input.Cursor())
+		height--
+	}
+
+	var lines []string
+	if d.svc == nil {
+		lines = wrapLines(t.Dialog.PrimaryText.Padding(0), d.com.Text("Remote support is only available when Atlas runs locally."), text)
+	} else {
+		lines = d.body(text)
+	}
+	// Feedback must stay visible when the terminal clips a long body.
+	var feedback []string
+	if d.confirm != "" {
+		q := d.com.Text("End remote support now? Running commands are stopped and recorded. y confirm · any other key cancels")
+		feedback = append(feedback, wrapLines(t.Dialog.OAuth.ErrorText, q, text)...)
+		feedback = append(feedback, "")
+	}
+	if d.notice != "" {
+		style := t.Dialog.SecondaryText.Padding(0)
+		if d.noticeErr {
+			style = t.Dialog.OAuth.ErrorText
+		}
+		feedback = append(feedback, wrapLines(style, d.notice, text)...)
+		feedback = append(feedback, "")
+	}
+	lines = append(feedback, lines...)
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+	for i, l := range lines {
+		lines[i] = " " + ansi.Truncate(l, text, "…")
+	}
+	rc.AddPart(strings.Join(lines, "\n"))
+	rc.Help = renderDialogHelp(t, &d.help, d, inner)
+	DrawCenterCursor(scr, area, rc.Render(), cur)
+	return cur
+}
+
+// connected reports an active session from this computer to another.
+func (d *Support) connected() bool {
+	return d.hasCtl && d.ctl.Remote != nil && !d.ctl.State.Terminal()
+}
+
+func (d *Support) subtitle() string {
+	switch {
+	case d.hasHost && d.host.Session != nil:
+		return d.com.Text("receiving support")
+	case d.hasCtl && d.ctl.Remote != nil && !d.ctl.State.Terminal():
+		return fmt.Sprintf(d.com.Text("supporting %s"), d.ctl.Remote.RemoteName)
+	}
+	return ""
+}
+
+func (d *Support) body(text int) []string {
+	switch d.view {
+	case supportHostSetup:
+		return d.setupLines(text)
+	case supportHost:
+		return d.hostLines(text)
+	case supportConnect:
+		return d.connectLines(text)
+	case supportSessions:
+		return d.sessionLines(text)
+	case supportTransfers:
+		return d.transferLines(text)
+	case supportHistory:
+		return d.historyLines(text)
+	case supportHistoryDetail:
+		return d.eventLines()
+	case supportSettings:
+		return d.settingsLines(text)
+	}
+	return d.menuLines(text)
+}
+
+func (d *Support) item(selected bool, s string, text int) string {
+	t := d.com.Styles
+	s = ansi.Truncate(s, text, "…")
+	if selected {
+		return t.Dialog.SelectedItem.Width(text).Render(s)
+	}
+	return t.Dialog.NormalItem.Width(text).Render(s)
+}
+

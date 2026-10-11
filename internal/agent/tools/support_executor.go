@@ -54,3 +54,74 @@ func NewSupportExecutor(stateDir string, backend computer.Backend, cfg config.To
 
 var supportBrowserActions = []string{"navigate", "back", "forward", "click", "type", "key", "scroll", "snapshot", "observe", "screenshot", "text", "html", "url", "find", "assert", "wait_for", "semantic_click", "semantic_type", "set_field", "read_field", "select_option", "fill_form", "submit", "collect", "tabs", "tab_new", "tab_select", "tab_close", "tab_return", "frames", "popup_wait", "dialog_wait", "dialog_handle", "health", "pointer_move", "pointer_click", "pointer_drag", "key_combo", "insert_text"}
 
+func (e *supportExecutor) Validate(req nodes.RemoteToolRequest) (bool, error) {
+	switch req.Tool {
+	case BrowserToolName:
+		var p BrowserParams
+		if err := json.Unmarshal(req.Input, &p); err != nil {
+			return false, err
+		}
+		if !slices.Contains(supportBrowserActions, p.Action) {
+			return false, fmt.Errorf("unsupported remote browser action %q", p.Action)
+		}
+		if err := browserArgumentPreflight(p.Action, p, false); err != nil {
+			return false, err
+		}
+		return browserMutating(p.Action), nil
+	case ComputerToolName:
+		var p ComputerParams
+		if err := json.Unmarshal(req.Input, &p); err != nil {
+			return false, err
+		}
+		if !slices.Contains(computerActions, p.Action) || p.Action == "batch" || p.Action == "handoff" || p.Action == "auth_code" {
+			return false, fmt.Errorf("unsupported remote computer action %q", p.Action)
+		}
+		return computerMutates(p.Action), nil
+	case "tool_pipeline":
+		var p PipelineParams
+		if err := json.Unmarshal(req.Input, &p); err != nil {
+			return false, err
+		}
+		if p.Flow != nil {
+			return false, fmt.Errorf("remote named browser templates are unavailable; use browser steps or desktop flow")
+		}
+		for _, step := range p.Steps {
+			if step.Tool != BrowserToolName && step.Tool != ComputerToolName {
+				return false, fmt.Errorf("remote workflow step %s must use browser or computer", step.ID)
+			}
+			// Action names cannot be bound dynamically: validate the complete
+			// plan before an earlier step can send input.
+			if _, exists := step.Bindings["action"]; exists {
+				return false, fmt.Errorf("remote workflow action cannot be bound dynamically")
+			}
+			action, _ := step.Arguments["action"].(string)
+			if err := supportActionAllowed(step.Tool, action); err != nil {
+				return false, err
+			}
+		}
+		if p.Browser != nil {
+			if _, err := compileBrowserWorkflow(*p.Browser); err != nil {
+				return false, err
+			}
+			for _, step := range p.Browser.Steps {
+				if err := supportActionAllowed(BrowserToolName, step.Action); err != nil {
+					return false, err
+				}
+			}
+		}
+		return pipelineMutates(string(req.Input)), nil
+	default:
+		return false, fmt.Errorf("remote tool must be browser, computer or tool_pipeline")
+	}
+}
+
+func supportActionAllowed(tool, action string) error {
+	if tool == BrowserToolName && slices.Contains(supportBrowserActions, action) {
+		return nil
+	}
+	if tool == ComputerToolName && slices.Contains(computerActions, action) && action != "batch" && action != "handoff" && action != "auth_code" {
+		return nil
+	}
+	return fmt.Errorf("unsupported remote %s action %q", tool, action)
+}
+

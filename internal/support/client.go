@@ -741,3 +741,80 @@ func Classify(err error, deviceID, operationID string) *Error {
 	return &Error{Code: CodeLocal, Message: fmt.Sprint(err), Effect: EffectNone, RemoteDeviceID: deviceID, OperationID: operationID}
 }
 
+func jsonDecode(r io.Reader, v any) error {
+	return json.NewDecoder(io.LimitReader(r, 1<<20)).Decode(v)
+}
+
+// supportCall sends a host-only support request over the session.
+func (c *Controller) supportCall(ctx context.Context, method, path string, body any, out any) (Remote, error) {
+	remote, client, err := c.Target()
+	if err != nil {
+		return remote, err
+	}
+	var reader io.Reader
+	if body != nil {
+		data, _ := json.Marshal(body)
+		reader = bytes.NewReader(data)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, client.BaseURL+path, reader)
+	if err != nil {
+		return remote, err
+	}
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := client.HTTP.Do(req)
+	if err != nil {
+		return remote, Classify(&nodes.ConnError{Sent: method != http.MethodGet && !isDialErr(err), Err: err}, remote.RemoteDeviceID, "")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		var apiErr nodes.APIError
+		if jsonDecode(resp.Body, &apiErr) != nil || apiErr.Code == "" {
+			apiErr = nodes.APIError{Code: string(CodeProtocol), Message: resp.Status, Effect: "unknown"}
+		}
+		return remote, FromAPI(&apiErr, remote.RemoteDeviceID)
+	}
+	if out != nil {
+		if err := jsonDecode(resp.Body, out); err != nil {
+			return remote, Errorf(CodeProtocol, "%v", err)
+		}
+	}
+	return remote, nil
+}
+
+func isDialErr(err error) bool {
+	var opErr *net.OpError
+	return errors.As(err, &opErr) && opErr.Op == "dial"
+}
+
+// RequestPermission asks the computer owner for more capabilities. The
+// answer arrives later; poll PermissionStatus with the returned id.
+func (c *Controller) RequestPermission(ctx context.Context, caps []Capability, reason string) (PermissionRequest, error) {
+	var out PermissionRequest
+	_, err := c.supportCall(ctx, http.MethodPost, permissionsPath, PermissionAsk{Capabilities: caps, Reason: reason}, &out)
+	if err == nil && out.State == PermissionGranted {
+		_, _ = c.Refresh(ctx)
+	}
+	return out, err
+}
+
+// PermissionStatus reads a permission request; a granted request also
+// refreshes the session's capabilities.
+func (c *Controller) PermissionStatus(ctx context.Context, id string) (PermissionRequest, error) {
+	var out PermissionRequest
+	_, err := c.supportCall(ctx, http.MethodGet, permissionsPath+"/"+url.PathEscape(id), nil, &out)
+	if err == nil && out.State == PermissionGranted {
+		_, _ = c.Refresh(ctx)
+	}
+	return out, err
+}
+
+// CancelPermission withdraws a pending request; a later answer by the
+// owner then changes nothing.
+func (c *Controller) CancelPermission(ctx context.Context, id string) (PermissionRequest, error) {
+	var out PermissionRequest
+	_, err := c.supportCall(ctx, http.MethodDelete, permissionsPath+"/"+url.PathEscape(id), nil, &out)
+	return out, err
+}

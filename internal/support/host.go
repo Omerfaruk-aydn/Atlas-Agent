@@ -534,3 +534,121 @@ func (h *Host) LANAddress() string {
 	return h.listener.Addr().String()
 }
 
+func (h *Host) acceptLoop(ln net.Listener) {
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		select {
+		case h.handshakes <- struct{}{}:
+			if !h.goWork(func() {
+				defer func() { <-h.handshakes }()
+				h.serveConn(conn, "lan")
+			}) {
+				<-h.handshakes
+				_ = conn.Close()
+			}
+		default:
+			_ = conn.Close()
+		}
+	}
+}
+
+func (h *Host) relayOfferLoop(ctx context.Context, slot string) {
+	delay := time.Second
+	for ctx.Err() == nil {
+		h.mu.Lock()
+		active := !h.codeUsed
+		h.mu.Unlock()
+		if st, _, _ := h.machine.State(); st != StateHosting || !active {
+			return
+		}
+		h.setRelayStatus("registered")
+		conn, err := relayHost(ctx, h.relayConfig(), slot)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			h.setRelayStatus("error: " + describe(err))
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+			}
+			delay = min(delay*2, 30*time.Second)
+			continue
+		}
+		delay = time.Second
+		if !h.goWork(func() { h.serveConn(conn, "relay") }) {
+			_ = conn.Close()
+		}
+	}
+}
+
+func (h *Host) setRelayStatus(s string) {
+	h.mu.Lock()
+	changed := h.relayStatus != s
+	h.relayStatus = s
+	h.mu.Unlock()
+	if changed {
+		h.notify()
+	}
+}
+
+// relayResumeLoop keeps a relay registration for the session's resume
+// slot, so the supporter can reconnect through the relay.
+func (h *Host) relayResumeLoop(ctx context.Context, slot string) {
+	delay := time.Second
+	for ctx.Err() == nil {
+		conn, err := relayHost(ctx, h.relayConfig(), slot)
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+			}
+			delay = min(delay*2, 30*time.Second)
+			continue
+		}
+		delay = time.Second
+		if !h.goWork(func() { h.serveConn(conn, "relay") }) {
+			_ = conn.Close()
+		}
+	}
+}
+
+func (h *Host) serveConn(raw net.Conn, network string) {
+	tconn := tls.Server(raw, hostTLSConfig(h.id))
+	clear := handshakeDeadline(tconn, 30*time.Second)
+	if err := tconn.HandshakeContext(h.ctx); err != nil {
+		_ = raw.Close()
+		return
+	}
+	exp, err := exporter(tconn)
+	if err != nil {
+		_ = tconn.Close()
+		return
+	}
+	var hello clientHello
+	if err := readFrame(tconn, &hello); err != nil {
+		_ = tconn.Close()
+		return
+	}
+	if hello.Protocol != ProtocolVersion {
+		_ = writeFrame(tconn, errFrame(Errorf(CodeProtocol, "support protocol %d is not supported; update Atlas on both computers", hello.Protocol)))
+		_ = tconn.Close()
+		return
+	}
+	clear()
+	switch hello.Type {
+	case "join":
+		h.join(tconn, hello, exp, network)
+	case "resume":
+		h.resume(tconn, hello, network)
+	default:
+		_ = writeFrame(tconn, errFrame(Errorf(CodeProtocol, "unknown handshake")))
+		_ = tconn.Close()
+	}
+}
+

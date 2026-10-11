@@ -896,3 +896,94 @@ func (h *Host) startSession(req *JoinRequest, caps []Capability) (*hostSession, 
 	return s, gen, nil
 }
 
+func (h *Host) sessionInfo(s *hostSession, gen uint64) SessionInfo {
+	var labels []string
+	for _, r := range s.roots {
+		labels = append(labels, r.Label)
+	}
+	slices.Sort(labels)
+	st, _, _ := h.machine.State()
+	return SessionInfo{
+		SessionID: s.id, RemoteDeviceID: h.id.NodeID, RemoteName: h.opts.Name, RemoteFingerprint: h.id.Fingerprint,
+		OS: runtime.GOOS, Arch: runtime.GOARCH, Generation: gen, Capabilities: slices.Clone(s.caps), Roots: labels,
+		OwnerIdentity: h.owner, ExpiresAt: s.expires.UnixMilli(), Desktop: h.opts.Desktop != nil, DesktopReason: h.opts.DesktopReason,
+		Interactive: h.opts.Desktop != nil, Network: s.network, State: st, AgentPaused: s.agentPaused, InputPaused: s.inputPaused,
+	}
+}
+
+func (h *Host) resume(conn *tls.Conn, hello clientHello, network string) {
+	fail := func(e *Error) {
+		_ = writeFrame(conn, errFrame(e))
+		_ = conn.Close()
+	}
+	fp := peerFingerprint(conn.ConnectionState())
+	got := sha256.Sum256([]byte(hello.ResumeToken))
+	h.mu.Lock()
+	s := h.session
+	if s == nil || s.id != hello.SessionID {
+		h.mu.Unlock()
+		if rec, ok := h.store.load(hello.SessionID); ok {
+			if rec.State == StateExpired {
+				fail(Errorf(CodeSessionExpired, "the session time ended"))
+				return
+			}
+			fail(Errorf(CodeSessionRevoked, "the session ended: %s", rec.Reason))
+			return
+		}
+		fail(Errorf(CodeSessionRevoked, "this computer has no such support session"))
+		return
+	}
+	if subtle.ConstantTimeCompare(got[:], s.resumeHash[:]) != 1 || fp != s.peer.Fingerprint {
+		h.mu.Unlock()
+		fail(Errorf(CodeWrongTarget, "this device is not part of the support session"))
+		return
+	}
+	st, gen, _ := h.machine.State()
+	if st.Terminal() {
+		h.mu.Unlock()
+		if st == StateExpired {
+			fail(Errorf(CodeSessionExpired, "the session time ended"))
+		} else {
+			fail(Errorf(CodeSessionRevoked, "the computer owner ended the session"))
+		}
+		return
+	}
+	if hello.Generation != gen {
+		h.mu.Unlock()
+		fail(Errorf(CodeStaleConnection, "connection %d is older than the current connection %d", hello.Generation, gen))
+		return
+	}
+	old := h.conns[gen]
+	delete(h.conns, gen)
+	if st != StateReconnecting {
+		_ = h.machine.MoveIf(gen, StateReconnecting, "supporter reconnected")
+	}
+	if s.reconnect != nil {
+		s.reconnect.Stop()
+		s.reconnect = nil
+	}
+	newGen, err := h.machine.Connect("reconnected")
+	if err != nil {
+		h.mu.Unlock()
+		fail(Errorf(CodeSessionRevoked, "%v", err))
+		return
+	}
+	if s.agentPaused {
+		_ = h.machine.Move(StatePaused, "the owner paused the support task")
+	}
+	info := h.sessionInfo(s, newGen)
+	h.mu.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
+	_ = h.history.Append(Event{SessionID: s.id, Role: "host", Kind: "reconnected", Generation: newGen, Detail: network})
+	_ = h.store.save(sessionRecord{ID: s.id, State: StateConnected, ControllerName: s.peer.Name, ControllerDevice: s.peer.Fingerprint, ResumeHash: hex.EncodeToString(s.resumeHash[:]), ExpiresAt: s.expires.UnixMilli(), LastGeneration: newGen, CapabilitiesFinal: strings.Join(Strings(s.caps), ",")})
+	h.notify()
+	if err := writeFrame(conn, serverMsg{Type: "resumed", Session: &info}); err != nil {
+		_ = conn.Close()
+		h.connClosed(newGen, s.id)
+		return
+	}
+	h.serveH2(conn, newGen, s.id)
+}
+

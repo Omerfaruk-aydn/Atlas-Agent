@@ -1374,3 +1374,97 @@ func (h *Host) CheckExec(g nodes.Grant, kind string, argv []string) *nodes.APIEr
 	return nil
 }
 
+// OperationStarted implements nodes.OperationObserver.
+func (h *Host) OperationStarted(g nodes.Grant, op nodes.Operation) {
+	view := OperationView{ID: op.ID, Kind: op.Kind, Summary: operationSummary(op), State: string(op.State), Effect: op.Effect, Generation: op.Generation, StartedAt: op.StartedAt}
+	h.mu.Lock()
+	s := h.session
+	if s == nil || s.id != g.SessionID {
+		h.mu.Unlock()
+		return
+	}
+	s.active[op.ID] = &view
+	if h.opts.Overlay != nil {
+		// The banner names the kind of work; desktop input shows its action
+		// (click, type…). The pointer itself is the system cursor the
+		// backend moves, so no second cursor is drawn.
+		action := "wait"
+		if a, ok := strings.CutPrefix(op.Kind, "desktop_"); ok {
+			action = a
+		}
+		s.opEnds[op.ID] = h.opts.Overlay.Operation(action, 0, 0, false)
+	}
+	h.mu.Unlock()
+	_ = h.history.Append(Event{SessionID: g.SessionID, Role: "host", Kind: "operation_started", OperationID: op.ID, Generation: op.Generation, Detail: view.Summary, Fields: map[string]string{"kind": op.Kind}})
+	h.notify()
+}
+
+// OperationFinished implements nodes.OperationObserver.
+func (h *Host) OperationFinished(g nodes.Grant, op nodes.Operation) {
+	view := OperationView{ID: op.ID, Kind: op.Kind, Summary: operationSummary(op), State: string(op.State), Effect: op.Effect, Generation: op.Generation, StartedAt: op.StartedAt, EndedAt: op.EndedAt}
+	h.mu.Lock()
+	var end func()
+	if s := h.session; s != nil && s.id == g.SessionID {
+		delete(s.active, op.ID)
+		end = s.opEnds[op.ID]
+		delete(s.opEnds, op.ID)
+		s.recent = append(s.recent, view)
+		if len(s.recent) > 20 {
+			s.recent = s.recent[len(s.recent)-20:]
+		}
+	}
+	h.mu.Unlock()
+	if end != nil {
+		end()
+	}
+	fields := map[string]string{"kind": op.Kind}
+	if op.ExitCode != nil {
+		fields["exit_code"] = strconv.Itoa(*op.ExitCode)
+	}
+	if op.SHA256 != "" {
+		fields["sha256"], fields["size"] = op.SHA256, strconv.FormatInt(op.Size, 10)
+	}
+	_ = h.history.Append(Event{SessionID: g.SessionID, Role: "host", Kind: "operation_finished", OperationID: op.ID, Generation: op.Generation, State: string(op.State), Effect: op.Effect, Detail: firstLine(op.Error), Fields: fields})
+	h.notify()
+}
+
+func operationSummary(op nodes.Operation) string {
+	switch {
+	case len(op.Argv) > 0:
+		return op.Kind + ": " + CommandSummary(op.Argv)
+	case op.Path != "":
+		return op.Kind + ": " + op.Path
+	}
+	return op.Kind
+}
+
+func firstLine(s string) string {
+	s, _, _ = strings.Cut(s, "\n")
+	return s
+}
+
+func randomID(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	return hex.EncodeToString(b)
+}
+
+// sanitizeName keeps a peer-chosen name printable and short. It is shown
+// as "name sent by the device", never as a verified identity.
+func sanitizeName(s, fallback string) string {
+	var b strings.Builder
+	for _, r := range strings.TrimSpace(s) {
+		if unicode.IsPrint(r) && r != '‮' && r != '‭' {
+			b.WriteRune(r)
+		}
+		if b.Len() >= 64 {
+			break
+		}
+	}
+	if b.Len() == 0 {
+		return fallback
+	}
+	return b.String()
+}

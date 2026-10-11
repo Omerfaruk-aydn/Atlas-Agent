@@ -1066,3 +1066,75 @@ func (d *Support) sessionLines(text int) []string {
 	return lines
 }
 
+func (d *Support) transferLines(text int) []string {
+	var lines []string
+	if d.hasHost && d.host.Session != nil {
+		for _, op := range d.host.Session.Recent {
+			if op.Kind == "upload" || op.Kind == "file_get" || op.Kind == "push" {
+				lines = append(lines, fmt.Sprintf("  ↓ %s · %s · %s", op.Summary, op.State, op.Effect))
+			}
+		}
+		if a := d.host.Session.Active; a != nil && a.Kind == "upload" {
+			lines = append(lines, d.strong("  ↓ "+a.Summary+" · "+d.com.Text("receiving")))
+		}
+	}
+	if len(lines) == 0 {
+		lines = append(lines, d.muted(d.com.Text("No file transfers in the current session.")))
+	}
+	lines = append(lines, "", d.muted(d.com.Text("Files are sent in verified chunks, checked with SHA-256 and installed only when complete. Received files are never run automatically.")))
+	_ = text
+	return lines
+}
+
+func (d *Support) historyLines(text int) []string {
+	if d.busy && len(d.summaries) == 0 {
+		return []string{d.muted(d.com.Text("Loading…"))}
+	}
+	if len(d.summaries) == 0 {
+		return []string{d.muted(d.com.Text("No support sessions yet."))}
+	}
+	var lines []string
+	for i, s := range d.summaries {
+		role := d.com.Text("received support")
+		if s.Role != "host" {
+			role = d.com.Text("gave support")
+		}
+		state := s.EndState
+		if state == "" {
+			state = "open"
+		}
+		peer := s.Peer
+		if strings.HasPrefix(s.SessionID, "offer-") {
+			peer = d.com.Text("code only, no session")
+		}
+		line := fmt.Sprintf("%s · %s · %s · %s · %d", time.UnixMilli(s.Started).Format("2006-01-02 15:04"), role, peer, d.com.Text(state), s.Events)
+		lines = append(lines, d.item(i == d.histSel, line, text))
+	}
+	lines = append(lines, "", d.muted(d.com.Text("History holds no codes, tokens, passwords or file contents.")))
+	return lines
+}
+
+func (d *Support) eventLines() []string {
+	var lines []string
+	for _, e := range d.events {
+		line := time.UnixMilli(e.At).Format("15:04:05") + " " + e.Kind
+		if e.OperationID != "" {
+			line += " " + e.OperationID
+		}
+		if e.State != "" {
+			line += " · " + e.State
+		}
+		if e.Effect != "" {
+			line += " · " + e.Effect
+		}
+		if e.Detail != "" {
+			line += " · " + e.Detail
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		lines = append(lines, d.muted(d.com.Text("No events.")))
+	}
+	return lines
+}
+

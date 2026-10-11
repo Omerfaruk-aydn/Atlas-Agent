@@ -107,3 +107,59 @@ type Support struct {
 	}
 }
 
+var _ Dialog = (*Support)(nil)
+
+// NewSupport creates the /support dialog. svc is nil in client mode.
+func NewSupport(com *common.Common, svc *support.Service) *Support {
+	d := &Support{com: com, svc: svc, caps: map[support.Capability]bool{}, fileRoots: support.ComputerFileRoots}
+	d.help = help.New()
+	d.help.Styles = com.Styles.DialogHelpStyles()
+	for _, c := range support.Presets["diagnose"] {
+		d.caps[c] = true
+	}
+	d.durationIdx = 1
+	newInput := func(placeholder string) textinput.Model {
+		in := textinput.New()
+		in.SetVirtualCursor(false)
+		in.SetStyles(com.Styles.TextInput)
+		in.Placeholder = placeholder
+		return in
+	}
+	d.codeInput = newInput(com.Text("Code (XXXX-XXXX-XXXX), CODE@address or atlas-support:// link"))
+	d.settings[0] = newInput(com.Text("Name shown to the other computer"))
+	d.settings[1] = newInput("https://support.example.com")
+	d.settings[2] = newInput(com.Text("Absolute path of the relay token file"))
+	if cfg := supportConfig(com); cfg != nil {
+		dev := cfg.Tools.Devices
+		d.settings[0].SetValue(dev.SupportName)
+		d.settings[1].SetValue(dev.SupportRelayURL)
+		d.settings[2].SetValue(dev.SupportRelayTokenFile)
+		d.noDiscovery = dev.SupportNoDiscovery
+	}
+	k := func(keys []string, h, desc string) key.Binding {
+		return key.NewBinding(key.WithKeys(keys...), key.WithHelp(h, com.Text(desc)))
+	}
+	d.keyMap.Up = k([]string{"up", "k"}, "↑", "previous")
+	d.keyMap.Down = k([]string{"down", "j"}, "↓", "next")
+	d.keyMap.Enter = k([]string{"enter"}, "enter", "select")
+	d.keyMap.Back = k([]string{"esc", "alt+esc"}, "esc", "back")
+	d.keyMap.Toggle = k([]string{"space"}, "space", "toggle")
+	d.keyMap.Accept = k([]string{"a"}, "a", "accept")
+	d.keyMap.Reject = k([]string{"r"}, "r", "reject")
+	d.keyMap.Copy = k([]string{"c"}, "c", "copy code")
+	d.keyMap.CopyLink = k([]string{"l"}, "l", "copy link")
+	d.keyMap.QR = k([]string{"q"}, "q", "QR")
+	d.keyMap.PauseAgent = k([]string{"p"}, "p", "pause task")
+	d.keyMap.PauseInput = k([]string{"s"}, "s", "pause screen control")
+	d.keyMap.Files = k([]string{"f"}, "f", "file access")
+	d.keyMap.Disconnect = k([]string{"x"}, "x", "disconnect")
+	d.keyMap.Grant = k([]string{"y"}, "y", "grant")
+	d.keyMap.Deny = k([]string{"n"}, "n", "deny")
+	d.keyMap.Duration = k([]string{"t"}, "t", "duration")
+	d.keyMap.Network = k([]string{"w"}, "w", "network")
+	d.keyMap.Preset = k([]string{"1", "2", "3"}, "1-3", "preset")
+	d.keyMap.Next = k([]string{"tab"}, "tab", "next field")
+	d.refresh()
+	return d
+}
+

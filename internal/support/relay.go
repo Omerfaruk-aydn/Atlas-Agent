@@ -373,3 +373,55 @@ func (s *RelayServer) serveHost(w http.ResponseWriter, r *http.Request, slot str
 	}
 }
 
+func (s *RelayServer) serveJoin(w http.ResponseWriter, r *http.Request, slot string) {
+	if !s.allow("join|"+clientIP(r), 30) {
+		relayError(w, http.StatusTooManyRequests, "rate_limited", "too many attempts")
+		return
+	}
+	s.mu.Lock()
+	wh := s.waiting[slot]
+	if wh != nil {
+		// One join per registration; the host registers again for another.
+		delete(s.waiting, slot)
+	}
+	s.mu.Unlock()
+	if wh == nil {
+		relayError(w, http.StatusNotFound, "no_host", "no offer with this code")
+		return
+	}
+	ws, err := s.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	ws.SetReadLimit(64 << 10)
+	select {
+	case wh.join <- ws:
+	case <-time.After(5 * time.Second):
+		_ = ws.Close()
+	}
+}
+
+// splice copies both directions and closes both ends when either ends.
+func splice(a, b net.Conn) {
+	var once sync.Once
+	closeBoth := func() { once.Do(func() { _ = a.Close(); _ = b.Close() }) }
+	done := make(chan struct{}, 2)
+	go func() { _, _ = io.Copy(a, b); closeBoth(); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(b, a); closeBoth(); done <- struct{}{} }()
+	<-done
+	<-done
+}
+
+// Close stops accepting offers.
+func (s *RelayServer) Close() {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+}
+
+// RelaySlotFor derives the relay slot used to resume a session. It is
+// different from any code slot and only both endpoints can compute it.
+func RelaySlotFor(sessionID, resumeToken string) string {
+	sum := sha256.Sum256([]byte("atlas-support-resume-v1|" + sessionID + "|" + resumeToken))
+	return hex.EncodeToString(sum[:16])
+}

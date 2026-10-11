@@ -53,3 +53,40 @@ const (
 	CodeLocal Code = "local_error"
 )
 
+// Effect says whether a failed request may have changed the remote.
+type Effect string
+
+const (
+	EffectNone    Effect = "none"
+	EffectApplied Effect = "applied"
+	EffectUnknown Effect = "unknown"
+)
+
+// Error is the structured failure every support layer returns.
+type Error struct {
+	Code           Code   `json:"code"`
+	Message        string `json:"message"`
+	InputSent      bool   `json:"input_sent"`
+	Effect         Effect `json:"effect"`
+	OperationID    string `json:"operation_id,omitempty"`
+	RemoteDeviceID string `json:"remote_device_id,omitempty"`
+	Retryable      bool   `json:"retryable"`
+	NextStep       string `json:"next_step,omitempty"`
+}
+
+func (e *Error) Error() string { return string(e.Code) + ": " + e.Message }
+
+// Errorf builds an error that sent nothing and changed nothing.
+func Errorf(code Code, format string, args ...any) *Error {
+	return &Error{Code: code, Message: fmt.Sprintf(format, args...), Effect: EffectNone, NextStep: nextStep(code), Retryable: retryable(code)}
+}
+
+// AsError extracts a support error, or nil.
+func AsError(err error) *Error {
+	var e *Error
+	if errors.As(err, &e) {
+		return e
+	}
+	return nil
+}
+

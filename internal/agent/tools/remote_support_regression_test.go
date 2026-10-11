@@ -248,3 +248,38 @@ func TestRemoteSupportInstallRequiresIndependentEvidence(t *testing.T) {
 	}
 }
 
+func TestRemoteSupportLiveBrowserWorkflow(t *testing.T) {
+	executable := liveBrowserExecutable(t)
+	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, `<html><body><label for="name">Name</label><input id="name" value="old"><button>Save</button></body></html>`)
+	}))
+	t.Cleanup(page.Close)
+	headless := true
+	f := newSupportFixture(t, []support.Capability{support.CapBrowser}, func(o *support.HostOptions) {
+		o.Executor = NewSupportExecutor(o.StateDir, nil, config.ToolBrowser{Headless: &headless, ExecutablePath: executable})
+	})
+	tool := NewRemoteSupportTool(yolo(t), t.TempDir(), func() *support.Controller { return f.ctl })
+	args := map[string]any{
+		"action": "tool", "tool": "tool_pipeline", "device_id": f.remote.RemoteDeviceID, "session_id": f.remote.SessionID, "generation": f.remote.Generation,
+		"arguments": map[string]any{"browser": map[string]any{"steps": []map[string]any{{"id": "open", "action": "navigate", "url": page.URL}, {"id": "write", "action": "set_field", "target": map[string]any{"label": "Name", "value": "remote verified", "commit": "blur"}}, {"id": "read", "action": "read_field", "target": map[string]any{"label": "Name"}}}}},
+	}
+	got := callSupport(t, tool, "live-browser", args)
+	require.False(t, got.resp.IsError, got.resp.Content)
+	require.Contains(t, got.resp.Content, "remote verified")
+	args["tool"], args["arguments"] = "browser", map[string]any{"action": "screenshot"}
+	shot := callSupport(t, tool, "live-screen", args)
+	require.False(t, shot.resp.IsError, shot.resp.Content)
+	require.Equal(t, "image", shot.resp.Type)
+	require.NotEmpty(t, shot.resp.Data)
+	require.False(t, shot.outcome.Mutation, "a remote observation must not invalidate existing change evidence")
+	require.NoError(t, f.host.PauseInput(true))
+	args["arguments"] = map[string]any{"action": "set_field", "advanced": map[string]any{"label": "Name", "value": "denied"}}
+	denied := callSupport(t, tool, "live-paused", args)
+	require.True(t, denied.resp.IsError, denied.resp.Content)
+	args["arguments"] = map[string]any{"action": "read_field", "advanced": map[string]any{"label": "Name"}}
+	read := callSupport(t, tool, "live-read", args)
+	require.False(t, read.resp.IsError, read.resp.Content)
+	require.Contains(t, read.resp.Content, "remote verified")
+	require.NotContains(t, read.resp.Content, "denied")
+}
+

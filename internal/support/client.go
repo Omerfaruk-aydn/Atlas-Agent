@@ -630,3 +630,58 @@ func (c *Controller) Record(e Event) {
 	_ = c.history.Append(e)
 }
 
+// ForceReconnect drops the current connection, for example after the
+// network changed; the session resumes under a new generation. Requests in
+// flight on the old connection get an unknown outcome and are not resent.
+func (c *Controller) ForceReconnect() {
+	c.mu.Lock()
+	conn := c.conn
+	c.mu.Unlock()
+	if conn != nil {
+		_ = conn.Close()
+	}
+}
+
+// Disconnect ends the session from the supporter's side.
+func (c *Controller) Disconnect(reason string) {
+	c.mu.Lock()
+	remote := c.remote
+	c.mu.Unlock()
+	if remote == nil {
+		return
+	}
+	c.end(remote.SessionID, StateDisconnected, reason)
+}
+
+func (c *Controller) end(sessionID string, state State, reason string) {
+	c.mu.Lock()
+	if c.remote == nil || c.remote.SessionID != sessionID {
+		c.mu.Unlock()
+		return
+	}
+	c.stopping = true
+	_ = c.machine.Move(state, reason)
+	conn := c.conn
+	c.conn, c.cc, c.client, c.token, c.resume = nil, nil, nil, "", ""
+	_, gen, _ := c.machine.State()
+	c.stopping = false
+	c.mu.Unlock()
+	if conn != nil {
+		_ = conn.Close()
+	}
+	_ = c.history.Append(Event{SessionID: sessionID, Role: "supporter", Kind: "session_ended", State: string(state), Detail: reason, Generation: gen})
+	c.notify()
+}
+
+// Close ends any session and stops background work.
+func (c *Controller) Close() {
+	c.closeOnce.Do(func() {
+		c.mu.Lock()
+		c.closed = true
+		c.mu.Unlock()
+		c.Disconnect("Atlas was closed on the supporting computer")
+		c.cancel()
+		c.work.Wait()
+	})
+}
+

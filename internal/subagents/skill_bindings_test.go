@@ -54,6 +54,8 @@ func TestSpecialistRoutingRecognizesDomainsAndEnforcesActualTools(t *testing.T) 
 		{"şablon oluştur", "template", "template-builder"},
 		{"MCP entegrasyon oluştur", "integration", "integration-engineer"},
 		{"takvim toplantı düzenle", "operations", "operations"},
+		{"karşı bilgisayardaki disk doluluğunu incele", "it-support", "it-support"},
+		{"remote support: find why the app does not start", "it-support", "it-support"},
 	} {
 		got, ok := Route(Builtin(), RouteRequest{Prompt: tc.prompt, TaskType: tc.taskType}, nil)
 		require.True(t, ok, tc.name)
@@ -65,5 +67,8 @@ func TestSpecialistRoutingRecognizesDomainsAndEnforcesActualTools(t *testing.T) 
 	_, ok := Route(Builtin(), RouteRequest{TaskType: "desktop"}, []string{"view", "grep"})
 	require.False(t, ok)
 	_, ok = Route(Builtin(), RouteRequest{TaskType: "browser"}, []string{"computer"})
+	require.False(t, ok)
+	// IT support needs the remote tool; local tools never stand in for it.
+	_, ok = Route(Builtin(), RouteRequest{TaskType: "it-support"}, []string{"bash", "computer", "browser"})
 	require.False(t, ok)
 }

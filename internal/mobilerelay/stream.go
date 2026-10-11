@@ -19,6 +19,11 @@ type streamConn struct {
 	done   chan struct{}
 }
 
+// NewStreamConn adapts a WebSocket of bounded binary messages to a
+// net.Conn. Remote support shares this byte transport with the phone relay;
+// each keeps its own authentication and session rules on top.
+func NewStreamConn(conn *websocket.Conn) net.Conn { return newStream(conn) }
+
 func newStream(conn *websocket.Conn) *streamConn {
 	conn.SetReadLimit(64 << 10)
 	return &streamConn{Conn: conn, done: make(chan struct{})}

@@ -828,3 +828,56 @@ func (d *Support) item(selected bool, s string, text int) string {
 	return t.Dialog.NormalItem.Width(text).Render(s)
 }
 
+func (d *Support) muted(s string) string {
+	return d.com.Styles.Dialog.SecondaryText.Padding(0).Render(s)
+}
+
+func (d *Support) strong(s string) string {
+	return d.com.Styles.Dialog.PrimaryText.Padding(0).Render(s)
+}
+
+func (d *Support) menuLines(text int) []string {
+	var lines []string
+	for i, label := range supportMenuItems {
+		lines = append(lines, d.item(i == d.menuSel, fmt.Sprintf("%d. %s", i+1, d.com.Text(label)), text))
+	}
+	lines = append(lines, "")
+	lines = append(lines, wrapLines(d.com.Styles.Dialog.SecondaryText.Padding(0), d.com.Text("Support sessions are visible, started by the person at each computer and end when either side disconnects. Atlas never sets up hidden or permanent access."), text)...)
+	return lines
+}
+
+func (d *Support) setupLines(text int) []string {
+	name := d.host.Name
+	if name == "" {
+		if cfg := supportConfig(d.com); cfg != nil {
+			name = cfg.Tools.Devices.SupportName
+		}
+	}
+	if name == "" {
+		name = d.com.Text("this computer's name")
+	}
+	network := map[string]string{"lan": "Local network only", "internet": "Internet (through your relay)", "both": "Local network and internet"}[supportNetworks[d.networkIdx]]
+	lines := []string{
+		d.strong(fmt.Sprintf(d.com.Text("Shown to the supporter as: %s"), name)),
+		fmt.Sprintf(d.com.Text("Connection: %s (w changes)"), d.com.Text(network)),
+	}
+	lines = append(lines, wrapLines(d.com.Styles.Dialog.SecondaryText.Padding(0), d.com.Text("File permissions apply to this computer's accessible drives; no folder selection is needed."), text)...)
+	lines = append(lines, d.muted(d.com.Text("Permissions (space toggles, 1 diagnose · 2 assist · 3 full):")))
+	for i, c := range support.AllCapabilities {
+		mark := "[ ]"
+		if d.caps[c] {
+			mark = "[x]"
+		}
+		label := d.com.Text(c.Label())
+		if c.HighImpact() {
+			label += " " + d.com.Text("(high impact)")
+		}
+		lines = append(lines, d.item(i == d.capSel, mark+" "+label, text))
+	}
+	lines = append(lines, "",
+		fmt.Sprintf(d.com.Text("Session length: %s (t changes) · Code valid for 10 minutes, single use"), fmt.Sprintf("%dh", int(supportDurations[d.durationIdx].Hours()))),
+		d.muted(d.com.Text("enter creates the code. Nothing is reachable until you accept the request.")),
+	)
+	return lines
+}
+

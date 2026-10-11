@@ -802,3 +802,41 @@ func (h *Host) join(conn *tls.Conn, hello clientHello, exp []byte, network strin
 	h.serveH2(conn, gen, s.id)
 }
 
+// token returns the plaintext session token once; afterwards only its
+// hash remains, so the token never sits in memory longer than needed.
+func (s *hostSession) token() string {
+	t := s.firstToken
+	s.firstToken = ""
+	return t
+}
+
+func (h *Host) abandonPending(req *JoinRequest, state State, reason string) {
+	h.mu.Lock()
+	if h.pending == req {
+		h.pending = nil
+		_ = h.machine.Move(state, reason)
+		h.stopOfferLocked()
+	}
+	h.mu.Unlock()
+	h.notify()
+}
+
+// Decide answers the pending join request. The capabilities may narrow
+// what was offered; nil keeps the offer.
+func (h *Host) Decide(requestID string, accept bool, caps []Capability) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.pending == nil || h.pending.ID != requestID {
+		return errors.New("that connection request is no longer pending")
+	}
+	if caps == nil && h.offer != nil {
+		caps = h.offer.Capabilities
+	}
+	select {
+	case h.pending.decision <- joinDecision{accept: accept, caps: Normalize(caps)}:
+		return nil
+	default:
+		return errors.New("that connection request was already answered")
+	}
+}
+

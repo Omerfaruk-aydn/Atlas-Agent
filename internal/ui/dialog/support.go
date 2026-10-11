@@ -276,3 +276,73 @@ func (d *Support) HandleMsg(msg tea.Msg) Action {
 	return nil
 }
 
+func (d *Support) handleConfirm(msg tea.KeyPressMsg) Action {
+	what := d.confirm
+	d.confirm = ""
+	if msg.String() != "y" && msg.String() != "Y" {
+		return nil
+	}
+	switch what {
+	case "host-disconnect":
+		return d.hostDo("disconnect", func(h *support.Host) (string, error) {
+			h.Disconnect("the owner ended the session")
+			return d.com.Text("Remote support ended; the other computer can no longer act here."), nil
+		})
+	case "ctl-disconnect":
+		return d.run("ctl-disconnect", func(context.Context) SupportDone {
+			if c := d.svc.ActiveController(); c != nil {
+				c.Disconnect("the supporter ended the session")
+			}
+			return SupportDone{Notice: d.com.Text("Disconnected from the other computer.")}
+		})
+	}
+	return nil
+}
+
+func (d *Support) hostDo(op string, fn func(*support.Host) (string, error)) Action {
+	return d.run(op, func(context.Context) SupportDone {
+		h := d.svc.ActiveHost()
+		if h == nil {
+			return SupportDone{Err: errors.New(d.com.Text("Remote support is not active on this computer."))}
+		}
+		notice, err := fn(h)
+		return SupportDone{Notice: notice, Err: err}
+	})
+}
+
+func (d *Support) handleKey(msg tea.KeyPressMsg) Action {
+	if d.svc == nil {
+		if key.Matches(msg, d.keyMap.Back) || key.Matches(msg, CloseKey) {
+			return ActionClose{}
+		}
+		return nil
+	}
+	switch d.view {
+	case supportMenu:
+		return d.menuKey(msg)
+	case supportHostSetup:
+		return d.setupKey(msg)
+	case supportHost:
+		return d.hostKey(msg)
+	case supportConnect:
+		return d.connectKey(msg)
+	case supportHistory:
+		return d.historyKey(msg)
+	case supportSettings:
+		return d.settingsKey(msg)
+	default:
+		if key.Matches(msg, d.keyMap.Back) {
+			d.back()
+			return nil
+		}
+		if d.view == supportSessions && key.Matches(msg, d.keyMap.Disconnect) {
+			if d.hasCtl && d.ctl.Remote != nil && !d.ctl.State.Terminal() {
+				d.confirm = "ctl-disconnect"
+			} else if d.hasHost && d.host.Session != nil {
+				d.confirm = "host-disconnect"
+			}
+		}
+	}
+	return nil
+}
+

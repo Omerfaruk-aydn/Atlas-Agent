@@ -657,3 +657,66 @@ func (d *Support) historyKey(msg tea.KeyPressMsg) Action {
 	return nil
 }
 
+func (d *Support) settingsKey(msg tea.KeyPressMsg) Action {
+	switch {
+	case key.Matches(msg, d.keyMap.Back):
+		d.settings[d.settingSel].Blur()
+		d.back()
+		return nil
+	case key.Matches(msg, d.keyMap.Next), key.Matches(msg, d.keyMap.Down) && msg.String() == "down", key.Matches(msg, d.keyMap.Up) && msg.String() == "up":
+		d.settings[d.settingSel].Blur()
+		if msg.String() == "up" {
+			d.settingSel = (d.settingSel + len(d.settings)) % (len(d.settings) + 1)
+		} else {
+			d.settingSel = (d.settingSel + 1) % (len(d.settings) + 1)
+		}
+		if d.settingSel < len(d.settings) {
+			return ActionCmd{Cmd: d.settings[d.settingSel].Focus()}
+		}
+		return nil
+	case d.settingSel == len(d.settings) && (key.Matches(msg, d.keyMap.Toggle) || key.Matches(msg, d.keyMap.Enter)):
+		d.noDiscovery = !d.noDiscovery
+		return d.saveSettings()
+	case key.Matches(msg, d.keyMap.Enter):
+		return d.saveSettings()
+	}
+	if d.settingSel < len(d.settings) {
+		var cmd tea.Cmd
+		d.settings[d.settingSel], cmd = d.settings[d.settingSel].Update(msg)
+		return ActionCmd{Cmd: cmd}
+	}
+	return nil
+}
+
+func (d *Support) saveSettings() Action {
+	relay := strings.TrimSpace(d.settings[1].Value())
+	if relay != "" && !strings.HasPrefix(relay, "https://") && !strings.HasPrefix(relay, "http://localhost") && !strings.HasPrefix(relay, "http://127.0.0.1") {
+		d.say(d.com.Text("The relay address must start with https://."), true)
+		return nil
+	}
+	token := strings.TrimSpace(d.settings[2].Value())
+	if token != "" && !filepath.IsAbs(token) {
+		d.say(d.com.Text("The token file must be an absolute path."), true)
+		return nil
+	}
+	fields := map[string]any{
+		"tools.devices.support_name":             strings.TrimSpace(d.settings[0].Value()),
+		"tools.devices.support_relay_url":        relay,
+		"tools.devices.support_relay_token_file": token,
+		"tools.devices.support_no_discovery":     d.noDiscovery,
+	}
+	ws := d.com.Workspace
+	if ws == nil {
+		d.say(d.com.Text("Remote support is only available when Atlas runs locally."), true)
+		return nil
+	}
+	return d.run("settings", func(context.Context) SupportDone {
+		for k, v := range fields {
+			if err := ws.SetConfigField(config.ScopeGlobal, k, v); err != nil {
+				return SupportDone{Err: err}
+			}
+		}
+		return SupportDone{Notice: d.com.Text("Settings saved; they apply to the next code or connection.")}
+	})
+}
+

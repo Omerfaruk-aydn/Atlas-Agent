@@ -54,6 +54,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/skills"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/support"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/teams"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
 	"golang.org/x/sync/errgroup"
@@ -225,6 +226,7 @@ type coordinator struct {
 	// tools; both are nil when the host did not provide them.
 	integrations *integrations.Service
 	localApps    *localapps.Manager
+	support      *support.Service
 
 	readyWg errgroup.Group
 }
@@ -249,6 +251,9 @@ type CoordinatorOptions struct {
 	// the /integrations and /app screens read the same state. Optional.
 	Integrations *integrations.Service
 	LocalApps    *localapps.Manager
+	// Support is the /support service; remote_support works only on the
+	// computer it connected to. Optional.
+	Support *support.Service
 }
 
 func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, error) {
@@ -291,6 +296,7 @@ func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, 
 		goalJudge:    csync.NewValue(ptrBox[Model]{}),
 		integrations: opts.Integrations,
 		localApps:    opts.LocalApps,
+		support:      opts.Support,
 	}
 
 	agentCfg, ok := opts.Config.Config().Agents[config.AgentCoder]
@@ -1155,6 +1161,11 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 			tools.NewScreenMarkTool(c.permissions, config.GlobalMarksDir()),
 		)
 	}
+
+	// Remote support is always offered (its schema loads on demand): it
+	// does nothing until the user connects to another computer with
+	// /support, and then works only there.
+	allTools = append(allTools, tools.NewRemoteSupportTool(c.permissions, c.cfg.WorkingDir(), c.support.ActiveController))
 
 	// Team tools are opt-in like the others above, even though they have
 	// no external footprint: they only matter once sub-agents are in

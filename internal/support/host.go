@@ -1051,3 +1051,79 @@ func (h *Host) Disconnect(reason string) {
 	h.CancelOffer()
 }
 
+// endSession moves to a terminal state first, closes connections at once,
+// then stops running work and records what happened to it.
+func (h *Host) endSession(sessionID string, state State, reason string) {
+	h.mu.Lock()
+	s := h.session
+	if s == nil || s.id != sessionID {
+		h.mu.Unlock()
+		return
+	}
+	_ = h.machine.Move(state, reason)
+	_, gen, _ := h.machine.State()
+	conns := h.conns
+	h.conns = map[uint64]net.Conn{}
+	h.session = nil
+	perm := h.permission
+	h.permission = nil
+	if s.expiry != nil {
+		s.expiry.Stop()
+	}
+	if s.reconnect != nil {
+		s.reconnect.Stop()
+	}
+	ends := s.opEnds
+	s.opEnds = map[string]func(){}
+	h.lingerLocked(s.cancel)
+	h.mu.Unlock()
+	for _, c := range conns {
+		_ = c.Close()
+	}
+	if perm != nil {
+		perm.State = "canceled"
+	}
+	for _, end := range ends {
+		end()
+	}
+	if h.opts.Overlay != nil {
+		h.opts.Overlay.End()
+	}
+	if h.opts.Executor != nil {
+		h.opts.Executor.Close(s.id)
+	}
+	g := h.grant(s, gen)
+	for _, op := range h.node.CancelRunning(g) {
+		_ = h.history.Append(Event{SessionID: s.id, Role: "host", Kind: "operation_stopped", OperationID: op.ID, State: string(op.State), Effect: op.Effect, Detail: op.Error})
+	}
+	_ = h.store.save(sessionRecord{ID: s.id, State: state, Reason: reason, ControllerName: s.peer.Name, ControllerDevice: s.peer.Fingerprint, ResumeHash: hex.EncodeToString(s.resumeHash[:]), ExpiresAt: s.expires.UnixMilli(), LastGeneration: gen, CapabilitiesFinal: strings.Join(Strings(s.caps), ",")})
+	_ = h.history.Append(Event{SessionID: s.id, Role: "host", Kind: "session_ended", State: string(state), Detail: reason, Generation: gen})
+	h.notify()
+}
+
+// PauseAgent stops (or resumes) every change the supporter's agent may
+// make; reading status stays available.
+func (h *Host) PauseAgent(paused bool) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	s := h.session
+	if s == nil {
+		return errors.New("no active session")
+	}
+	st, _, _ := h.machine.State()
+	switch {
+	case paused && st == StateConnected:
+		if err := h.machine.Move(StatePaused, "the owner paused the support task"); err != nil {
+			return err
+		}
+	case !paused && st == StatePaused:
+		if err := h.machine.Move(StateConnected, "the owner resumed the support task"); err != nil {
+			return err
+		}
+	}
+	s.agentPaused = paused
+	_ = h.history.Append(Event{SessionID: s.id, Role: "host", Kind: map[bool]string{true: "agent_paused", false: "agent_resumed"}[paused]})
+	go h.notify()
+	return nil
+}
+

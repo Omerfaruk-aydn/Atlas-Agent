@@ -2,7 +2,6 @@ package nodes
 
 import (
 	"bytes"
-	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -49,6 +48,9 @@ type ServerOptions struct {
 	DesktopReason string
 	Hosts         []string
 	Logger        *slog.Logger
+	// Access, when set, replaces paired-device tokens with session-scoped
+	// grants (remote support). Pairing is then disabled on this server.
+	Access Access
 }
 
 // Server is one node's HTTPS API.
@@ -58,20 +60,25 @@ type Server struct {
 	auth    *Auth
 	journal *Journal
 
-	mu    sync.Mutex
-	procs map[string]*procown.Proc
+	mu          sync.Mutex
+	procs       map[string]*procown.Proc
+	execWorkers sync.WaitGroup
 
 	desktopMu sync.Mutex
 	obs       *observationState
 
 	limitMu  sync.Mutex
 	failures map[string][]time.Time
+
+	uploads *transfer.Uploads
 }
 
 type observationState struct {
-	id   string
-	size computer.Size
-	at   time.Time
+	id         string
+	size       computer.Size
+	at         time.Time
+	session    string
+	generation uint64
 }
 
 // NewServer prepares a node: identity, device list and journal.
@@ -103,8 +110,15 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{opts: opts, id: id, auth: auth, journal: journal, procs: map[string]*procown.Proc{}, failures: map[string][]time.Time{}}, nil
+	uploads, err := transfer.OpenUploads(filepath.Join(opts.StateDir, "uploads"))
+	if err != nil {
+		return nil, err
+	}
+	return &Server{opts: opts, id: id, auth: auth, journal: journal, uploads: uploads, procs: map[string]*procown.Proc{}, failures: map[string][]time.Time{}}, nil
 }
+
+// Journal exposes the operation journal for owner-side reconciliation.
+func (s *Server) Journal() *Journal { return s.journal }
 
 // Identity returns the node certificate identity.
 func (s *Server) Identity() Identity { return s.id }
@@ -124,26 +138,28 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/node/hello", s.handleHello)
 	mux.HandleFunc("POST /v1/node/pair", s.handlePair)
-	mux.HandleFunc("GET /v1/node/info", s.authed(s.handleInfo))
-	mux.HandleFunc("POST /v1/node/revoke", s.authed(s.handleRevoke))
-	mux.HandleFunc("POST /v1/node/exec", s.authed(s.require(CapExec, s.handleExec)))
-	mux.HandleFunc("GET /v1/node/ops/{id}", s.authed(s.handleGetOp))
-	mux.HandleFunc("POST /v1/node/ops/{id}/cancel", s.authed(s.handleCancelOp))
-	mux.HandleFunc("PUT /v1/node/files", s.authed(s.require(CapFiles, s.handlePutFile)))
-	mux.HandleFunc("GET /v1/node/files", s.authed(s.require(CapFiles, s.handleGetFile)))
-	mux.HandleFunc("GET /v1/node/desktop/observe", s.authed(s.require(CapDesktop, s.handleObserve)))
-	mux.HandleFunc("POST /v1/node/desktop/input", s.authed(s.require(CapDesktop, s.handleInput)))
-	mux.HandleFunc("POST /v1/node/desktop/automation", s.authed(s.require(CapDesktop, s.handleAutomation)))
-	mux.HandleFunc("POST /v1/node/desktop/launch", s.authed(s.require(CapDesktop, s.handleLaunch)))
+	mux.HandleFunc("GET /v1/node/info", s.guard(NeedInfo, s.handleInfo))
+	mux.HandleFunc("POST /v1/node/revoke", s.guard(NeedInfo, s.handleRevoke))
+	mux.HandleFunc("GET /v1/node/sysinfo", s.guard(NeedSystemInfo, s.handleSysinfo))
+	mux.HandleFunc("POST /v1/node/exec", s.guard(NeedExec, s.handleExec))
+	mux.HandleFunc("GET /v1/node/ops/{id}", s.guard(NeedOps, s.handleGetOp))
+	mux.HandleFunc("POST /v1/node/ops/{id}/cancel", s.guard(NeedOps, s.handleCancelOp))
+	mux.HandleFunc("PUT /v1/node/files", s.guard(NeedFileWrite, s.handlePutFile))
+	mux.HandleFunc("GET /v1/node/files", s.guard(NeedFileRead, s.handleGetFile))
+	mux.HandleFunc("GET /v1/node/files/list", s.guard(NeedFileList, s.handleListFiles))
+	mux.HandleFunc("POST /v1/node/uploads", s.guard(NeedFileWrite, s.handleCreateUpload))
+	mux.HandleFunc("GET /v1/node/uploads/{id}", s.guard(NeedFileWrite, s.handleUploadStatus))
+	mux.HandleFunc("PUT /v1/node/uploads/{id}", s.guard(NeedFileWrite, s.handleUploadChunk))
+	mux.HandleFunc("POST /v1/node/uploads/{id}/complete", s.guard(NeedFileWrite, s.handleUploadComplete))
+	mux.HandleFunc("DELETE /v1/node/uploads/{id}", s.guard(NeedFileWrite, s.handleUploadAbort))
+	mux.HandleFunc("GET /v1/node/desktop/observe", s.guard(NeedDesktopView, s.handleObserve))
+	mux.HandleFunc("POST /v1/node/desktop/input", s.guard(NeedDesktopInput, s.handleInput))
+	mux.HandleFunc("POST /v1/node/desktop/automation", s.guard(NeedDesktopView, s.handleAutomation))
+	mux.HandleFunc("POST /v1/node/desktop/launch", s.guard(NeedDesktopLaunch, s.handleLaunch))
 	return mux
 }
 
-type deviceKey struct{}
-
-func deviceFrom(r *http.Request) Device {
-	d, _ := r.Context().Value(deviceKey{}).(Device)
-	return d
-}
+func deviceFrom(r *http.Request) Device { return grantFrom(r).Device }
 
 func remoteHost(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -174,41 +190,75 @@ func (s *Server) recordFailure(host string) {
 	s.failures[host] = append(s.failures[host], time.Now())
 }
 
-func (s *Server) authed(next http.HandlerFunc) http.HandlerFunc {
+// guard authenticates the request and checks need before next runs. With
+// an Access the decision is entirely the Access's; otherwise the paired
+// device token and the node's coarse capabilities apply.
+func (s *Server) guard(need Need, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		host := remoteHost(r)
-		if s.limited(host) {
-			writeError(w, http.StatusTooManyRequests, "rate_limited", "too many failed authentications; wait a minute", false, "none")
-			return
+		var g Grant
+		if s.opts.Access != nil {
+			grant, apiErr, status := s.opts.Access.Authorize(r, need)
+			if apiErr != nil {
+				if status == 0 {
+					status = http.StatusForbidden
+				}
+				writeJSON(w, status, apiErr)
+				return
+			}
+			g = grant
+		} else {
+			host := remoteHost(r)
+			if s.limited(host) {
+				writeError(w, http.StatusTooManyRequests, "rate_limited", "too many failed authentications; wait a minute", false, "none")
+				return
+			}
+			token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+			if !ok {
+				s.recordFailure(host)
+				writeError(w, http.StatusUnauthorized, "unauthorized", ErrUnauthorized.Error(), false, "none")
+				return
+			}
+			d, err := s.auth.Authenticate(token)
+			if err != nil {
+				s.recordFailure(host)
+				writeError(w, http.StatusUnauthorized, "unauthorized", err.Error(), false, "none")
+				return
+			}
+			if c := legacyCapability(need); c != "" && !s.has(c) {
+				writeError(w, http.StatusForbidden, "capability_denied", fmt.Sprintf("this node does not grant %q; the node operator must restart it with --allow including %s", c, c), false, "none")
+				return
+			}
+			g = Grant{Device: d}
 		}
-		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok {
-			s.recordFailure(host)
-			writeError(w, http.StatusUnauthorized, "unauthorized", ErrUnauthorized.Error(), false, "none")
-			return
-		}
-		d, err := s.auth.Authenticate(token)
-		if err != nil {
-			s.recordFailure(host)
-			writeError(w, http.StatusUnauthorized, "unauthorized", err.Error(), false, "none")
-			return
-		}
-		next(w, r.WithContext(context.WithValue(r.Context(), deviceKey{}, d)))
-	}
-}
-
-func (s *Server) require(c Capability, next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !s.has(c) {
-			writeError(w, http.StatusForbidden, "capability_denied", fmt.Sprintf("this node does not grant %q; the node operator must restart it with --allow including %s", c, c), false, "none")
-			return
-		}
-		if c == CapDesktop && s.opts.Desktop == nil {
+		if (need == NeedDesktopView || need == NeedDesktopInput || need == NeedDesktopLaunch) && s.opts.Desktop == nil {
 			writeError(w, http.StatusConflict, "desktop_unavailable", "desktop control is not available on this node: "+s.opts.DesktopReason, false, "none")
 			return
 		}
-		next(w, r)
+		next(w, withGrant(r, g))
 	}
+}
+
+// begin journals an operation stamped with the request's grant and tells
+// an observer. finish records the outcome the same way.
+func (s *Server) begin(r *http.Request, op Operation) (*Operation, bool, error) {
+	g := grantFrom(r)
+	op.DeviceID = g.Device.ID
+	op.SessionID, op.Generation = g.SessionID, g.Generation
+	stored, existing, err := s.journal.Begin(op)
+	if err == nil && !existing {
+		if obs, ok := s.opts.Access.(OperationObserver); ok {
+			obs.OperationStarted(g, *stored)
+		}
+	}
+	return stored, existing, err
+}
+
+func (s *Server) finish(g Grant, id string, update func(*Operation)) (Operation, error) {
+	final, err := s.journal.Finish(id, update)
+	if obs, ok := s.opts.Access.(OperationObserver); ok && err == nil {
+		obs.OperationFinished(g, final)
+	}
+	return final, err
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -236,9 +286,19 @@ func (s *Server) hello() Hello {
 	return Hello{Protocol: ProtocolVersion, NodeID: s.id.NodeID, Name: s.opts.Name, Fingerprint: s.id.Fingerprint}
 }
 
-func (s *Server) info(d Device) Info {
+func (s *Server) info(g Grant) Info {
 	host, _ := os.Hostname()
-	return Info{Hello: s.hello(), OS: runtime.GOOS, Arch: runtime.GOARCH, Hostname: host, Root: s.opts.Root, Capabilities: s.opts.Capabilities, Desktop: s.has(CapDesktop) && s.opts.Desktop != nil, DesktopReason: s.opts.DesktopReason, Isolated: s.opts.Isolated, DeviceID: d.ID, MaxFileBytes: s.opts.MaxFileBytes}
+	info := Info{Hello: s.hello(), OS: runtime.GOOS, Arch: runtime.GOARCH, Hostname: host, Root: s.opts.Root, Capabilities: s.opts.Capabilities, Desktop: s.has(CapDesktop) && s.opts.Desktop != nil, DesktopReason: s.opts.DesktopReason, Isolated: s.opts.Isolated, DeviceID: g.Device.ID, MaxFileBytes: s.opts.MaxFileBytes}
+	if s.opts.Access != nil {
+		// A session grant decides availability, not the node's coarse list.
+		info.Root, info.Capabilities = "", nil
+		info.Desktop = s.opts.Desktop != nil
+		info.SessionID, info.Generation, info.Permissions = g.SessionID, g.Generation, g.Permissions
+		for _, r := range sortedRoots(g.Roots) {
+			info.Roots = append(info.Roots, r.Label)
+		}
+	}
+	return info
 }
 
 func (s *Server) handleHello(w http.ResponseWriter, _ *http.Request) {
@@ -246,6 +306,10 @@ func (s *Server) handleHello(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Access != nil {
+		writeError(w, http.StatusNotFound, "not_found", "this node does not accept device pairing", false, "none")
+		return
+	}
 	host := remoteHost(r)
 	if s.limited(host) {
 		writeError(w, http.StatusTooManyRequests, "rate_limited", "too many failed attempts; wait a minute", false, "none")
@@ -266,14 +330,18 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.opts.Logger.Info("Node paired with controller", "device", d.ID, "name", d.Name, "remote", host)
-	writeJSON(w, http.StatusOK, PairResponse{DeviceID: d.ID, Token: token, Info: s.info(d)})
+	writeJSON(w, http.StatusOK, PairResponse{DeviceID: d.ID, Token: token, Info: s.info(Grant{Device: d})})
 }
 
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, s.info(deviceFrom(r)))
+	writeJSON(w, http.StatusOK, s.info(grantFrom(r)))
 }
 
 func (s *Server) handleRevoke(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Access != nil {
+		writeError(w, http.StatusNotFound, "not_found", "session access ends through the session owner, not device revocation", false, "none")
+		return
+	}
 	d := deviceFrom(r)
 	if err := s.auth.Revoke(d.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "persist_failed", err.Error(), false, "unknown")
@@ -312,19 +380,28 @@ func (b *boundedBuffer) String() string {
 	return b.buf.String()
 }
 
-func (s *Server) resolveDir(rel string) (string, error) {
+func (s *Server) resolveDir(g Grant, rel string) (string, error) {
 	if rel == "" || rel == "." {
-		return filepath.EvalSymlinks(s.opts.Root)
+		return filepath.EvalSymlinks(s.defaultDir(g))
 	}
-	dir, err := transfer.Resolve(s.opts.Root, rel)
+	_, dir, err := s.resolveFor(g, rel)
 	if err != nil {
 		return "", err
 	}
 	info, err := os.Stat(dir)
 	if err != nil || !info.IsDir() {
-		return "", fmt.Errorf("cwd %q is not a directory under the node root", rel)
+		return "", fmt.Errorf("cwd %q is not a directory under an allowed folder", rel)
 	}
 	return dir, nil
+}
+
+// beginError writes the journal refusal for an operation that never ran.
+func beginError(w http.ResponseWriter, err error) {
+	status := http.StatusBadRequest
+	if errors.Is(err, ErrOperationConflict) {
+		status = http.StatusConflict
+	}
+	writeError(w, status, "operation_conflict", err.Error(), false, "none")
 }
 
 func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
@@ -340,21 +417,32 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	if req.TimeoutMS > 0 {
 		limit = min(time.Duration(req.TimeoutMS)*time.Millisecond, maxExecLimit)
 	}
-	dir, err := s.resolveDir(req.Cwd)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_path", err.Error(), false, "none")
-		return
-	}
-	d := deviceFrom(r)
+	g := grantFrom(r)
 	hashed := req
 	hashed.Wait = nil
-	op, existing, err := s.journal.Begin(Operation{ID: req.OperationID, Kind: "exec", DeviceID: d.ID, RequestHash: RequestHash(hashed), Argv: req.Argv, Cwd: req.Cwd})
-	if err != nil {
-		status := http.StatusBadRequest
-		if errors.Is(err, ErrOperationConflict) {
-			status = http.StatusConflict
+	// A repeated operation id returns its recorded result before any
+	// precondition is re-evaluated, so a retry never runs twice.
+	if replay, err := s.journal.Replay(req.OperationID, g.Device.ID, RequestHash(hashed), g.SessionID); err != nil {
+		beginError(w, err)
+		return
+	} else if replay != nil {
+		writeJSON(w, http.StatusOK, replay)
+		return
+	}
+	if policy, ok := s.opts.Access.(ExecPolicy); ok {
+		if apiErr := policy.CheckExec(g, "exec", req.Argv); apiErr != nil {
+			writeJSON(w, http.StatusForbidden, apiErr)
+			return
 		}
-		writeError(w, status, "operation_conflict", err.Error(), false, "none")
+	}
+	dir, err := s.resolveDir(g, req.Cwd)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, transferCode(err, "invalid_path"), err.Error(), false, "none")
+		return
+	}
+	op, existing, err := s.begin(r, Operation{ID: req.OperationID, Kind: "exec", RequestHash: RequestHash(hashed), Argv: req.Argv, Cwd: req.Cwd})
+	if err != nil {
+		beginError(w, err)
 		return
 	}
 	if existing {
@@ -364,7 +452,7 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	stdout, stderr := &boundedBuffer{limit: maxOutputBytes}, &boundedBuffer{limit: maxOutputBytes}
 	proc, err := procown.Start(procown.Spec{Argv: req.Argv, Dir: dir, Stdout: stdout, Stderr: stderr})
 	if err != nil {
-		final, ferr := s.journal.Finish(op.ID, func(o *Operation) {
+		final, ferr := s.finish(g, op.ID, func(o *Operation) {
 			o.State, o.Effect, o.Error = taskstate.Failed, "none", "start: "+err.Error()
 		})
 		if ferr != nil {
@@ -377,10 +465,19 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	s.procs[op.ID] = proc
 	s.mu.Unlock()
+	if cur, ok := s.journal.Get(op.ID, g.Device.ID); ok && cur.State.Terminal() {
+		// Canceled (for example by the owner ending the session) between
+		// journaling and starting: stop at once.
+		proc.Stop(3 * time.Second)
+	}
 	finished := make(chan Operation, 1)
-	go s.superviseExec(op.ID, proc, limit, stdout, stderr, finished)
+	s.execWorkers.Add(1)
+	go func() {
+		defer s.execWorkers.Done()
+		s.superviseExec(g, op.ID, proc, limit, stdout, stderr, finished)
+	}()
 	if req.Wait != nil && !*req.Wait {
-		current, _ := s.journal.Get(op.ID, d.ID)
+		current, _ := s.journal.Get(op.ID, g.Device.ID)
 		writeJSON(w, http.StatusAccepted, current)
 		return
 	}
@@ -393,7 +490,7 @@ func (s *Server) handleExec(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) superviseExec(id string, proc *procown.Proc, limit time.Duration, stdout, stderr *boundedBuffer, finished chan<- Operation) {
+func (s *Server) superviseExec(g Grant, id string, proc *procown.Proc, limit time.Duration, stdout, stderr *boundedBuffer, finished chan<- Operation) {
 	timer := time.NewTimer(limit)
 	defer timer.Stop()
 	timedOut := false
@@ -408,7 +505,7 @@ func (s *Server) superviseExec(id string, proc *procown.Proc, limit time.Duratio
 	s.mu.Lock()
 	delete(s.procs, id)
 	s.mu.Unlock()
-	final, err := s.journal.Finish(id, func(o *Operation) {
+	final, err := s.finish(g, id, func(o *Operation) {
 		o.Stdout, o.Stderr = stdout.String(), stderr.String()
 		o.Truncated = stdout.truncated || stderr.truncated
 		o.ExitCode = &code
@@ -430,7 +527,7 @@ func (s *Server) superviseExec(id string, proc *procown.Proc, limit time.Duratio
 }
 
 func (s *Server) handleGetOp(w http.ResponseWriter, r *http.Request) {
-	op, ok := s.journal.Get(r.PathValue("id"), deviceFrom(r).ID)
+	op, ok := s.journal.Get(r.PathValue("id"), deviceFrom(r).ID, grantFrom(r).SessionID)
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "no operation with that id for this device", false, "none")
 		return
@@ -441,7 +538,7 @@ func (s *Server) handleGetOp(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCancelOp(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	d := deviceFrom(r)
-	op, ok := s.journal.Get(id, d.ID)
+	op, ok := s.journal.Get(id, d.ID, grantFrom(r).SessionID)
 	if !ok {
 		writeError(w, http.StatusNotFound, "not_found", "no operation with that id for this device", false, "none")
 		return
@@ -456,7 +553,7 @@ func (s *Server) handleCancelOp(w http.ResponseWriter, r *http.Request) {
 	if proc != nil {
 		// Mark canceled first so the supervisor's later result cannot turn
 		// the operation back into a success.
-		final, err := s.journal.Finish(id, func(o *Operation) {
+		final, err := s.finish(grantFrom(r), id, func(o *Operation) {
 			o.State, o.Effect, o.Error = taskstate.Canceled, "unknown", "canceled by controller; partial effects possible"
 		})
 		proc.Stop(3 * time.Second)
@@ -471,7 +568,7 @@ func (s *Server) handleCancelOp(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request) {
-	d := deviceFrom(r)
+	g := grantFrom(r)
 	rel := r.URL.Query().Get("path")
 	sha := strings.ToLower(r.Header.Get("X-Atlas-SHA256"))
 	size, err := strconv.ParseInt(r.Header.Get("X-Atlas-Size"), 10, 64)
@@ -480,14 +577,18 @@ func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	overwrite := r.URL.Query().Get("overwrite") == "1"
+	if overwrite && !s.allowModify(w, r) {
+		return
+	}
 	opID := r.Header.Get("X-Atlas-Operation")
-	op, existing, err := s.journal.Begin(Operation{ID: opID, Kind: "push", DeviceID: d.ID, RequestHash: RequestHash([]any{rel, sha, size, overwrite}), Path: rel, SHA256: sha, Size: size})
+	root, inner, err := s.splitFor(g, rel)
 	if err != nil {
-		status := http.StatusBadRequest
-		if errors.Is(err, ErrOperationConflict) {
-			status = http.StatusConflict
-		}
-		writeError(w, status, "operation_conflict", err.Error(), false, "none")
+		writeError(w, http.StatusBadRequest, transfer.Code(err), err.Error(), false, "none")
+		return
+	}
+	op, existing, err := s.begin(r, Operation{ID: opID, Kind: "push", RequestHash: RequestHash([]any{rel, sha, size, overwrite}), Path: rel, SHA256: sha, Size: size})
+	if err != nil {
+		beginError(w, err)
 		return
 	}
 	if existing {
@@ -498,8 +599,8 @@ func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "operation_"+string(op.State), "this transfer already ran: "+op.Error, false, op.Effect)
 		return
 	}
-	_, rerr := transfer.Receive(s.opts.Root, rel, r.Body, size, sha, s.opts.MaxFileBytes, overwrite)
-	final, ferr := s.journal.Finish(op.ID, func(o *Operation) {
+	_, rerr := transfer.Receive(root, inner, r.Body, size, sha, s.maxFile(), overwrite)
+	final, ferr := s.finish(g, op.ID, func(o *Operation) {
 		if rerr != nil {
 			o.State, o.Effect, o.Error = taskstate.Failed, "none", rerr.Error()
 			return
@@ -517,8 +618,32 @@ func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, FileResult{Path: final.Path, SHA256: final.SHA256, Size: final.Size})
 }
 
+// allowModify checks the separate permission to replace existing files.
+// Paired-device nodes grant it with files; session grants decide alone.
+func (s *Server) allowModify(w http.ResponseWriter, r *http.Request) bool {
+	if s.opts.Access == nil {
+		return true
+	}
+	if _, apiErr, status := s.opts.Access.Authorize(r, NeedFileModify); apiErr != nil {
+		if status == 0 {
+			status = http.StatusForbidden
+		}
+		writeJSON(w, status, apiErr)
+		return false
+	}
+	return true
+}
+
+func (s *Server) maxFile() int64 { return s.opts.MaxFileBytes }
+
 func (s *Server) handleGetFile(w http.ResponseWriter, r *http.Request) {
-	f, size, sum, err := transfer.Open(s.opts.Root, r.URL.Query().Get("path"), s.opts.MaxFileBytes)
+	g := grantFrom(r)
+	root, inner, err := s.splitFor(g, r.URL.Query().Get("path"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, transfer.Code(err), err.Error(), false, "none")
+		return
+	}
+	f, size, sum, err := transfer.Open(root, inner, s.maxFile())
 	if err != nil {
 		status := http.StatusBadRequest
 		if transfer.Code(err) == "not_found" {
@@ -528,10 +653,42 @@ func (s *Server) handleGetFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
+	// A resumed download names the content it expects; a changed file is
+	// never appended to a partial copy of another one.
+	if want := strings.ToLower(r.Header.Get("X-Atlas-If-SHA256")); want != "" && want != sum {
+		writeError(w, http.StatusPreconditionFailed, "source_changed", "the file changed since the download started; restart it", false, "none")
+		return
+	}
+	offset := int64(0)
+	if spec, ok := strings.CutPrefix(r.Header.Get("Range"), "bytes="); ok {
+		start, _, _ := strings.Cut(spec, "-")
+		n, perr := strconv.ParseInt(start, 10, 64)
+		if perr != nil || n < 0 || n > size {
+			writeError(w, http.StatusRequestedRangeNotSatisfiable, "invalid_range", "range start must be within the file", false, "none")
+			return
+		}
+		offset = n
+	}
+	if offset > 0 {
+		if _, err := f.Seek(offset, io.SeekStart); err != nil {
+			writeError(w, http.StatusInternalServerError, "io_error", err.Error(), false, "none")
+			return
+		}
+	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("X-Atlas-SHA256", sum)
 	w.Header().Set("X-Atlas-Size", strconv.FormatInt(size, 10))
-	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+	w.Header().Set("X-Atlas-Offset", strconv.FormatInt(offset, 10))
+	w.Header().Set("Content-Length", strconv.FormatInt(size-offset, 10))
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, f)
+}
+
+// transferCode keeps classified transfer errors and falls back otherwise.
+func transferCode(err error, fallback string) string {
+	var te *transfer.Error
+	if errors.As(err, &te) {
+		return te.Code
+	}
+	return fallback
 }

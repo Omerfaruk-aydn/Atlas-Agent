@@ -88,3 +88,82 @@ func (f *fakeDesktop) Click(int, int, computer.MouseButton) error {
 	f.clicks.Add(1)
 	return nil
 }
+func (f *fakeDesktop) DoubleClick(int, int) error           { return nil }
+func (f *fakeDesktop) Drag(int, int, int, int) error        { return nil }
+func (f *fakeDesktop) Scroll(int, int) error                { return nil }
+func (f *fakeDesktop) TypeText(string) error                { return nil }
+func (f *fakeDesktop) KeyPress(string) error                { return nil }
+func (f *fakeDesktop) Hotkey(mods []string, k string) error { return nil }
+
+type fakeOverlay struct {
+	mu      sync.Mutex
+	started int
+	ended   int
+	open    int
+	stop    func()
+}
+
+func (o *fakeOverlay) Start(_, _ string, stop func()) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.started++
+	o.stop = stop
+}
+
+func (o *fakeOverlay) Operation(string, int, int, bool) func() {
+	o.mu.Lock()
+	o.open++
+	o.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			o.mu.Lock()
+			o.open--
+			o.mu.Unlock()
+		})
+	}
+}
+
+func (o *fakeOverlay) End() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.ended++
+}
+
+func (o *fakeOverlay) snapshot() (started, ended, open int) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.started, o.ended, o.open
+}
+
+func startHost(t *testing.T, mut func(*HostOptions)) *Host {
+	t.Helper()
+	opts := HostOptions{StateDir: t.TempDir(), Name: "owner-pc", LANListen: "127.0.0.1:0", DiscoveryPort: -1, AcceptTimeout: 10 * time.Second, ReconnectWindow: 5 * time.Second}
+	if mut != nil {
+		mut(&opts)
+	}
+	h, err := StartHost(context.Background(), opts)
+	require.NoError(t, err)
+	t.Cleanup(h.Close)
+	return h
+}
+
+func startController(t *testing.T, mut func(*ControllerOptions)) *Controller {
+	t.Helper()
+	opts := ControllerOptions{StateDir: t.TempDir(), Name: "helper-pc", DiscoveryPort: -1, ReconnectWindow: 5 * time.Second}
+	if mut != nil {
+		mut(&opts)
+	}
+	c, err := NewController(context.Background(), opts)
+	require.NoError(t, err)
+	t.Cleanup(c.Close)
+	return c
+}
+
+// workRoot is an allowed folder on the host, separate from both state
+// directories and from the controller's working directory.
+func workRoot(t *testing.T) nodes.Root {
+	t.Helper()
+	return nodes.Root{Label: "Work", Path: t.TempDir()}
+}
+

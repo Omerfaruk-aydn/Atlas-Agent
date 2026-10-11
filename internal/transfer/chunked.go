@@ -348,3 +348,54 @@ func (u *Uploads) Write(id, owner string, offset int64, src io.Reader, n int64, 
 	return rec.Status, nil
 }
 
+// Complete verifies the whole file and installs it. A hash mismatch fails
+// the upload: a partial or corrupted file is never delivered.
+func (u *Uploads) Complete(id, owner string) (UploadStatus, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	rec, err := u.owned(id, owner)
+	if err != nil {
+		return UploadStatus{}, err
+	}
+	switch rec.Status.State {
+	case "complete":
+		return rec.Status, nil
+	case "receiving":
+	default:
+		return rec.Status, fail("upload_"+rec.Status.State, "upload is %s", rec.Status.State)
+	}
+	if rec.Status.Received != rec.Spec.Size {
+		return rec.Status, fail("incomplete", "upload has %d of %d bytes", rec.Status.Received, rec.Spec.Size)
+	}
+	settle := func(state, code string, cause error) (UploadStatus, error) {
+		rec.Status.State, rec.Status.ErrorCode, rec.Status.Error = state, code, cause.Error()
+		_ = os.Remove(u.partPath(id))
+		if err := u.store(rec); err != nil {
+			return rec.Status, err
+		}
+		return rec.Status, cause
+	}
+	have, err := HashFile(u.partPath(id))
+	if err != nil {
+		return rec.Status, err
+	}
+	if have != rec.Spec.SHA256 {
+		return settle("failed", "hash_mismatch", fail("hash_mismatch", "received sha256 %s, expected %s", have, rec.Spec.SHA256))
+	}
+	path, err := Install(rec.Spec.Root, rec.Spec.Rel, u.partPath(id), rec.Spec.Size, rec.Spec.SHA256, rec.Spec.Conflict)
+	if err != nil {
+		code := Code(err)
+		if code == "exists" || code == "symlink_escape" || code == "path_traversal" || code == "hash_mismatch" {
+			return settle("failed", code, err)
+		}
+		// Disk errors may be transient; the verified partial data stays.
+		return rec.Status, err
+	}
+	rec.Status.State, rec.Status.Path = "complete", path
+	_ = os.Remove(u.partPath(id))
+	if err := u.store(rec); err != nil {
+		return rec.Status, err
+	}
+	return rec.Status, nil
+}
+

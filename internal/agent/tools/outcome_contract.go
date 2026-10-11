@@ -82,6 +82,13 @@ func CallMutates(name, input string) bool {
 		return browserMutating(strings.ToLower(p.Action))
 	case "tool_pipeline":
 		return pipelineMutates(input)
+	case RemoteSupportToolName:
+		var remote RemoteSupportParams
+		if json.Unmarshal([]byte(input), &remote) != nil {
+			return true
+		}
+		remote.Action = p.Action
+		return remoteSupportCallMutates(remote)
 	case CLIBridgeToolName:
 		// Even help capture starts a host executable; a profile cannot prove
 		// that its program is read-only. Preview/status do not start it.

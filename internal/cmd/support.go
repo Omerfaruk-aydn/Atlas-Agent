@@ -74,3 +74,78 @@ func readTokenFile(path string) (string, error) {
 	return token, nil
 }
 
+func runSupportRelay(cmd *cobra.Command, _ []string) error {
+	listen, _ := cmd.Flags().GetString("listen")
+	tokenFile, _ := cmd.Flags().GetString("token-file")
+	cert, _ := cmd.Flags().GetString("tls-cert")
+	key, _ := cmd.Flags().GetString("tls-key")
+	proxy, _ := cmd.Flags().GetBool("behind-proxy")
+	token, err := readTokenFile(tokenFile)
+	if err != nil {
+		return err
+	}
+	host, _, err := net.SplitHostPort(listen)
+	if err != nil {
+		return fmt.Errorf("listen must be host:port: %w", err)
+	}
+	loopback := host == "localhost" || (net.ParseIP(host) != nil && net.ParseIP(host).IsLoopback())
+	if (cert == "") != (key == "") {
+		return errors.New("--tls-cert and --tls-key go together")
+	}
+	if cert == "" && !loopback && !proxy {
+		return errors.New("plain HTTP is only served on loopback; pass --tls-cert/--tls-key, or --behind-proxy for a private TLS reverse proxy")
+	}
+	if token == "" {
+		fmt.Fprintln(cmd.ErrOrStderr(), "Warning: no --token-file; anyone who can reach this relay can use it to pair (codes are still required and verified end to end).")
+	}
+	relay := support.NewRelayServer(support.RelayServerOptions{Token: token, Logger: slog.Default()})
+	srv := &http.Server{Addr: listen, Handler: relay, ReadHeaderTimeout: 10 * time.Second}
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		relay.Close()
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdown)
+	}()
+	fmt.Fprintf(cmd.OutOrStdout(), "Support relay listening on %s. It sees code slots and encrypted traffic only, and logs neither.\n", listen)
+	if cert != "" {
+		err = srv.ListenAndServeTLS(cert, key)
+	} else {
+		err = srv.ListenAndServe()
+	}
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+func supportStateDir(cmd *cobra.Command, role string) string {
+	if dir, _ := cmd.Flags().GetString("state-dir"); dir != "" {
+		return dir
+	}
+	return filepath.Join(config.GlobalDevicesDir(), "support", role)
+}
+
+func supportRelayFlags(cmd *cobra.Command) (*support.RelayConfig, error) {
+	url, _ := cmd.Flags().GetString("relay")
+	if url == "" {
+		return nil, nil
+	}
+	tokenFile, _ := cmd.Flags().GetString("relay-token-file")
+	token, err := readTokenFile(tokenFile)
+	if err != nil {
+		return nil, err
+	}
+	return &support.RelayConfig{URL: url, Token: token}, nil
+}
+
+func addSupportCommonFlags(c *cobra.Command) {
+	c.Flags().String("name", "", "Name shown to the other computer (default: computer name)")
+	c.Flags().String("relay", "", "Support relay URL for computers on different networks")
+	c.Flags().String("relay-token-file", "", "Relay access token file")
+	c.Flags().String("state-dir", "", "Identity, journal and history directory (default: Atlas devices dir)")
+	c.Flags().Bool("no-discovery", false, "Do not use UDP discovery on the local network")
+}
+

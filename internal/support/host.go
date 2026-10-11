@@ -433,3 +433,104 @@ func (h *Host) Offer(o OfferOptions) (OfferInfo, error) {
 	return info, nil
 }
 
+// CancelOffer withdraws a code that has not been used.
+func (h *Host) CancelOffer() {
+	h.mu.Lock()
+	if h.session == nil && h.pending == nil {
+		_ = h.machine.Move(StateRevoked, "code withdrawn by the owner")
+		h.stopOfferLocked()
+	}
+	h.mu.Unlock()
+	h.notify()
+}
+
+func (h *Host) listenLocked() error {
+	if h.listener != nil {
+		return nil
+	}
+	var lc net.ListenConfig
+	ln, err := lc.Listen(h.ctx, "tcp", h.opts.LANListen)
+	if err != nil {
+		return err
+	}
+	h.listener = ln
+	h.goWork(func() { h.acceptLoop(ln) })
+	if h.opts.DiscoveryPort > 0 {
+		port := ln.Addr().(*net.TCPAddr).Port
+		d, err := startDiscovery(h.opts.DiscoveryPort, port, h.id.NodeID, h.discoverySlots)
+		if err != nil {
+			// Discovery is a convenience; CODE@address still works.
+			h.logger.Warn("Support discovery unavailable", "error", err)
+		} else {
+			h.discovery = d
+		}
+	}
+	return nil
+}
+
+func (h *Host) discoverySlots() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if st, _, _ := h.machine.State(); st == StateHosting && !h.codeUsed {
+		return []string{h.code.SlotID()}
+	}
+	return nil
+}
+
+// lingerLocked keeps the session's resume paths open for a short while
+// after it ended, so a supporter that is reconnecting learns that the
+// session was revoked or expired instead of timing out as disconnected.
+// Nothing can resume: every resume is answered from the terminal state.
+func (h *Host) lingerLocked(stopResume context.CancelFunc) {
+	if h.discovery != nil {
+		h.discovery.Close()
+		h.discovery = nil
+	}
+	if h.linger != nil {
+		h.linger.Stop()
+	}
+	machine := h.machine
+	h.linger = h.afterFunc(min(h.opts.ReconnectWindow, time.Minute), func() {
+		if stopResume != nil {
+			stopResume()
+		}
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		// A new offer owns the listener now.
+		if h.machine != machine || h.session != nil || h.pending != nil {
+			return
+		}
+		if st, _, _ := h.machine.State(); st.Terminal() {
+			h.stopOfferLocked()
+		}
+	})
+}
+
+// stopOfferLocked closes listeners and relay registrations of the offer.
+func (h *Host) stopOfferLocked() {
+	if h.offerCancel != nil {
+		h.offerCancel()
+		h.offerCancel = nil
+	}
+	if h.listener != nil {
+		_ = h.listener.Close()
+		h.listener = nil
+	}
+	if h.discovery != nil {
+		h.discovery.Close()
+		h.discovery = nil
+	}
+	h.offerInfo = nil
+	h.relayStatus = ""
+}
+
+// LANAddress returns the listening address, for tests and the CLI.
+func (h *Host) LANAddress() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.listener == nil {
+		return ""
+	}
+	return h.listener.Addr().String()
+}
+

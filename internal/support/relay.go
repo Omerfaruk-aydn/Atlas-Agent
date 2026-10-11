@@ -191,3 +191,96 @@ type waitingHost struct {
 	done chan struct{}
 }
 
+// NewRelayServer builds a relay.
+func NewRelayServer(opts RelayServerOptions) *RelayServer {
+	if opts.MaxWaiting <= 0 {
+		opts.MaxWaiting = 1000
+	}
+	if opts.WaitTimeout <= 0 {
+		opts.WaitTimeout = 35 * time.Minute
+	}
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
+	}
+	return &RelayServer{
+		opts: opts, tokenHash: sha256.Sum256([]byte(opts.Token)),
+		waiting: map[string]*waitingHost{}, limits: map[string][]time.Time{},
+		upgrader: websocket.Upgrader{HandshakeTimeout: 10 * time.Second, CheckOrigin: func(r *http.Request) bool { return r.Header.Get("Origin") == "" }},
+	}
+}
+
+// Pairs reports how many connections were paired, for monitoring.
+func (s *RelayServer) Pairs() int64 { return s.pairs.Load() }
+
+// Waiting reports how many offers wait for a peer.
+func (s *RelayServer) Waiting() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.waiting)
+}
+
+func relayError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"code": code, "message": message})
+}
+
+// allow is a sliding per-client limit of n events per minute.
+func (s *RelayServer) allow(key string, n int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cutoff := time.Now().Add(-time.Minute)
+	kept := s.limits[key][:0]
+	for _, t := range s.limits[key] {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	if len(kept) >= n {
+		s.limits[key] = kept
+		return false
+	}
+	s.limits[key] = append(kept, time.Now())
+	return true
+}
+
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+func (s *RelayServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/healthz" {
+		relayError(w, http.StatusOK, "ok", "atlas support relay")
+		return
+	}
+	if r.Method != http.MethodGet {
+		relayError(w, http.StatusMethodNotAllowed, "method", "GET only")
+		return
+	}
+	if s.opts.Token != "" {
+		got := sha256.Sum256([]byte(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")))
+		if subtle.ConstantTimeCompare(got[:], s.tokenHash[:]) != 1 {
+			relayError(w, http.StatusUnauthorized, "unauthorized", "relay access token required")
+			return
+		}
+	}
+	slot := r.URL.Query().Get("slot")
+	if !slotPattern.MatchString(slot) {
+		relayError(w, http.StatusBadRequest, "invalid_slot", "invalid slot")
+		return
+	}
+	switch r.URL.Path {
+	case relayHostPath:
+		s.serveHost(w, r, slot)
+	case relayJoinPath:
+		s.serveJoin(w, r, slot)
+	default:
+		relayError(w, http.StatusNotFound, "not_found", "unknown path")
+	}
+}
+

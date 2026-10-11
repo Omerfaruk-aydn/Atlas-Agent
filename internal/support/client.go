@@ -523,3 +523,110 @@ func terminalFor(code Code) State {
 	return StateFailed
 }
 
+func (c *Controller) resumeOnce(remote Remote, generation uint64) error {
+	ctx, cancel := context.WithTimeout(c.ctx, 20*time.Second)
+	defer cancel()
+	c.mu.Lock()
+	resumeToken, relay := c.resume, c.relay
+	c.mu.Unlock()
+	var raw net.Conn
+	var err error
+	switch {
+	case remote.Network == "relay" && relay.Configured():
+		raw, err = relayJoin(ctx, relay, RelaySlotFor(remote.SessionID, resumeToken))
+	case remote.Address != "":
+		d := net.Dialer{Timeout: 10 * time.Second}
+		raw, err = d.DialContext(ctx, "tcp", remote.Address)
+	default:
+		return Errorf(CodeRemoteOffline, "no path back to the other computer")
+	}
+	if err != nil {
+		return err
+	}
+	tconn := tls.Client(raw, controllerTLSConfig(c.id, remote.RemoteFingerprint))
+	stop := contextConn(ctx, tconn)
+	defer stop()
+	if err := tconn.HandshakeContext(ctx); err != nil {
+		_ = raw.Close()
+		if e := AsError(err); e != nil {
+			return e
+		}
+		var tlsErr *tls.CertificateVerificationError
+		if errors.As(err, &tlsErr) {
+			return Errorf(CodeWrongTarget, "a different computer answered at the old address")
+		}
+		return Errorf(CodeRemoteOffline, "%v", err)
+	}
+	if err := writeFrame(tconn, clientHello{Type: "resume", Protocol: ProtocolVersion, SessionID: remote.SessionID, ResumeToken: resumeToken, Generation: generation}); err != nil {
+		_ = tconn.Close()
+		return Errorf(CodeRemoteOffline, "%v", err)
+	}
+	var msg serverMsg
+	if err := readFrame(tconn, &msg); err != nil {
+		_ = tconn.Close()
+		return frameErr(err)
+	}
+	if msg.Type == "error" && msg.Error != nil {
+		_ = tconn.Close()
+		return msg.Error
+	}
+	if msg.Type != "resumed" || msg.Session == nil || msg.Session.SessionID != remote.SessionID || msg.Session.RemoteDeviceID != remote.RemoteDeviceID {
+		_ = tconn.Close()
+		return Errorf(CodeProtocol, "unexpected answer from the other computer")
+	}
+	stop()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.remote == nil || c.remote.SessionID != remote.SessionID || c.stopping {
+		_ = tconn.Close()
+		return Errorf(CodeSessionRevoked, "the session was closed here")
+	}
+	next := Remote{SessionInfo: *msg.Session, Address: remote.Address}
+	c.remote = &next
+	if _, err := c.machine.Connect("reconnected"); err != nil {
+		_ = tconn.Close()
+		return err
+	}
+	if err := c.attachLocked(tconn, next.Generation); err != nil {
+		_ = tconn.Close()
+		return err
+	}
+	_ = c.history.Append(Event{SessionID: next.SessionID, Role: "supporter", Kind: "reconnected", Generation: next.Generation})
+	go c.notify()
+	return nil
+}
+
+// Refresh reads the live session view (pauses, narrowed permissions) from
+// the host and updates the target.
+func (c *Controller) Refresh(ctx context.Context) (Remote, error) {
+	var info SessionInfo
+	remote, err := c.supportCall(ctx, http.MethodGet, sessionPath, nil, &info)
+	if err != nil {
+		return remote, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.remote == nil || c.remote.SessionID != info.SessionID || c.remote.Generation != info.Generation {
+		return remote, Errorf(CodeStaleConnection, "the session changed while reading it")
+	}
+	c.remote.SessionInfo = info
+	return *c.remote, nil
+}
+
+// Record adds an event to the supporter's history of the active session.
+// Callers pass summaries only: no command arguments, file contents or
+// secrets (Detail is redacted and bounded anyway).
+func (c *Controller) Record(e Event) {
+	c.mu.Lock()
+	remote := c.remote
+	c.mu.Unlock()
+	if remote == nil {
+		return
+	}
+	e.SessionID, e.Role = remote.SessionID, "supporter"
+	if e.Generation == 0 {
+		e.Generation = remote.Generation
+	}
+	_ = c.history.Append(e)
+}
+

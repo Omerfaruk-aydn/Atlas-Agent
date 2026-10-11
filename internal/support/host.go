@@ -1302,3 +1302,75 @@ func apiErr(code Code, format string, args ...any) *nodes.APIError {
 	return &nodes.APIError{Code: string(code), Message: e.Message, Effect: "none"}
 }
 
+// Authorize implements nodes.Access: every request is checked against the
+// session, its connection generation, the owner's pauses and the granted
+// capabilities, on this computer. Nothing the supporter's side decides
+// (including its own auto-approve mode) can widen it.
+func (h *Host) Authorize(r *http.Request, need nodes.Need) (nodes.Grant, *nodes.APIError, int) {
+	ci, _ := r.Context().Value(connKey{}).(connInfo)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	s := h.session
+	st, gen, _ := h.machine.State()
+	if s == nil || ci.session != s.id {
+		if st == StateExpired {
+			return nodes.Grant{}, apiErr(CodeSessionExpired, "the session time ended"), http.StatusUnauthorized
+		}
+		return nodes.Grant{}, apiErr(CodeSessionRevoked, "the computer owner ended the session"), http.StatusUnauthorized
+	}
+	if !st.Active() {
+		return nodes.Grant{}, apiErr(CodeSessionRevoked, "the session is %s", st), http.StatusUnauthorized
+	}
+	if ci.generation != gen {
+		return nodes.Grant{}, apiErr(CodeStaleConnection, "request arrived on connection %d; the current connection is %d", ci.generation, gen), http.StatusConflict
+	}
+	token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	sum := sha256.Sum256([]byte(token))
+	if subtle.ConstantTimeCompare(sum[:], s.tokenHash[:]) != 1 {
+		return nodes.Grant{}, apiErr(CodeSessionRevoked, "invalid session token"), http.StatusUnauthorized
+	}
+	if r.Header.Get("X-Atlas-Session") != s.id || r.Header.Get("X-Atlas-Target") != h.id.NodeID {
+		return nodes.Grant{}, apiErr(CodeWrongTarget, "the request names another session or device"), http.StatusConflict
+	}
+	if g := r.Header.Get("X-Atlas-Generation"); g != strconv.FormatUint(gen, 10) {
+		return nodes.Grant{}, apiErr(CodeStaleConnection, "request was prepared for connection %s; the current connection is %d", g, gen), http.StatusConflict
+	}
+	if time.Now().After(s.expires) {
+		return nodes.Grant{}, apiErr(CodeSessionExpired, "the session time ended"), http.StatusUnauthorized
+	}
+	if mutating(need) && (s.agentPaused || st == StatePaused) {
+		return nodes.Grant{}, apiErr(CodeSessionPaused, "the computer owner paused the support task"), http.StatusLocked
+	}
+	if (need == nodes.NeedDesktopInput || need == nodes.NeedDesktopLaunch || need == nodes.NeedBrowserInput) && s.inputPaused {
+		return nodes.Grant{}, apiErr(CodeControlPaused, "the computer owner paused screen control"), http.StatusLocked
+	}
+	if required := requiredFor(need); len(required) > 0 && !slices.ContainsFunc(required, func(c Capability) bool { return slices.Contains(s.caps, c) }) {
+		return nodes.Grant{}, apiErr(CodeCapabilityDenied, "the computer owner did not grant %q", required[0]), http.StatusForbidden
+	}
+	return h.grant(s, gen), nil, 0
+}
+
+// CheckExec implements nodes.ExecPolicy with the narrower capabilities a
+// command or launch touches.
+func (h *Host) CheckExec(g nodes.Grant, kind string, argv []string) *nodes.APIError {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	s := h.session
+	if s == nil || s.id != g.SessionID {
+		return apiErr(CodeSessionRevoked, "the session ended")
+	}
+	need := ExtraCapabilities(argv)
+	if IsBrowser(argv) {
+		need = append(need, CapBrowser)
+	}
+	if kind == "launch" && !IsBrowser(argv) {
+		need = append(need, CapInput)
+	}
+	for _, c := range need {
+		if !slices.Contains(s.caps, c) {
+			return apiErr(CodeCapabilityDenied, "this command needs %q, which the computer owner did not grant", c)
+		}
+	}
+	return nil
+}
+

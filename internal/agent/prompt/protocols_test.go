@@ -74,3 +74,13 @@ func TestBuiltPromptLoadsOnlySelectedGuidance(t *testing.T) {
 	require.Contains(t, expanded, "<working_contract>")
 	require.Greater(t, len(expanded), len(base))
 }
+
+func TestSupportProtocolFollowsRemoteSupportWork(t *testing.T) {
+	t.Parallel()
+	require.Contains(t, SelectProtocols("karşı bilgisayardaki disk doluluğunu incele", ""), "support")
+	require.Contains(t, SelectProtocols("why does the app crash", "it-support"), "support")
+	require.NotContains(t, SelectProtocols("fix the login bug in the backend", "debug"), "support")
+	text, err := RenderProtocols([]string{"support"})
+	require.NoError(t, err)
+	require.Contains(t, text, "remote_support")
+}

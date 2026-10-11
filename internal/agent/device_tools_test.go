@@ -23,8 +23,9 @@ func TestDeviceToolsStayDeferredOnGreeting(t *testing.T) {
 	for _, name := range deviceToolNames {
 		require.NotContains(t, steps[0], name)
 	}
+	require.NotContains(t, steps[0], "remote_support", "remote support loads only when a task needs it")
 	body := stepBody(t, h, 0)
-	require.Contains(t, body, "devices: android, app_loop, isolated_desktop, remote_node, screen_mark")
+	require.Contains(t, body, "devices: android, app_loop, isolated_desktop, remote_node, remote_support, screen_mark")
 }
 
 // Discovery loads every device schema for the next step, each provider

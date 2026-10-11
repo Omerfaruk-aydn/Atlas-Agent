@@ -1138,3 +1138,61 @@ func (d *Support) eventLines() []string {
 	return lines
 }
 
+func (d *Support) settingsLines(text int) []string {
+	labels := []string{"Computer name", "Support relay (internet mode)", "Relay token file"}
+	var lines []string
+	for i, l := range labels {
+		marker := "  "
+		if i == d.settingSel {
+			marker = "› "
+		}
+		value := d.settings[i].Value()
+		if value == "" {
+			value = d.com.Text("not set")
+		}
+		lines = append(lines, marker+d.com.Text(l)+": "+value)
+	}
+	disc := d.com.Text("on")
+	if d.noDiscovery {
+		disc = d.com.Text("off")
+	}
+	lines = append(lines, d.item(d.settingSel == len(d.settings), fmt.Sprintf(d.com.Text("Local network discovery: %s (space toggles)"), disc), text))
+	lines = append(lines, "")
+	for _, p := range []string{
+		"Local network mode connects directly; nothing leaves your network.",
+		"A code alone cannot find a computer on another network. Internet mode needs a relay you run (atlas support relay); without it Atlas shows a configuration error and never uses another server.",
+		"The relay only sees encrypted traffic and never logs codes. Screens and files are not stored or uploaded anywhere.",
+		"tab next field · enter save",
+	} {
+		lines = append(lines, wrapLines(d.com.Styles.Dialog.SecondaryText.Padding(0), d.com.Text(p), text)...)
+	}
+	return lines
+}
+
+// ShortHelp implements help.KeyMap.
+func (d *Support) ShortHelp() []key.Binding {
+	switch d.view {
+	case supportHostSetup:
+		return []key.Binding{d.keyMap.Toggle, d.keyMap.Preset, d.keyMap.Duration, d.keyMap.Network, d.keyMap.Enter, d.keyMap.Back}
+	case supportHost:
+		if d.host.Pending != nil {
+			return []key.Binding{d.keyMap.Accept, d.keyMap.Reject, d.keyMap.Back}
+		}
+		if d.host.Session != nil {
+			return []key.Binding{d.keyMap.PauseAgent, d.keyMap.PauseInput, d.keyMap.Files, d.keyMap.Disconnect, d.keyMap.Back}
+		}
+		return []key.Binding{d.keyMap.Copy, d.keyMap.CopyLink, d.keyMap.QR, d.keyMap.Disconnect, d.keyMap.Back}
+	case supportConnect:
+		return []key.Binding{d.keyMap.Enter, d.keyMap.Disconnect, d.keyMap.Back}
+	case supportHistory:
+		return []key.Binding{d.keyMap.Up, d.keyMap.Down, d.keyMap.Enter, d.keyMap.Back}
+	case supportSettings:
+		return []key.Binding{d.keyMap.Next, d.keyMap.Enter, d.keyMap.Back}
+	case supportMenu:
+		return []key.Binding{d.keyMap.Up, d.keyMap.Down, d.keyMap.Enter, CloseKey}
+	}
+	return []key.Binding{d.keyMap.Disconnect, d.keyMap.Back}
+}
+
+// FullHelp implements help.KeyMap.
+func (d *Support) FullHelp() [][]key.Binding { return [][]key.Binding{d.ShortHelp()} }

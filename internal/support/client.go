@@ -685,3 +685,59 @@ func (c *Controller) Close() {
 	})
 }
 
+// FromAPI converts a node API error into a support error that names the
+// remote device. Effect and sent flags are kept as the host reported them.
+func FromAPI(e *nodes.APIError, deviceID string) *Error {
+	code := Code(e.Code)
+	switch e.Code {
+	case "path_escape", "path_traversal", "absolute_path", "symlink_escape", "invalid_path", "path_denied":
+		code = CodePathDenied
+	case "hash_mismatch", "size_mismatch":
+		code = CodeHashMismatch
+	case "desktop_unavailable", "desktop_disabled", "blank_capture":
+		code = CodeDesktopUnavailable
+	case "stale_observation", "stale_geometry", "observation_expired":
+		code = CodeStaleTarget
+	case "capability_denied", "forbidden":
+		code = CodeCapabilityDenied
+	}
+	effect := Effect(e.Effect)
+	if effect == "" {
+		effect = EffectUnknown
+	}
+	return &Error{Code: code, Message: e.Message, InputSent: e.InputSent, Effect: effect, RemoteDeviceID: deviceID, Retryable: retryable(code), NextStep: nextStep(code)}
+}
+
+// Classify maps any remote call failure to a support error. A request that
+// may have reached the host is outcome_unknown and must not be resent.
+func Classify(err error, deviceID, operationID string) *Error {
+	if err == nil {
+		return nil
+	}
+	if e := AsError(err); e != nil {
+		out := *e
+		out.RemoteDeviceID, out.OperationID = deviceID, operationID
+		return &out
+	}
+	var apiErr *nodes.APIError
+	if errors.As(err, &apiErr) {
+		out := FromAPI(apiErr, deviceID)
+		out.OperationID = operationID
+		return out
+	}
+	var connErr *nodes.ConnError
+	if errors.As(err, &connErr) {
+		if connErr.Sent {
+			e := Errorf(CodeOutcomeUnknown, "the connection dropped after the request was sent to %s; it may or may not have run", deviceID)
+			e.InputSent, e.Effect, e.RemoteDeviceID, e.OperationID = true, EffectUnknown, deviceID, operationID
+			return e
+		}
+		e := Errorf(CodeRemoteOffline, "the request did not reach %s: %v", deviceID, connErr.Err)
+		e.RemoteDeviceID, e.OperationID = deviceID, operationID
+		return e
+	}
+	// Errors without a transport or API cause happened on this computer
+	// before anything was sent (a missing local file, for example).
+	return &Error{Code: CodeLocal, Message: fmt.Sprint(err), Effect: EffectNone, RemoteDeviceID: deviceID, OperationID: operationID}
+}
+

@@ -158,6 +158,15 @@ func inferTaskType(prompt string) string {
 	if (slices.Contains(words, "visual") || slices.Contains(words, "görsel")) && (slices.Contains(words, "review") || slices.Contains(words, "kontrol") || slices.Contains(words, "incele")) {
 		return "visual-quality"
 	}
+	// Work on a computer connected through /support is IT support whatever
+	// the symptom; "inspect" or "error" there still means the remote
+	// computer, so this precedes review and debug.
+	lowered := strings.ToLower(prompt)
+	for _, phrase := range []string{"uzak destek", "uzaktan destek", "remote support", "it support", "bt destek", "bt uzman", "sistem analist", "karşı bilgisayar", "karşıdaki bilgisayar", "bağlı bilgisayar", "bağlandığım bilgisayar", "connected computer", "supported computer", "destek oturumu", "support session", "helpdesk"} {
+		if strings.Contains(lowered, phrase) {
+			return "it-support"
+		}
+	}
 	// Review and diagnosis take precedence over the subject being inspected.
 	for _, group := range []struct {
 		kind  string

@@ -502,3 +502,75 @@ func TestLostConnectionReconcilesWithoutRerunning(t *testing.T) {
 	require.Equal(t, CodeStaleConnection, codeOf(t, err, r.RemoteDeviceID))
 }
 
+// Scenarios 10 and 19: the owner's disconnect stops new input at once and
+// removes every indicator; a later request is refused and reconnecting
+// does not regain access.
+func TestOwnerDisconnectStopsInputAndRestoresOverlay(t *testing.T) {
+	t.Parallel()
+	desk := &fakeDesktop{size: computer.Size{Width: 800, Height: 600}}
+	overlay := &fakeOverlay{}
+	h := startHost(t, func(o *HostOptions) { o.Desktop = desk; o.Overlay = overlay })
+	c := startController(t, nil)
+	r := connect(t, h, c, []Capability{CapScreenView, CapInput, CapCommand})
+	cl := client(t, c)
+
+	errc := make(chan error, 1)
+	go func() {
+		_, err := cl.Exec(context.Background(), nodes.ExecRequest{OperationID: "op-long-0", Argv: helper(t, "sleep")})
+		errc <- err
+	}()
+	require.Eventually(t, func() bool { _, _, open := overlay.snapshot(); return open == 1 }, 10*time.Second, 10*time.Millisecond)
+
+	h.Disconnect("the owner pressed disconnect")
+	require.Equal(t, StateRevoked, h.Status().State)
+	started, ended, open := overlay.snapshot()
+	require.Equal(t, 1, started)
+	require.Equal(t, 1, ended)
+	require.Zero(t, open, "operation indicators are cleared")
+	require.Error(t, <-errc)
+
+	_, err := cl.Input(t.Context(), nodes.DesktopInput{OperationID: "op-click", ObservationID: "x", Action: "click", X: 1, Y: 1})
+	require.Error(t, err)
+	require.Zero(t, desk.clicks.Load())
+
+	// The controller learns the session is over and does not get back in.
+	require.Eventually(t, func() bool { return c.Status().State.Terminal() }, 15*time.Second, 20*time.Millisecond)
+	_, _, err = c.Target()
+	require.Error(t, err)
+	require.Equal(t, StateRevoked, c.Status().State)
+
+	// The stopped command is recorded honestly on the owner's side.
+	events, err := h.History().Events(r.SessionID)
+	require.NoError(t, err)
+	require.True(t, slices.ContainsFunc(events, func(e Event) bool {
+		return e.Kind == "operation_stopped" && e.OperationID == "op-long-0" && e.Effect == "unknown"
+	}), "%+v", events)
+}
+
+func TestBannerStopEndsTheSession(t *testing.T) {
+	t.Parallel()
+	overlay := &fakeOverlay{}
+	h := startHost(t, func(o *HostOptions) { o.Overlay = overlay })
+	c := startController(t, nil)
+	connect(t, h, c, Presets["diagnose"])
+	overlay.mu.Lock()
+	stop := overlay.stop
+	overlay.mu.Unlock()
+	stop()
+	require.Equal(t, StateRevoked, h.Status().State)
+	_, ended, _ := overlay.snapshot()
+	require.Equal(t, 1, ended)
+}
+
+func TestLostSupporterEndsSessionAfterReconnectWindow(t *testing.T) {
+	t.Parallel()
+	overlay := &fakeOverlay{}
+	h := startHost(t, func(o *HostOptions) { o.Overlay = overlay; o.ReconnectWindow = 300 * time.Millisecond })
+	c := startController(t, nil)
+	connect(t, h, c, Presets["diagnose"])
+	c.Close()
+	require.Eventually(t, func() bool { return h.Status().State == StateDisconnected }, 10*time.Second, 20*time.Millisecond)
+	_, ended, _ := overlay.snapshot()
+	require.Equal(t, 1, ended)
+}
+

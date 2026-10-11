@@ -159,3 +159,84 @@ type SessionView struct {
 	Recent       []OperationView `json:"recent,omitempty"`
 }
 
+// HostStatus is everything the owner's screen shows.
+type HostStatus struct {
+	State      State              `json:"state"`
+	Reason     string             `json:"reason,omitempty"`
+	Generation uint64             `json:"generation"`
+	NodeID     string             `json:"node_id"`
+	Name       string             `json:"name"`
+	Offer      *OfferInfo         `json:"offer,omitempty"`
+	Pending    *JoinRequest       `json:"pending,omitempty"`
+	Session    *SessionView       `json:"session,omitempty"`
+	Permission *PermissionRequest `json:"permission,omitempty"`
+}
+
+type hostSession struct {
+	id          string
+	peer        PeerInfo
+	caps        []Capability
+	roots       []nodes.Root
+	tokenHash   [32]byte
+	resumeHash  [32]byte
+	resumeToken string
+	started     time.Time
+	expires     time.Time
+	agentPaused bool
+	inputPaused bool
+	network     string
+	active      map[string]*OperationView
+	recent      []OperationView
+	opEnds      map[string]func()
+	firstToken  string
+	expiry      *time.Timer
+	reconnect   *time.Timer
+	cancel      context.CancelFunc
+}
+
+type connInfo struct {
+	generation uint64
+	session    string
+}
+
+type connKey struct{}
+
+// Host is the computer receiving support.
+type Host struct {
+	opts    HostOptions
+	id      nodes.Identity
+	node    *nodes.Server
+	handler http.Handler
+	history *History
+	store   sessionStore
+	owner   string
+	ctx     context.Context
+	cancel  context.CancelFunc
+	logger  *slog.Logger
+
+	mu          sync.Mutex
+	machine     *Machine
+	offer       *OfferOptions
+	offerInfo   *OfferInfo
+	code        PairingCode
+	codeKey     []byte
+	codeUsed    bool
+	attempts    int
+	offerCancel context.CancelFunc
+	listener    net.Listener
+	discovery   *discoveryResponder
+	pending     *JoinRequest
+	session     *hostSession
+	conns       map[uint64]net.Conn
+	permission  *PermissionRequest
+	relayStatus string
+	handshakes  chan struct{}
+	linger      *time.Timer
+	// work tracks connection goroutines so Close returns only after they
+	// stopped writing state.
+	work      sync.WaitGroup
+	workMu    sync.Mutex
+	closed    bool
+	closeOnce sync.Once
+}
+

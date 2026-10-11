@@ -83,7 +83,7 @@ func (j *Journal) Begin(op Operation) (*Operation, bool, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if prior, ok := j.ops[op.ID]; ok {
-		if prior.RequestHash != op.RequestHash || prior.DeviceID != op.DeviceID {
+		if prior.RequestHash != op.RequestHash || prior.DeviceID != op.DeviceID || prior.SessionID != op.SessionID {
 			return nil, false, ErrOperationConflict
 		}
 		replay := *prior
@@ -105,14 +105,14 @@ func (j *Journal) Begin(op Operation) (*Operation, bool, error) {
 // precondition is re-evaluated, so a retried input whose observation has
 // since been consumed still gets its original result instead of an error
 // that would tempt the caller to send it again.
-func (j *Journal) Replay(id, deviceID, requestHash string) (*Operation, error) {
+func (j *Journal) Replay(id, deviceID, requestHash string, sessions ...string) (*Operation, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	prior, ok := j.ops[id]
 	if !ok {
 		return nil, nil
 	}
-	if prior.RequestHash != requestHash || prior.DeviceID != deviceID {
+	if prior.RequestHash != requestHash || prior.DeviceID != deviceID || len(sessions) > 0 && prior.SessionID != sessions[0] {
 		return nil, ErrOperationConflict
 	}
 	replay := *prior
@@ -146,14 +146,27 @@ func (j *Journal) Finish(id string, update func(*Operation)) (Operation, error) 
 }
 
 // Get returns an operation visible to device.
-func (j *Journal) Get(id, deviceID string) (Operation, bool) {
+func (j *Journal) Get(id, deviceID string, sessions ...string) (Operation, bool) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	op, ok := j.ops[id]
-	if !ok || op.DeviceID != deviceID {
+	if !ok || op.DeviceID != deviceID || len(sessions) > 0 && op.SessionID != sessions[0] {
 		return Operation{}, false
 	}
 	return *op, true
+}
+
+// Running lists the ids of device's operations that have not ended.
+func (j *Journal) Running(deviceID string) []string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	var out []string
+	for id, op := range j.ops {
+		if op.DeviceID == deviceID && !op.State.Terminal() {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func (j *Journal) write(op *Operation) error {

@@ -652,3 +652,19 @@ func (h *Host) serveConn(raw net.Conn, network string) {
 	}
 }
 
+// offerErrorLocked explains why the current offer cannot accept a join.
+func (h *Host) offerErrorLocked() *Error {
+	st, _, _ := h.machine.State()
+	switch {
+	case h.attempts >= maxCodeAttempts:
+		return Errorf(CodePairingRateLimited, "this code was disabled after too many wrong attempts")
+	case h.codeUsed || st == StateAwaitingAcceptance || st.Active() || st == StateReconnecting:
+		return Errorf(CodePairingUsed, "this code was already used")
+	case st == StateExpired:
+		return Errorf(CodePairingExpired, "this code has expired")
+	case st != StateHosting:
+		return Errorf(CodePairingExpired, "this computer is not offering support now")
+	}
+	return nil
+}
+

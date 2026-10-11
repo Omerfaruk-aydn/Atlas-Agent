@@ -240,3 +240,80 @@ type Host struct {
 	closeOnce sync.Once
 }
 
+// StartHost prepares the host identity and node API. It offers nothing
+// until Offer is called.
+func StartHost(ctx context.Context, opts HostOptions) (*Host, error) {
+	if opts.StateDir == "" {
+		return nil, errors.New("support host needs a state directory")
+	}
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
+	}
+	if opts.Name == "" {
+		opts.Name, _ = os.Hostname()
+	}
+	opts.Name = sanitizeName(opts.Name, "computer")
+	if opts.MaxFileBytes <= 0 {
+		opts.MaxFileBytes = DefaultMaxFileBytes
+	}
+	if opts.AcceptTimeout <= 0 {
+		opts.AcceptTimeout = defaultAcceptTimeout
+	}
+	if opts.ReconnectWindow <= 0 {
+		opts.ReconnectWindow = defaultReconnectWindow
+	}
+	if opts.LANListen == "" {
+		opts.LANListen = ":0"
+	}
+	if opts.DiscoveryPort == 0 {
+		opts.DiscoveryPort = DefaultDiscoveryPort
+	}
+	root := filepath.Join(opts.StateDir, "empty-root")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return nil, err
+	}
+	h := &Host{opts: opts, history: OpenHistory(filepath.Join(opts.StateDir, "history")), store: sessionStore{dir: filepath.Join(opts.StateDir, "sessions")}, machine: NewMachine(), conns: map[uint64]net.Conn{}, logger: opts.Logger, handshakes: make(chan struct{}, 8)}
+	h.store.closeInterrupted()
+	if u, err := user.Current(); err == nil {
+		h.owner = u.Username
+	}
+	node, err := nodes.NewServer(nodes.ServerOptions{StateDir: filepath.Join(opts.StateDir, "node"), Root: root, Name: opts.Name, Capabilities: []nodes.Capability{nodes.CapExec, nodes.CapFiles, nodes.CapDesktop}, Desktop: opts.Desktop, DesktopReason: opts.DesktopReason, MaxFileBytes: opts.MaxFileBytes, Logger: opts.Logger, Access: h})
+	if err != nil {
+		return nil, err
+	}
+	h.node, h.id = node, node.Identity()
+	h.handler = h.routes(node.Handler())
+	h.ctx, h.cancel = context.WithCancel(ctx)
+	return h, nil
+}
+
+// setRelay applies a changed relay setting to the next offer.
+func (h *Host) setRelay(cfg *RelayConfig) {
+	h.mu.Lock()
+	h.opts.Relay = cfg
+	h.mu.Unlock()
+}
+
+func (h *Host) relayConfig() *RelayConfig {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.opts.Relay
+}
+
+// NodeID is the host's stable device id.
+func (h *Host) NodeID() string { return h.id.NodeID }
+
+// Fingerprint is the host certificate fingerprint.
+func (h *Host) Fingerprint() string { return h.id.Fingerprint }
+
+// History exposes the owner's session history.
+func (h *Host) History() *History { return h.history }
+
+func (h *Host) notify() {
+	if h.opts.OnChange != nil {
+		h.opts.OnChange()
+	}
+}
+
+var rootLabel = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,39}$`)
+

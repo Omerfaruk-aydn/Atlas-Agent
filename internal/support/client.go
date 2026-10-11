@@ -419,3 +419,107 @@ func (c *Controller) dialJoin(ctx context.Context, t Target, relay *RelayConfig)
 	return nil, "", "", Errorf(CodeRemoteOffline, "no computer on this local network offers this code. For a computer on another network, both computers need the same support relay (support_relay_url); or enter CODE@address")
 }
 
+// attachLocked starts an HTTP/2 client over the authenticated connection.
+func (c *Controller) attachLocked(tconn *tls.Conn, generation uint64) error {
+	if c.closed {
+		return Errorf(CodeSessionRevoked, "the support controller is shutting down")
+	}
+	tr := &http2.Transport{ReadIdleTimeout: 30 * time.Second, PingTimeout: 15 * time.Second}
+	cc, err := tr.NewClientConn(tconn)
+	if err != nil {
+		return err
+	}
+	c.conn, c.cc = tconn, cc
+	sessionID, deviceID := c.remote.SessionID, c.remote.RemoteDeviceID
+	rt := &sessionTransport{cc: cc, session: sessionID, target: deviceID, generation: generation}
+	c.client = &nodes.Client{BaseURL: "https://atlas-support", Fingerprint: c.remote.RemoteFingerprint, Token: c.token, HTTP: &http.Client{Transport: rt}}
+	c.work.Add(1)
+	go func() { defer c.work.Done(); c.watch(cc, generation) }()
+	return nil
+}
+
+// sessionTransport stamps every request with the session, the target
+// device and the connection generation it was prepared for. A request is
+// never moved to another connection.
+type sessionTransport struct {
+	cc         *http2.ClientConn
+	session    string
+	target     string
+	generation uint64
+}
+
+func (t *sessionTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if !t.cc.CanTakeNewRequest() {
+		// Classified as "not sent" by the node client.
+		return nil, &net.OpError{Op: "dial", Net: "support", Err: errors.New("support connection is closed")}
+	}
+	r = r.Clone(r.Context())
+	r.Header.Set("X-Atlas-Session", t.session)
+	r.Header.Set("X-Atlas-Target", t.target)
+	r.Header.Set("X-Atlas-Generation", strconv.FormatUint(t.generation, 10))
+	return t.cc.RoundTrip(r)
+}
+
+// watch notices a dropped connection and tries to resume it within the
+// reconnect window. Requests in flight on the old connection are not
+// resent; their callers see an unknown outcome and reconcile.
+func (c *Controller) watch(cc *http2.ClientConn, generation uint64) {
+	for {
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-time.After(500 * time.Millisecond):
+		}
+		if cc.State().Closed || !cc.CanTakeNewRequest() {
+			break
+		}
+	}
+	c.mu.Lock()
+	if c.cc != cc || c.stopping || c.closed {
+		c.mu.Unlock()
+		return
+	}
+	if err := c.machine.Move(StateReconnecting, "connection lost"); err != nil {
+		c.mu.Unlock()
+		return
+	}
+	remote := *c.remote
+	c.mu.Unlock()
+	_ = c.history.Append(Event{SessionID: remote.SessionID, Role: "supporter", Kind: "connection_lost", Generation: generation})
+	c.notify()
+	c.reconnect(remote, generation)
+}
+
+func (c *Controller) reconnect(remote Remote, generation uint64) {
+	deadline := time.Now().Add(c.opts.ReconnectWindow)
+	delay := 500 * time.Millisecond
+	for time.Now().Before(deadline) && c.ctx.Err() == nil {
+		err := c.resumeOnce(remote, generation)
+		if err == nil {
+			return
+		}
+		switch CodeOf(err) {
+		case CodeSessionRevoked, CodeSessionExpired, CodeWrongTarget, CodeStaleConnection:
+			c.end(remote.SessionID, terminalFor(CodeOf(err)), describe(err))
+			return
+		}
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-time.After(delay):
+		}
+		delay = min(delay*2, 5*time.Second)
+	}
+	c.end(remote.SessionID, StateDisconnected, "the connection was lost and not restored")
+}
+
+func terminalFor(code Code) State {
+	switch code {
+	case CodeSessionExpired:
+		return StateExpired
+	case CodeSessionRevoked:
+		return StateRevoked
+	}
+	return StateFailed
+}
+

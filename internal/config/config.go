@@ -1671,6 +1671,8 @@ func allToolNames() []string {
 		"android",
 		"remote_node",
 		"screen_mark",
+		// Remote support works on the computer connected through /support.
+		"remote_support",
 		"app_loop",
 		// Integrations hub and local apps.
 		"integrations",

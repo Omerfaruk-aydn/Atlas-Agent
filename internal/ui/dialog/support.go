@@ -962,3 +962,41 @@ func (d *Support) hostLines(text int) []string {
 	return lines
 }
 
+func relayStatusText(s string) string {
+	switch {
+	case s == "registered":
+		return "waiting for the supporter"
+	case s == "connecting":
+		return "connecting"
+	case strings.HasPrefix(s, "error: "):
+		return s
+	}
+	return s
+}
+
+func (d *Support) qrLines(link string, text int) []string {
+	qr, err := mobile.QRLines(link)
+	if err != nil || len(qr) == 0 || ansi.StringWidth(qr[0]) > text {
+		return []string{d.muted(d.com.Text("Enlarge the terminal to show the QR code."))}
+	}
+	// A QR code needs fixed dark-on-light contrast to scan.
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color("#000000")).Background(lipgloss.Color("#FFFFFF"))
+	out := make([]string, 0, len(qr)+1)
+	out = append(out, d.muted(d.com.Text("The QR holds the code: show it only to the supporter.")))
+	for _, l := range qr {
+		out = append(out, style.Render(l))
+	}
+	return out
+}
+
+func (d *Support) capList(caps []support.Capability) string {
+	if len(caps) == 0 {
+		return d.com.Text("none")
+	}
+	labels := make([]string, 0, len(caps))
+	for _, c := range caps {
+		labels = append(labels, d.com.Text(c.Label()))
+	}
+	return strings.Join(labels, ", ")
+}
+

@@ -217,3 +217,34 @@ func TestSupportExecutorKeepsRuntimeStateOutsideExposedDrives(t *testing.T) {
 	require.NoDirExists(t, filepath.Join(drive, ".atlas"))
 }
 
+func TestRemoteSupportInstallRequiresIndependentEvidence(t *testing.T) {
+	t.Parallel()
+	f := newSupportFixture(t, []support.Capability{support.CapCommand, support.CapInstall})
+	_, client, err := f.ctl.Target()
+	require.NoError(t, err)
+	zero := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		op := nodes.Operation{ID: "op-install", SessionID: f.remote.SessionID, State: "completed", Effect: "applied", Argv: []string{"winget", "install", "Example.App"}, ExitCode: &zero}
+		if r.Method == http.MethodPost {
+			var req nodes.ExecRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			op.ID, op.Argv = req.OperationID, req.Argv
+			if req.Argv[0] == "correct-probe" {
+				op.Stdout = "Example.App 1.2.3"
+			}
+		}
+		_ = json.NewEncoder(w).Encode(op)
+	}))
+	defer srv.Close()
+	client.BaseURL, client.HTTP = srv.URL, srv.Client()
+	tool := NewRemoteSupportTool(yolo(t), t.TempDir(), func() *support.Controller { return f.ctl })
+	for _, probe := range []string{"empty-probe", "correct-probe"} {
+		got := callSupport(t, tool, probe, map[string]any{"action": "verify_install", "device_id": f.remote.RemoteDeviceID, "operation_id": "op-install", "verify_argv": []string{probe}, "expected_output": "Example.App 1.2.3"})
+		require.Equal(t, probe == "empty-probe", got.resp.IsError, got.resp.Content)
+		require.Equal(t, probe == "correct-probe", got.outcome.Verified)
+	}
+}
+

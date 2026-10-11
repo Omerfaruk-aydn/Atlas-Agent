@@ -350,3 +350,52 @@ func (t *remoteSupportTool) run(ctx context.Context, p RemoteSupportParams, call
 	return t.respond(res, false)
 }
 
+func observationView(obs nodes.DesktopObservation) map[string]any {
+	out := map[string]any{
+		"observation_id": obs.ObservationID, "node_id": obs.NodeID, "session_id": obs.SessionID, "generation": obs.Generation,
+		"monitor": obs.Monitor, "coordinate_space": obs.CoordinateSpace, "scale": obs.Scale, "width": obs.Width, "height": obs.Height,
+		"blank": obs.Blank, "cursor": obs.Cursor, "captured_at": obs.CapturedAt,
+	}
+	if len(obs.Monitors) > 0 {
+		out["monitors"] = obs.Monitors
+	}
+	if len(obs.Windows) > 0 {
+		out["windows"] = obs.Windows
+	}
+	return out
+}
+
+func (t *remoteSupportTool) status(ctx context.Context, ctl *support.Controller, remote support.Remote, terr error) fantasy.ToolResponse {
+	st := ctl.Status()
+	res := supportResult{OK: terr == nil, Action: "status", Device: deviceOf(remote), Effect: support.EffectNone, Verified: "observation"}
+	if terr == nil {
+		if fresh, err := ctl.Refresh(ctx); err == nil {
+			remote = fresh
+			res.Device = deviceOf(fresh)
+			st = ctl.Status()
+		} else {
+			terr = err
+			res.OK = false
+			res.Verified = "not_verified"
+		}
+	}
+	view := map[string]any{"state": st.State, "reason": st.Reason}
+	if st.Remote != nil {
+		view["remote"] = map[string]any{
+			"remote_device_id": remote.RemoteDeviceID, "name": remote.RemoteName, "fingerprint": remote.RemoteFingerprint,
+			"os": remote.OS, "arch": remote.Arch, "session_id": remote.SessionID, "generation": remote.Generation,
+			"capabilities": remote.Capabilities, "folders": remote.Roots, "owner_identity": remote.OwnerIdentity,
+			"expires_at": time.UnixMilli(remote.ExpiresAt).Format(time.RFC3339), "desktop": remote.Desktop, "desktop_reason": remote.DesktopReason,
+			"interactive_session": remote.Interactive, "network": remote.Network, "agent_paused": remote.AgentPaused, "screen_control_paused": remote.InputPaused,
+		}
+	}
+	res.Result = view
+	if terr != nil {
+		res.Error = support.Classify(terr, remote.RemoteDeviceID, "")
+		view["stale"] = true
+		view["state"] = "unavailable"
+		res.Note = "Live session status could not be read. Remote details are cached, not current evidence."
+	}
+	return t.respond(res, false)
+}
+

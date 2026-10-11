@@ -95,3 +95,114 @@ func (d *discoveryResponder) Close() {
 	_ = d.conn.Close()
 }
 
+// discover asks the local network which host offers slot and returns
+// host:port addresses that answered, in answer order.
+func discover(ctx context.Context, slot string, port int, wait time.Duration) ([]string, error) {
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{})
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+	nonce := randomID(8)
+	query, _ := json.Marshal(discoveryMsg{V: 1, Slot: slot, Nonce: nonce})
+	targets := []net.IP{net.IPv4bcast, net.IPv4(127, 0, 0, 1)}
+	targets = append(targets, broadcastAddrs()...)
+	send := func() {
+		for _, ip := range targets {
+			_, _ = conn.WriteToUDP(query, &net.UDPAddr{IP: ip, Port: port})
+		}
+	}
+	send()
+	deadline := time.Now().Add(wait)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	resend := time.Now().Add(wait / 3)
+	var found []string
+	buf := make([]byte, 512)
+	for time.Now().Before(deadline) {
+		if ctx.Err() != nil {
+			return found, ctx.Err()
+		}
+		next := time.Now().Add(150 * time.Millisecond)
+		if next.After(deadline) {
+			next = deadline
+		}
+		_ = conn.SetReadDeadline(next)
+		n, from, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			if time.Now().After(resend) {
+				send()
+				resend = deadline
+			}
+			continue
+		}
+		var reply discoveryMsg
+		if json.Unmarshal(buf[:n], &reply) != nil || reply.Nonce != nonce || reply.Slot != slot || reply.Port <= 0 || reply.Port > 65535 {
+			continue
+		}
+		addr := net.JoinHostPort(from.IP.String(), strconv.Itoa(reply.Port))
+		if !slices.Contains(found, addr) {
+			found = append(found, addr)
+		}
+		// One answer is enough; a short grace period catches a loopback
+		// answer that arrives with a LAN one.
+		if len(found) == 1 {
+			if grace := time.Now().Add(200 * time.Millisecond); grace.Before(deadline) {
+				deadline = grace
+			}
+		}
+	}
+	return found, nil
+}
+
+// broadcastAddrs returns directed broadcast addresses of up IPv4
+// interfaces, which reach hosts when 255.255.255.255 is filtered.
+func broadcastAddrs() []net.IP {
+	var out []net.IP
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagBroadcast == 0 {
+			continue
+		}
+		addrs, _ := iface.Addrs()
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok || ipnet.IP.To4() == nil {
+				continue
+			}
+			ip := ipnet.IP.To4()
+			mask := ipnet.Mask
+			if len(mask) == net.IPv6len {
+				mask = mask[12:]
+			}
+			b := make(net.IP, 4)
+			for i := range 4 {
+				b[i] = ip[i] | ^mask[i]
+			}
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+// LocalAddresses lists private IPv4 addresses for display.
+func LocalAddresses() []string {
+	var out []string
+	ifaces, _ := net.Interfaces()
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, _ := iface.Addrs()
+		for _, a := range addrs {
+			if ipnet, ok := a.(*net.IPNet); ok && ipnet.IP.To4() != nil && ipnet.IP.IsPrivate() {
+				out = append(out, ipnet.IP.String())
+			}
+		}
+	}
+	return out
+}

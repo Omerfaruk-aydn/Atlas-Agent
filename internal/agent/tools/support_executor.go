@@ -236,3 +236,28 @@ func (e *supportExecutor) Run(ctx context.Context, g nodes.Grant, req nodes.Remo
 	return invoke(ctx, call)
 }
 
+type supportAuthorizedTool struct {
+	fantasy.AgentTool
+	run func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error)
+}
+
+func (t *supportAuthorizedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	return t.run(ctx, call)
+}
+
+func supportNotDispatched(err error) fantasy.ToolResponse {
+	return withToolOutcome(fantasy.NewTextErrorResponse(err.Error()), ToolOutcome{Dispatch: "none", Claim: "remote_permission_or_contract_denied"})
+}
+
+// Close cancels a host session and retires only its owned browser.
+func (e *supportExecutor) Close(id string) {
+	e.mu.Lock()
+	state := e.sessions[id]
+	delete(e.sessions, id)
+	e.closed[id] = true
+	e.mu.Unlock()
+	if state != nil {
+		state.cancel()
+	}
+	e.manager.Close("support-" + id)
+}

@@ -90,3 +90,19 @@ func AsError(err error) *Error {
 	return nil
 }
 
+// CodeOf returns the code of err, or the empty code.
+func CodeOf(err error) Code {
+	if e := AsError(err); e != nil {
+		return e.Code
+	}
+	return ""
+}
+
+func retryable(code Code) bool {
+	switch code {
+	case CodeRemoteOffline, CodeConnectionLost, CodeSessionPaused, CodeControlPaused, CodeTransferInterrupt, CodeStaleTarget, CodeSecureDesktop, CodeDesktopUnavailable:
+		return true
+	}
+	return false
+}
+

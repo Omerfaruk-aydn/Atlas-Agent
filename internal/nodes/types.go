@@ -38,6 +38,11 @@ type Info struct {
 	Isolated      bool   `json:"isolated"`
 	DeviceID      string `json:"device_id"`
 	MaxFileBytes  int64  `json:"max_file_bytes"`
+	// Session fields are set only for session-scoped access.
+	SessionID   string   `json:"session_id,omitempty"`
+	Generation  uint64   `json:"generation,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
+	Roots       []string `json:"roots,omitempty"`
 }
 
 // PairRequest redeems a one-time pairing code.
@@ -68,6 +73,8 @@ type Operation struct {
 	ID          string          `json:"id"`
 	Kind        string          `json:"kind"`
 	DeviceID    string          `json:"device_id"`
+	SessionID   string          `json:"session_id,omitempty"`
+	Generation  uint64          `json:"generation,omitempty"`
 	RequestHash string          `json:"request_hash"`
 	State       taskstate.State `json:"state"`
 	Argv        []string        `json:"argv,omitempty"`
@@ -109,15 +116,28 @@ type FileResult struct {
 }
 
 // DesktopObservation is a guest/node screen capture bound to its geometry.
+// Coordinates are physical pixels of the node's virtual screen, 1:1 with
+// the PNG; input aimed with it is refused once the geometry, connection
+// generation or observation changes.
 type DesktopObservation struct {
-	ObservationID string          `json:"observation_id"`
-	Width         int             `json:"width"`
-	Height        int             `json:"height"`
-	PNG           []byte          `json:"png,omitempty"`
-	Blank         bool            `json:"blank"`
-	Cursor        [2]int          `json:"cursor"`
-	Windows       json.RawMessage `json:"windows,omitempty"`
-	CapturedAt    int64           `json:"captured_at"`
+	ObservationID string `json:"observation_id"`
+	NodeID        string `json:"node_id"`
+	SessionID     string `json:"session_id,omitempty"`
+	Generation    uint64 `json:"generation,omitempty"`
+	// Monitor is "virtual": the capture spans every monitor.
+	Monitor string `json:"monitor"`
+	// CoordinateSpace names how x/y map onto the screen.
+	CoordinateSpace string `json:"coordinate_space"`
+	// Scale is image pixels per screen pixel (1 for a full capture).
+	Scale      float64         `json:"scale"`
+	Monitors   json.RawMessage `json:"monitors,omitempty"`
+	Width      int             `json:"width"`
+	Height     int             `json:"height"`
+	PNG        []byte          `json:"png,omitempty"`
+	Blank      bool            `json:"blank"`
+	Cursor     [2]int          `json:"cursor"`
+	Windows    json.RawMessage `json:"windows,omitempty"`
+	CapturedAt int64           `json:"captured_at"`
 }
 
 // AutomationRequest is a read-only accessibility query on the node desktop.

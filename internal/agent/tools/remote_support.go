@@ -433,3 +433,172 @@ func (t *remoteSupportTool) approve(ctx context.Context, call fantasy.ToolCall, 
 	return nil
 }
 
+// mutate runs one side-effecting action. It is sent once. If the
+// connection drops after sending, the outcome is unknown: the tool waits
+// for the session to reconnect and reads the operation's journal entry
+// instead of sending again.
+func (t *remoteSupportTool) mutate(ctx context.Context, ctl *support.Controller, client *nodes.Client, remote support.Remote, p RemoteSupportParams, opID string) fantasy.ToolResponse {
+	mutation := remoteSupportCallMutates(p)
+	dev := deviceOf(remote)
+	res := supportResult{OK: true, Action: p.Action, Device: dev, OperationID: opID, InputSent: true, Effect: support.EffectApplied, Verified: "not_verified"}
+	res.Checkpoint = &supportCheck{SessionID: remote.SessionID, RemoteDeviceID: remote.RemoteDeviceID, Generation: remote.Generation, OperationID: opID, ReconcileWith: "operation_status"}
+	var err error
+	switch p.Action {
+	case "verify_install":
+		if p.OperationID == "" || len(p.VerifyArgv) == 0 || strings.TrimSpace(p.ExpectedOutput) == "" || slices.Contains(support.ExtraCapabilities(p.VerifyArgv), support.CapInstall) {
+			return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "verify_install requires the original operation_id, an independent non-installer verify_argv and nonempty expected_output"))
+		}
+		original, readErr := client.Operation(ctx, p.OperationID)
+		if readErr != nil {
+			return t.fail(p.Action, dev, support.Classify(readErr, dev.RemoteDeviceID, p.OperationID))
+		}
+		if original.SessionID != remote.SessionID || original.State != "completed" || original.Effect != "applied" || !slices.Contains(support.ExtraCapabilities(original.Argv), support.CapInstall) {
+			return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "the original operation must be a completed installation in this support session"))
+		}
+		var probe nodes.Operation
+		probe, err = client.Exec(ctx, nodes.ExecRequest{OperationID: opID, Argv: p.VerifyArgv, Cwd: p.Cwd, TimeoutMS: p.TimeoutMS})
+		if err == nil {
+			res = supportOperationResult(res, probe)
+			res.Result = map[string]any{"installation_operation_id": original.ID, "probe": probe, "expected_output": p.ExpectedOutput}
+			res.Verified = "install_unverified"
+			if res.OK && probe.ExitCode != nil && *probe.ExitCode == 0 && !probe.Truncated && strings.Contains(probe.Stdout, p.ExpectedOutput) {
+				res.Verified = "verified"
+				res.Note = "The independent probe returned the requested application identity/version. This verifies only that criterion, not every feature or the user's original problem."
+			} else if res.OK {
+				res.OK = false
+				res.Error = &support.Error{Code: support.Code("install_unverified"), Message: "the independent probe did not prove the requested installation criterion", InputSent: res.InputSent, Effect: res.Effect, OperationID: opID, RemoteDeviceID: dev.RemoteDeviceID}
+			}
+		}
+	case "tool":
+		if p.Arguments == nil {
+			return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "tool requires an arguments object"))
+		}
+		input, marshalErr := json.Marshal(p.Arguments)
+		if marshalErr != nil {
+			return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "%v", marshalErr))
+		}
+		var reply nodes.RemoteToolReply
+		reply, err = client.RemoteTool(ctx, nodes.RemoteToolRequest{OperationID: opID, Tool: p.Tool, Input: input})
+		if err == nil {
+			if reply.Operation != nil {
+				res = supportOperationResult(res, *reply.Operation)
+			} else {
+				res.InputSent, res.Effect = false, support.EffectNone
+			}
+			res.Result = map[string]any{"tool": p.Tool, "content": reply.Response.Content}
+			res.Image, res.NativeMetadata, res.StopTurn = reply.Response.Data, reply.Response.Metadata, reply.Response.StopTurn
+			res.ImageMediaType = reply.Response.MediaType
+			if child, ok := ResponseOutcome(reply.Response); ok {
+				res.InputSent = child.Dispatch != "none"
+				if child.Dispatch == "unknown" {
+					res.Effect = support.EffectUnknown
+				}
+				if child.Verified && res.OK && !reply.Response.IsError && !reply.Response.StopTurn {
+					res.Verified = "verified"
+				}
+			}
+			if reply.Response.IsError || reply.Response.StopTurn {
+				res.OK = false
+				if res.Error == nil {
+					res.Error = &support.Error{Code: support.Code("remote_tool_stopped"), Message: reply.Response.Content, InputSent: res.InputSent, Effect: res.Effect, OperationID: opID, RemoteDeviceID: dev.RemoteDeviceID, NextStep: "Inspect the native result and resume only after the owner answers or the original target is verified."}
+				}
+			}
+		}
+	case "exec":
+		if len(p.Argv) == 0 {
+			return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "exec needs argv"))
+		}
+		var op nodes.Operation
+		op, err = client.Exec(ctx, nodes.ExecRequest{OperationID: opID, Argv: p.Argv, Cwd: p.Cwd, TimeoutMS: p.TimeoutMS})
+		if err == nil {
+			res = execResult(res, op, p.Argv)
+		}
+	case "launch":
+		if len(p.Argv) == 0 {
+			return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "launch needs argv"))
+		}
+		var op nodes.Operation
+		op, err = client.Launch(ctx, opID, p.Argv)
+		if err == nil {
+			res = supportOperationResult(res, op)
+			if res.OK {
+				res.Note = "Started on the remote desktop. Observe the remote screen to verify the window."
+			}
+		}
+	case "input":
+		var op nodes.Operation
+		op, err = client.Input(ctx, nodes.DesktopInput{OperationID: opID, ObservationID: p.ObservationID, WindowID: p.WindowID, Action: p.InputAction, X: p.X, Y: p.Y, EndX: p.EndX, EndY: p.EndY, Text: p.Text, Key: p.Key, Modifiers: p.Modifiers, ScrollY: p.ScrollY})
+		if err == nil {
+			res = supportOperationResult(res, op)
+			if res.OK {
+				res.Note = "Observe again before the next pointer action; this observation is consumed."
+			}
+		}
+	case "push":
+		local, rerr := transfer.Resolve(t.workingDir, p.LocalPath)
+		if rerr != nil {
+			return t.fail(p.Action, dev, support.Errorf(support.CodePathDenied, "local_path must stay inside this workspace: %v", rerr))
+		}
+		conflict, cerr := transfer.ParseConflict(p.Conflict)
+		if cerr != nil {
+			return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "%v", cerr))
+		}
+		start := time.Now()
+		var up nodes.UploadResult
+		up, err = client.Upload(ctx, opID, local, p.RemotePath, conflict, 0, nil)
+		if err == nil {
+			res.Result = map[string]any{"remote_path": up.Path, "size": up.Size, "sha256": up.SHA256, "replayed": up.Replayed, "seconds": time.Since(start).Seconds()}
+			res.Verified = "verified"
+			res.Note = "The remote computer checked the SHA-256 before installing the file. Received files are never run automatically."
+		}
+	case "pull":
+		conflict, cerr := transfer.ParseConflict(p.Conflict)
+		if cerr != nil {
+			return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "%v", cerr))
+		}
+		localRel := p.LocalPath
+		if conflict == transfer.ConflictRename {
+			dest, rerr := transfer.Destination(t.workingDir, localRel, transfer.ConflictRename)
+			if rerr != nil {
+				return t.fail(p.Action, dev, support.Errorf(support.CodePathDenied, "local_path must stay inside this workspace: %v", rerr))
+			}
+			if rel, rerr := filepath.Rel(t.workingDir, dest); rerr == nil {
+				localRel = filepath.ToSlash(rel)
+			}
+		}
+		var fr nodes.FileResult
+		fr, err = client.Pull(ctx, p.RemotePath, t.workingDir, localRel, conflict == transfer.ConflictOverwrite, 0)
+		if err == nil {
+			res.Result = fr
+			res.Verified = "verified"
+			res.InputSent = true
+			res.Note = "Downloaded into this workspace after size and SHA-256 checks."
+		}
+	case "cancel":
+		if p.OperationID == "" {
+			return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "cancel needs operation_id"))
+		}
+		var op nodes.Operation
+		op, err = client.Cancel(ctx, p.OperationID)
+		if err == nil {
+			res.Result, res.Effect = op, support.Effect(op.Effect)
+			res.Verified = "journal"
+		}
+	default:
+		return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "unknown action %q", p.Action))
+	}
+	if err == nil {
+		return t.respond(res, mutation)
+	}
+	e := support.Classify(err, remote.RemoteDeviceID, opID)
+	if e.Code == support.CodeOutcomeUnknown && p.Action != "pull" {
+		return t.respond(t.reconcile(ctx, ctl, res, e, opID), mutation)
+	}
+	out := res
+	out.OK, out.Error, out.InputSent, out.Effect = false, e, e.InputSent, e.Effect
+	if !e.InputSent {
+		out.Checkpoint = nil
+	}
+	return t.respond(out, mutation)
+}
+

@@ -754,3 +754,33 @@ func TestOwnerPausesAreSeparate(t *testing.T) {
 	require.Zero(t, desk.clicks.Load())
 }
 
+// Scenario 20: after a restart, an ended session stays ended.
+func TestRestartDoesNotReviveSessions(t *testing.T) {
+	t.Parallel()
+	state := t.TempDir()
+	h1 := startHost(t, func(o *HostOptions) { o.StateDir = state })
+	c := startController(t, nil)
+	r := connect(t, h1, c, Presets["diagnose"])
+	// An interrupted record (as after a crash) is closed on start.
+	store := sessionStore{dir: filepath.Join(state, "sessions")}
+	require.NoError(t, store.save(sessionRecord{ID: "ss-crashed00000000", State: StateConnected}))
+
+	addr := h1.LANAddress()
+	h1.Close()
+	rec, ok := store.load(r.SessionID)
+	require.True(t, ok)
+	require.Equal(t, StateDisconnected, rec.State)
+
+	h2 := startHost(t, func(o *HostOptions) { o.StateDir = state; o.LANListen = addr })
+	require.Equal(t, h1.NodeID(), h2.NodeID(), "same computer, same identity")
+	crashed, ok := store.load("ss-crashed00000000")
+	require.True(t, ok)
+	require.Equal(t, StateDisconnected, crashed.State)
+	_, err := h2.Offer(OfferOptions{Capabilities: Presets["diagnose"], LAN: true})
+	require.NoError(t, err)
+
+	err = c.resumeOnce(Remote{SessionInfo: r.SessionInfo, Address: addr}, r.Generation)
+	require.Equal(t, CodeSessionRevoked, CodeOf(err))
+	require.Nil(t, h2.Status().Session)
+}
+

@@ -637,3 +637,37 @@ func (t *remoteSupportTool) reconcile(ctx context.Context, ctl *support.Controll
 	return res
 }
 
+// supportOperationResult interprets the journal, not merely HTTP success.
+func supportOperationResult(res supportResult, op nodes.Operation) supportResult {
+	res.Result, res.Effect = op, support.Effect(op.Effect)
+	res.InputSent = op.Effect != "none"
+	if res.Effect == "" {
+		res.Effect = support.EffectUnknown
+	}
+	res.OK = op.State == "completed" && res.Effect != support.EffectUnknown
+	if !res.OK {
+		code := support.Code("operation_failed")
+		if res.Effect == support.EffectUnknown || !op.State.Terminal() {
+			code = support.CodeOutcomeUnknown
+			res.Effect = support.EffectUnknown
+		}
+		res.Error = &support.Error{Code: code, Message: orStr(op.Error, "the remote operation is not completed"), InputSent: res.InputSent, Effect: res.Effect, OperationID: res.OperationID, RemoteDeviceID: res.Device.RemoteDeviceID, NextStep: "Read operation_status or observe the original remote target. Do not repeat an operation with an unknown effect."}
+	}
+	return res
+}
+
+func execResult(res supportResult, op nodes.Operation, argv []string) supportResult {
+	res = supportOperationResult(res, op)
+	if res.Error != nil && res.Error.Code != support.CodeOutcomeUnknown {
+		res.Error.Code = support.Code("command_failed")
+		res.Error.NextStep = "Read stderr and the exit code; inspect the remote state before trying something else."
+	}
+	if slices.Contains(support.ExtraCapabilities(argv), support.CapInstall) {
+		// An accepted install request and exit code 0 are not proof.
+		res.Verified = "install_unverified"
+		res.Note = "Not verified: confirm the installed program independently (for example winget list --id, the program's --version, or its file) before reporting success."
+	} else {
+		res.Note = "Exit code 0 shows the command ran; verify the user's original problem independently before reporting it solved."
+	}
+	return res
+}

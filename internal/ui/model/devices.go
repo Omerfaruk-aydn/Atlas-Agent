@@ -24,6 +24,9 @@ type devicesState struct {
 	gateway *mobile.Gateway
 	remote  remoteState
 	homeLAN bool
+	// supportChanges delivers /support changes so a connection request or
+	// a permission request reaches the owner even with /support closed.
+	supportChanges <-chan struct{}
 }
 
 type (

@@ -78,3 +78,61 @@ func Destination(root, rel string, policy Conflict) (string, error) {
 	return "", fail("exists", "destination %q exists; choose rename or overwrite", rel)
 }
 
+// Install moves a verified file into root/rel. The bytes are hashed again
+// while they are copied next to the destination, then renamed into place,
+// so a half-copied or substituted file never appears at the final path.
+func Install(root, rel, src string, size int64, sha string, policy Conflict) (string, error) {
+	if !ValidSHA256(sha) {
+		return "", fail("invalid_hash", "sha256 must be 64 lowercase hex characters")
+	}
+	dest, err := Destination(root, rel, policy)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return "", err
+	}
+	// Re-resolve after creating parents: a racing symlink would be caught.
+	if _, err := Resolve(root, rel); err != nil {
+		return "", err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return "", err
+	}
+	defer in.Close()
+	tmp, err := os.CreateTemp(filepath.Dir(dest), ".atlas-transfer-*")
+	if err != nil {
+		return "", err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	h := sha256.New()
+	n, err := io.Copy(io.MultiWriter(tmp, h), in)
+	if err == nil {
+		err = tmp.Sync()
+	}
+	if cerr := tmp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return "", fail("interrupted", "install interrupted after %d bytes: %v", n, err)
+	}
+	if n != size {
+		return "", fail("size_mismatch", "installed %d bytes, expected %d", n, size)
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); got != sha {
+		return "", fail("hash_mismatch", "received sha256 %s, expected %s", got, sha)
+	}
+	if policy != ConflictOverwrite {
+		// The name was free when chosen; refuse if something appeared since.
+		if _, err := os.Lstat(dest); err == nil {
+			return "", fail("exists", "destination %q appeared during the transfer", filepath.Base(dest))
+		}
+	}
+	if err := os.Rename(tmpName, dest); err != nil {
+		return "", err
+	}
+	return dest, nil
+}
+

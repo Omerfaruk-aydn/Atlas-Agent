@@ -186,3 +186,56 @@ func programName(arg string) string {
 	return arg
 }
 
+// ExtraCapabilities classifies a command for the narrower permissions it
+// touches. This is defense in depth on top of the command permission: a
+// shell can always hide intent, which is why command is a high-impact grant.
+func ExtraCapabilities(argv []string) []Capability {
+	if len(argv) == 0 {
+		return nil
+	}
+	var out []Capability
+	add := func(c Capability) {
+		if !slices.Contains(out, c) {
+			out = append(out, c)
+		}
+	}
+	name := programName(argv[0])
+	first := strings.ToLower(argv[0])
+	if slices.Contains(installerPrograms, name) || strings.HasSuffix(first, ".msi") || strings.Contains(name, "setup") || strings.Contains(name, "install") {
+		// Read-only package queries stay ordinary commands.
+		readOnlyQuery := name == "winget" && len(argv) > 1 && slices.Contains([]string{"list", "search", "show", "--version", "-v", "--info"}, strings.ToLower(argv[1]))
+		if !readOnlyQuery {
+			add(CapInstall)
+		}
+	}
+	if slices.Contains(servicePrograms, name) {
+		add(CapServices)
+	}
+	if slices.Contains(restartPrograms, name) {
+		add(CapRestart)
+	}
+	if slices.Contains(shellPrograms, name) {
+		script := strings.ToLower(strings.Join(argv[1:], " "))
+		for _, word := range []string{"winget install", "winget uninstall", "winget upgrade", "msiexec", "install-package", "uninstall-package", "choco install", "apt install", "apt-get install"} {
+			if strings.Contains(script, word) {
+				add(CapInstall)
+			}
+		}
+		for _, word := range []string{"set-service", "stop-service", "start-service", "restart-service", "new-service", "remove-service", "sc config", "sc stop", "sc start", "sc delete", "net stop", "net start", "systemctl ", "reg add", "reg delete", "set-itemproperty -path hklm", "netsh ", "bcdedit"} {
+			if strings.Contains(script, word) {
+				add(CapServices)
+			}
+		}
+		for _, word := range []string{"restart-computer", "stop-computer", "shutdown", "reboot"} {
+			if strings.Contains(script, word) {
+				add(CapRestart)
+			}
+		}
+	}
+	return out
+}
+
+// IsBrowser reports whether argv starts a web browser.
+func IsBrowser(argv []string) bool {
+	return len(argv) > 0 && slices.Contains(browserPrograms, programName(argv[0]))
+}

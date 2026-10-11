@@ -22,6 +22,15 @@ type ToolDevices struct {
 	// Relay mode needs no phone app, LAN binding or inbound home firewall rule.
 	MobileRelayURL       string `json:"mobile_relay_url,omitempty" jsonschema:"description=Optional dedicated HTTPS origin of your own Atlas mobile-relay server. Atlas connects outbound; Safari reaches this origin from anywhere. Requires mobile_relay_token_file. The relay is trusted with phone traffic and must be yours."`
 	MobileRelayTokenFile string `json:"mobile_relay_token_file,omitempty" jsonschema:"description=Absolute path to the private connector key shared with your own mobile-relay server. Generate with mobile-relay keygen and keep outside the workspace. Never put this key in a URL or phone browser."`
+	// Support settings belong to /support (computer-to-computer IT support),
+	// which is separate from the phone relay above.
+	SupportName string `json:"support_name,omitempty" jsonschema:"description=Name this computer shows in /support sessions. Defaults to the computer name. The other side sees it as a name sent by the device; the verified identity is the certificate fingerprint."`
+	// SupportRelayURL enables internet mode for /support.
+	SupportRelayURL string `json:"support_relay_url,omitempty" jsonschema:"description=HTTPS origin of a support relay you operate (atlas support relay). Needed only for computers on different networks; local network sessions work without it. Atlas never contacts a relay that is not configured here.,example=https://support.example.com"`
+	// SupportRelayTokenFile holds the relay access token, never the token.
+	SupportRelayTokenFile string `json:"support_relay_token_file,omitempty" jsonschema:"description=Absolute path to a file holding the relay access token shared by your support relay and both computers. Keep it outside the workspace; it is never put in a URL or a code."`
+	// SupportNoDiscovery turns off answering LAN discovery for /support.
+	SupportNoDiscovery bool `json:"support_no_discovery,omitempty" jsonschema:"description=Do not use UDP discovery on the local network for /support. The supporter then enters CODE@address.,default=false"`
 	// RemoteProfiles are servers managed from /rc. They hold references to
 	// secrets, never the secrets themselves.
 	RemoteProfiles []RemoteProfile `json:"remote_profiles,omitempty" jsonschema:"description=Relay servers managed from /rc. Passwords and key passphrases are stored sealed outside this file; only references are kept here."`

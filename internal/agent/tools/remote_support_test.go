@@ -259,3 +259,54 @@ func copyFile(t *testing.T, src, dst string) {
 	require.NoError(t, out.Close())
 }
 
+func TestRemoteSupportTransfersAreVerified(t *testing.T) {
+	t.Parallel()
+	f := newSupportFixture(t, []support.Capability{support.CapFileRead, support.CapFileSend, support.CapFileReceive})
+	work := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(work, "fix.reg.txt"), []byte("settings"), 0o600))
+	tool := NewRemoteSupportTool(yolo(t), work, func() *support.Controller { return f.ctl })
+
+	got := callSupport(t, tool, "c1", map[string]any{"action": "push", "device_id": f.remote.RemoteDeviceID, "local_path": "fix.reg.txt", "remote_path": "Work/fix.reg.txt"})
+	require.False(t, got.resp.IsError, got.resp.Content)
+	require.Equal(t, "verified", got.body["verification"])
+	data, err := os.ReadFile(filepath.Join(f.root, "fix.reg.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "settings", string(data))
+
+	got = callSupport(t, tool, "c2", map[string]any{"action": "pull", "device_id": f.remote.RemoteDeviceID, "remote_path": "Work/fix.reg.txt", "local_path": "back/fix.txt"})
+	require.False(t, got.resp.IsError, got.resp.Content)
+	data, err = os.ReadFile(filepath.Join(work, "back", "fix.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "settings", string(data))
+
+	got = callSupport(t, tool, "c3", map[string]any{"action": "push", "device_id": f.remote.RemoteDeviceID, "local_path": "../outside.txt", "remote_path": "Work/x.txt"})
+	require.Equal(t, string(support.CodePathDenied), errCode(got))
+	got = callSupport(t, tool, "c4", map[string]any{"action": "pull", "device_id": f.remote.RemoteDeviceID, "remote_path": "Work/../../etc/passwd", "local_path": "p.txt"})
+	require.Equal(t, string(support.CodePathDenied), errCode(got))
+}
+
+// Scenario 17: a pipeline over remote_support keeps the remote target, the
+// checkpoint and the outcome of each step.
+func TestRemoteSupportPipelineKeepsTargetCheckpointAndOutcome(t *testing.T) {
+	t.Parallel()
+	f := newSupportFixture(t, []support.Capability{support.CapSystemInfo, support.CapCommand})
+	remote := NewRemoteSupportTool(yolo(t), t.TempDir(), func() *support.Controller { return f.ctl })
+	invoke := func(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		require.Equal(t, RemoteSupportToolName, call.Name)
+		return remote.Run(ctx, call)
+	}
+	resp, results := runPipelineSteps(t, invoke, PipelineParams{Steps: []PipelineStep{
+		{ID: "inspect", Tool: RemoteSupportToolName, Arguments: map[string]any{"action": "system_info", "device_id": f.remote.RemoteDeviceID}},
+		{ID: "run", Tool: RemoteSupportToolName, Arguments: map[string]any{"action": "exec", "device_id": f.remote.RemoteDeviceID, "argv": supportHelper(t, "ok"), "cwd": "Work"}},
+		{ID: "wrong", Tool: RemoteSupportToolName, Arguments: map[string]any{"action": "exec", "device_id": "node-elsewhere", "argv": supportHelper(t, "mark")}},
+	}})
+	require.True(t, resp.IsError, "the wrong-device step fails the pipeline")
+	got := outcomesByID(results)
+	require.Equal(t, OutcomeApplied, got["run"])
+	require.NotEqual(t, OutcomeApplied, got["wrong"])
+	require.Contains(t, resp.Content, f.remote.RemoteDeviceID)
+	require.Contains(t, resp.Content, "checkpoint")
+	require.NoFileExists(t, filepath.Join(f.root, "marks.txt"))
+	require.True(t, CallMutates(RemoteSupportToolName, `{"action":"exec"}`))
+	require.False(t, CallMutates(RemoteSupportToolName, `{"action":"system_info"}`))
+}

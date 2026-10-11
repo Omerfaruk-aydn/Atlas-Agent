@@ -346,3 +346,89 @@ func (d *Support) handleKey(msg tea.KeyPressMsg) Action {
 	return nil
 }
 
+func (d *Support) back() {
+	d.notice = ""
+	switch d.view {
+	case supportHistoryDetail:
+		d.view = supportHistory
+	default:
+		d.view = supportMenu
+	}
+}
+
+var supportMenuItems = []string{
+	"Get support for this computer",
+	"Connect to another computer",
+	"Active support sessions",
+	"File transfers",
+	"Support history",
+	"Connection and privacy settings",
+}
+
+func (d *Support) menuKey(msg tea.KeyPressMsg) Action {
+	switch {
+	case key.Matches(msg, d.keyMap.Back), key.Matches(msg, CloseKey):
+		return ActionClose{}
+	case key.Matches(msg, d.keyMap.Up):
+		d.menuSel = max(0, d.menuSel-1)
+	case key.Matches(msg, d.keyMap.Down):
+		d.menuSel = min(len(supportMenuItems)-1, d.menuSel+1)
+	case key.Matches(msg, d.keyMap.Enter):
+		return d.openMenu(d.menuSel)
+	default:
+		if s := msg.String(); len(s) == 1 && s[0] >= '1' && s[0] <= '6' {
+			d.menuSel = int(s[0] - '1')
+			return d.openMenu(d.menuSel)
+		}
+	}
+	return nil
+}
+
+func (d *Support) openMenu(i int) Action {
+	d.notice = ""
+	switch i {
+	case 0:
+		if d.hasHost && (d.host.Offer != nil || d.host.Pending != nil || d.host.Session != nil) {
+			d.view = supportHost
+			return nil
+		}
+		d.view = supportHostSetup
+	case 1:
+		d.view = supportConnect
+		if !d.joining {
+			return ActionCmd{Cmd: d.codeInput.Focus()}
+		}
+	case 2:
+		d.view = supportSessions
+	case 3:
+		d.view = supportTransfers
+	case 4:
+		d.view = supportHistory
+		return d.run("history", func(ctx context.Context) SupportDone {
+			return SupportDone{History: d.loadHistory(ctx)}
+		})
+	case 5:
+		d.view = supportSettings
+		return ActionCmd{Cmd: d.settings[d.settingSel].Focus()}
+	}
+	return nil
+}
+
+// loadHistory merges both ends' session histories, newest first. It reads
+// files and runs in a command.
+func (d *Support) loadHistory(ctx context.Context) []support.Summary {
+	var out []support.Summary
+	if h, err := d.svc.Host(ctx); err == nil {
+		if s, err := h.History().Sessions(); err == nil {
+			out = append(out, s...)
+		}
+	}
+	if c, err := d.svc.Controller(ctx); err == nil {
+		if s, err := c.History().Sessions(); err == nil {
+			out = append(out, s...)
+		}
+	}
+	slices.SortFunc(out, func(a, b support.Summary) int { return int(b.Started - a.Started) })
+	return out
+}
+

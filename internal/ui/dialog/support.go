@@ -881,3 +881,84 @@ func (d *Support) setupLines(text int) []string {
 	return lines
 }
 
+func (d *Support) hostLines(text int) []string {
+	st := d.host
+	var lines []string
+	if st.Offer != nil && st.Session == nil {
+		o := st.Offer
+		lines = append(lines,
+			d.strong(fmt.Sprintf(d.com.Text("Code: %s"), o.Code)),
+			fmt.Sprintf(d.com.Text("Valid until %s, works once. Share it only with the person who should help."), o.ExpiresAt.Format("15:04:05")),
+		)
+		for _, a := range o.LANAddresses {
+			lines = append(lines, d.muted(fmt.Sprintf(d.com.Text("Local network: %s@%s"), o.Code, a)))
+		}
+		if o.RelayURL != "" {
+			lines = append(lines, d.muted(fmt.Sprintf(d.com.Text("Internet relay %s: %s"), o.RelayURL, d.com.Text(relayStatusText(o.RelayStatus)))))
+		}
+		if d.showQR {
+			lines = append(lines, d.qrLines(o.Link, text)...)
+		}
+	}
+	if st.Pending != nil {
+		p := st.Pending
+		lines = append(lines, "",
+			d.strong(d.com.Text("Connection request")),
+			fmt.Sprintf(d.com.Text("Name: %s (sent by the device, unverified)"), p.Peer.Name),
+			fmt.Sprintf(d.com.Text("Verified device: %s · %s/%s · via %s"), support.ShortFingerprint(p.Peer.Fingerprint), p.Peer.OS, p.Peer.Arch, p.Network),
+			d.strong(fmt.Sprintf(d.com.Text("Verification code: %s — it must match the supporter's screen"), p.Verification)),
+			d.muted(d.com.Text("a accept · r reject. Knowing the code alone never connects.")),
+		)
+	}
+	if s := st.Session; s != nil {
+		left := max(0, time.Until(s.ExpiresAt).Round(time.Minute))
+		leftText := fmt.Sprintf("%dh %02dm", int(left.Hours()), int(left.Minutes())%60)
+		agent := d.com.Text("working")
+		if s.AgentPaused {
+			agent = d.com.Text("paused by you")
+		} else if s.Active == nil {
+			agent = d.com.Text("idle")
+		}
+		screen := d.com.Text("allowed")
+		if s.InputPaused {
+			screen = d.com.Text("paused by you")
+		}
+		lines = append(lines,
+			d.strong(fmt.Sprintf(d.com.Text("Connected: %s"), s.Peer.Name)),
+			fmt.Sprintf(d.com.Text("Device %s · %s · %s left"), support.ShortFingerprint(s.Peer.Fingerprint), s.Network, leftText),
+			fmt.Sprintf(d.com.Text("Agent task: %s · Screen control: %s"), agent, screen),
+			fmt.Sprintf(d.com.Text("Permissions: %s"), d.capList(s.Capabilities)),
+		)
+		if len(s.Roots) > 0 {
+			var labels []string
+			for _, r := range s.Roots {
+				labels = append(labels, r.Label)
+			}
+			lines = append(lines, fmt.Sprintf(d.com.Text("Folders: %s"), strings.Join(labels, ", ")))
+		}
+		if s.Active != nil {
+			lines = append(lines, d.strong(fmt.Sprintf(d.com.Text("Now: %s"), s.Active.Summary)))
+		}
+		for i := len(s.Recent) - 1; i >= 0 && i >= len(s.Recent)-5; i-- {
+			op := s.Recent[i]
+			lines = append(lines, d.muted(fmt.Sprintf("  %s · %s · %s", op.Summary, op.State, op.Effect)))
+		}
+		lines = append(lines, wrapLines(d.com.Styles.Dialog.SecondaryText.Padding(0), d.com.Text("p pause/resume task · s pause/resume screen control · f turn off file access · x end session"), text)...)
+	}
+	if p := st.Permission; p != nil {
+		lines = append(lines, "",
+			d.strong(fmt.Sprintf(d.com.Text("The supporter asks for: %s"), d.capList(p.Capabilities))),
+			fmt.Sprintf(d.com.Text("Reason (from the supporter): %s"), p.Reason),
+			d.muted(d.com.Text("y grant for this session · n deny")),
+		)
+	}
+	if st.Offer == nil && st.Pending == nil && st.Session == nil {
+		reason := st.Reason
+		if reason == "" {
+			reason = string(st.State)
+		}
+		lines = append(lines, fmt.Sprintf(d.com.Text("No active code or session (%s)."), d.com.Text(reason)), d.muted(d.com.Text("enter creates a new code.")))
+	}
+	return lines
+}
+

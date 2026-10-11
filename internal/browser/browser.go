@@ -1079,6 +1079,12 @@ func newManager(opts Options, newSession newSessionFunc) *Manager {
 	}
 }
 
+// NewManager creates an independently owned manager, for example for a
+// remote-support host. Closing it never closes the local agent's sessions.
+func NewManager(opts Options) *Manager {
+	return newManager(opts, newChromedpSession)
+}
+
 var (
 	defaultManager     *Manager
 	defaultManagerOnce sync.Once

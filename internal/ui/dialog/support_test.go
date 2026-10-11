@@ -76,3 +76,74 @@ func TestSupportDialogWithoutLocalAtlasExplainsItself(t *testing.T) {
 	require.IsType(t, ActionClose{}, supportPress(t, d, "esc"))
 }
 
+// The owner's whole path in the dialog: menu, permissions, code, the
+// verified request with its verification code, acceptance and ending the
+// session, against a real supporting endpoint with its own identity.
+func TestSupportDialogOwnerFlow(t *testing.T) {
+	t.Parallel()
+	svc := support.NewService(t.TempDir(), func() support.ServiceConfig {
+		return support.ServiceConfig{Name: "Ofis-PC", DiscoveryPort: -1, LANListen: "127.0.0.1:0", Overlay: quietOverlay{}}
+	}, nil)
+	t.Cleanup(svc.Close)
+	d := NewSupport(supportCommon("tr"), svc)
+
+	view := renderSupport(d)
+	for _, item := range []string{"Bu bilgisayara destek al", "Başka bilgisayara bağlan", "Aktif destek oturumları", "Dosya aktarımları", "Destek geçmişi", "Bağlantı ve gizlilik ayarları"} {
+		require.Contains(t, view, item)
+	}
+
+	supportPress(t, d, "1")
+	view = renderSupport(d)
+	require.Contains(t, view, "Sistem bilgisi ve tanılama")
+	require.Contains(t, view, "[x]")
+	root := t.TempDir()
+	d.fileRoots = func() ([]nodes.Root, error) {
+		return []nodes.Root{{Label: "Work", Path: root}}, nil
+	}
+	runAction(t, d, supportPress(t, d, "enter"))
+	h := svc.ActiveHost()
+	require.NotNil(t, h)
+	st := h.Status()
+	require.NotNil(t, st.Offer)
+	view = renderSupport(d)
+	require.Contains(t, view, st.Offer.Code)
+	require.Contains(t, view, "tek kullanımlık")
+
+	c, err := support.NewController(context.Background(), support.ControllerOptions{StateDir: t.TempDir(), Name: "Destekçi", DiscoveryPort: -1})
+	require.NoError(t, err)
+	t.Cleanup(c.Close)
+	joined := make(chan error, 1)
+	go func() {
+		_, err := c.Join(context.Background(), st.Offer.Code+"@"+h.LANAddress(), nil)
+		joined <- err
+	}()
+	require.Eventually(t, func() bool { return h.Status().Pending != nil }, 10*time.Second, 10*time.Millisecond)
+	d.HandleMsg(SupportTick{})
+	pending := h.Status().Pending
+	view = renderSupport(d)
+	require.Contains(t, view, "Bağlantı isteği")
+	require.Contains(t, view, "Destekçi")
+	require.Contains(t, view, "doğrulanmamış")
+	require.Contains(t, view, pending.Verification)
+
+	runAction(t, d, supportPress(t, d, "a"))
+	require.NoError(t, <-joined)
+	d.HandleMsg(SupportTick{})
+	view = renderSupport(d)
+	require.Contains(t, view, "Bağlı: Destekçi")
+	require.Contains(t, view, "Sistem bilgisi ve tanılama")
+
+	// Pausing the task is separate from ending the session.
+	runAction(t, d, supportPress(t, d, "p"))
+	require.True(t, h.Status().Session.AgentPaused)
+	require.Equal(t, support.StatePaused, h.Status().State)
+	runAction(t, d, supportPress(t, d, "p"))
+
+	supportPress(t, d, "x")
+	require.Contains(t, renderSupport(d), "sonlandırılsın mı")
+	runAction(t, d, supportPress(t, d, "y"))
+	require.Equal(t, support.StateRevoked, h.Status().State)
+	require.Nil(t, h.Status().Session)
+	require.Eventually(t, func() bool { return c.Status().State.Terminal() }, 15*time.Second, 20*time.Millisecond)
+}
+

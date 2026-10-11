@@ -156,3 +156,72 @@ func (s *Server) handleCreateUpload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.uploadResult(g, st, existing))
 }
 
+func (s *Server) handleUploadStatus(w http.ResponseWriter, r *http.Request) {
+	g := grantFrom(r)
+	st, err := s.uploads.Status(r.PathValue("id"), g.Device.ID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, transfer.Code(err), err.Error(), false, "none")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.uploadResult(g, st, false))
+}
+
+func (s *Server) handleUploadChunk(w http.ResponseWriter, r *http.Request) {
+	g := grantFrom(r)
+	offset, err := strconv.ParseInt(r.URL.Query().Get("offset"), 10, 64)
+	if err != nil || r.ContentLength <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "chunk needs an offset query and a Content-Length", false, "none")
+		return
+	}
+	body := http.MaxBytesReader(w, r.Body, transfer.MaxChunkBytes)
+	st, err := s.uploads.Write(r.PathValue("id"), g.Device.ID, offset, body, r.ContentLength, strings.ToLower(r.Header.Get("X-Atlas-Chunk-SHA256")))
+	if err != nil {
+		status := http.StatusBadRequest
+		switch transfer.Code(err) {
+		case "not_found":
+			status = http.StatusNotFound
+		case "offset_mismatch":
+			status = http.StatusConflict
+		}
+		writeJSON(w, status, struct {
+			APIError
+			Upload UploadResult `json:"upload"`
+		}{APIError{Code: transfer.Code(err), Message: err.Error(), Effect: "none"}, s.uploadResult(g, st, false)})
+		return
+	}
+	writeJSON(w, http.StatusOK, s.uploadResult(g, st, false))
+}
+
+func (s *Server) handleUploadComplete(w http.ResponseWriter, r *http.Request) {
+	g := grantFrom(r)
+	st, err := s.uploads.Complete(r.PathValue("id"), g.Device.ID)
+	if err != nil && st.ID == "" {
+		writeError(w, http.StatusNotFound, transfer.Code(err), err.Error(), false, "none")
+		return
+	}
+	if err != nil && st.State == "receiving" {
+		// Not settled yet (incomplete or a transient disk error).
+		writeError(w, http.StatusConflict, transfer.Code(err), err.Error(), false, "none")
+		return
+	}
+	display := s.displayPath(g, st.Path)
+	final, ferr := s.finish(g, st.OperationID, func(o *Operation) {
+		if st.State == "complete" {
+			o.State, o.Effect, o.Path = taskstate.Completed, "applied", display
+			return
+		}
+		o.State, o.Effect, o.Error = taskstate.Failed, "none", st.Error
+	})
+	if ferr != nil {
+		writeError(w, http.StatusInternalServerError, "persist_failed", ferr.Error(), true, "unknown")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, transfer.Code(err), err.Error(), false, "none")
+		return
+	}
+	res := s.uploadResult(g, st, false)
+	res.Path = final.Path
+	writeJSON(w, http.StatusOK, res)
+}
+

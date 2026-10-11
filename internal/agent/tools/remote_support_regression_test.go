@@ -60,3 +60,39 @@ func TestRemoteSupportStatusRequiresLiveRead(t *testing.T) {
 	require.Equal(t, "unavailable", view["state"])
 }
 
+func TestRemoteSupportObservationDeliversImagePart(t *testing.T) {
+	t.Parallel()
+	backend := &fakeComputerBackend{size: computer.Size{Width: 40, Height: 40}, screenshot: testPNG(t, 40, 40)}
+	f := newSupportFixture(t, []support.Capability{support.CapScreenView}, func(o *support.HostOptions) { o.Desktop = backend })
+	got := callSupport(t, NewRemoteSupportTool(yolo(t), t.TempDir(), func() *support.Controller { return f.ctl }), "image", map[string]any{"action": "observe", "device_id": f.remote.RemoteDeviceID, "image": true})
+	require.False(t, got.resp.IsError)
+	require.Equal(t, "image", got.resp.Type)
+	require.Equal(t, "image/png", got.resp.MediaType)
+	require.Equal(t, backend.screenshot, got.resp.Data)
+	require.NotContains(t, got.resp.Content, "png_base64")
+	require.Contains(t, got.resp.Content, "observation_id")
+}
+
+func TestRemoteSupportTreeAliasUsesInspect(t *testing.T) {
+	t.Parallel()
+	f := newSupportFixture(t, []support.Capability{support.CapScreenView})
+	_, client, err := f.ctl.Target()
+	require.NoError(t, err)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request nodes.AutomationRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		if request.Action != "inspect" {
+			http.Error(w, "invalid action", http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write([]byte(`{"elements":[]}`))
+	}))
+	defer srv.Close()
+	client.BaseURL, client.HTTP = srv.URL, srv.Client()
+	tool := NewRemoteSupportTool(yolo(t), t.TempDir(), func() *support.Controller { return f.ctl })
+	for _, query := range []string{"tree", "inspect"} {
+		got := callSupport(t, tool, "tree", map[string]any{"action": "automation", "device_id": f.remote.RemoteDeviceID, "query": query})
+		require.False(t, got.resp.IsError, got.resp.Content)
+	}
+}
+

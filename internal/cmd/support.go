@@ -281,3 +281,50 @@ func runSupportHost(cmd *cobra.Command, _ []string) error {
 	}
 }
 
+// readSupportAnswer leaves status output in the caller's single render loop
+// and allows Ctrl+C to end support while the owner is answering.
+func readSupportAnswer(ctx context.Context, reader *bufio.Reader) (string, error) {
+	type answer struct {
+		text string
+		err  error
+	}
+	result := make(chan answer, 1)
+	go func() {
+		text, err := reader.ReadString('\n')
+		result <- answer{text: text, err: err}
+	}()
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	case value := <-result:
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		return value.text, value.err
+	}
+}
+
+func newSupportJoinCommand() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "join <code | CODE@host:port | atlas-support:// link>",
+		Short: "Connect to a computer offering support and run scripted checks",
+		Long: `join connects, shows the verification code to compare with the other screen,
+waits for the owner to accept and then runs the requested steps in order,
+printing one JSON result per step. Every result names the remote device. A
+step whose connection drops reports an unknown outcome and is not resent.`,
+		Example: `  atlas support join ABCD-EFGH-JKMN@192.168.1.20:51515 --sysinfo
+  atlas support join ABCD-EFGH-JKMN --push report.txt:Work/report.txt --pull Work/log.txt:log.txt --exec "notepad.exe"`,
+		Args: cobra.ExactArgs(1),
+		RunE: runSupportJoin,
+	}
+	addSupportCommonFlags(c)
+	c.Flags().Bool("sysinfo", false, "Read system information")
+	c.Flags().StringArray("push", nil, "Send local:remote (remote starts with a folder label)")
+	c.Flags().StringArray("pull", nil, "Fetch remote:local into the current directory")
+	c.Flags().StringArray("exec", nil, "Run a command line (split on spaces, no shell)")
+	c.Flags().StringArray("launch", nil, "Open a program on the remote desktop (split on spaces)")
+	c.Flags().Bool("observe", false, "Read the remote screen geometry and windows")
+	c.Flags().Bool("wait", false, "Stay connected until Ctrl+C after the steps")
+	return c
+}
+

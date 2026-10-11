@@ -67,3 +67,63 @@ type RemoteSupportParams struct {
 	PermissionID string   `json:"permission_id,omitempty" description:"permission_status: id from request_permission."`
 }
 
+const remoteSupportExample = `{"action":"system_info","device_id":"node-0123456789abcdef"}`
+
+// SupportControllerFunc returns the active supporting end, or nil when this
+// computer is not supporting another one.
+type SupportControllerFunc func() *support.Controller
+
+type remoteSupportTool struct {
+	permissions permission.Service
+	workingDir  string
+	controller  SupportControllerFunc
+	// reconcileWait bounds how long an unknown outcome waits for the
+	// connection to come back before it is reported unreconciled.
+	reconcileWait time.Duration
+}
+
+// NewRemoteSupportTool builds the tool over the /support controller. It
+// never falls back to this computer: without a connected computer every
+// action fails with no_support_target.
+func NewRemoteSupportTool(permissions permission.Service, workingDir string, controller SupportControllerFunc) fantasy.AgentTool {
+	t := &remoteSupportTool{permissions: permissions, workingDir: workingDir, controller: controller, reconcileWait: 15 * time.Second}
+	return fantasy.NewAgentTool(RemoteSupportToolName, remoteSupportDescription, t.handle)
+}
+
+func (t *remoteSupportTool) handle(ctx context.Context, _ RemoteSupportParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	var p RemoteSupportParams
+	if err := strictDecode(call.Input, &p, remoteSupportExample); err != nil {
+		return withToolOutcome(deviceErrorResponse(err), ToolOutcome{Dispatch: "none", Kind: outcome.KindObservation, Claim: "invalid_request"}), nil
+	}
+	resp := t.run(ctx, p, call)
+	if t.controller != nil {
+		var res supportResult
+		if json.Unmarshal([]byte(resp.Content), &res) == nil {
+			record(t.controller(), p, res)
+		}
+	}
+	return resp, nil
+}
+
+// supportResult is the envelope of every result: the target computer, the
+// operation, whether anything was sent, whether it applied and whether the
+// result is verified.
+type supportResult struct {
+	OK             bool             `json:"ok"`
+	Action         string           `json:"action"`
+	Device         supportDevice    `json:"device"`
+	OperationID    string           `json:"operation_id,omitempty"`
+	InputSent      bool             `json:"input_sent"`
+	Effect         support.Effect   `json:"effect"`
+	Verified       string           `json:"verification"`
+	Result         any              `json:"result,omitempty"`
+	Error          *support.Error   `json:"error,omitempty"`
+	Checkpoint     *supportCheck    `json:"checkpoint,omitempty"`
+	Reconciled     *nodes.Operation `json:"reconciled,omitempty"`
+	Note           string           `json:"note,omitempty"`
+	Image          []byte           `json:"-"`
+	ImageMediaType string           `json:"-"`
+	NativeMetadata string           `json:"metadata,omitempty"`
+	StopTurn       bool             `json:"waiting_for_user,omitempty"`
+}
+

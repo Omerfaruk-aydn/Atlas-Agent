@@ -705,3 +705,52 @@ func TestPermissionAnswersBindToTheRequest(t *testing.T) {
 	require.NotContains(t, r.Capabilities, CapInstall, "only what was asked and answered is granted")
 }
 
+// Scenario 15: an unavailable remote desktop is reported as such.
+func TestRemoteDesktopUnavailableIsExplicit(t *testing.T) {
+	t.Parallel()
+	h := startHost(t, func(o *HostOptions) { o.DesktopReason = "no interactive session" })
+	c := startController(t, nil)
+	r := connect(t, h, c, []Capability{CapScreenView, CapInput})
+	require.False(t, r.Desktop)
+	_, err := client(t, c).Observe(t.Context(), false)
+	e := Classify(err, r.RemoteDeviceID, "")
+	require.Equal(t, CodeDesktopUnavailable, e.Code)
+	require.Equal(t, r.RemoteDeviceID, e.RemoteDeviceID)
+}
+
+func TestOwnerPausesAreSeparate(t *testing.T) {
+	t.Parallel()
+	desk := &fakeDesktop{size: computer.Size{Width: 800, Height: 600}}
+	h := startHost(t, func(o *HostOptions) { o.Desktop = desk })
+	c := startController(t, nil)
+	r := connect(t, h, c, []Capability{CapSystemInfo, CapCommand, CapScreenView, CapInput})
+	cl := client(t, c)
+
+	require.NoError(t, h.PauseInput(true))
+	obs, err := cl.Observe(t.Context(), false)
+	require.NoError(t, err, "viewing continues while screen control is paused")
+	_, err = cl.Input(t.Context(), nodes.DesktopInput{OperationID: "op-c1-000", ObservationID: obs.ObservationID, Action: "click", X: 1, Y: 1})
+	require.Equal(t, CodeControlPaused, codeOf(t, err, r.RemoteDeviceID))
+	_, err = cl.Exec(t.Context(), nodes.ExecRequest{OperationID: "op-e1-000", Argv: helper(t, "echo")})
+	require.NoError(t, err, "commands are not screen control")
+	require.NoError(t, h.PauseInput(false))
+
+	require.NoError(t, h.PauseAgent(true))
+	require.Equal(t, StatePaused, h.Status().State)
+	_, err = cl.Exec(t.Context(), nodes.ExecRequest{OperationID: "op-e2-000", Argv: helper(t, "echo")})
+	require.Equal(t, CodeSessionPaused, codeOf(t, err, r.RemoteDeviceID))
+	_, err = cl.SystemInfo(t.Context())
+	require.NoError(t, err, "reading stays available while the task is paused")
+	ref, err := c.Refresh(t.Context())
+	require.NoError(t, err)
+	require.True(t, ref.AgentPaused)
+	require.NoError(t, h.PauseAgent(false))
+	_, err = cl.Exec(t.Context(), nodes.ExecRequest{OperationID: "op-e3-000", Argv: helper(t, "echo")})
+	require.NoError(t, err)
+
+	require.NoError(t, h.SetCapabilities([]Capability{CapSystemInfo}))
+	_, err = cl.Exec(t.Context(), nodes.ExecRequest{OperationID: "op-e4-000", Argv: helper(t, "echo")})
+	require.Equal(t, CodeCapabilityDenied, codeOf(t, err, r.RemoteDeviceID))
+	require.Zero(t, desk.clicks.Load())
+}
+

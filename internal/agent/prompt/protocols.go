@@ -14,7 +14,7 @@ const ProtocolVersion = "atlas-prompt-v3"
 //go:embed protocols/*.md
 var protocols embed.FS
 
-var protocolOrder = []string{"large_project", "architecture", "migration", "debug", "research", "ui", "automation", "artifacts", "data_analysis", "security", "integration", "operations", "platform"}
+var protocolOrder = []string{"large_project", "architecture", "migration", "debug", "research", "ui", "automation", "artifacts", "data_analysis", "security", "integration", "operations", "support", "platform"}
 
 type protocolKey struct{}
 
@@ -58,6 +58,7 @@ func SelectProtocols(task, role string) []string {
 		"security":      has("security", "vulnerability", "güvenlik"),
 		"integration":   has("integration", "mcp", "connector", "entegrasyon"),
 		"operations":    has("operations", "slack", "calendar", "takvim", "toplantı"),
+		"support":       role == "it-support" || has("remote_support", "helpdesk") || containsAny(strings.ToLower(task), "uzak destek", "uzaktan destek", "remote support", "it support", "bt destek", "karşı bilgisayar", "karşıdaki bilgisayar", "bağlı bilgisayar", "destek oturumu", "support session"),
 		"large_project": has("platform", "modules", "modüller", "modülleri", "orchestrate", "workflow", "planner", "planning", "roadmap", "mimari", "architect", "architecture") || len(task) > 1600,
 		"architecture":  has("architect", "architecture", "mimari", "mimarisini", "contract", "contracts", "sözleşme", "api", "backend"),
 		"migration":     has("migration", "migrate", "migrasyon", "schema", "şema", "backfill", "upgrade", "sqlite", "database", "veritabanı"),
@@ -73,6 +74,15 @@ func SelectProtocols(task, role string) []string {
 		}
 	}
 	return out
+}
+
+func containsAny(s string, phrases ...string) bool {
+	for _, p := range phrases {
+		if strings.Contains(s, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // RenderProtocols resolves only known embedded modules in stable order.

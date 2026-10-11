@@ -185,3 +185,35 @@ func TestRemoteSupportHostWorkflowUsesOnlyRemoteBackend(t *testing.T) {
 	require.Len(t, backend.keys, 24)
 }
 
+func TestSupportExecutorRefusesForeignTools(t *testing.T) {
+	t.Parallel()
+	e := NewSupportExecutor(t.TempDir(), nil, config.ToolBrowser{})
+	for _, req := range []nodes.RemoteToolRequest{
+		{Tool: "bash", Input: json.RawMessage(`{"command":"anything"}`)},
+		{Tool: "browser", Input: json.RawMessage(`{"action":"eval","script":"anything"}`)},
+		{Tool: "tool_pipeline", Input: json.RawMessage(`{"steps":[{"id":"x","tool":"bash","arguments":{}}]}`)},
+		{Tool: "tool_pipeline", Input: json.RawMessage(`{"steps":[{"id":"first","tool":"computer","arguments":{"action":"key","key":"escape"}},{"id":"later","tool":"browser","arguments":{"action":"eval","script":"anything"}}]}`)},
+		{Tool: "tool_pipeline", Input: json.RawMessage(`{"steps":[{"id":"x","tool":"browser","arguments":{"action":"observe"},"bindings":{"action":"earlier#/value"}}]}`)},
+		{Tool: "tool_pipeline", Input: json.RawMessage(`{"browser":{"steps":[{"id":"x","action":"upload","target":{"selector":"input"}}]}}`)},
+	} {
+		_, err := e.Validate(req)
+		require.Error(t, err)
+	}
+	_, err := e.Run(context.Background(), nodes.Grant{SessionID: "ss-test"}, nodes.RemoteToolRequest{Tool: "computer", Input: json.RawMessage(`{"action":"windows"}`)}, nil)
+	require.Error(t, err)
+}
+
+func TestSupportExecutorKeepsRuntimeStateOutsideExposedDrives(t *testing.T) {
+	t.Parallel()
+	stateDir, drive := t.TempDir(), t.TempDir()
+	backend := &fakeComputerBackend{size: computer.Size{Width: 40, Height: 40}}
+	e := NewSupportExecutor(stateDir, backend, config.ToolBrowser{})
+	id := fmt.Sprintf("scope-%p", e)
+	t.Cleanup(func() { e.Close(id) })
+	resp, err := e.Run(t.Context(), nodes.Grant{SessionID: id, Roots: []nodes.Root{{Label: "Drive", Path: drive}}}, nodes.RemoteToolRequest{OperationID: "read-screen", Tool: "computer", Input: json.RawMessage(`{"action":"screen_size"}`)}, func(nodes.Need) error { return nil })
+	require.NoError(t, err)
+	require.False(t, resp.IsError, resp.Content)
+	require.DirExists(t, filepath.Join(stateDir, ".atlas", "interactions"))
+	require.NoDirExists(t, filepath.Join(drive, ".atlas"))
+}
+

@@ -202,3 +202,60 @@ func TestRemoteSupportUnknownOutcomeIsReconciledNotResent(t *testing.T) {
 	require.Equal(t, "ran\n", string(data))
 }
 
+// Scenarios 15 and 16: an unavailable remote desktop or browser never turns
+// into local desktop or browser use.
+func TestRemoteSupportDesktopAndBrowserStayRemote(t *testing.T) {
+	t.Parallel()
+	f := newSupportFixture(t, []support.Capability{support.CapScreenView, support.CapInput})
+	tool := NewRemoteSupportTool(yolo(t), t.TempDir(), func() *support.Controller { return f.ctl })
+
+	got := callSupport(t, tool, "c1", map[string]any{"action": "observe", "device_id": f.remote.RemoteDeviceID})
+	require.Equal(t, string(support.CodeDesktopUnavailable), errCode(got))
+	require.Equal(t, f.remote.RemoteDeviceID, got.body["device"].(map[string]any)["remote_device_id"])
+
+	got = callSupport(t, tool, "c2", map[string]any{"action": "launch", "device_id": f.remote.RemoteDeviceID, "argv": []string{"msedge", "https://example.com"}})
+	require.Contains(t, []string{string(support.CodeDesktopUnavailable), string(support.CodeCapabilityDenied)}, errCode(got))
+	require.Equal(t, "none", got.outcome.Dispatch)
+
+	f2 := newSupportFixture(t, []support.Capability{support.CapScreenView})
+	tool = NewRemoteSupportTool(yolo(t), t.TempDir(), func() *support.Controller { return f2.ctl })
+	got = callSupport(t, tool, "c3", map[string]any{"action": "launch", "device_id": f2.remote.RemoteDeviceID, "argv": []string{"chrome", "https://example.com"}})
+	require.Contains(t, []string{string(support.CodeDesktopUnavailable), string(support.CodeCapabilityDenied)}, errCode(got))
+	require.False(t, got.body["input_sent"].(bool))
+}
+
+// Scenario 18: an installer that exits 0 is not reported as a verified
+// installation.
+func TestRemoteSupportInstallIsNotReportedAsVerified(t *testing.T) {
+	t.Parallel()
+	f := newSupportFixture(t, []support.Capability{support.CapCommand, support.CapInstall})
+	exe, err := os.Executable()
+	require.NoError(t, err)
+	installer := filepath.Join(t.TempDir(), "app-installer"+filepath.Ext(exe))
+	copyFile(t, exe, installer)
+	tool := NewRemoteSupportTool(yolo(t), t.TempDir(), func() *support.Controller { return f.ctl })
+	got := callSupport(t, tool, "c1", map[string]any{"action": "exec", "device_id": f.remote.RemoteDeviceID, "argv": []string{installer, "-remote-support-helper=ok"}, "cwd": "Work"})
+	require.False(t, got.resp.IsError, got.resp.Content)
+	require.Equal(t, "install_unverified", got.body["verification"])
+	require.False(t, got.outcome.Verified)
+	require.Contains(t, got.body["note"], "Not verified")
+
+	// Without the install grant the same program is refused before it runs.
+	f2 := newSupportFixture(t, []support.Capability{support.CapCommand})
+	tool = NewRemoteSupportTool(yolo(t), t.TempDir(), func() *support.Controller { return f2.ctl })
+	got = callSupport(t, tool, "c2", map[string]any{"action": "exec", "device_id": f2.remote.RemoteDeviceID, "argv": []string{installer, "-remote-support-helper=ok"}})
+	require.Equal(t, string(support.CodeCapabilityDenied), errCode(got))
+}
+
+func copyFile(t *testing.T, src, dst string) {
+	t.Helper()
+	in, err := os.Open(src)
+	require.NoError(t, err)
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	require.NoError(t, err)
+	_, err = io.Copy(out, in)
+	require.NoError(t, err)
+	require.NoError(t, out.Close())
+}
+

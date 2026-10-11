@@ -95,3 +95,79 @@ func (h *Host) handleRequestPermission(w http.ResponseWriter, r *http.Request) {
 	writeSupportJSON(w, http.StatusAccepted, out)
 }
 
+func (h *Host) handlePermissionStatus(w http.ResponseWriter, r *http.Request) {
+	g, apiErr, status := h.Authorize(r, nodes.NeedInfo)
+	if apiErr != nil {
+		writeSupportJSON(w, status, apiErr)
+		return
+	}
+	h.mu.Lock()
+	p := h.permission
+	var out PermissionRequest
+	if p != nil && p.ID == r.PathValue("id") && p.SessionID == g.SessionID {
+		out = *p
+	}
+	h.mu.Unlock()
+	if out.ID == "" {
+		writeSupportJSON(w, http.StatusNotFound, apiErr2(CodeProtocol, "no such permission request in this session"))
+		return
+	}
+	writeSupportJSON(w, http.StatusOK, out)
+}
+
+func (h *Host) handleCancelPermission(w http.ResponseWriter, r *http.Request) {
+	g, apiErr, status := h.Authorize(r, nodes.NeedInfo)
+	if apiErr != nil {
+		writeSupportJSON(w, status, apiErr)
+		return
+	}
+	h.mu.Lock()
+	p := h.permission
+	var out PermissionRequest
+	if p != nil && p.ID == r.PathValue("id") && p.SessionID == g.SessionID {
+		if p.State == PermissionPending {
+			p.State = PermissionCanceled
+		}
+		out = *p
+	}
+	h.mu.Unlock()
+	if out.ID == "" {
+		writeSupportJSON(w, http.StatusNotFound, apiErr2(CodeProtocol, "no such permission request in this session"))
+		return
+	}
+	h.notify()
+	writeSupportJSON(w, http.StatusOK, out)
+}
+
+// ErrStaleAnswer is returned for an answer to a request that was
+// canceled, superseded or already answered; nothing changes.
+var ErrStaleAnswer = errors.New("that permission request is no longer pending")
+
+// AnswerPermission applies the owner's answer to exactly the request id
+// and revision shown to them.
+func (h *Host) AnswerPermission(id string, revision int, grant bool) error {
+	h.mu.Lock()
+	p := h.permission
+	s := h.session
+	if p == nil || s == nil || p.ID != id || p.Revision != revision || p.State != PermissionPending || p.SessionID != s.id {
+		h.mu.Unlock()
+		return ErrStaleAnswer
+	}
+	kind := "permission_denied"
+	if grant {
+		p.State = PermissionGranted
+		s.caps = Normalize(append(slices.Clone(s.caps), p.Capabilities...))
+		kind = "permission_granted"
+	} else {
+		p.State = PermissionDenied
+	}
+	sessionID, caps := s.id, strings.Join(Strings(p.Capabilities), ",")
+	h.mu.Unlock()
+	_ = h.history.Append(Event{SessionID: sessionID, Role: "host", Kind: kind, Fields: map[string]string{"capabilities": caps, "request": id}})
+	h.notify()
+	return nil
+}
+
+func apiErr2(code Code, msg string) *nodes.APIError {
+	return &nodes.APIError{Code: string(code), Message: msg, Effect: "none"}
+}

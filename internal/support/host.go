@@ -1226,3 +1226,79 @@ func (h *Host) close() {
 	}
 }
 
+// goWork runs fn as a tracked connection goroutine.
+func (h *Host) goWork(fn func()) bool {
+	if !h.beginWork() {
+		return false
+	}
+	go func() {
+		defer h.work.Done()
+		fn()
+	}()
+	return true
+}
+
+// beginWork prevents new writers from racing with shutdown's Wait.
+func (h *Host) beginWork() bool {
+	h.workMu.Lock()
+	defer h.workMu.Unlock()
+	if h.closed {
+		return false
+	}
+	h.work.Add(1)
+	return true
+}
+
+// afterFunc tracks callbacks that have started and refuses them after Close.
+func (h *Host) afterFunc(delay time.Duration, fn func()) *time.Timer {
+	return time.AfterFunc(delay, func() { h.goWork(fn) })
+}
+
+// sessionPath returns the live session view to the controller, including
+// pauses and narrowed permissions the owner changed after acceptance.
+const sessionPath = "/v1/support/session"
+
+func (h *Host) routes(node http.Handler) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/", node)
+	mux.HandleFunc("POST /v1/support/tool", h.handleTool)
+	mux.HandleFunc("POST "+permissionsPath, h.handleRequestPermission)
+	mux.HandleFunc("GET "+permissionsPath+"/{id}", h.handlePermissionStatus)
+	mux.HandleFunc("DELETE "+permissionsPath+"/{id}", h.handleCancelPermission)
+	mux.HandleFunc("GET "+sessionPath, func(w http.ResponseWriter, r *http.Request) {
+		g, apiErr, status := h.Authorize(r, nodes.NeedInfo)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		if apiErr != nil {
+			w.WriteHeader(status)
+			_ = json.NewEncoder(w).Encode(apiErr)
+			return
+		}
+		h.mu.Lock()
+		s := h.session
+		var info SessionInfo
+		if s != nil && s.id == g.SessionID {
+			info = h.sessionInfo(s, g.Generation)
+		}
+		h.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(info)
+	})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !h.beginWork() {
+			writeSupportJSON(w, http.StatusServiceUnavailable, apiErr2(CodeSessionRevoked, "the support host is shutting down"))
+			return
+		}
+		defer h.work.Done()
+		mux.ServeHTTP(w, r)
+	})
+}
+
+func (h *Host) grant(s *hostSession, gen uint64) nodes.Grant {
+	return nodes.Grant{Device: nodes.Device{ID: "support-" + s.id, Name: s.peer.Name}, SessionID: s.id, Generation: gen, Roots: slices.Clone(s.roots), Permissions: Strings(s.caps)}
+}
+
+func apiErr(code Code, format string, args ...any) *nodes.APIError {
+	e := Errorf(code, format, args...)
+	return &nodes.APIError{Code: string(code), Message: e.Message, Effect: "none"}
+}
+

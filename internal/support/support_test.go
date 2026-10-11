@@ -854,3 +854,22 @@ func TestRelayModeAndItsAbsence(t *testing.T) {
 	})
 }
 
+func slogTo(w *bytes.Buffer) *slog.Logger {
+	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
+// The relay only sees opaque TLS: a relay that forwards the code proof
+// between two separate TLS sessions cannot complete the join, because the
+// proof is bound to the TLS exporter.
+func TestProofIsBoundToTheTLSSession(t *testing.T) {
+	t.Parallel()
+	code, err := NewPairingCode()
+	require.NoError(t, err)
+	key := code.key()
+	a := proof(key, "controller", bytes.Repeat([]byte{1}, 32))
+	b := proof(key, "controller", bytes.Repeat([]byte{2}, 32))
+	require.NotEqual(t, a, b)
+	require.NotEqual(t, proof(key, "host", bytes.Repeat([]byte{1}, 32)), a, "roles are separated")
+	other, _ := NewPairingCode()
+	require.NotEqual(t, proof(other.key(), "controller", bytes.Repeat([]byte{1}, 32)), a)
+}

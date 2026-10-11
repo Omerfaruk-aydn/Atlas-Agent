@@ -83,7 +83,7 @@ var toolCategoryByName = map[string]string{
 	"doc_index":  "docs", "generate_docstring": "docs",
 	"agent_jobs": "platform", "task_board": "platform", "source_memory": "memory",
 	"list_mcp_resources": "mcp", "read_mcp_resource": "mcp",
-	"isolated_desktop": "devices", "android": "devices", "remote_node": "devices", "screen_mark": "devices", "app_loop": "devices",
+	"isolated_desktop": "devices", "android": "devices", "remote_node": "devices", "remote_support": "devices", "screen_mark": "devices", "app_loop": "devices",
 	"integrations": "mcp", "local_app": "apps",
 }
 
@@ -322,6 +322,13 @@ func IntentTools(text string) []string {
 	for _, phrase := range []string{"remote node", "atlas node", "diger bilgisayar", "other computer", "birden fazla bilgisayar", "wsl", "linux makine", "uzak makine", "remote machine"} {
 		if strings.Contains(folded, phrase) {
 			add("remote_node")
+		}
+	}
+	// Remote IT support needs the connected computer named; "support" alone
+	// is too common.
+	for _, phrase := range []string{"remote support", "uzak destek", "uzaktan destek", "karsi bilgisayar", "karsidaki bilgisayar", "bagli bilgisayar", "baglandigim bilgisayar", "connected computer", "supported computer", "destek oturumu", "support session", "it support", "bt destek"} {
+		if strings.Contains(folded, phrase) {
+			add("remote_support")
 		}
 	}
 	for _, phrase := range []string{"<screen_mark", "isaretledigim", "isaretledim", "ekranda isaret", "marked region", "i marked", "screen mark"} {

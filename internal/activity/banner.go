@@ -43,8 +43,11 @@ func WithLanguage(ctx context.Context, language string) context.Context {
 // BannerText returns translated, Atlas-authored control status and stop labels.
 func BannerText(e Event) (string, string) {
 	caption := "Atlas is using your computer"
-	if e.Resource == "browser" {
+	switch e.Resource {
+	case "browser":
 		caption = "Atlas is using your browser"
+	case "support":
+		caption = "Remote support is active"
 	}
 	return i18n.Text(e.Language, caption), i18n.Text(e.Language, "Stop")
 }

@@ -65,6 +65,7 @@ var toolCategories = map[string]ToolCategory{
 	"local_app":          CategoryExecute,
 	"integrations":       CategoryNetwork,
 	"remote_node":        CategoryNetwork,
+	"remote_support":     CategoryExecute,
 	"remote_control":     CategoryNetwork,
 	"fetch":              CategoryNetwork,
 	"web_fetch":          CategoryNetwork,

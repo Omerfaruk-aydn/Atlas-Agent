@@ -1000,3 +1000,69 @@ func (d *Support) capList(caps []support.Capability) string {
 	return strings.Join(labels, ", ")
 }
 
+func (d *Support) connectLines(text int) []string {
+	st := d.ctl
+	var lines []string
+	if d.joining {
+		lines = append(lines, d.strong(d.com.Text("Connecting…")))
+		if st.Pending != nil {
+			p := st.Pending
+			lines = append(lines,
+				fmt.Sprintf(d.com.Text("Found %s (%s/%s) via %s"), p.Host.Name, p.Host.OS, p.Host.Arch, p.Network),
+				d.strong(fmt.Sprintf(d.com.Text("Verification code: %s — confirm it matches the other screen"), p.Verification)),
+				d.muted(d.com.Text("Waiting for the computer owner to accept…")),
+			)
+		}
+		return lines
+	}
+	if r := st.Remote; r != nil && !st.State.Terminal() {
+		desktop := d.com.Text("available")
+		if !r.Desktop {
+			desktop = d.com.Text("not available") + " (" + r.DesktopReason + ")"
+		}
+		lines = append(lines,
+			d.strong(fmt.Sprintf(d.com.Text("Connected to %s"), r.RemoteName)),
+			fmt.Sprintf(d.com.Text("Device id %s · fingerprint %s"), r.RemoteDeviceID, support.ShortFingerprint(r.RemoteFingerprint)),
+			fmt.Sprintf(d.com.Text("System: %s/%s · state %s · connection %d via %s"), r.OS, r.Arch, d.com.Text(string(st.State)), r.Generation, r.Network),
+			fmt.Sprintf(d.com.Text("Signed-in user: %s · Screen control: %s"), r.OwnerIdentity, desktop),
+			fmt.Sprintf(d.com.Text("Permissions: %s"), d.capList(r.Capabilities)),
+			fmt.Sprintf(d.com.Text("Folders: %s"), strings.Join(r.Roots, ", ")),
+			fmt.Sprintf(d.com.Text("Session ends at %s"), time.UnixMilli(r.ExpiresAt).Format("15:04")),
+		)
+		if r.AgentPaused {
+			lines = append(lines, d.strong(d.com.Text("The owner paused the support task.")))
+		}
+		lines = append(lines, "", d.muted(d.com.Text("Give tasks in the chat; the agent works only on this computer through remote_support. x disconnects.")))
+		return lines
+	}
+	lines = append(lines,
+		d.muted(d.com.Text("Same network: the code is enough (or CODE@address). Another network: both computers need the same support relay (settings).")),
+	)
+	if st.Reason != "" && st.State.Terminal() {
+		lines = append(lines, d.muted(fmt.Sprintf(d.com.Text("Last session: %s (%s)"), d.com.Text(string(st.State)), st.Reason)))
+	}
+	_ = text
+	return lines
+}
+
+func (d *Support) sessionLines(text int) []string {
+	var lines []string
+	if d.hasHost && d.host.Session != nil {
+		s := d.host.Session
+		lines = append(lines, d.strong(d.com.Text("This computer receives support")),
+			fmt.Sprintf("  %s · %s · %s", s.Peer.Name, support.ShortFingerprint(s.Peer.Fingerprint), d.com.Text(string(d.host.State))))
+	}
+	if d.hasCtl && d.ctl.Remote != nil && !d.ctl.State.Terminal() {
+		r := d.ctl.Remote
+		lines = append(lines, d.strong(d.com.Text("This computer supports another")),
+			fmt.Sprintf("  %s · %s · %s · %s", r.RemoteName, r.RemoteDeviceID, r.OS, d.com.Text(string(d.ctl.State))))
+	}
+	if len(lines) == 0 {
+		lines = append(lines, d.muted(d.com.Text("No active support sessions.")))
+	} else {
+		lines = append(lines, "", d.muted(d.com.Text("x ends the session")))
+	}
+	_ = text
+	return lines
+}
+

@@ -399,3 +399,70 @@ func (u *Uploads) Complete(id, owner string) (UploadStatus, error) {
 	return rec.Status, nil
 }
 
+// Abort discards partial data. A completed upload is not undone.
+func (u *Uploads) Abort(id, owner string) (UploadStatus, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	rec, err := u.owned(id, owner)
+	if err != nil {
+		return UploadStatus{}, err
+	}
+	if rec.Status.State != "receiving" {
+		return rec.Status, nil
+	}
+	rec.Status.State = "aborted"
+	_ = os.Remove(u.partPath(id))
+	return rec.Status, u.store(rec)
+}
+
+// Entry is one directory listing row.
+type Entry struct {
+	Name    string `json:"name"`
+	Dir     bool   `json:"dir,omitempty"`
+	Link    bool   `json:"link,omitempty"`
+	Size    int64  `json:"size"`
+	ModTime int64  `json:"mod_time"`
+}
+
+// List reads up to limit entries of root/rel. Links are reported but never
+// followed, so a listing cannot reveal anything outside root.
+func List(root, rel string, limit int) ([]Entry, bool, error) {
+	dir := root
+	if rel != "" && rel != "." {
+		var err error
+		if dir, err = Resolve(root, rel); err != nil {
+			return nil, false, err
+		}
+	} else if real, err := filepath.EvalSymlinks(root); err == nil {
+		dir = real
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return nil, false, fail("not_found", "%s: %v", rel, err)
+	}
+	if !info.IsDir() {
+		return nil, false, fail("invalid_path", "%q is not a directory", rel)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, false, err
+	}
+	if limit <= 0 {
+		limit = 500
+	}
+	out := make([]Entry, 0, min(len(entries), limit))
+	for _, e := range entries {
+		if len(out) >= limit {
+			return out, true, nil
+		}
+		row := Entry{Name: e.Name(), Dir: e.IsDir(), Link: e.Type()&os.ModeSymlink != 0}
+		if fi, err := e.Info(); err == nil {
+			row.ModTime = fi.ModTime().UnixMilli()
+			if fi.Mode().IsRegular() {
+				row.Size = fi.Size()
+			}
+		}
+		out = append(out, row)
+	}
+	return out, false, nil
+}

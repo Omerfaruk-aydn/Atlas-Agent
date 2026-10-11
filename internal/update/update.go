@@ -31,7 +31,22 @@ type Info struct {
 var goInstallRegexp = regexp.MustCompile(`^v?\d+\.\d+\.\d+-\d+\.\d{14}-[0-9a-f]{12}$`)
 
 func (i Info) IsDevelopment() bool {
-	return i.Current == "devel" || i.Current == "unknown" || strings.Contains(i.Current, "dirty") || goInstallRegexp.MatchString(i.Current)
+	current := strings.ToLower(strings.TrimPrefix(i.Current, "v"))
+	if current == "devel" || current == "unknown" || strings.Contains(current, "dirty") || goInstallRegexp.MatchString(i.Current) {
+		return true
+	}
+	// Named development builds must not enter the release updater, which
+	// can rename their executable even though npm installs elsewhere.
+	if suffix := strings.IndexAny(current, "-+"); suffix >= 0 {
+		for _, part := range strings.FieldsFunc(current[suffix+1:], func(r rune) bool {
+			return r == '-' || r == '+' || r == '.' || r == '_'
+		}) {
+			if part == "dev" || part == "devel" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Available returns true if there's an update available.
@@ -41,6 +56,9 @@ func (i Info) IsDevelopment() bool {
 // If current is a pre-release and latest isn't, returns true.
 // If latest is a pre-release and current isn't, returns false.
 func (i Info) Available() bool {
+	if i.IsDevelopment() {
+		return false
+	}
 	cpr := strings.Contains(i.Current, "-")
 	lpr := strings.Contains(i.Latest, "-")
 	// current is pre release && latest isn't a prerelease
@@ -57,8 +75,11 @@ func (i Info) Available() bool {
 // Check checks if a new version is available.
 func Check(ctx context.Context, current string, client Client) (Info, error) {
 	info := Info{
-		Current: current,
-		Latest:  current,
+		Current: strings.TrimPrefix(current, "v"),
+		Latest:  strings.TrimPrefix(current, "v"),
+	}
+	if info.IsDevelopment() {
+		return info, nil
 	}
 
 	release, err := client.Latest(ctx)

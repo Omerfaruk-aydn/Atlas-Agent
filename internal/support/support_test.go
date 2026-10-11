@@ -407,3 +407,31 @@ func TestViewOnlySessionRefusesCommandsAndInput(t *testing.T) {
 	require.Equal(t, EffectNone, e.Effect)
 }
 
+// Scenario 6: requests naming another session or device are refused.
+func TestWrongDeviceOrSessionIsRefused(t *testing.T) {
+	t.Parallel()
+	h := startHost(t, nil)
+	c := startController(t, nil)
+	r := connect(t, h, c, Presets["diagnose"])
+	c.mu.Lock()
+	cc, token := c.cc, c.token
+	c.mu.Unlock()
+	for name, tr := range map[string]*sessionTransport{
+		"device":     {cc: cc, session: r.SessionID, target: "node-someone-else", generation: r.Generation},
+		"session":    {cc: cc, session: "ss-0000000000000000", target: r.RemoteDeviceID, generation: r.Generation},
+		"generation": {cc: cc, session: r.SessionID, target: r.RemoteDeviceID, generation: r.Generation + 7},
+	} {
+		cl := &nodes.Client{BaseURL: "https://atlas-support", Token: token, HTTP: &http.Client{Transport: tr}}
+		_, err := cl.SystemInfo(t.Context())
+		want := CodeWrongTarget
+		if name == "generation" {
+			want = CodeStaleConnection
+		}
+		require.Equal(t, want, codeOf(t, err, r.RemoteDeviceID), name)
+	}
+	// A wrong token is refused too.
+	cl := &nodes.Client{BaseURL: "https://atlas-support", Token: "forged", HTTP: &http.Client{Transport: &sessionTransport{cc: cc, session: r.SessionID, target: r.RemoteDeviceID, generation: r.Generation}}}
+	_, err := cl.SystemInfo(t.Context())
+	require.Equal(t, CodeSessionRevoked, codeOf(t, err, r.RemoteDeviceID))
+}
+

@@ -60,3 +60,65 @@ func (c Capability) Label() string {
 	return string(c)
 }
 
+// IsFileCapability reports permissions that need a filesystem access scope.
+func IsFileCapability(c Capability) bool {
+	return c == CapFileRead || c == CapFileSend || c == CapFileReceive || c == CapFileModify
+}
+
+// HighImpact reports capabilities the owner should grant deliberately.
+func (c Capability) HighImpact() bool {
+	switch c {
+	case CapFileModify, CapCommand, CapInput, CapInstall, CapServices, CapRestart:
+		return true
+	}
+	return false
+}
+
+// Presets are starting scopes the owner can adjust before creating a code.
+var Presets = map[string][]Capability{
+	"diagnose": {CapSystemInfo, CapFileRead, CapScreenView},
+	"assist":   {CapSystemInfo, CapFileRead, CapFileSend, CapFileReceive, CapScreenView, CapInput, CapBrowser},
+	"full":     {CapSystemInfo, CapFileRead, CapFileSend, CapFileReceive, CapFileModify, CapCommand, CapScreenView, CapInput, CapBrowser, CapInstall, CapServices, CapRestart},
+}
+
+// ParseCapabilities validates a comma-separated list or a preset name.
+func ParseCapabilities(s string) ([]Capability, error) {
+	if preset, ok := Presets[strings.TrimSpace(s)]; ok {
+		return slices.Clone(preset), nil
+	}
+	var out []Capability
+	for part := range strings.SplitSeq(s, ",") {
+		c := Capability(strings.TrimSpace(part))
+		if c == "" {
+			continue
+		}
+		if !slices.Contains(AllCapabilities, c) {
+			return nil, fmt.Errorf("unknown capability %q", c)
+		}
+		if !slices.Contains(out, c) {
+			out = append(out, c)
+		}
+	}
+	return Normalize(out), nil
+}
+
+// Normalize deduplicates and orders capabilities.
+func Normalize(caps []Capability) []Capability {
+	var out []Capability
+	for _, c := range AllCapabilities {
+		if slices.Contains(caps, c) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// Strings converts for wire and display.
+func Strings(caps []Capability) []string {
+	out := make([]string, 0, len(caps))
+	for _, c := range caps {
+		out = append(out, string(c))
+	}
+	return out
+}
+

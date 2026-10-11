@@ -74,28 +74,79 @@ func Resolve(root, rel string) (string, error) {
 	if !within(realRoot, full) {
 		return "", fail("path_traversal", "path %q leaves the transfer root", rel)
 	}
-	// Walk existing ancestors and refuse any symlink that resolves outside.
-	probe := full
-	for {
-		if info, err := os.Lstat(probe); err == nil {
-			if info.Mode()&os.ModeSymlink != 0 || probe != full {
-				resolved, err := filepath.EvalSymlinks(probe)
-				if err != nil {
-					return "", fail("symlink_escape", "cannot resolve %s: %v", probe, err)
-				}
-				if !within(realRoot, resolved) {
-					return "", fail("symlink_escape", "path %q resolves outside the transfer root", rel)
-				}
-			}
-			break
-		}
-		parent := filepath.Dir(probe)
-		if parent == probe || !within(realRoot, parent) {
-			break
-		}
-		probe = parent
+	// Follow every existing link component and refuse a path that lands
+	// outside the root. filepath.EvalSymlinks does not evaluate Windows
+	// junctions (mount points), so links are resolved component by
+	// component here instead.
+	linkedRoot, err := resolveLinks(realRoot, 0)
+	if err != nil {
+		return "", fail("invalid_root", "transfer root: %v", err)
+	}
+	resolved, err := resolveLinks(full, 0)
+	if err != nil {
+		return "", fail("symlink_escape", "cannot resolve %q: %v", rel, err)
+	}
+	if !within(linkedRoot, resolved) {
+		return "", fail("symlink_escape", "path %q resolves outside the transfer root", rel)
 	}
 	return full, nil
+}
+
+// maxLinkHops bounds link resolution so a cycle cannot loop forever.
+const maxLinkHops = 40
+
+// isLink reports a symlink or a Windows reparse point such as a junction,
+// which Lstat reports as an irregular file.
+func isLink(info os.FileInfo) bool {
+	return info.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0
+}
+
+// resolveLinks returns path with every existing link component replaced by
+// its target. Components that do not exist yet are kept as they are.
+func resolveLinks(path string, hops int) (string, error) {
+	path = filepath.Clean(path)
+	volume := filepath.VolumeName(path)
+	rest := strings.TrimPrefix(path[len(volume):], string(filepath.Separator))
+	cur := volume + string(filepath.Separator)
+	parts := strings.Split(rest, string(filepath.Separator))
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		next := filepath.Join(cur, part)
+		info, err := os.Lstat(next)
+		if err != nil {
+			return filepath.Join(append([]string{next}, parts[i+1:]...)...), nil
+		}
+		if !isLink(info) {
+			cur = next
+			continue
+		}
+		target, err := os.Readlink(next)
+		if err != nil {
+			if info.Mode()&os.ModeSymlink == 0 {
+				// An irregular file that is not a link (for example a
+				// deduplicated file) is an ordinary path component.
+				cur = next
+				continue
+			}
+			return "", err
+		}
+		if hops >= maxLinkHops {
+			return "", errors.New("too many links")
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(cur, target)
+		}
+		// Readlink may return a \\?\ prefixed path for a junction.
+		target = strings.TrimPrefix(target, `\\?\`)
+		resolvedTarget, err := resolveLinks(target, hops+1)
+		if err != nil {
+			return "", err
+		}
+		cur = resolvedTarget
+	}
+	return cur, nil
 }
 
 func within(root, path string) bool {

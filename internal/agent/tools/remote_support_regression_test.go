@@ -141,3 +141,47 @@ func (supportUnknownExecutor) Run(context.Context, nodes.Grant, nodes.RemoteTool
 
 func (supportUnknownExecutor) Close(string) {}
 
+func TestRemoteSupportNativeUnknownCannotBecomeCompleted(t *testing.T) {
+	t.Parallel()
+	f := newSupportFixture(t, []support.Capability{support.CapInput}, func(o *support.HostOptions) { o.Executor = supportUnknownExecutor{} })
+	tool := NewRemoteSupportTool(yolo(t), t.TempDir(), func() *support.Controller { return f.ctl })
+	got := callSupport(t, tool, "unknown-native", map[string]any{"action": "tool", "tool": "computer", "device_id": f.remote.RemoteDeviceID, "session_id": f.remote.SessionID, "generation": f.remote.Generation, "arguments": map[string]any{"action": "key", "key": "escape"}})
+	require.True(t, got.resp.IsError)
+	require.Equal(t, "unknown", got.outcome.Dispatch)
+	_, client, err := f.ctl.Target()
+	require.NoError(t, err)
+	op, err := client.Operation(t.Context(), got.body["operation_id"].(string))
+	require.NoError(t, err)
+	require.Equal(t, "failed", string(op.State))
+	require.Equal(t, "unknown", op.Effect)
+}
+
+func TestRemoteSupportHostWorkflowUsesOnlyRemoteBackend(t *testing.T) {
+	backend := &fakeComputerBackend{size: computer.Size{Width: 40, Height: 40}}
+	f := newSupportFixture(t, []support.Capability{support.CapScreenView, support.CapInput}, func(o *support.HostOptions) {
+		o.Desktop = backend
+		o.Executor = NewSupportExecutor(o.StateDir, backend, config.ToolBrowser{})
+	})
+	tool := NewRemoteSupportTool(yolo(t), t.TempDir(), func() *support.Controller { return f.ctl })
+	steps := make([]map[string]any, 24)
+	for i := range steps {
+		steps[i] = map[string]any{"id": strings.Repeat("s", i+1), "tool": "computer", "arguments": map[string]any{"action": "key", "key": "escape"}}
+	}
+	args := map[string]any{"action": "tool", "tool": "tool_pipeline", "device_id": f.remote.RemoteDeviceID, "session_id": f.remote.SessionID, "generation": f.remote.Generation, "arguments": map[string]any{"steps": steps}}
+	got := callSupport(t, tool, "workflow", args)
+	require.False(t, got.resp.IsError, got.resp.Content)
+	require.Len(t, backend.keys, 24)
+	// Replaying a completed operation returns the journal, not more input.
+	again := callSupport(t, tool, "workflow", args)
+	require.False(t, again.resp.IsError, again.resp.Content)
+	require.Len(t, backend.keys, 24)
+	require.NoError(t, f.host.PauseInput(true))
+	denied := callSupport(t, tool, "paused", args)
+	require.True(t, denied.resp.IsError)
+	require.Len(t, backend.keys, 24)
+	args["session_id"] = "ss-older-session"
+	stale := callSupport(t, tool, "stale", args)
+	require.Equal(t, string(support.CodeStaleConnection), errCode(stale))
+	require.Len(t, backend.keys, 24)
+}
+

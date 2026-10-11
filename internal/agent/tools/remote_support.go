@@ -196,3 +196,48 @@ func record(ctl *support.Controller, p RemoteSupportParams, res supportResult) {
 	ctl.Record(support.Event{Kind: "operation", OperationID: res.OperationID, State: state, Effect: string(res.Effect), Detail: detail, Fields: fields})
 }
 
+func (t *remoteSupportTool) respond(res supportResult, mutation bool) fantasy.ToolResponse {
+	data, err := json.Marshal(res)
+	if err != nil {
+		return deviceErrorResponse(err)
+	}
+	resp := fantasy.NewTextResponse(string(data))
+	if len(res.Image) > 0 {
+		resp = fantasy.NewImageResponse(res.Image, orStr(res.ImageMediaType, "image/png"))
+		resp.Content = string(data)
+	}
+	resp.IsError = !res.OK
+	resp.StopTurn = res.StopTurn
+	if res.NativeMetadata != "" {
+		var meta map[string]json.RawMessage
+		if json.Unmarshal([]byte(res.NativeMetadata), &meta) == nil && meta != nil {
+			if child := meta["atlas_outcome"]; child != nil {
+				meta["child_atlas_outcome"] = child
+				delete(meta, "atlas_outcome")
+			}
+			resp = fantasy.WithResponseMetadata(resp, meta)
+		}
+	}
+	dispatch := "none"
+	if res.InputSent {
+		dispatch = "sent"
+		if res.Effect == support.EffectUnknown {
+			dispatch = "unknown"
+		}
+	}
+	kind := outcome.KindObservation
+	if mutation {
+		kind = outcome.KindOutput
+	}
+	subject := "remote:" + res.Device.RemoteDeviceID
+	return withToolOutcome(resp, ToolOutcome{Dispatch: dispatch, Mutation: mutation, Verified: res.OK && res.Verified == "verified", Source: res.OperationID, Subjects: []string{subject}, Kind: kind, Claim: res.Action + ":" + res.Verified})
+}
+
+func (t *remoteSupportTool) fail(action string, dev supportDevice, e *support.Error) fantasy.ToolResponse {
+	res := supportResult{Action: action, Device: dev, Error: e, InputSent: e.InputSent, Effect: e.Effect, OperationID: e.OperationID, Verified: "not_verified"}
+	if res.Effect == "" {
+		res.Effect = support.EffectNone
+	}
+	return t.respond(res, remoteSupportMutates(action))
+}
+

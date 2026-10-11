@@ -1643,6 +1643,26 @@
           "type": "string",
           "description": "Absolute path to the private connector key shared with your own mobile-relay server. Generate with mobile-relay keygen and keep outside the workspace. Never put this key in a URL or phone browser."
         },
+        "support_name": {
+          "type": "string",
+          "description": "Name this computer shows in /support sessions. Defaults to the computer name. The other side sees it as a name sent by the device; the verified identity is the certificate fingerprint."
+        },
+        "support_relay_url": {
+          "type": "string",
+          "description": "HTTPS origin of a support relay you operate (atlas support relay). Needed only for computers on different networks; local network sessions work without it. Atlas never contacts a relay that is not configured here.",
+          "examples": [
+            "https://support.example.com"
+          ]
+        },
+        "support_relay_token_file": {
+          "type": "string",
+          "description": "Absolute path to a file holding the relay access token shared by your support relay and both computers. Keep it outside the workspace; it is never put in a URL or a code."
+        },
+        "support_no_discovery": {
+          "type": "boolean",
+          "description": "Do not use UDP discovery on the local network for /support. The supporter then enters CODE@address.",
+          "default": false
+        },
         "remote_profiles": {
           "items": {
             "$ref": "#/$defs/RemoteProfile"

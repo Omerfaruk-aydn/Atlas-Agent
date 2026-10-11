@@ -435,3 +435,70 @@ func TestWrongDeviceOrSessionIsRefused(t *testing.T) {
 	require.Equal(t, CodeSessionRevoked, codeOf(t, err, r.RemoteDeviceID))
 }
 
+// Scenarios 7, 8 and 9: a dropped connection makes a mutation's outcome
+// unknown; nothing re-sends it, the operation id reconciles it, and the
+// old connection cannot speak for the new one.
+func TestLostConnectionReconcilesWithoutRerunning(t *testing.T) {
+	t.Parallel()
+	root := workRoot(t)
+	h := startHost(t, nil)
+	c := startController(t, nil)
+	r := connect(t, h, c, []Capability{CapCommand}, root)
+	cl := client(t, c)
+	c.mu.Lock()
+	oldConn, oldCC := c.conn, c.cc
+	c.mu.Unlock()
+
+	errc := make(chan error, 1)
+	go func() {
+		_, err := cl.Exec(context.Background(), nodes.ExecRequest{OperationID: "op-mark-1", Argv: helper(t, "mark"), Cwd: "Work"})
+		errc <- err
+	}()
+	marks := filepath.Join(root.Path, "marks.txt")
+	require.Eventually(t, func() bool { _, err := os.Stat(marks); return err == nil }, 10*time.Second, 10*time.Millisecond)
+	_ = oldConn.Close()
+	e := Classify(<-errc, r.RemoteDeviceID, "op-mark-1")
+	require.Equal(t, CodeOutcomeUnknown, e.Code)
+	require.True(t, e.InputSent)
+	require.Equal(t, EffectUnknown, e.Effect)
+	require.False(t, e.Retryable)
+
+	// The controller reconnects under a new generation.
+	require.Eventually(t, func() bool {
+		st := c.Status()
+		return st.State == StateConnected && st.Remote != nil && st.Remote.Generation == r.Generation+1
+	}, 10*time.Second, 20*time.Millisecond)
+	cl = client(t, c)
+
+	// Reconcile by operation id: it ran once and completes on its own.
+	var op nodes.Operation
+	require.Eventually(t, func() bool {
+		var err error
+		op, err = cl.Operation(t.Context(), "op-mark-1")
+		return err == nil && op.State.Terminal()
+	}, 10*time.Second, 50*time.Millisecond)
+	require.Equal(t, taskstate.Completed, op.State)
+	require.Equal(t, r.SessionID, op.SessionID)
+	require.Equal(t, r.Generation, op.Generation, "the operation stays attributed to the connection that started it")
+
+	// The same id with the same request is a replay; with a different
+	// request it is refused.
+	again, err := cl.Exec(t.Context(), nodes.ExecRequest{OperationID: "op-mark-1", Argv: helper(t, "mark"), Cwd: "Work"})
+	require.NoError(t, err)
+	require.True(t, again.Replayed)
+	_, err = cl.Exec(t.Context(), nodes.ExecRequest{OperationID: "op-mark-1", Argv: helper(t, "echo"), Cwd: "Work"})
+	require.Equal(t, Code("operation_conflict"), codeOf(t, err, r.RemoteDeviceID))
+	data, err := os.ReadFile(marks)
+	require.NoError(t, err)
+	require.Equal(t, "ran\n", string(data), "the command ran exactly once")
+
+	// The old connection is closed and its generation is stale.
+	require.False(t, oldCC.CanTakeNewRequest())
+	c.mu.Lock()
+	cc, token := c.cc, c.token
+	c.mu.Unlock()
+	stale := &nodes.Client{BaseURL: "https://atlas-support", Token: token, HTTP: &http.Client{Transport: &sessionTransport{cc: cc, session: r.SessionID, target: r.RemoteDeviceID, generation: r.Generation}}}
+	_, err = stale.Exec(t.Context(), nodes.ExecRequest{OperationID: "op-mark-2", Argv: helper(t, "mark"), Cwd: "Work"})
+	require.Equal(t, CodeStaleConnection, codeOf(t, err, r.RemoteDeviceID))
+}
+

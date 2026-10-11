@@ -89,3 +89,71 @@ func (c PairingCode) SlotID() string {
 	return hex.EncodeToString(sum[:16])
 }
 
+// key derives the proof key from the secret part, salted by the slot.
+func (c PairingCode) key() []byte {
+	k, err := pbkdf2.Key(sha256.New, c.Secret, []byte("atlas-support-v1|"+c.Slot), kdfIterations, 32)
+	if err != nil {
+		panic(err) // Only on invalid parameters, which are constant here.
+	}
+	return k
+}
+
+// proof binds knowledge of the code to one TLS session: the exporter is
+// unique to the connection and both certificates, so a relay that runs two
+// TLS sessions cannot forward a proof from one to the other.
+func proof(key []byte, role string, exporter []byte) []byte {
+	m := hmac.New(sha256.New, key)
+	m.Write([]byte("atlas-support-proof-v1|" + role + "|"))
+	m.Write(exporter)
+	return m.Sum(nil)
+}
+
+// VerificationCode is a six-digit value both owners can compare.
+func VerificationCode(exporter []byte) string {
+	sum := sha256.Sum256(append([]byte("atlas-support-sas-v1|"), exporter...))
+	n := binary.BigEndian.Uint32(sum[:4]) % 1_000_000
+	return fmt.Sprintf("%03d %03d", n/1000, n%1000)
+}
+
+// JoinLink is an atlas-support:// link carrying the code and optionally a
+// relay URL or a local address. It contains the secret code: share it only
+// with the person who should support this computer.
+func JoinLink(code PairingCode, relayURL, address string) string {
+	q := url.Values{"code": {code.String()}}
+	if relayURL != "" {
+		q.Set("relay", relayURL)
+	}
+	if address != "" {
+		q.Set("addr", address)
+	}
+	return "atlas-support://join?" + q.Encode()
+}
+
+// Target is a parsed connection request from user input.
+type Target struct {
+	Code    PairingCode
+	Relay   string
+	Address string
+}
+
+// ParseTarget accepts a bare code, "CODE@host:port" or a join link.
+func ParseTarget(input string) (Target, error) {
+	input = strings.TrimSpace(input)
+	if rest, ok := strings.CutPrefix(input, "atlas-support://join?"); ok {
+		q, err := url.ParseQuery(rest)
+		if err != nil {
+			return Target{}, Errorf(CodePairingInvalid, "invalid support link")
+		}
+		code, err := ParsePairingCode(q.Get("code"))
+		if err != nil {
+			return Target{}, err
+		}
+		return Target{Code: code, Relay: q.Get("relay"), Address: q.Get("addr")}, nil
+	}
+	codePart, addr, _ := strings.Cut(input, "@")
+	code, err := ParsePairingCode(codePart)
+	if err != nil {
+		return Target{}, err
+	}
+	return Target{Code: code, Address: strings.TrimSpace(addr)}, nil
+}

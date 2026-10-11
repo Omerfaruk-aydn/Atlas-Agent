@@ -432,3 +432,71 @@ func (d *Support) loadHistory(ctx context.Context) []support.Summary {
 	return out
 }
 
+func (d *Support) setupKey(msg tea.KeyPressMsg) Action {
+	switch {
+	case key.Matches(msg, d.keyMap.Back):
+		d.back()
+	case key.Matches(msg, d.keyMap.Up):
+		d.capSel = max(0, d.capSel-1)
+	case key.Matches(msg, d.keyMap.Down):
+		d.capSel = min(len(support.AllCapabilities)-1, d.capSel+1)
+	case key.Matches(msg, d.keyMap.Toggle):
+		c := support.AllCapabilities[d.capSel]
+		d.caps[c] = !d.caps[c]
+	case key.Matches(msg, d.keyMap.Preset):
+		name := map[string]string{"1": "diagnose", "2": "assist", "3": "full"}[msg.String()]
+		d.caps = map[support.Capability]bool{}
+		for _, c := range support.Presets[name] {
+			d.caps[c] = true
+		}
+	case key.Matches(msg, d.keyMap.Duration):
+		d.durationIdx = (d.durationIdx + 1) % len(supportDurations)
+	case key.Matches(msg, d.keyMap.Network):
+		d.networkIdx = (d.networkIdx + 1) % len(supportNetworks)
+	case key.Matches(msg, d.keyMap.Enter):
+		return d.createOffer()
+	}
+	return nil
+}
+
+func (d *Support) selectedCaps() []support.Capability {
+	var out []support.Capability
+	for _, c := range support.AllCapabilities {
+		if d.caps[c] {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func (d *Support) createOffer() Action {
+	if d.busy {
+		return nil
+	}
+	caps := d.selectedCaps()
+	if len(caps) == 0 {
+		d.say(d.com.Text("Choose at least one permission."), true)
+		return nil
+	}
+	network := supportNetworks[d.networkIdx]
+	opts := support.OfferOptions{Capabilities: caps, SessionDuration: supportDurations[d.durationIdx], LAN: network != "internet", Internet: network != "lan"}
+	return d.run("offer", func(ctx context.Context) SupportDone {
+		roots, err := d.fileRoots()
+		if err != nil && slices.ContainsFunc(caps, support.IsFileCapability) {
+			return SupportDone{Err: err}
+		}
+		// Prepare the scope for later file permission requests without
+		// granting any file capability that the owner did not select.
+		opts.Roots = roots
+		h, err := d.svc.Host(ctx)
+		if err != nil {
+			return SupportDone{Err: err}
+		}
+		info, err := h.Offer(opts)
+		if err != nil {
+			return SupportDone{Err: err}
+		}
+		return SupportDone{Notice: fmt.Sprintf(d.com.Text("Code %s created; it works once and expires at %s."), info.Code, info.ExpiresAt.Format("15:04"))}
+	})
+}
+

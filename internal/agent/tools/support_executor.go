@@ -125,3 +125,24 @@ func supportActionAllowed(tool, action string) error {
 	return fmt.Errorf("unsupported remote %s action %q", tool, action)
 }
 
+func (e *supportExecutor) execution(g nodes.Grant) (*supportExecution, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed[g.SessionID] {
+		return nil, fmt.Errorf("session_revoked: this remote execution ended")
+	}
+	if existing := e.sessions[g.SessionID]; existing != nil {
+		return existing, nil
+	}
+	root := e.stateDir
+	// Runtime state belongs to Atlas, not to an exposed drive that may
+	// require administrator rights or be shared read-only.
+	ctx, cancel := context.WithCancel(context.Background())
+	permissions := permission.NewPermissionService(root, true, nil)
+	disabled := false
+	computerTool := NewComputerTool(permissions, root, config.ToolComputer{Overlay: &disabled}, e.backend, func() bool { return e.backend != nil })
+	state := &supportExecution{gate: make(chan struct{}, 1), ctx: ctx, cancel: cancel, computer: computerTool, browser: newBrowserTool(permissions, root, e.manager, browserDescription(false))}
+	e.sessions[g.SessionID] = state
+	return state, nil
+}
+

@@ -132,3 +132,111 @@ func NewController(ctx context.Context, opts ControllerOptions) (*Controller, er
 	return c, nil
 }
 
+// setRelay applies a changed relay setting to the next join.
+func (c *Controller) setRelay(cfg *RelayConfig) {
+	c.mu.Lock()
+	c.opts.Relay = cfg
+	c.mu.Unlock()
+}
+
+// Fingerprint is this device's verified identity as the owner sees it.
+func (c *Controller) Fingerprint() string { return c.id.Fingerprint }
+
+// History exposes the supporter's session history.
+func (c *Controller) History() *History { return c.history }
+
+func (c *Controller) notify() {
+	if c.opts.OnChange != nil {
+		c.opts.OnChange()
+	}
+}
+
+// Status is the supporter's current view.
+func (c *Controller) Status() ControllerStatus {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	st, gen, reason := c.machine.State()
+	out := ControllerStatus{State: st, Reason: reason, Generation: gen, DeviceID: c.id.NodeID, Name: c.opts.Name}
+	if c.remote != nil {
+		r := *c.remote
+		r.Capabilities = slices.Clone(r.Capabilities)
+		r.Roots = slices.Clone(r.Roots)
+		out.Remote = &r
+	}
+	if c.pending != nil {
+		p := *c.pending
+		out.Pending = &p
+	}
+	return out
+}
+
+// Target returns the active remote, or a no_support_target error. A
+// session that is reconnecting is still the target, but calls fail with
+// remote_offline until it is back.
+func (c *Controller) Target() (Remote, *nodes.Client, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	st, _, reason := c.machine.State()
+	if c.remote == nil {
+		return Remote{}, nil, Errorf(CodeNoTarget, "no remote computer is connected")
+	}
+	switch {
+	case st == StateExpired:
+		return *c.remote, nil, Errorf(CodeSessionExpired, "the support session ended: %s", reason)
+	case st == StateRevoked:
+		return *c.remote, nil, Errorf(CodeSessionRevoked, "the support session ended: %s", reason)
+	case st.Terminal():
+		return *c.remote, nil, Errorf(CodeRemoteOffline, "the support session ended: %s", reason)
+	case st == StateReconnecting:
+		return *c.remote, nil, Errorf(CodeRemoteOffline, "the connection to %s is being restored", c.remote.RemoteName)
+	}
+	return *c.remote, c.client, nil
+}
+
+// Join connects with a code, a CODE@address or a join link. onPending is
+// called once the host proved it knows the code, with the verification code
+// to compare; Join then waits for the owner's decision.
+func (c *Controller) Join(ctx context.Context, input string, onPending func(JoinPrompt)) (Remote, error) {
+	target, err := ParseTarget(input)
+	if err != nil {
+		return Remote{}, err
+	}
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return Remote{}, Errorf(CodeSessionRevoked, "the support controller is closed")
+	}
+	if st, _, _ := c.machine.State(); st.Active() || st == StateReconnecting || st == StateConnecting || st == StateAwaitingAcceptance {
+		c.mu.Unlock()
+		return Remote{}, errors.New("a support session is already active; disconnect it first")
+	}
+	c.machine = NewMachine()
+	c.remote, c.pending, c.token, c.resume = nil, nil, "", ""
+	_ = c.machine.Move(StateConnecting, "connecting")
+	c.work.Add(1)
+	c.mu.Unlock()
+	defer c.work.Done()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(c.ctx, cancel)
+	defer stop()
+	c.notify()
+	remote, err := c.join(ctx, target, onPending)
+	if err != nil {
+		state := StateFailed
+		switch CodeOf(err) {
+		case CodePairingRejected:
+			state = StateRevoked
+		case CodePairingExpired, CodePairingUsed:
+			state = StateExpired
+		}
+		c.mu.Lock()
+		c.pending = nil
+		_ = c.machine.Move(state, describe(err))
+		c.mu.Unlock()
+		c.notify()
+		return Remote{}, err
+	}
+	return remote, nil
+}
+

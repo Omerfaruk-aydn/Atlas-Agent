@@ -1713,6 +1713,14 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 			}
 		}
+	case supportChangedMsg:
+		cmds = append(cmds, m.handleSupportChanged())
+	case dialog.SupportTick, dialog.SupportDone:
+		if d := m.supportDialog(); d != nil {
+			if cmd := m.dispatchDialogAction(d.HandleMsg(msg)); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
 	case dialog.IntegrationsTick, dialog.IntegrationsLoaded, dialog.IntegrationsDone:
 		if d := m.integrationsDialog(); d != nil {
 			if cmd := m.dispatchDialogAction(d.HandleMsg(msg)); cmd != nil {
@@ -2409,6 +2417,8 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 		cmds = append(cmds, m.openRemote())
 	case dialog.ActionOpenIntegrations:
 		cmds = append(cmds, m.openIntegrations())
+	case dialog.ActionOpenSupport:
+		cmds = append(cmds, m.openSupport())
 	case dialog.ActionIntegrationsMCPLogin:
 		cmds = append(cmds, m.integrationsMCPLogin(msg.Name))
 	case dialog.ActionOpenApps:

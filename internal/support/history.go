@@ -108,3 +108,111 @@ type Summary struct {
 	Events    int    `json:"events"`
 }
 
+// Sessions lists recorded sessions, newest first.
+func (h *History) Sessions() ([]Summary, error) {
+	entries, err := os.ReadDir(h.dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []Summary
+	for _, entry := range entries {
+		id, ok := strings.CutSuffix(entry.Name(), ".jsonl")
+		if !ok {
+			continue
+		}
+		events, err := h.Events(id)
+		if err != nil || len(events) == 0 {
+			continue
+		}
+		s := Summary{SessionID: id, Role: events[0].Role, Started: events[0].At, Events: len(events)}
+		for _, e := range events {
+			if e.Peer != "" {
+				s.Peer = e.Peer
+			}
+			if e.Kind == "session_ended" {
+				s.Ended, s.EndState = e.At, e.State
+			}
+		}
+		out = append(out, s)
+	}
+	slices.SortFunc(out, func(a, b Summary) int { return int(b.Started - a.Started) })
+	return out, nil
+}
+
+var secretLike = regexp.MustCompile(`(?i)(password|passwd|pwd|token|secret|apikey|api_key|bearer)(\s*[=:]\s*|\s+)\S+`)
+
+// redact removes obvious credentials from free text.
+func redact(s string) string {
+	if len(s) > 512 {
+		s = s[:512] + "…"
+	}
+	return secretLike.ReplaceAllString(s, "$1$2[redacted]")
+}
+
+// CommandSummary keeps the program and argument count of a command, which
+// identifies what ran without recording arguments that may hold secrets.
+func CommandSummary(argv []string) string {
+	if len(argv) == 0 {
+		return ""
+	}
+	name := filepath.Base(strings.ReplaceAll(argv[0], "\\", "/"))
+	if len(argv) == 1 {
+		return name
+	}
+	return name + " (+" + strconv.Itoa(len(argv)-1) + " args)"
+}
+
+// sessionRecord persists a host session's lifecycle, so a restarted host
+// never revives a session that was revoked, expired or interrupted.
+type sessionRecord struct {
+	ID                string `json:"id"`
+	State             State  `json:"state"`
+	Reason            string `json:"reason,omitempty"`
+	ControllerName    string `json:"controller_name"`
+	ControllerDevice  string `json:"controller_device"`
+	ResumeHash        string `json:"resume_hash"`
+	ExpiresAt         int64  `json:"expires_at"`
+	UpdatedAt         int64  `json:"updated_at"`
+	LastGeneration    uint64 `json:"last_generation"`
+	CapabilitiesFinal string `json:"capabilities,omitempty"`
+}
+
+type sessionStore struct{ dir string }
+
+func (s sessionStore) path(id string) string { return filepath.Join(s.dir, id+".json") }
+
+func (s sessionStore) save(r sessionRecord) error {
+	r.UpdatedAt = time.Now().UnixMilli()
+	return taskstate.WriteJSONAtomic(s.path(r.ID), r)
+}
+
+func (s sessionStore) load(id string) (sessionRecord, bool) {
+	if !sessionIDPattern.MatchString(id) {
+		return sessionRecord{}, false
+	}
+	data, err := os.ReadFile(s.path(id))
+	if err != nil {
+		return sessionRecord{}, false
+	}
+	var r sessionRecord
+	return r, json.Unmarshal(data, &r) == nil
+}
+
+// closeInterrupted marks every non-terminal record disconnected. It runs
+// when a host starts: a session from a previous process cannot continue.
+func (s sessionStore) closeInterrupted() {
+	entries, _ := os.ReadDir(s.dir)
+	for _, e := range entries {
+		id, ok := strings.CutSuffix(e.Name(), ".json")
+		if !ok {
+			continue
+		}
+		if r, ok := s.load(id); ok && !r.State.Terminal() {
+			r.State, r.Reason = StateDisconnected, "host restarted; the session cannot continue"
+			_ = s.save(r)
+		}
+	}
+}

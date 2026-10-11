@@ -668,3 +668,137 @@ func (h *Host) offerErrorLocked() *Error {
 	return nil
 }
 
+func (h *Host) join(conn *tls.Conn, hello clientHello, exp []byte, network string) {
+	fail := func(e *Error) {
+		_ = writeFrame(conn, errFrame(e))
+		_ = conn.Close()
+	}
+	h.mu.Lock()
+	if e := h.offerErrorLocked(); e != nil {
+		h.mu.Unlock()
+		fail(e)
+		return
+	}
+	key := h.codeKey
+	h.mu.Unlock()
+	if !hmac.Equal(proof(key, "controller", exp), hello.Proof) {
+		h.mu.Lock()
+		h.attempts++
+		burned := h.attempts >= maxCodeAttempts
+		if burned {
+			_ = h.machine.Move(StateFailed, "code disabled after too many wrong attempts")
+			h.stopOfferLocked()
+		}
+		h.mu.Unlock()
+		h.notify()
+		if burned {
+			fail(Errorf(CodePairingRateLimited, "too many wrong codes; this code is disabled"))
+			return
+		}
+		fail(Errorf(CodePairingInvalid, "the code is wrong"))
+		return
+	}
+	peer := PeerInfo{Name: sanitizeName(hello.Name, "supporter"), OS: sanitizeName(hello.OS, ""), Arch: sanitizeName(hello.Arch, ""), Fingerprint: peerFingerprint(conn.ConnectionState())}
+	req := &JoinRequest{ID: randomID(8), Peer: peer, Verification: VerificationCode(exp), Network: network, RemoteAddr: conn.RemoteAddr().String(), At: time.Now(), decision: make(chan joinDecision, 1)}
+	h.mu.Lock()
+	if e := h.offerErrorLocked(); e != nil {
+		h.mu.Unlock()
+		fail(e)
+		return
+	}
+	// The code is single use from here, whatever the owner decides.
+	h.codeUsed = true
+	if err := h.machine.Move(StateAwaitingAcceptance, "verified request from "+peer.Name); err != nil {
+		h.mu.Unlock()
+		fail(Errorf(CodePairingExpired, "%v", err))
+		return
+	}
+	h.pending = req
+	if h.discovery != nil {
+		h.discovery.Close()
+		h.discovery = nil
+	}
+	h.mu.Unlock()
+	hostPeer := PeerInfo{NodeID: h.id.NodeID, Name: h.opts.Name, OS: runtime.GOOS, Arch: runtime.GOARCH, Fingerprint: h.id.Fingerprint}
+	if err := writeFrame(conn, serverMsg{Type: "challenge_ok", Proof: proof(key, "host", exp), Host: &hostPeer, Verification: req.Verification}); err != nil {
+		h.abandonPending(req, StateFailed, "supporter disconnected")
+		_ = conn.Close()
+		return
+	}
+	_ = writeFrame(conn, serverMsg{Type: "pending"})
+	h.notify()
+
+	// Watch for the supporter leaving while the owner decides. The
+	// supporter sends nothing until it has read "accepted" and then sends
+	// exactly one "ready" frame, so the watcher's single read ends cleanly
+	// before the connection switches to HTTP/2. Read deadlines are not used
+	// because they would poison a relayed stream.
+	type readyResult struct {
+		msg clientHello
+		err error
+	}
+	gone := make(chan readyResult, 1)
+	go func() {
+		var m clientHello
+		err := readFrame(conn, &m)
+		gone <- readyResult{msg: m, err: err}
+	}()
+	var d joinDecision
+	decided, left := false, false
+	timer := time.NewTimer(h.opts.AcceptTimeout)
+	defer timer.Stop()
+	select {
+	case d = <-req.decision:
+		decided = true
+	case <-gone:
+		left = true
+	case <-timer.C:
+	case <-h.ctx.Done():
+	}
+	switch {
+	case left:
+		h.abandonPending(req, StateFailed, "the supporter left before a decision")
+		_ = conn.Close()
+		return
+	case !decided:
+		h.abandonPending(req, StateRevoked, "no decision in time; the request was declined")
+		fail(Errorf(CodePairingRejected, "the computer owner did not accept in time"))
+		return
+	case !d.accept:
+		h.abandonPending(req, StateRevoked, "the owner declined "+peer.Name)
+		_ = h.history.Append(Event{SessionID: "offer-" + h.code.SlotID()[:16], Role: "host", Kind: "join_rejected", Peer: peer.Name, PeerDevice: peer.Fingerprint})
+		fail(Errorf(CodePairingRejected, "the computer owner declined the connection"))
+		return
+	}
+	s, gen, err := h.startSession(req, d.caps)
+	if err != nil {
+		fail(Errorf(CodeProtocol, "%v", err))
+		return
+	}
+	info := h.sessionInfo(s, gen)
+	if err := writeFrame(conn, serverMsg{Type: "accepted", Session: &info, Token: s.token(), ResumeToken: s.resumeToken}); err != nil {
+		_ = conn.Close()
+		h.connClosed(gen, s.id)
+		return
+	}
+	readyTimer := time.NewTimer(30 * time.Second)
+	defer readyTimer.Stop()
+	select {
+	case r := <-gone:
+		if r.err != nil || r.msg.Type != "ready" {
+			_ = conn.Close()
+			h.connClosed(gen, s.id)
+			return
+		}
+	case <-readyTimer.C:
+		_ = conn.Close()
+		h.connClosed(gen, s.id)
+		return
+	case <-h.ctx.Done():
+		_ = conn.Close()
+		h.connClosed(gen, s.id)
+		return
+	}
+	h.serveH2(conn, gen, s.id)
+}
+

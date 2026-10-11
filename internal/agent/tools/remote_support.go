@@ -241,3 +241,112 @@ func (t *remoteSupportTool) fail(action string, dev supportDevice, e *support.Er
 	return t.respond(res, remoteSupportMutates(action))
 }
 
+func (t *remoteSupportTool) run(ctx context.Context, p RemoteSupportParams, call fantasy.ToolCall) fantasy.ToolResponse {
+	var ctl *support.Controller
+	if t.controller != nil {
+		ctl = t.controller()
+	}
+	if ctl == nil {
+		return t.fail(p.Action, supportDevice{}, support.Errorf(support.CodeNoTarget, "this computer is not connected to another computer through /support"))
+	}
+	remote, client, terr := ctl.Target()
+	dev := deviceOf(remote)
+	if p.Action == "status" {
+		return t.status(ctx, ctl, remote, terr)
+	}
+	if terr != nil {
+		e := support.AsError(terr)
+		if e == nil {
+			e = support.Errorf(support.CodeRemoteOffline, "%v", terr)
+		}
+		e.RemoteDeviceID = remote.RemoteDeviceID
+		return t.fail(p.Action, dev, e)
+	}
+	if p.DeviceID == "" {
+		return t.fail(p.Action, dev, support.Errorf(support.CodeWrongTarget, "device_id is required; call status and pass remote_device_id"))
+	}
+	if p.DeviceID != remote.RemoteDeviceID {
+		return t.fail(p.Action, dev, support.Errorf(support.CodeWrongTarget, "device_id %q is not the connected computer %s (%s); nothing was sent", p.DeviceID, remote.RemoteName, remote.RemoteDeviceID))
+	}
+	if p.SessionID != "" && p.SessionID != remote.SessionID {
+		return t.fail(p.Action, dev, support.Errorf(support.CodeStaleConnection, "the support session changed; nothing was sent; inspect status and create a new plan"))
+	}
+	if p.Action == "tool" && (p.SessionID == "" || p.Generation == 0 || p.Generation != remote.Generation) {
+		return t.fail(p.Action, dev, support.Errorf(support.CodeStaleConnection, "remote built-ins require session_id and the current generation from status; nothing was sent"))
+	}
+	if remote.ExpiresAt > 0 && time.Now().UnixMilli() > remote.ExpiresAt {
+		return t.fail(p.Action, dev, support.Errorf(support.CodeSessionExpired, "the support session time ended"))
+	}
+	opID := nodes.OperationID(GetSessionFromContext(ctx), call.ID, "remote_support", remote.SessionID)
+	if p.OperationID != "" && (p.Action == "operation_status" || p.Action == "cancel") {
+		opID = p.OperationID
+	}
+	if remoteSupportCallMutates(p) {
+		if e := t.approve(ctx, call, p, remote); e != nil {
+			e.RemoteDeviceID = remote.RemoteDeviceID
+			return t.fail(p.Action, dev, e)
+		}
+	}
+	res := supportResult{OK: true, Action: p.Action, Device: dev, Effect: support.EffectNone, Verified: "observation"}
+	var err error
+	switch p.Action {
+	case "system_info":
+		res.Result, err = client.SystemInfo(ctx)
+	case "list":
+		res.Result, err = client.ListFiles(ctx, p.RemotePath, 500)
+	case "observe":
+		var obs nodes.DesktopObservation
+		obs, err = client.Observe(ctx, p.Image)
+		if err == nil {
+			res.Result = observationView(obs)
+			res.Image = obs.PNG
+			if obs.Blank {
+				// Windows shows UAC and the lock screen on the secure
+				// desktop, which captures as blank; Atlas cannot see or
+				// answer it.
+				res.Note = "The remote capture is blank: the screen may be locked or showing a secure-desktop prompt such as UAC (secure_desktop). Only the person at that computer can answer it; do not send input."
+			}
+		}
+	case "automation":
+		var raw json.RawMessage
+		query := orStr(p.Query, "windows")
+		if query == "tree" {
+			query = "inspect"
+		}
+		raw, err = client.Automation(ctx, nodes.AutomationRequest{Action: query, WindowID: p.WindowID, Name: p.Name, Role: p.Role, MaxElements: 200})
+		res.Result = raw
+	case "operation_status":
+		if p.OperationID == "" {
+			return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "operation_status needs operation_id"))
+		}
+		res.OperationID = p.OperationID
+		var op nodes.Operation
+		op, err = client.Operation(ctx, p.OperationID)
+		if err == nil {
+			res.Result, res.Effect = op, support.Effect(op.Effect)
+			res.Verified = "journal"
+		}
+	case "permission_status":
+		if p.PermissionID == "" {
+			return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "permission_status needs permission_id"))
+		}
+		res.Result, err = ctl.PermissionStatus(ctx, p.PermissionID)
+	case "request_permission":
+		caps := make([]support.Capability, 0, len(p.Capabilities))
+		for _, c := range p.Capabilities {
+			caps = append(caps, support.Capability(c))
+		}
+		var req support.PermissionRequest
+		req, err = ctl.RequestPermission(ctx, caps, p.Reason)
+		res.Result = req
+		res.Note = "The computer owner answers on their screen. Poll permission_status; do not assume a grant."
+	default:
+		return t.mutate(ctx, ctl, client, remote, p, opID)
+	}
+	if err != nil {
+		e := support.Classify(err, remote.RemoteDeviceID, res.OperationID)
+		return t.fail(p.Action, dev, e)
+	}
+	return t.respond(res, false)
+}
+

@@ -574,3 +574,75 @@ func TestLostSupporterEndsSessionAfterReconnectWindow(t *testing.T) {
 	require.Equal(t, 1, ended)
 }
 
+// Scenarios 11, 12 and 13: chunked transfers verify hashes, stop when the
+// owner disconnects, and never leave the allowed folders.
+func TestTransfersVerifyStopAndStayInside(t *testing.T) {
+	t.Parallel()
+	root := workRoot(t)
+	h := startHost(t, nil)
+	c := startController(t, nil)
+	r := connect(t, h, c, []Capability{CapFileRead, CapFileSend, CapFileReceive}, root)
+	cl := client(t, c)
+	local := t.TempDir()
+
+	src := filepath.Join(local, "report.txt")
+	require.NoError(t, os.WriteFile(src, []byte("quarterly numbers"), 0o600))
+	up, err := cl.Upload(t.Context(), "op-up-1-0", src, "Work/in/report.txt", transfer.ConflictError, 0, nil)
+	require.NoError(t, err)
+	require.Equal(t, "complete", up.State)
+	require.Equal(t, "Work/in/report.txt", up.Path)
+	got, err := os.ReadFile(filepath.Join(root.Path, "in", "report.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "quarterly numbers", string(got))
+
+	// Same name, rename policy: a new name, nothing overwritten.
+	require.NoError(t, os.WriteFile(src, []byte("other numbers"), 0o600))
+	renamed, err := cl.Upload(t.Context(), "op-up-2-0", src, "Work/in/report.txt", transfer.ConflictRename, 0, nil)
+	require.NoError(t, err)
+	require.Equal(t, "Work/in/report (1).txt", renamed.Path)
+	// Overwrite needs file_modify, which was not granted.
+	_, err = cl.Upload(t.Context(), "op-up-3-0", src, "Work/in/report.txt", transfer.ConflictOverwrite, 0, nil)
+	require.Equal(t, CodeCapabilityDenied, codeOf(t, err, r.RemoteDeviceID))
+
+	// Download back with hash verification.
+	pulled, err := cl.Pull(t.Context(), "Work/in/report.txt", local, "copy.txt", false, 0)
+	require.NoError(t, err)
+	sum := sha256.Sum256([]byte("quarterly numbers"))
+	require.Equal(t, hex.EncodeToString(sum[:]), pulled.SHA256)
+
+	// A declared hash that does not match the bytes fails and delivers
+	// nothing.
+	var bad nodes.UploadResult
+	_, err = c.supportCall(t.Context(), http.MethodPost, "/v1/node/uploads", nodes.UploadRequest{OperationID: "op-bad-00", Path: "Work/bad.txt", Size: 3, SHA256: strings.Repeat("0", 64)}, &bad)
+	require.NoError(t, err)
+	err = putChunk(t, c, bad.ID, 0, []byte("abc"))
+	require.NoError(t, err)
+	_, err = c.supportCall(t.Context(), http.MethodPost, "/v1/node/uploads/"+bad.ID+"/complete", struct{}{}, nil)
+	require.Equal(t, CodeHashMismatch, CodeOf(err))
+	require.NoFileExists(t, filepath.Join(root.Path, "bad.txt"))
+
+	// Traversal and unknown folders are refused.
+	for i, rel := range []string{"Work/../escape.txt", "Other/x.txt", "../x.txt", "Work/..\\escape.txt"} {
+		_, err := cl.Upload(t.Context(), "op-escape-"+strconv.Itoa(i), src, rel, transfer.ConflictError, 0, nil)
+		require.Equal(t, CodePathDenied, codeOf(t, err, r.RemoteDeviceID), rel)
+	}
+	_, err = cl.Pull(t.Context(), "Work/../../secret", local, "s.txt", false, 0)
+	require.Equal(t, CodePathDenied, codeOf(t, err, r.RemoteDeviceID))
+	_, err = os.Stat(filepath.Join(filepath.Dir(root.Path), "escape.txt"))
+	require.True(t, errors.Is(err, os.ErrNotExist))
+
+	// A large upload stops promptly when the owner disconnects, and the
+	// partial file is never delivered.
+	big := filepath.Join(local, "big.bin")
+	data := bytes.Repeat([]byte("0123456789abcdef"), int((3*transfer.MaxChunkBytes)/16+7))
+	require.NoError(t, os.WriteFile(big, data, 0o600))
+	var once sync.Once
+	start := time.Now()
+	_, err = cl.Upload(t.Context(), "op-big-00", big, "Work/big.bin", transfer.ConflictError, 0, func(sent, total int64) {
+		once.Do(func() { h.Disconnect("stop the transfer") })
+	})
+	require.Error(t, err)
+	require.Less(t, time.Since(start), 20*time.Second)
+	require.NoFileExists(t, filepath.Join(root.Path, "big.bin"))
+}
+

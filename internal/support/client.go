@@ -355,3 +355,67 @@ func (c *Controller) join(ctx context.Context, target Target, onPending func(Joi
 	return remote, nil
 }
 
+func frameErr(err error) error {
+	if e := AsError(err); e != nil {
+		return e
+	}
+	return Errorf(CodeRemoteOffline, "the other computer closed the connection")
+}
+
+// relayFor picks the relay for a target. A link may name a relay, but only
+// the one this user configured is ever contacted.
+func (c *Controller) relayFor(t Target) (*RelayConfig, error) {
+	c.mu.Lock()
+	configured := c.opts.Relay
+	c.mu.Unlock()
+	if t.Relay == "" {
+		if configured.Configured() {
+			return configured, nil
+		}
+		return nil, nil
+	}
+	if !configured.Configured() {
+		return nil, Errorf(CodeRelayNotConfigured, "the link uses the relay %s, which is not configured on this computer; add it as support_relay_url only if you trust it", t.Relay)
+	}
+	if strings.TrimRight(t.Relay, "/") != strings.TrimRight(configured.URL, "/") {
+		return nil, Errorf(CodeRelayNotConfigured, "the link uses the relay %s, but this computer is configured for %s; Atlas does not contact unconfigured relays", t.Relay, configured.URL)
+	}
+	return configured, nil
+}
+
+// dialJoin finds the host: an explicit address, then LAN discovery, then
+// the configured relay. Nothing reports a connection that did not happen.
+func (c *Controller) dialJoin(ctx context.Context, t Target, relay *RelayConfig) (net.Conn, string, string, error) {
+	dial := func(addr string) (net.Conn, error) {
+		d := net.Dialer{Timeout: 10 * time.Second}
+		return d.DialContext(ctx, "tcp", addr)
+	}
+	if t.Address != "" {
+		addr := t.Address
+		if _, _, err := net.SplitHostPort(addr); err != nil {
+			return nil, "", "", Errorf(CodePairingInvalid, "address %q must be host:port", addr)
+		}
+		conn, err := dial(addr)
+		if err != nil {
+			return nil, "", "", Errorf(CodeRemoteOffline, "cannot reach %s on the local network: %v", addr, err)
+		}
+		return conn, "lan", addr, nil
+	}
+	if c.opts.DiscoveryPort > 0 {
+		found, _ := discover(ctx, t.Code.SlotID(), c.opts.DiscoveryPort, c.opts.DiscoveryWait)
+		for _, addr := range found {
+			if conn, err := dial(addr); err == nil {
+				return conn, "lan", addr, nil
+			}
+		}
+	}
+	if relay.Configured() {
+		conn, err := relayJoin(ctx, relay, t.Code.SlotID())
+		if err != nil {
+			return nil, "", "", err
+		}
+		return conn, "relay", "", nil
+	}
+	return nil, "", "", Errorf(CodeRemoteOffline, "no computer on this local network offers this code. For a computer on another network, both computers need the same support relay (support_relay_url); or enter CODE@address")
+}
+

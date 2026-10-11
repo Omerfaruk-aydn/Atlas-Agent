@@ -167,3 +167,61 @@ func workRoot(t *testing.T) nodes.Root {
 	return nodes.Root{Label: "Work", Path: t.TempDir()}
 }
 
+func offerLAN(t *testing.T, h *Host, caps []Capability, roots ...nodes.Root) OfferInfo {
+	t.Helper()
+	info, err := h.Offer(OfferOptions{Capabilities: caps, Roots: roots, LAN: true})
+	require.NoError(t, err)
+	return info
+}
+
+func waitPending(t *testing.T, h *Host) *JoinRequest {
+	t.Helper()
+	var p *JoinRequest
+	require.Eventually(t, func() bool {
+		p = h.Status().Pending
+		return p != nil
+	}, 10*time.Second, 10*time.Millisecond)
+	return p
+}
+
+type joinResult struct {
+	remote Remote
+	prompt JoinPrompt
+	err    error
+}
+
+func startJoin(c *Controller, input string) <-chan joinResult {
+	ch := make(chan joinResult, 1)
+	go func() {
+		var prompt JoinPrompt
+		r, err := c.Join(context.Background(), input, func(p JoinPrompt) { prompt = p })
+		ch <- joinResult{r, prompt, err}
+	}()
+	return ch
+}
+
+func connect(t *testing.T, h *Host, c *Controller, caps []Capability, roots ...nodes.Root) Remote {
+	t.Helper()
+	info := offerLAN(t, h, caps, roots...)
+	ch := startJoin(c, info.Code+"@"+h.LANAddress())
+	p := waitPending(t, h)
+	require.NoError(t, h.Decide(p.ID, true, nil))
+	res := <-ch
+	require.NoError(t, res.err)
+	require.Equal(t, p.Verification, res.prompt.Verification, "both ends must show the same verification code")
+	return res.remote
+}
+
+func client(t *testing.T, c *Controller) *nodes.Client {
+	t.Helper()
+	_, cl, err := c.Target()
+	require.NoError(t, err)
+	return cl
+}
+
+func codeOf(t *testing.T, err error, deviceID string) Code {
+	t.Helper()
+	require.Error(t, err)
+	return Classify(err, deviceID, "").Code
+}
+

@@ -602,3 +602,38 @@ func (t *remoteSupportTool) mutate(ctx context.Context, ctl *support.Controller,
 	return t.respond(out, mutation)
 }
 
+// reconcile reads the journal after an unknown outcome; it never resends.
+func (t *remoteSupportTool) reconcile(ctx context.Context, ctl *support.Controller, res supportResult, e *support.Error, opID string) supportResult {
+	res.OK, res.Error, res.Effect, res.InputSent = false, e, support.EffectUnknown, true
+	deadline := time.Now().Add(t.reconcileWait)
+	for time.Now().Before(deadline) && ctx.Err() == nil {
+		remote, client, err := ctl.Target()
+		if err == nil && client != nil {
+			if remote.RemoteDeviceID != res.Device.RemoteDeviceID || remote.SessionID != res.Device.SessionID {
+				res.Note = "The connected device or session changed. The original outcome remains unknown; no journal was read on the new target and nothing was resent."
+				return res
+			}
+			op, oerr := client.Operation(ctx, opID)
+			if oerr == nil {
+				res.Reconciled = &op
+				res.Effect = support.Effect(op.Effect)
+				res.Device = deviceOf(remote)
+				res.Note = "The connection dropped after sending; the remote journal reports this operation as " + string(op.State) + ". It was not sent again."
+				return res
+			}
+			if apiErr := (*nodes.APIError)(nil); errors.As(oerr, &apiErr) && apiErr.Code == "not_found" {
+				res.Note = "The original session has no journal entry for this operation. This does not prove no effect; observe the original remote target before deciding how to recover. It was not sent again."
+				return res
+			}
+		} else if code := support.CodeOf(err); code != support.CodeRemoteOffline {
+			break
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+	res.Note = "The outcome is unknown and could not be reconciled yet. Do not repeat the action; call operation_status with this operation_id when the connection is back, or observe the remote state."
+	return res
+}
+

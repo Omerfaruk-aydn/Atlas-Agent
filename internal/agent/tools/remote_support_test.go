@@ -157,3 +157,48 @@ func TestRemoteSupportAutoApproveCannotWidenTheGrantOrChangeTarget(t *testing.T)
 	require.Empty(t, f.host.Status().Session.Recent, "nothing ran on the remote computer")
 }
 
+// Scenario 7: a mutation whose connection dropped is reconciled from the
+// remote journal and never sent twice.
+func TestRemoteSupportUnknownOutcomeIsReconciledNotResent(t *testing.T) {
+	t.Parallel()
+	f := newSupportFixture(t, []support.Capability{support.CapCommand})
+	tool := NewRemoteSupportTool(yolo(t), t.TempDir(), func() *support.Controller { return f.ctl })
+	marks := filepath.Join(f.root, "marks.txt")
+	go func() {
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			if _, err := os.Stat(marks); err == nil {
+				f.ctl.ForceReconnect()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+	got := callSupport(t, tool, "c-mark", map[string]any{"action": "exec", "device_id": f.remote.RemoteDeviceID, "argv": supportHelper(t, "mark"), "cwd": "Work"})
+	require.True(t, got.resp.IsError)
+	require.Equal(t, string(support.CodeOutcomeUnknown), errCode(got), got.resp.Content)
+	require.Equal(t, true, got.body["input_sent"])
+	require.Equal(t, "unknown", got.outcome.Dispatch)
+	require.NotNil(t, got.body["reconciled"], "the journal entry was read after reconnecting: %s", got.resp.Content)
+	check := got.body["checkpoint"].(map[string]any)
+	require.Equal(t, "operation_status", check["reconcile_with"])
+	opID := got.body["operation_id"].(string)
+
+	require.Eventually(t, func() bool {
+		st := callSupport(t, tool, "c-status", map[string]any{"action": "operation_status", "device_id": f.remote.RemoteDeviceID, "operation_id": opID})
+		op, _ := st.body["result"].(map[string]any)
+		return op != nil && op["state"] == "completed"
+	}, 15*time.Second, 100*time.Millisecond)
+	data, err := os.ReadFile(marks)
+	require.NoError(t, err)
+	require.Equal(t, "ran\n", string(data), "the command ran exactly once")
+
+	// Repeating the same tool call is answered from the journal.
+	again := callSupport(t, tool, "c-mark", map[string]any{"action": "exec", "device_id": f.remote.RemoteDeviceID, "argv": supportHelper(t, "mark"), "cwd": "Work"})
+	require.False(t, again.resp.IsError, again.resp.Content)
+	result := again.body["result"].(map[string]any)
+	require.Equal(t, true, result["replayed"])
+	data, _ = os.ReadFile(marks)
+	require.Equal(t, "ran\n", string(data))
+}
+

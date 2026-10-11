@@ -77,3 +77,82 @@ func orDot(rel string) string {
 	return rel
 }
 
+// displayPath names a host path relative to the grant's folder it is in.
+func (s *Server) displayPath(g Grant, abs string) string {
+	if abs == "" {
+		return ""
+	}
+	if len(g.Roots) == 0 {
+		if rel, err := filepath.Rel(s.opts.Root, abs); err == nil {
+			return filepath.ToSlash(rel)
+		}
+		return filepath.Base(abs)
+	}
+	for _, root := range g.Roots {
+		real, err := filepath.EvalSymlinks(root.Path)
+		if err != nil {
+			real = root.Path
+		}
+		for _, base := range []string{real, root.Path} {
+			if rel, err := filepath.Rel(base, abs); err == nil && !strings.HasPrefix(rel, "..") {
+				return root.Label + "/" + filepath.ToSlash(rel)
+			}
+		}
+	}
+	return filepath.Base(abs)
+}
+
+func (s *Server) uploadResult(g Grant, st transfer.UploadStatus, replayed bool) UploadResult {
+	out := UploadResult{UploadStatus: st, Replayed: replayed}
+	out.Path = s.displayPath(g, st.Path)
+	out.UploadStatus.Path = ""
+	return out
+}
+
+func (s *Server) handleCreateUpload(w http.ResponseWriter, r *http.Request) {
+	g := grantFrom(r)
+	var req UploadRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	req.SHA256 = strings.ToLower(req.SHA256)
+	policy, err := transfer.ParseConflict(req.Conflict)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), false, "none")
+		return
+	}
+	if policy == transfer.ConflictOverwrite && !s.allowModify(w, r) {
+		return
+	}
+	root, inner, err := s.splitFor(g, req.Path)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, transfer.Code(err), err.Error(), false, "none")
+		return
+	}
+	op, existing, err := s.begin(r, Operation{ID: req.OperationID, Kind: "upload", RequestHash: RequestHash([]any{req.Path, req.Size, req.SHA256, policy}), Path: req.Path, SHA256: req.SHA256, Size: req.Size})
+	if err != nil {
+		beginError(w, err)
+		return
+	}
+	if existing && op.State.Terminal() {
+		if op.State == taskstate.Completed {
+			writeJSON(w, http.StatusOK, UploadResult{UploadStatus: transfer.UploadStatus{OperationID: op.ID, Size: op.Size, Received: op.Size, SHA256: op.SHA256, State: "complete"}, Path: op.Path, Replayed: true})
+			return
+		}
+		writeError(w, http.StatusConflict, "operation_"+string(op.State), "this upload already ended: "+op.Error, false, op.Effect)
+		return
+	}
+	st, err := s.uploads.Create(transfer.UploadSpec{Owner: g.Device.ID, Key: op.ID, Root: root, Rel: inner, Size: req.Size, SHA256: req.SHA256, Conflict: policy}, s.maxFile())
+	if err != nil {
+		code := transfer.Code(err)
+		if errors.Is(err, transfer.ErrUploadConflict) {
+			code = "operation_conflict"
+		}
+		// Nothing was written; the journaled operation ends without effect.
+		_, _ = s.finish(g, op.ID, func(o *Operation) { o.State, o.Effect, o.Error = taskstate.Failed, "none", err.Error() })
+		writeError(w, http.StatusBadRequest, code, err.Error(), false, "none")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.uploadResult(g, st, existing))
+}
+

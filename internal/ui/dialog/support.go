@@ -585,3 +585,75 @@ func (d *Support) hostKey(msg tea.KeyPressMsg) Action {
 	return nil
 }
 
+func (d *Support) connectKey(msg tea.KeyPressMsg) Action {
+	connected := d.hasCtl && d.ctl.Remote != nil && !d.ctl.State.Terminal()
+	switch {
+	case key.Matches(msg, d.keyMap.Back):
+		d.codeInput.Blur()
+		d.back()
+		return nil
+	case connected && key.Matches(msg, d.keyMap.Disconnect):
+		d.confirm = "ctl-disconnect"
+		return nil
+	case connected || d.joining:
+		return nil
+	case key.Matches(msg, d.keyMap.Enter):
+		input := strings.TrimSpace(d.codeInput.Value())
+		if input == "" {
+			return nil
+		}
+		if _, err := support.ParseTarget(input); err != nil {
+			d.say(d.errText(err), true)
+			return nil
+		}
+		d.joining = true
+		d.notice = ""
+		return d.run("join", func(ctx context.Context) SupportDone {
+			c, err := d.svc.Controller(ctx)
+			if err != nil {
+				return SupportDone{Err: err}
+			}
+			r, err := c.Join(ctx, input, nil)
+			if err != nil {
+				return SupportDone{Err: err}
+			}
+			return SupportDone{Notice: fmt.Sprintf(d.com.Text("Connected to %s. Give tasks in the chat; they run on that computer."), r.RemoteName)}
+		})
+	}
+	var cmd tea.Cmd
+	d.codeInput, cmd = d.codeInput.Update(msg)
+	return ActionCmd{Cmd: cmd}
+}
+
+func (d *Support) historyKey(msg tea.KeyPressMsg) Action {
+	switch {
+	case key.Matches(msg, d.keyMap.Back):
+		d.back()
+	case key.Matches(msg, d.keyMap.Up):
+		d.histSel = max(0, d.histSel-1)
+	case key.Matches(msg, d.keyMap.Down):
+		d.histSel = min(len(d.summaries)-1, d.histSel+1)
+	case key.Matches(msg, d.keyMap.Enter):
+		if d.histSel < 0 || d.histSel >= len(d.summaries) {
+			return nil
+		}
+		s := d.summaries[d.histSel]
+		return d.run("events", func(ctx context.Context) SupportDone {
+			var hist *support.History
+			if s.Role == "host" {
+				if h, err := d.svc.Host(ctx); err == nil {
+					hist = h.History()
+				}
+			} else if c, err := d.svc.Controller(ctx); err == nil {
+				hist = c.History()
+			}
+			if hist == nil {
+				return SupportDone{Err: errors.New(d.com.Text("History is not available."))}
+			}
+			events, err := hist.Events(s.SessionID)
+			return SupportDone{Events: events, Err: err}
+		})
+	}
+	return nil
+}
+

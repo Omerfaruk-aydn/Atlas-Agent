@@ -136,3 +136,102 @@ func Install(root, rel, src string, size int64, sha string, policy Conflict) (st
 	return dest, nil
 }
 
+// UploadSpec describes a chunked upload. Owner and Key make resumption
+// exact: only the same owner (one session's device) resuming the same
+// operation for the same content may continue it.
+type UploadSpec struct {
+	Owner    string   `json:"owner"`
+	Key      string   `json:"key"`
+	Root     string   `json:"root"`
+	Rel      string   `json:"rel"`
+	Size     int64    `json:"size"`
+	SHA256   string   `json:"sha256"`
+	Conflict Conflict `json:"conflict"`
+}
+
+// UploadStatus is the durable state of one upload.
+type UploadStatus struct {
+	ID          string   `json:"id"`
+	OperationID string   `json:"operation_id"`
+	Rel         string   `json:"rel"`
+	Size        int64    `json:"size"`
+	Received    int64    `json:"received"`
+	SHA256      string   `json:"sha256"`
+	Conflict    Conflict `json:"conflict"`
+	// State is receiving, complete, failed or aborted.
+	State     string `json:"state"`
+	Path      string `json:"path,omitempty"`
+	Error     string `json:"error,omitempty"`
+	ErrorCode string `json:"error_code,omitempty"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+type uploadRecord struct {
+	Spec   UploadSpec   `json:"spec"`
+	Status UploadStatus `json:"status"`
+}
+
+// Uploads keeps partial uploads outside the destination folders, so an
+// interrupted transfer never leaves a half file where the user looks.
+type Uploads struct {
+	dir string
+	mu  sync.Mutex
+}
+
+// uploadTTL bounds how long an abandoned partial upload is kept.
+const uploadTTL = 24 * time.Hour
+
+// OpenUploads uses dir for partial data and removes stale uploads.
+func OpenUploads(dir string) (*Uploads, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	u := &Uploads{dir: dir}
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > uploadTTL {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
+	return u, nil
+}
+
+func uploadID(owner, key string) string {
+	sum := sha256.Sum256([]byte(owner + "\x00" + key))
+	return "up-" + hex.EncodeToString(sum[:12])
+}
+
+func (u *Uploads) metaPath(id string) string { return filepath.Join(u.dir, id+".json") }
+func (u *Uploads) partPath(id string) string { return filepath.Join(u.dir, id+".part") }
+
+func (u *Uploads) load(id string) (uploadRecord, error) {
+	var rec uploadRecord
+	if !strings.HasPrefix(id, "up-") || len(id) != 27 || strings.ContainsAny(id, `/\.`) {
+		return rec, fail("not_found", "unknown upload")
+	}
+	data, err := os.ReadFile(u.metaPath(id))
+	if err != nil {
+		return rec, fail("not_found", "unknown upload")
+	}
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return rec, fmt.Errorf("corrupt upload record: %w", err)
+	}
+	return rec, nil
+}
+
+func (u *Uploads) store(rec uploadRecord) error {
+	rec.Status.UpdatedAt = time.Now().UnixMilli()
+	data, err := json.Marshal(rec)
+	if err != nil {
+		return err
+	}
+	tmp := u.metaPath(rec.Status.ID) + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, u.metaPath(rec.Status.ID))
+}
+
+// ErrUploadConflict means the operation key was used for other content.
+var ErrUploadConflict = errors.New("upload key was already used for a different file")
+

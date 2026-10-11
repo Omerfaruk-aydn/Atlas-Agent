@@ -163,3 +163,116 @@ func NewSupport(com *common.Common, svc *support.Service) *Support {
 	return d
 }
 
+// supportConfig is the configuration, or nil without a workspace.
+func supportConfig(com *common.Common) *config.Config {
+	if com.Workspace == nil {
+		return nil
+	}
+	return com.Config()
+}
+
+// ID implements Dialog.
+func (d *Support) ID() string { return SupportID }
+
+// ShowHost switches to the owner's view, where requests are answered.
+func (d *Support) ShowHost() {
+	d.refresh()
+	d.confirm = ""
+	d.view = supportHost
+}
+
+// Init starts the refresh tick.
+func (d *Support) Init() tea.Cmd { return d.tick() }
+
+func (d *Support) tick() tea.Cmd {
+	return tea.Tick(time.Second, func(time.Time) tea.Msg { return SupportTick{} })
+}
+
+// refresh snapshots both ends without creating either one.
+func (d *Support) refresh() {
+	if h := d.svc.ActiveHost(); h != nil {
+		d.host, d.hasHost = h.Status(), true
+	}
+	if c := d.svc.ActiveController(); c != nil {
+		d.ctl, d.hasCtl = c.Status(), true
+	}
+}
+
+func (d *Support) say(msg string, isErr bool) {
+	d.notice, d.noticeErr = msg, isErr
+}
+
+// run executes fn off the UI loop.
+func (d *Support) run(op string, fn func(ctx context.Context) SupportDone) Action {
+	d.busy = true
+	return ActionCmd{Cmd: func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		out := fn(ctx)
+		out.Op = op
+		return out
+	}}
+}
+
+func (d *Support) errText(err error) string {
+	if e := support.AsError(err); e != nil {
+		msg := d.com.Text(e.Message)
+		if e.NextStep != "" {
+			msg += " " + d.com.Text(e.NextStep)
+		}
+		return msg
+	}
+	return err.Error()
+}
+
+// HandleMsg implements Dialog.
+func (d *Support) HandleMsg(msg tea.Msg) Action {
+	switch msg := msg.(type) {
+	case SupportTick:
+		d.refresh()
+		return ActionCmd{Cmd: d.tick()}
+	case SupportDone:
+		d.busy = false
+		d.refresh()
+		switch {
+		case msg.Err != nil:
+			d.say(d.errText(msg.Err), true)
+			if msg.Op == "join" {
+				d.joining = false
+			}
+		case msg.Op == "history":
+			d.summaries, d.histSel = msg.History, 0
+		case msg.Op == "events":
+			d.events, d.view = msg.Events, supportHistoryDetail
+		case msg.Op == "offer":
+			d.view = supportHost
+			d.say(msg.Notice, false)
+		case msg.Op == "join":
+			d.joining = false
+			d.say(msg.Notice, false)
+		default:
+			if msg.Notice != "" {
+				d.say(msg.Notice, false)
+			}
+		}
+		return nil
+	case tea.PasteMsg:
+		switch {
+		case d.view == supportConnect && !d.joining:
+			var cmd tea.Cmd
+			d.codeInput, cmd = d.codeInput.Update(msg)
+			return ActionCmd{Cmd: cmd}
+		case d.view == supportSettings:
+			var cmd tea.Cmd
+			d.settings[d.settingSel], cmd = d.settings[d.settingSel].Update(msg)
+			return ActionCmd{Cmd: cmd}
+		}
+	case tea.KeyPressMsg:
+		if d.confirm != "" {
+			return d.handleConfirm(msg)
+		}
+		return d.handleKey(msg)
+	}
+	return nil
+}
+

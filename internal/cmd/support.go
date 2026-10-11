@@ -149,3 +149,21 @@ func addSupportCommonFlags(c *cobra.Command) {
 	c.Flags().Bool("no-discovery", false, "Do not use UDP discovery on the local network")
 }
 
+func newSupportHostCommand() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "host",
+		Short: "Offer support access to this computer from a terminal and accept or reject the request",
+		Example: `  atlas support host --allow diagnose --folder Work=D:\support
+  atlas support host --allow system_info,file_read,file_send,command --folder Desktop=C:\Users\me\Desktop --internet --relay https://support.example.com --relay-token-file token.txt`,
+		RunE: runSupportHost,
+	}
+	addSupportCommonFlags(c)
+	c.Flags().String("allow", "diagnose", "Permissions: diagnose, assist, full, or a comma-separated list ("+strings.Join(support.Strings(support.AllCapabilities), ",")+")")
+	c.Flags().StringArray("folder", nil, "Allowed folder as Label=absolute-path (repeatable)")
+	c.Flags().Duration("duration", 2*time.Hour, "Session length (at most 8h)")
+	c.Flags().Bool("lan", true, "Accept a connection on the local network")
+	c.Flags().Bool("internet", false, "Accept a connection through --relay")
+	c.Flags().String("listen", "", "Local network listen address (default: any interface, random port)")
+	return c
+}
+

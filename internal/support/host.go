@@ -840,3 +840,59 @@ func (h *Host) Decide(requestID string, accept bool, caps []Capability) error {
 	}
 }
 
+func (h *Host) startSession(req *JoinRequest, caps []Capability) (*hostSession, uint64, error) {
+	token, resume := randomID(32), randomID(32)
+	s := &hostSession{
+		id: "ss-" + randomID(10), peer: req.Peer, caps: caps, network: req.Network,
+		tokenHash: sha256.Sum256([]byte(token)), resumeHash: sha256.Sum256([]byte(resume)), resumeToken: resume,
+		started: time.Now(), active: map[string]*OperationView{}, opEnds: map[string]func(){}, firstToken: token,
+	}
+	h.mu.Lock()
+	if h.pending != req {
+		h.mu.Unlock()
+		return nil, 0, errors.New("request is no longer pending")
+	}
+	s.roots = slices.Clone(h.offer.Roots)
+	s.expires = s.started.Add(h.offer.SessionDuration)
+	h.pending = nil
+	gen, err := h.machine.Connect("accepted by the owner")
+	if err != nil {
+		h.mu.Unlock()
+		return nil, 0, err
+	}
+	h.session = s
+	ctx, cancel := context.WithCancel(h.ctx)
+	s.cancel = cancel
+	s.expiry = h.afterFunc(time.Until(s.expires), func() { h.endSession(s.id, StateExpired, "the session time ended") })
+	if h.offerCancel != nil {
+		// The code's relay registration ends; the session gets its own.
+		h.offerCancel()
+		h.offerCancel = nil
+	}
+	h.offerInfo = nil
+	h.relayStatus = ""
+	h.mu.Unlock()
+	if req.Network == "relay" && h.relayConfig().Configured() {
+		h.goWork(func() { h.relayResumeLoop(ctx, RelaySlotFor(s.id, resume)) })
+	}
+	_ = h.store.save(sessionRecord{ID: s.id, State: StateConnected, ControllerName: s.peer.Name, ControllerDevice: s.peer.Fingerprint, ResumeHash: hex.EncodeToString(s.resumeHash[:]), ExpiresAt: s.expires.UnixMilli(), LastGeneration: gen, CapabilitiesFinal: strings.Join(Strings(caps), ",")})
+	var labels []string
+	for _, r := range s.roots {
+		labels = append(labels, r.Label)
+	}
+	_ = h.history.Append(Event{SessionID: s.id, Role: "host", Kind: "session_started", Device: h.id.NodeID, Peer: s.peer.Name, PeerDevice: s.peer.Fingerprint, Generation: gen, Fields: map[string]string{"capabilities": strings.Join(Strings(caps), ","), "folders": strings.Join(labels, ","), "expires_at": s.expires.Format(time.RFC3339), "network": s.network}})
+	if h.opts.Overlay != nil {
+		id := s.id
+		h.opts.Overlay.Start(s.id, s.peer.Name, func() {
+			// A native banner callback may outlive the connection goroutine.
+			// Shutdown must wait for its history and session writes as well.
+			if h.beginWork() {
+				defer h.work.Done()
+				h.endSession(id, StateRevoked, "the owner stopped remote support from the screen banner")
+			}
+		})
+	}
+	h.notify()
+	return s, gen, nil
+}
+

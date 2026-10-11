@@ -106,3 +106,60 @@ func retryable(code Code) bool {
 	return false
 }
 
+func nextStep(code Code) string {
+	switch code {
+	case CodePairingInvalid:
+		return "Check the code with the person at the other computer; codes are case-insensitive and contain no 0, 1, I, L, O or U."
+	case CodePairingExpired:
+		return "Ask the person at the other computer to create a new code."
+	case CodePairingUsed:
+		return "A code works once; ask for a new code."
+	case CodePairingRejected:
+		return "The computer owner declined; do not retry without talking to them."
+	case CodePairingRateLimited:
+		return "Too many attempts; the code was disabled. Ask for a new code."
+	case CodeSessionRevoked:
+		return "The computer owner ended the session. Access cannot be regained by reconnecting; a new session needs a new code and acceptance."
+	case CodeSessionExpired:
+		return "The session time ended. Start a new session with a new code."
+	case CodeSessionPaused:
+		return "The owner paused the support task; wait until they resume it. Nothing was run."
+	case CodeControlPaused:
+		return "The owner paused screen control; read-only steps still work. Nothing was sent."
+	case CodeCapabilityDenied:
+		return "This permission was not granted by the computer owner. Ask them with request_permissions, or continue without it."
+	case CodeRemoteOffline:
+		return "The remote computer is not reachable. Do not switch to this computer; wait for it to come back or end the task."
+	case CodeConnectionLost, CodeOutcomeUnknown:
+		return "The connection dropped after the request was sent. Do not resend it; reconcile with operation_status once reconnected, or observe the remote state."
+	case CodeStaleConnection:
+		return "The response belongs to an earlier connection and was discarded; read the current state again."
+	case CodeStaleTarget:
+		return "Observe the remote desktop again and aim with the new observation."
+	case CodeDesktopUnavailable:
+		return "The remote desktop cannot be captured or controlled now (locked, signed out or minimized remote session). Ask the owner; never use this computer's desktop instead."
+	case CodeSecureDesktop:
+		return "A system prompt such as UAC is on the secure desktop. The owner at the remote computer must answer it; Atlas cannot and will not bypass it."
+	case CodeTransferInterrupt:
+		return "Resume the transfer with the same operation_id; received data is verified before it is kept."
+	case CodeHashMismatch:
+		return "The received bytes did not match; the file was not delivered. Transfer it again."
+	case CodePathDenied:
+		return "Use a path inside one of the folders the owner allowed."
+	case CodeUnsupported:
+		return "This operation is not available on the remote platform."
+	case CodeRelayNotConfigured:
+		return "Internet mode needs your own relay: set support_relay_url (and support_relay_token_file) or use local network mode."
+	case CodeNoTarget:
+		return "Connect to a computer first with /support → Connect to another computer."
+	case CodeWrongTarget:
+		return "The request names a different support session or device than the active one; use the device shown by remote_support status."
+	}
+	return ""
+}
+
+// Unsent wraps a failure that happened before anything left this computer.
+func Unsent(code Code, err error) *Error {
+	e := Errorf(code, "%v", err)
+	return e
+}

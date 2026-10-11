@@ -147,3 +147,68 @@ func TestSupportDialogOwnerFlow(t *testing.T) {
 	require.Eventually(t, func() bool { return c.Status().State.Terminal() }, 15*time.Second, 20*time.Millisecond)
 }
 
+func TestSupportDialogConnectRejectsMalformedCodes(t *testing.T) {
+	t.Parallel()
+	svc := support.NewService(t.TempDir(), func() support.ServiceConfig {
+		return support.ServiceConfig{DiscoveryPort: -1, Overlay: quietOverlay{}}
+	}, nil)
+	t.Cleanup(svc.Close)
+	d := NewSupport(supportCommon("en"), svc)
+	supportPress(t, d, "2")
+	for _, r := range "not-a-code!" {
+		d.HandleMsg(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	require.Nil(t, supportPress(t, d, "enter"))
+	require.Contains(t, strings.ToLower(renderSupport(d)), "code")
+	require.Nil(t, svc.ActiveController(), "nothing connects for a malformed code")
+}
+
+func TestSupportDialogOfferErrorVisibleInShortTerminal(t *testing.T) {
+	t.Parallel()
+	svc := support.NewService(t.TempDir(), nil, nil)
+	t.Cleanup(svc.Close)
+	d := NewSupport(supportCommon("en"), svc)
+	d.fileRoots = func() ([]nodes.Root, error) {
+		return nil, errors.New("Drive discovery unavailable")
+	}
+	supportPress(t, d, "1", "3")
+	runAction(t, d, supportPress(t, d, "enter"))
+	scr := uv.NewScreenBuffer(80, 24)
+	d.Draw(scr, image.Rect(0, 0, 80, 24))
+	require.Contains(t, scr.String(), "Drive discovery unavailable")
+	require.Nil(t, svc.ActiveHost(), "no code starts without the requested file access")
+}
+
+func TestSupportDialogEveryPresetCreatesCodeWithoutFolderInput(t *testing.T) {
+	t.Parallel()
+	for _, preset := range []string{"1", "2", "3"} {
+		t.Run(preset, func(t *testing.T) {
+			t.Parallel()
+			svc := support.NewService(t.TempDir(), func() support.ServiceConfig {
+				return support.ServiceConfig{DiscoveryPort: -1, LANListen: "127.0.0.1:0", Overlay: quietOverlay{}}
+			}, nil)
+			t.Cleanup(svc.Close)
+			d := NewSupport(supportCommon("tr"), svc)
+			root := t.TempDir()
+			d.fileRoots = func() ([]nodes.Root, error) {
+				return []nodes.Root{{Label: "Work", Path: root}}, nil
+			}
+			supportPress(t, d, "1", preset)
+			view := renderSupport(d)
+			require.NotContains(t, view, "Mutlak klasör yolu")
+			require.NotContains(t, view, "o ekle")
+			require.NotContains(t, view, "en az bir klasör")
+			require.Contains(t, view, "klasör seçmen gerekmez")
+			require.Nil(t, supportPress(t, d, "o"), "the removed folder shortcut does nothing")
+			runAction(t, d, supportPress(t, d, "enter"))
+			require.Equal(t, supportHost, d.view)
+			st := svc.ActiveHost().Status()
+			require.NotNil(t, st.Offer)
+			target, err := support.ParseTarget(st.Offer.Link)
+			require.NoError(t, err)
+			require.Equal(t, st.Offer.Code, target.Code.String())
+			require.Equal(t, svc.ActiveHost().LANAddress(), target.Address)
+		})
+	}
+}
+

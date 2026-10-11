@@ -62,7 +62,8 @@ func (s *Server) handleObserve(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "capture_failed", err.Error(), false, "none")
 		return
 	}
-	obs := DesktopObservation{ObservationID: "obs-" + randomHex(8), Width: size.Width, Height: size.Height, CapturedAt: time.Now().UnixMilli(), Blank: isBlank(data)}
+	g := grantFrom(r)
+	obs := DesktopObservation{ObservationID: "obs-" + randomHex(8), NodeID: s.id.NodeID, SessionID: g.SessionID, Generation: g.Generation, Monitor: "virtual", CoordinateSpace: "virtual_screen_physical_pixels", Scale: 1, Width: size.Width, Height: size.Height, CapturedAt: time.Now().UnixMilli(), Blank: isBlank(data)}
 	if r.URL.Query().Get("image") != "0" {
 		obs.PNG = data
 	}
@@ -73,19 +74,26 @@ func (s *Server) handleObserve(w http.ResponseWriter, r *http.Request) {
 		if raw, err := auto.Automation(r.Context(), computer.AutomationRequest{Action: "windows"}); err == nil {
 			obs.Windows = raw
 		}
+		if raw, err := auto.Automation(r.Context(), computer.AutomationRequest{Action: "monitors"}); err == nil {
+			obs.Monitors = raw
+		}
 	}
-	s.obs = &observationState{id: obs.ObservationID, size: size, at: time.Now()}
+	s.obs = &observationState{id: obs.ObservationID, size: size, at: time.Now(), session: g.SessionID, generation: g.Generation}
 	writeJSON(w, http.StatusOK, obs)
 }
 
 // checkObservation enforces that input is aimed using the latest
-// observation of the current screen geometry.
-func (s *Server) checkObservation(id string, pointer bool) error {
+// observation of the current screen geometry, taken by the same session
+// over the same connection generation.
+func (s *Server) checkObservation(g Grant, id string, pointer bool) error {
 	if !pointer && id == "" {
 		return nil
 	}
 	if s.obs == nil || s.obs.id != id {
 		return errors.New("observation_id is not the latest observation of this desktop; observe again")
+	}
+	if s.obs.session != g.SessionID || s.obs.generation != g.Generation {
+		return errors.New("observation belongs to an earlier connection; observe again")
 	}
 	if time.Since(s.obs.at) > observationTTL {
 		return errors.New("observation is older than two minutes; observe again")
@@ -111,17 +119,18 @@ func (s *Server) handleInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pointer := slices.Contains(pointerActions, in.Action)
-	d := deviceFrom(r)
+	g := grantFrom(r)
+	d := g.Device
 	s.desktopMu.Lock()
 	defer s.desktopMu.Unlock()
-	if replay, err := s.journal.Replay(in.OperationID, d.ID, RequestHash(in)); err != nil {
+	if replay, err := s.journal.Replay(in.OperationID, d.ID, RequestHash(in), g.SessionID); err != nil {
 		writeError(w, http.StatusConflict, "operation_conflict", err.Error(), false, "none")
 		return
 	} else if replay != nil {
 		writeJSON(w, http.StatusOK, replay)
 		return
 	}
-	if err := s.checkObservation(in.ObservationID, pointer); err != nil {
+	if err := s.checkObservation(g, in.ObservationID, pointer); err != nil {
 		writeError(w, http.StatusConflict, "stale_observation", err.Error(), false, "none")
 		return
 	}
@@ -145,13 +154,9 @@ func (s *Server) handleInput(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	op, existing, err := s.journal.Begin(Operation{ID: in.OperationID, Kind: "desktop_" + in.Action, DeviceID: d.ID, RequestHash: RequestHash(in)})
+	op, existing, err := s.begin(r, Operation{ID: in.OperationID, Kind: "desktop_" + in.Action, RequestHash: RequestHash(in)})
 	if err != nil {
-		status := http.StatusBadRequest
-		if errors.Is(err, ErrOperationConflict) {
-			status = http.StatusConflict
-		}
-		writeError(w, status, "operation_conflict", err.Error(), false, "none")
+		beginError(w, err)
 		return
 	}
 	if existing {
@@ -159,7 +164,7 @@ func (s *Server) handleInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ierr := s.sendInput(in)
-	final, ferr := s.journal.Finish(op.ID, func(o *Operation) {
+	final, ferr := s.finish(g, op.ID, func(o *Operation) {
 		if ierr != nil {
 			o.State, o.Effect, o.Error = taskstate.Failed, "unknown", ierr.Error()
 			return
@@ -267,23 +272,32 @@ func (s *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "argv must contain 1-64 literal arguments", false, "none")
 		return
 	}
-	d := deviceFrom(r)
-	op, existing, err := s.journal.Begin(Operation{ID: req.OperationID, Kind: "desktop_launch", DeviceID: d.ID, RequestHash: RequestHash(req), Argv: req.Argv})
-	if err != nil {
-		status := http.StatusBadRequest
-		if errors.Is(err, ErrOperationConflict) {
-			status = http.StatusConflict
+	g := grantFrom(r)
+	if replay, err := s.journal.Replay(req.OperationID, g.Device.ID, RequestHash(req), g.SessionID); err != nil {
+		beginError(w, err)
+		return
+	} else if replay != nil {
+		writeJSON(w, http.StatusOK, replay)
+		return
+	}
+	if policy, ok := s.opts.Access.(ExecPolicy); ok {
+		if apiErr := policy.CheckExec(g, "launch", req.Argv); apiErr != nil {
+			writeJSON(w, http.StatusForbidden, apiErr)
+			return
 		}
-		writeError(w, status, "operation_conflict", err.Error(), false, "none")
+	}
+	op, existing, err := s.begin(r, Operation{ID: req.OperationID, Kind: "desktop_launch", RequestHash: RequestHash(req), Argv: req.Argv})
+	if err != nil {
+		beginError(w, err)
 		return
 	}
 	if existing {
 		writeJSON(w, http.StatusOK, op)
 		return
 	}
-	dir, _ := s.resolveDir("")
+	dir, _ := s.resolveDir(g, "")
 	proc, lerr := procown.Start(procown.Spec{Argv: req.Argv, Dir: dir, Visible: true})
-	final, ferr := s.journal.Finish(op.ID, func(o *Operation) {
+	final, ferr := s.finish(g, op.ID, func(o *Operation) {
 		if lerr != nil {
 			o.State, o.Effect, o.Error = taskstate.Failed, "none", lerr.Error()
 			return

@@ -240,3 +240,118 @@ func (c *Controller) Join(ctx context.Context, input string, onPending func(Join
 	return remote, nil
 }
 
+func (c *Controller) join(ctx context.Context, target Target, onPending func(JoinPrompt)) (Remote, error) {
+	relay, err := c.relayFor(target)
+	if err != nil {
+		return Remote{}, err
+	}
+	raw, network, address, err := c.dialJoin(ctx, target, relay)
+	if err != nil {
+		return Remote{}, err
+	}
+	tconn := tls.Client(raw, controllerTLSConfig(c.id, ""))
+	stop := contextConn(ctx, tconn)
+	defer stop()
+	clear := handshakeDeadline(tconn, 30*time.Second)
+	if err := tconn.HandshakeContext(ctx); err != nil {
+		_ = raw.Close()
+		return Remote{}, Errorf(CodeRemoteOffline, "secure connection to the other computer failed: %v", err)
+	}
+	exp, err := exporter(tconn)
+	if err != nil {
+		_ = tconn.Close()
+		return Remote{}, err
+	}
+	key := target.Code.key()
+	hello := clientHello{Type: "join", Protocol: ProtocolVersion, Name: c.opts.Name, OS: runtime.GOOS, Arch: runtime.GOARCH, Proof: proof(key, "controller", exp)}
+	if err := writeFrame(tconn, hello); err != nil {
+		_ = tconn.Close()
+		return Remote{}, Errorf(CodeRemoteOffline, "the other computer closed the connection")
+	}
+	var msg serverMsg
+	if err := readFrame(tconn, &msg); err != nil {
+		_ = tconn.Close()
+		return Remote{}, frameErr(err)
+	}
+	if msg.Type == "error" && msg.Error != nil {
+		_ = tconn.Close()
+		return Remote{}, msg.Error
+	}
+	if msg.Type != "challenge_ok" || msg.Host == nil || !hmac.Equal(proof(key, "host", exp), msg.Proof) {
+		_ = tconn.Close()
+		return Remote{}, Errorf(CodeWrongTarget, "the computer that answered did not prove it created this code")
+	}
+	host := *msg.Host
+	host.Fingerprint = peerFingerprint(tconn.ConnectionState())
+	if VerificationCode(exp) != msg.Verification {
+		_ = tconn.Close()
+		return Remote{}, Errorf(CodeWrongTarget, "verification codes differ; the connection may be intercepted")
+	}
+	clear()
+	prompt := JoinPrompt{Host: host, Verification: msg.Verification, Network: network, Address: address}
+	c.mu.Lock()
+	c.pending = &prompt
+	err = c.machine.Move(StateAwaitingAcceptance, "waiting for "+host.Name+" to accept")
+	c.mu.Unlock()
+	if err != nil {
+		_ = tconn.Close()
+		return Remote{}, err
+	}
+	if onPending != nil {
+		onPending(prompt)
+	}
+	c.notify()
+	_ = tconn.SetReadDeadline(time.Now().Add(joinWait))
+	for {
+		msg = serverMsg{}
+		if err := readFrame(tconn, &msg); err != nil {
+			_ = tconn.Close()
+			if ctx.Err() != nil {
+				return Remote{}, Errorf(CodePairingRejected, "the connection request was canceled")
+			}
+			return Remote{}, frameErr(err)
+		}
+		if msg.Type == "pending" {
+			continue
+		}
+		break
+	}
+	_ = tconn.SetReadDeadline(time.Time{})
+	if msg.Type == "error" && msg.Error != nil {
+		_ = tconn.Close()
+		return Remote{}, msg.Error
+	}
+	if msg.Type != "accepted" || msg.Session == nil || msg.Token == "" || msg.ResumeToken == "" {
+		_ = tconn.Close()
+		return Remote{}, Errorf(CodeProtocol, "unexpected answer from the other computer")
+	}
+	if msg.Session.RemoteFingerprint != host.Fingerprint {
+		_ = tconn.Close()
+		return Remote{}, Errorf(CodeWrongTarget, "the session names a different device than the one connected")
+	}
+	if err := writeFrame(tconn, clientHello{Type: "ready", Protocol: ProtocolVersion}); err != nil {
+		_ = tconn.Close()
+		return Remote{}, Errorf(CodeConnectionLost, "the connection dropped right after the owner accepted; ask for a new code")
+	}
+	stop()
+	remote := Remote{SessionInfo: *msg.Session, Address: address}
+	c.mu.Lock()
+	c.pending = nil
+	c.token, c.resume, c.relay = msg.Token, msg.ResumeToken, relay
+	c.remote = &remote
+	if _, err := c.machine.Connect("accepted by " + host.Name); err != nil {
+		c.mu.Unlock()
+		_ = tconn.Close()
+		return Remote{}, err
+	}
+	if err := c.attachLocked(tconn, remote.Generation); err != nil {
+		c.mu.Unlock()
+		_ = tconn.Close()
+		return Remote{}, err
+	}
+	c.mu.Unlock()
+	_ = c.history.Append(Event{SessionID: remote.SessionID, Role: "supporter", Kind: "session_started", Device: c.id.NodeID, Peer: remote.RemoteName, PeerDevice: remote.RemoteDeviceID, Generation: remote.Generation, Fields: map[string]string{"capabilities": strings.Join(Strings(remote.Capabilities), ","), "folders": strings.Join(remote.Roots, ","), "network": network, "fingerprint": remote.RemoteFingerprint}})
+	c.notify()
+	return remote, nil
+}
+

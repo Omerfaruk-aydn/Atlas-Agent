@@ -96,3 +96,48 @@ func TestRemoteSupportTreeAliasUsesInspect(t *testing.T) {
 	}
 }
 
+func TestRemoteSupportReconcileRejectsDifferentSession(t *testing.T) {
+	t.Parallel()
+	f := newSupportFixture(t, []support.Capability{support.CapSystemInfo})
+	_, client, err := f.ctl.Target()
+	require.NoError(t, err)
+	read := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		read = true
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer srv.Close()
+	client.BaseURL, client.HTTP = srv.URL, srv.Client()
+	original := deviceOf(f.remote)
+	original.SessionID = "ss-another-session"
+	tool := &remoteSupportTool{reconcileWait: time.Second}
+	got := tool.reconcile(t.Context(), f.ctl, supportResult{Device: original}, support.Errorf(support.CodeOutcomeUnknown, "lost"), "op-original")
+	require.False(t, read)
+	require.Equal(t, original, got.Device)
+	require.Equal(t, support.EffectUnknown, got.Effect)
+}
+
+func TestRemoteSupportNativeMetadataSurvives(t *testing.T) {
+	t.Parallel()
+	res := supportResult{OK: false, Action: "tool", Device: supportDevice{RemoteDeviceID: "node-original"}, Image: testPNG(t, 2, 2), StopTurn: true, NativeMetadata: `{"question":{"id":"q1"},"waiting_for_user":true,"atlas_outcome":{"dispatch":"none"}}`}
+	resp := (&remoteSupportTool{}).respond(res, true)
+	require.True(t, resp.StopTurn)
+	require.True(t, resp.IsError)
+	require.Contains(t, resp.Metadata, `"question"`)
+	require.Contains(t, resp.Metadata, `"child_atlas_outcome"`)
+	require.Equal(t, "image", resp.Type)
+	require.Equal(t, res.Image, resp.Data)
+}
+
+type supportUnknownExecutor struct{}
+
+func (supportUnknownExecutor) Validate(nodes.RemoteToolRequest) (bool, error) {
+	return true, nil
+}
+
+func (supportUnknownExecutor) Run(context.Context, nodes.Grant, nodes.RemoteToolRequest, func(nodes.Need) error) (fantasy.ToolResponse, error) {
+	return withToolOutcome(fantasy.NewTextResponse("The effect is unknown"), ToolOutcome{Dispatch: "unknown", Mutation: true}), nil
+}
+
+func (supportUnknownExecutor) Close(string) {}
+

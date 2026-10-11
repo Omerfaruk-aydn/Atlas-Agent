@@ -348,3 +348,62 @@ func TestWrongExpiredAndReusedCodes(t *testing.T) {
 	})
 }
 
+// Scenario 3: a declined request leaves zero remote operations.
+func TestDeclinedRequestRunsNothing(t *testing.T) {
+	t.Parallel()
+	h := startHost(t, nil)
+	c := startController(t, nil)
+	info := offerLAN(t, h, Presets["full"], workRoot(t))
+	ch := startJoin(c, info.Code+"@"+h.LANAddress())
+	require.NoError(t, h.Decide(waitPending(t, h).ID, false, nil))
+	res := <-ch
+	require.Equal(t, CodePairingRejected, CodeOf(res.err))
+	_, _, err := c.Target()
+	require.Equal(t, CodeNoTarget, CodeOf(err))
+	require.Equal(t, StateRevoked, c.Status().State)
+	require.Equal(t, StateRevoked, h.Status().State)
+	require.Nil(t, h.Status().Session)
+	// The code was consumed by the verified request.
+	again := startController(t, nil)
+	_, err = again.Join(t.Context(), info.Code+"@"+h.LANAddress(), nil)
+	require.Error(t, err)
+}
+
+// Scenarios 4 and 5: capabilities are enforced on the supported computer,
+// whatever the supporter's side decides or sends.
+func TestViewOnlySessionRefusesCommandsAndInput(t *testing.T) {
+	t.Parallel()
+	desk := &fakeDesktop{size: computer.Size{Width: 800, Height: 600}}
+	h := startHost(t, func(o *HostOptions) { o.Desktop = desk })
+	c := startController(t, nil)
+	r := connect(t, h, c, []Capability{CapScreenView})
+	cl := client(t, c)
+
+	obs, err := cl.Observe(t.Context(), false)
+	require.NoError(t, err)
+	require.Equal(t, r.SessionID, obs.SessionID)
+	require.Equal(t, h.NodeID(), obs.NodeID)
+	require.Equal(t, r.Generation, obs.Generation)
+
+	_, err = cl.Input(t.Context(), nodes.DesktopInput{OperationID: "op-click-1", ObservationID: obs.ObservationID, Action: "click", X: 5, Y: 5})
+	require.Equal(t, CodeCapabilityDenied, codeOf(t, err, r.RemoteDeviceID))
+	require.Zero(t, desk.clicks.Load())
+
+	// A controller that skips its own approvals (auto-approve) talks to the
+	// same host check: the raw API refuses an ungranted command.
+	_, err = cl.Exec(t.Context(), nodes.ExecRequest{OperationID: "op-exec-1", Argv: helper(t, "echo")})
+	require.Equal(t, CodeCapabilityDenied, codeOf(t, err, r.RemoteDeviceID))
+	_, err = cl.Launch(t.Context(), "op-launch-1", []string{"notepad"})
+	require.Equal(t, CodeCapabilityDenied, codeOf(t, err, r.RemoteDeviceID))
+
+	// An installer needs install on top of command.
+	h2 := startHost(t, nil)
+	c2 := startController(t, nil)
+	r2 := connect(t, h2, c2, []Capability{CapCommand})
+	_, err = client(t, c2).Exec(t.Context(), nodes.ExecRequest{OperationID: "op-install", Argv: []string{"winget", "install", "Notepad++.Notepad++"}})
+	e := Classify(err, r2.RemoteDeviceID, "op-install")
+	require.Equal(t, CodeCapabilityDenied, e.Code)
+	require.False(t, e.InputSent)
+	require.Equal(t, EffectNone, e.Effect)
+}
+

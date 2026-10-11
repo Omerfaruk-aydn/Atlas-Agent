@@ -79,3 +79,96 @@ func (s *Service) changed() {
 	}
 }
 
+// Host returns this computer's host end, starting it on first use.
+func (s *Service) Host(ctx context.Context) (*Host, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, errServiceClosed
+	}
+	cfg := s.config()
+	if s.host != nil {
+		s.host.setRelay(cfg.Relay)
+		return s.host, nil
+	}
+	var overlay Overlay = &ActivityOverlay{Language: cfg.Language}
+	if cfg.Overlay != nil {
+		overlay = cfg.Overlay
+	}
+	desk, reason := computer.OpenOrNil(), ""
+	if desk == nil {
+		reason = "desktop control is not available on this computer or session"
+	}
+	var executor nodes.RemoteToolExecutor
+	if cfg.ExecutorFactory != nil {
+		executor = cfg.ExecutorFactory(filepath.Join(s.dir, "host"), desk)
+	}
+	h, err := StartHost(context.WithoutCancel(ctx), HostOptions{
+		StateDir: filepath.Join(s.dir, "host"), Name: cfg.Name, Relay: cfg.Relay, DiscoveryPort: cfg.DiscoveryPort, LANListen: cfg.LANListen,
+		Desktop: desk, DesktopReason: reason, Overlay: overlay, Logger: s.logger, OnChange: s.changed, Executor: executor,
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.host = h
+	return h, nil
+}
+
+// Controller returns this computer's supporting end, creating it on first
+// use.
+func (s *Service) Controller(ctx context.Context) (*Controller, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, errServiceClosed
+	}
+	cfg := s.config()
+	if s.controller != nil {
+		s.controller.setRelay(cfg.Relay)
+		return s.controller, nil
+	}
+	c, err := NewController(context.WithoutCancel(ctx), ControllerOptions{
+		StateDir: filepath.Join(s.dir, "controller"), Name: cfg.Name, Relay: cfg.Relay, DiscoveryPort: cfg.DiscoveryPort, Logger: s.logger, OnChange: s.changed,
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.controller = c
+	return c, nil
+}
+
+// ActiveController returns the controller only if one exists, without
+// creating it; the agent tool uses it so a model call never creates
+// identities or sessions.
+func (s *Service) ActiveController() *Controller {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.controller
+}
+
+// ActiveHost returns the host only if one exists.
+func (s *Service) ActiveHost() *Host {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.host
+}
+
+// Close ends every session and releases listeners.
+func (s *Service) Close() {
+	s.mu.Lock()
+	s.closed = true
+	h, c := s.host, s.controller
+	s.mu.Unlock()
+	if h != nil {
+		h.Close()
+	}
+	if c != nil {
+		c.Close()
+	}
+}

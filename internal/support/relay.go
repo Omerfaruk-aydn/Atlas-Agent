@@ -284,3 +284,92 @@ func (s *RelayServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *RelayServer) serveHost(w http.ResponseWriter, r *http.Request, slot string) {
+	if !s.allow("host|"+clientIP(r), 60) {
+		relayError(w, http.StatusTooManyRequests, "rate_limited", "too many offers")
+		return
+	}
+	s.mu.Lock()
+	if s.closed || len(s.waiting) >= s.opts.MaxWaiting {
+		s.mu.Unlock()
+		relayError(w, http.StatusServiceUnavailable, "busy", "relay is full")
+		return
+	}
+	if _, taken := s.waiting[slot]; taken {
+		s.mu.Unlock()
+		relayError(w, http.StatusConflict, "slot_taken", "an offer with this slot is already waiting")
+		return
+	}
+	wh := &waitingHost{join: make(chan *websocket.Conn), done: make(chan struct{})}
+	s.waiting[slot] = wh
+	s.mu.Unlock()
+	release := func() {
+		s.mu.Lock()
+		if s.waiting[slot] == wh {
+			delete(s.waiting, slot)
+		}
+		s.mu.Unlock()
+	}
+	ws, err := s.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		release()
+		return
+	}
+	defer ws.Close()
+	ws.SetReadLimit(4096)
+	if err := ws.WriteJSON(relayControl{Type: "registered"}); err != nil {
+		release()
+		return
+	}
+	// The host sends nothing until paired; a read error means it left.
+	gone := make(chan struct{})
+	ready := make(chan struct{})
+	go func() {
+		defer close(gone)
+		var msg relayControl
+		if err := ws.ReadJSON(&msg); err == nil && msg.Type == "ready" {
+			close(ready)
+		}
+	}()
+	ping := time.NewTicker(25 * time.Second)
+	defer ping.Stop()
+	timeout := time.NewTimer(s.opts.WaitTimeout)
+	defer timeout.Stop()
+	for {
+		select {
+		case <-gone:
+			release()
+			return
+		case <-timeout.C:
+			release()
+			return
+		case <-ping.C:
+			_ = ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second))
+		case peer := <-wh.join:
+			release()
+			defer peer.Close()
+			if err := ws.WriteJSON(relayControl{Type: "paired"}); err != nil {
+				return
+			}
+			// The reader exits after "ready" or an error; only "ready"
+			// hands the connection over to the splice.
+			select {
+			case <-gone:
+			case <-time.After(10 * time.Second):
+				return
+			}
+			select {
+			case <-ready:
+			default:
+				return
+			}
+			if err := peer.WriteJSON(relayControl{Type: "paired"}); err != nil {
+				return
+			}
+			s.pairs.Add(1)
+			splice(mobilerelay.NewStreamConn(ws), mobilerelay.NewStreamConn(peer))
+			return
+		}
+	}
+}
+

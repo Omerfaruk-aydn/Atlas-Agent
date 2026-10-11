@@ -117,3 +117,45 @@ type joinDecision struct {
 	caps   []Capability
 }
 
+// PermissionRequest is a supporter's request the owner must answer:
+// more capabilities or a restart. ID and Revision bind an answer to the
+// exact request; a late answer to a canceled request changes nothing.
+type PermissionRequest struct {
+	ID           string       `json:"id"`
+	Revision     int          `json:"revision"`
+	Kind         string       `json:"kind"`
+	Capabilities []Capability `json:"capabilities,omitempty"`
+	Reason       string       `json:"reason"`
+	State        string       `json:"state"`
+	CreatedAt    time.Time    `json:"created_at"`
+	// SessionID binds the request to the session that asked.
+	SessionID string `json:"session_id"`
+}
+
+// OperationView is one recent operation for the owner's view.
+type OperationView struct {
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`
+	Summary    string `json:"summary"`
+	State      string `json:"state"`
+	Effect     string `json:"effect"`
+	Generation uint64 `json:"generation"`
+	StartedAt  int64  `json:"started_at"`
+	EndedAt    int64  `json:"ended_at,omitempty"`
+}
+
+// SessionView is the owner's view of the active session.
+type SessionView struct {
+	ID           string          `json:"id"`
+	Peer         PeerInfo        `json:"peer"`
+	Capabilities []Capability    `json:"capabilities"`
+	Roots        []nodes.Root    `json:"roots"`
+	ExpiresAt    time.Time       `json:"expires_at"`
+	StartedAt    time.Time       `json:"started_at"`
+	AgentPaused  bool            `json:"agent_paused"`
+	InputPaused  bool            `json:"input_paused"`
+	Network      string          `json:"network"`
+	Active       *OperationView  `json:"active,omitempty"`
+	Recent       []OperationView `json:"recent,omitempty"`
+}
+

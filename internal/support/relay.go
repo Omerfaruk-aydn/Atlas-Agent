@@ -105,3 +105,89 @@ func (c *RelayConfig) dial(ctx context.Context, path, slot string) (*websocket.C
 	return ws, nil
 }
 
+type relayControl struct {
+	Type string `json:"type"`
+}
+
+// relayHost registers slot and blocks until a peer joins. It returns the
+// spliced byte stream to the joining endpoint.
+func relayHost(ctx context.Context, cfg *RelayConfig, slot string) (net.Conn, error) {
+	ws, err := cfg.dial(ctx, relayHostPath, slot)
+	if err != nil {
+		return nil, err
+	}
+	stop := context.AfterFunc(ctx, func() { _ = ws.Close() })
+	defer stop()
+	ws.SetReadLimit(4096)
+	for {
+		var msg relayControl
+		if err := ws.ReadJSON(&msg); err != nil {
+			_ = ws.Close()
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return nil, Errorf(CodeRemoteOffline, "support relay connection ended")
+		}
+		switch msg.Type {
+		case "registered":
+			continue
+		case "paired":
+			if err := ws.WriteJSON(relayControl{Type: "ready"}); err != nil {
+				_ = ws.Close()
+				return nil, Errorf(CodeRemoteOffline, "support relay connection ended")
+			}
+			return mobilerelay.NewStreamConn(ws), nil
+		default:
+			_ = ws.Close()
+			return nil, Errorf(CodeProtocol, "unexpected relay message")
+		}
+	}
+}
+
+// relayJoin connects to the offer registered under slot.
+func relayJoin(ctx context.Context, cfg *RelayConfig, slot string) (net.Conn, error) {
+	ws, err := cfg.dial(ctx, relayJoinPath, slot)
+	if err != nil {
+		return nil, err
+	}
+	stop := context.AfterFunc(ctx, func() { _ = ws.Close() })
+	defer stop()
+	ws.SetReadLimit(4096)
+	_ = ws.SetReadDeadline(time.Now().Add(20 * time.Second))
+	var msg relayControl
+	if err := ws.ReadJSON(&msg); err != nil || msg.Type != "paired" {
+		_ = ws.Close()
+		return nil, Errorf(CodeRemoteOffline, "the support relay could not connect the two computers")
+	}
+	_ = ws.SetReadDeadline(time.Time{})
+	return mobilerelay.NewStreamConn(ws), nil
+}
+
+// RelayServerOptions configures a relay.
+type RelayServerOptions struct {
+	// Token, when set, must be presented by both endpoints.
+	Token string
+	// MaxWaiting bounds registered offers.
+	MaxWaiting int
+	// WaitTimeout bounds how long an offer waits for a peer.
+	WaitTimeout time.Duration
+	Logger      *slog.Logger
+}
+
+// RelayServer is the rendezvous and byte relay.
+type RelayServer struct {
+	opts      RelayServerOptions
+	tokenHash [32]byte
+	mu        sync.Mutex
+	waiting   map[string]*waitingHost
+	limits    map[string][]time.Time
+	upgrader  websocket.Upgrader
+	pairs     atomic.Int64
+	closed    bool
+}
+
+type waitingHost struct {
+	join chan *websocket.Conn
+	done chan struct{}
+}
+

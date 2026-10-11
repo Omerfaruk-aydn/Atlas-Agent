@@ -146,3 +146,93 @@ func (e *supportExecutor) execution(g nodes.Grant) (*supportExecution, error) {
 	return state, nil
 }
 
+func (e *supportExecutor) Run(ctx context.Context, g nodes.Grant, req nodes.RemoteToolRequest, authorize func(nodes.Need) error) (fantasy.ToolResponse, error) {
+	if authorize == nil {
+		return fantasy.ToolResponse{}, fmt.Errorf("remote execution requires live owner authorization")
+	}
+	if _, err := e.Validate(req); err != nil {
+		return fantasy.ToolResponse{}, err
+	}
+	state, err := e.execution(g)
+	if err != nil {
+		return fantasy.ToolResponse{}, err
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(state.ctx, cancel)
+	defer stop()
+	// A session owns one desktop. Serialize complete calls, including flows,
+	// so two requests cannot change each other's focus or observations.
+	select {
+	case state.gate <- struct{}{}:
+		defer func() { <-state.gate }()
+	case <-ctx.Done():
+		return supportNotDispatched(ctx.Err()), nil
+	}
+	if ctx.Err() != nil || state.ctx.Err() != nil {
+		return supportNotDispatched(context.Canceled), nil
+	}
+	ctx = context.WithValue(ctx, SessionIDContextKey, "support-"+g.SessionID)
+	ctx = context.WithValue(ctx, SupportsImagesContextKey, true)
+	execute := func(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		request := nodes.RemoteToolRequest{Tool: call.Name, Input: json.RawMessage(call.Input)}
+		mutation, err := e.Validate(request)
+		if err != nil {
+			return supportNotDispatched(err), nil
+		}
+		need := nodes.NeedDesktopView
+		if call.Name == BrowserToolName {
+			need = nodes.NeedBrowser
+			if mutation {
+				need = nodes.NeedBrowserInput
+			}
+		} else if mutation {
+			need = nodes.NeedDesktopInput
+		}
+		if err := authorize(need); err != nil {
+			return supportNotDispatched(err), nil
+		}
+		if call.Name == ComputerToolName {
+			var p ComputerParams
+			if err := json.Unmarshal(request.Input, &p); err != nil {
+				return supportNotDispatched(err), nil
+			}
+			if p.File != nil {
+				if err := authorize(nodes.NeedFileList); err != nil {
+					return supportNotDispatched(err), nil
+				}
+				allowed := false
+				for _, root := range g.Roots {
+					if rel, err := filepath.Rel(root.Path, p.File.Path); err == nil && rel != ".." && !filepath.IsAbs(rel) && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+						if _, err := transfer.Resolve(root.Path, filepath.ToSlash(rel)); err == nil {
+							allowed = true
+							break
+						}
+					}
+				}
+				if !allowed {
+					return supportNotDispatched(fmt.Errorf("path_denied: file check must remain in an owner-granted folder")), nil
+				}
+			}
+			return state.computer.Run(ctx, call)
+		}
+		return state.browser.Run(ctx, call)
+	}
+	invoke := execute
+	if e.wrap != nil {
+		root := e.stateDir
+		invoke = func(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			inner := state.computer
+			if call.Name == BrowserToolName {
+				inner = state.browser
+			}
+			return e.wrap(root, &supportAuthorizedTool{AgentTool: inner, run: execute}).Run(ctx, call)
+		}
+	}
+	call := fantasy.ToolCall{ID: req.OperationID, Name: req.Tool, Input: string(req.Input)}
+	if req.Tool == "tool_pipeline" {
+		return NewToolPipeline(invoke, engineering.NewStore(e.stateDir)).Run(ctx, call)
+	}
+	return invoke(ctx, call)
+}
+

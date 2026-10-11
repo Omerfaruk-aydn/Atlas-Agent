@@ -283,3 +283,100 @@ func OperationID(parts ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return "op-" + hex.EncodeToString(sum[:12])
 }
+
+// SystemInfo collects read-only diagnostics on the node.
+func (c *Client) SystemInfo(ctx context.Context) (SystemInfo, error) {
+	var out SystemInfo
+	err := c.call(ctx, http.MethodGet, "/v1/node/sysinfo", nil, nil, &out)
+	return out, err
+}
+
+// ListFiles lists a directory under an allowed folder; an empty path lists
+// the folders themselves.
+func (c *Client) ListFiles(ctx context.Context, rel string, limit int) (ListResult, error) {
+	var out ListResult
+	q := url.Values{"path": {rel}}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	err := c.call(ctx, http.MethodGet, "/v1/node/files/list?"+q.Encode(), nil, nil, &out)
+	return out, err
+}
+
+// UploadStatus reads a chunked upload.
+func (c *Client) UploadStatus(ctx context.Context, id string) (UploadResult, error) {
+	var out UploadResult
+	err := c.call(ctx, http.MethodGet, "/v1/node/uploads/"+url.PathEscape(id), nil, nil, &out)
+	return out, err
+}
+
+// Upload sends a local file in verified chunks. Repeating it with the same
+// operation id resumes from what the node already holds, and a completed
+// upload is reported as a replay instead of being sent again. The file is
+// installed only after the node has checked the whole-file SHA-256.
+func (c *Client) Upload(ctx context.Context, operationID, localPath, rel string, conflict transfer.Conflict, maxBytes int64, progress func(sent, total int64)) (UploadResult, error) {
+	if maxBytes <= 0 {
+		maxBytes = transfer.DefaultMaxBytes
+	}
+	info, err := os.Stat(localPath)
+	if err != nil {
+		return UploadResult{}, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxBytes {
+		return UploadResult{}, fmt.Errorf("local file must be a regular file of at most %d bytes", maxBytes)
+	}
+	sum, err := transfer.HashFile(localPath)
+	if err != nil {
+		return UploadResult{}, err
+	}
+	var st UploadResult
+	err = c.call(ctx, http.MethodPost, "/v1/node/uploads", jsonBody(UploadRequest{OperationID: operationID, Path: rel, Size: info.Size(), SHA256: sum, Conflict: string(conflict)}), nil, &st)
+	if err != nil || st.State == "complete" {
+		return st, err
+	}
+	f, err := os.Open(localPath)
+	if err != nil {
+		return st, err
+	}
+	defer f.Close()
+	buf := make([]byte, transfer.MaxChunkBytes)
+	for st.Received < st.Size {
+		n, rerr := f.ReadAt(buf[:min(int64(len(buf)), st.Size-st.Received)], st.Received)
+		if n == 0 {
+			if rerr == nil {
+				rerr = io.ErrUnexpectedEOF
+			}
+			return st, fmt.Errorf("local file changed while sending: %w", rerr)
+		}
+		chunk := sha256.Sum256(buf[:n])
+		h := http.Header{}
+		h.Set("Content-Type", "application/octet-stream")
+		h.Set("X-Atlas-Chunk-SHA256", hex.EncodeToString(chunk[:]))
+		var next UploadResult
+		path := "/v1/node/uploads/" + url.PathEscape(st.ID) + "?offset=" + strconv.FormatInt(st.Received, 10)
+		if err := c.call(ctx, http.MethodPut, path, bytes.NewReader(buf[:n]), h, &next); err != nil {
+			var apiErr *APIError
+			if errors.As(err, &apiErr) && apiErr.Code == "offset_mismatch" {
+				// Another attempt moved the offset; continue from the
+				// node's count.
+				if cur, serr := c.UploadStatus(ctx, st.ID); serr == nil {
+					st = cur
+					continue
+				}
+			}
+			return st, err
+		}
+		st = next
+		if progress != nil {
+			progress(st.Received, st.Size)
+		}
+	}
+	var done UploadResult
+	if err := c.call(ctx, http.MethodPost, "/v1/node/uploads/"+url.PathEscape(st.ID)+"/complete", jsonBody(struct{}{}), nil, &done); err != nil {
+		return st, err
+	}
+	if done.SHA256 != sum {
+		return done, fmt.Errorf("node reported sha256 %s for a %s upload", done.SHA256, sum)
+	}
+	return done, nil
+}

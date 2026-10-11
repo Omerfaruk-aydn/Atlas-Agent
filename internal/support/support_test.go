@@ -225,3 +225,76 @@ func codeOf(t *testing.T, err error, deviceID string) Code {
 	return Classify(err, deviceID, "").Code
 }
 
+// Scenario 1: two independent endpoints pair, and the owner's acceptance
+// is what opens the session.
+func TestPairingBetweenTwoIndependentEndpoints(t *testing.T) {
+	t.Parallel()
+	h := startHost(t, nil)
+	c := startController(t, nil)
+	require.NotEqual(t, h.Fingerprint(), c.Fingerprint())
+
+	root := workRoot(t)
+	info := offerLAN(t, h, Presets["diagnose"], root)
+	require.Regexp(t, `^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$`, info.Code)
+	require.Contains(t, info.Link, "atlas-support://join?")
+
+	ch := startJoin(c, info.Code+"@"+h.LANAddress())
+	p := waitPending(t, h)
+	require.Equal(t, "helper-pc", p.Peer.Name)
+	require.Equal(t, c.Fingerprint(), p.Peer.Fingerprint, "the owner sees the verified device identity")
+	st, _, _ := h.machine.State()
+	require.Equal(t, StateAwaitingAcceptance, st)
+	// Nothing is reachable before acceptance.
+	_, _, err := c.Target()
+	require.Equal(t, CodeNoTarget, CodeOf(err))
+
+	require.NoError(t, h.Decide(p.ID, true, nil))
+	res := <-ch
+	require.NoError(t, res.err)
+	r := res.remote
+	require.Equal(t, h.NodeID(), r.RemoteDeviceID)
+	require.Equal(t, h.Fingerprint(), r.RemoteFingerprint)
+	require.Equal(t, uint64(1), r.Generation)
+	require.Equal(t, []string{"Work"}, r.Roots)
+	require.Equal(t, Presets["diagnose"], r.Capabilities)
+	require.Equal(t, p.Verification, res.prompt.Verification)
+	require.Equal(t, "lan", r.Network)
+
+	sys, err := client(t, c).SystemInfo(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, h.NodeID(), sys.NodeID)
+	require.Equal(t, r.SessionID, sys.SessionID)
+
+	list, err := client(t, c).ListFiles(t.Context(), "", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"Work"}, list.Roots)
+
+	// Histories exist on both computers and hold no code or token.
+	for _, hist := range []*History{h.History(), c.History()} {
+		events, err := hist.Events(r.SessionID)
+		require.NoError(t, err)
+		require.NotEmpty(t, events)
+		raw, _ := os.ReadFile(filepath.Join(hist.dir, r.SessionID+".jsonl"))
+		require.NotContains(t, string(raw), info.Code)
+		require.NotContains(t, string(raw), strings.ReplaceAll(info.Code, "-", ""))
+	}
+}
+
+func TestLANDiscoveryFindsTheHostByCodeAlone(t *testing.T) {
+	t.Parallel()
+	pc, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	require.NoError(t, err)
+	port := pc.LocalAddr().(*net.UDPAddr).Port
+	require.NoError(t, pc.Close())
+
+	h := startHost(t, func(o *HostOptions) { o.DiscoveryPort = port })
+	c := startController(t, func(o *ControllerOptions) { o.DiscoveryPort = port; o.DiscoveryWait = 3 * time.Second })
+	info := offerLAN(t, h, Presets["diagnose"])
+	ch := startJoin(c, strings.ToLower(info.Code))
+	p := waitPending(t, h)
+	require.NoError(t, h.Decide(p.ID, true, nil))
+	res := <-ch
+	require.NoError(t, res.err)
+	require.Equal(t, h.NodeID(), res.remote.RemoteDeviceID)
+}
+

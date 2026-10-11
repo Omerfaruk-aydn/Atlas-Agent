@@ -122,3 +122,67 @@ func Strings(caps []Capability) []string {
 	return out
 }
 
+// requiredFor maps a node API need onto the capabilities that satisfy it.
+// Any one listed capability is enough.
+func requiredFor(need nodes.Need) []Capability {
+	switch need {
+	case nodes.NeedInfo, nodes.NeedOps:
+		return nil
+	case nodes.NeedSystemInfo:
+		return []Capability{CapSystemInfo}
+	case nodes.NeedExec:
+		return []Capability{CapCommand}
+	case nodes.NeedFileList:
+		return []Capability{CapFileRead, CapFileSend}
+	case nodes.NeedFileRead:
+		return []Capability{CapFileSend}
+	case nodes.NeedFileWrite:
+		return []Capability{CapFileReceive}
+	case nodes.NeedFileModify:
+		return []Capability{CapFileModify}
+	case nodes.NeedDesktopView:
+		return []Capability{CapScreenView}
+	case nodes.NeedDesktopInput:
+		return []Capability{CapInput}
+	case nodes.NeedDesktopLaunch:
+		return []Capability{CapInput, CapBrowser}
+	case nodes.NeedBrowser, nodes.NeedBrowserInput:
+		return []Capability{CapBrowser}
+	}
+	return []Capability{"__never__"}
+}
+
+// mutating reports needs that change the remote computer. A paused agent
+// task refuses them; reads and status stay available.
+func mutating(need nodes.Need) bool {
+	switch need {
+	case nodes.NeedExec, nodes.NeedFileWrite, nodes.NeedFileModify, nodes.NeedDesktopInput, nodes.NeedDesktopLaunch, nodes.NeedBrowserInput:
+		return true
+	}
+	return false
+}
+
+// installerPrograms are package managers and installers; running them
+// needs the install capability on top of command.
+var installerPrograms = []string{"winget", "msiexec", "choco", "scoop", "apt", "apt-get", "dnf", "yum", "zypper", "pacman", "brew", "snap", "flatpak", "installer", "pkg"}
+
+var servicePrograms = []string{"sc", "net", "netsh", "systemctl", "service", "launchctl", "reg", "bcdedit", "schtasks", "gpupdate", "sfc", "dism"}
+
+var restartPrograms = []string{"shutdown", "reboot", "poweroff", "halt", "restart-computer", "stop-computer"}
+
+var browserPrograms = []string{"msedge", "chrome", "firefox", "brave", "opera", "vivaldi", "iexplore", "safari", "chromium", "chromium-browser", "google-chrome"}
+
+var shellPrograms = []string{"powershell", "pwsh", "cmd", "bash", "sh", "zsh"}
+
+// programName is the lowercase base name of argv[0] without extension.
+func programName(arg string) string {
+	arg = strings.ToLower(strings.ReplaceAll(arg, "\\", "/"))
+	if i := strings.LastIndex(arg, "/"); i >= 0 {
+		arg = arg[i+1:]
+	}
+	for _, ext := range []string{".exe", ".com", ".bat", ".cmd", ".ps1", ".msi"} {
+		arg = strings.TrimSuffix(arg, ext)
+	}
+	return arg
+}
+

@@ -1,3 +1,73 @@
+	}
+	if r.SessionID != sessionID && sessionID != "" {
+		// A new support session: the computer came back (or someone
+		// reconnected); the old request is history.
+		delete(l.requests, deviceID)
+		return powerRequest{}, false
+	}
+	return *r, true
+}
+
+func (l *powerLedger) set(r powerRequest) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.requests == nil {
+		l.requests = map[string]*powerRequest{}
+	}
+	if r.SentAt == "" {
+		now := time.Now
+		if l.now != nil {
+			now = l.now
+		}
+		r.SentAt = now().UTC().Format(time.RFC3339)
+	}
+	l.requests[r.DeviceID] = &r
+}
+
+func (l *powerLedger) advance(deviceID, state string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if r := l.requests[deviceID]; r != nil && powerRank(state) > powerRank(r.State) {
+		r.State = state
+	}
+}
+
+func powerRank(state string) int {
+	return slices.Index([]string{powerSent, powerAccepted, powerDisconnected}, state)
+}
+
+// classifyPowerCommand recognizes a shutdown or restart request in literal
+// argv, directly or through a PowerShell or cmd wrapper. Cancelling a
+// pending shutdown (shutdown /a, -c) and logging off are not power-off
+// requests.
+func classifyPowerCommand(argv []string) (string, bool) {
+	if len(argv) == 0 {
+		return "", false
+	}
+	prog := strings.ToLower(strings.TrimSuffix(filepath.Base(strings.ReplaceAll(argv[0], `\`, "/")), ".exe"))
+	args := make([]string, 0, len(argv)-1)
+	for _, a := range argv[1:] {
+		args = append(args, strings.ToLower(a))
+	}
+	switch prog {
+	case "shutdown":
+		has := func(flags ...string) bool {
+			return slices.ContainsFunc(args, func(a string) bool { return slices.Contains(flags, a) })
+		}
+		switch {
+		case has("/a", "-a", "-c"):
+			return "", false
+		case has("/r", "-r", "/g", "-g", "--reboot"):
+			return powerRestart, true
+		case has("/s", "-s", "/p", "-p", "-h", "--poweroff", "now", "+0"):
+			return powerShutdown, true
+		}
+		return "", false
+	case "poweroff", "halt":
+		return powerShutdown, true
+	case "reboot":
+		return powerRestart, true
+	case "systemctl":
 		if slices.Contains(args, "poweroff") || slices.Contains(args, "halt") {
 			return powerShutdown, true
 		}

@@ -272,6 +272,77 @@
     }
   }
 
+    if (lost && !wasLost) toBottom();
+  }
+
+  // ---------- Composer ----------
+  function updateComposer() {
+    const online = state.conn === "connected";
+    const ta = $("prompt");
+    ta.placeholder = online ? t("prompt_placeholder") : t("prompt_offline");
+    const uploading = state.upload && state.upload.state === "uploading";
+    $("send").disabled = !online || state.sending || !!uploading || !ta.value.trim() || !state.current;
+    $("attach").disabled = !online || !state.current;
+    $("attach-label").classList.toggle("disabled", !online);
+    if (!online) $("composer-note").textContent = t("offline_note");
+    else if ($("composer-note").textContent === t("offline_note")) $("composer-note").textContent = "";
+  }
+  function autoGrow() {
+    const ta = $("prompt");
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
+  }
+  function saveDraft() {
+    if (!state.current) return;
+    const v = $("prompt").value;
+    state.drafts.set(state.current, v);
+    store.set("atlas.draft." + state.current, v);
+  }
+  function renderAttachment() {
+    const u = state.upload;
+    $("attach-chip").classList.toggle("hidden", !u);
+    if (!u) return;
+    $("attach-name").textContent = u.name;
+    const st = $("attach-state");
+    st.className = "attach-state" + (u.state === "failed" ? " bad" : "");
+    st.textContent = u.state === "uploading" ? t("uploading") : u.state === "failed" ? t("upload_failed") + (u.error ? ": " + u.error : "") : fmtSize(u.size);
+  }
+  async function sendPrompt() {
+    const text = $("prompt").value.trim();
+    if (!text || !state.current || state.sending || state.conn !== "connected") return;
+    const id = state.current;
+    state.sending = true;
+    $("composer-note").textContent = t("sending");
+    updateComposer();
+    try {
+      const ids = state.upload && state.upload.id ? [state.upload.id] : [];
+      const data = await act("/api/sessions/" + encodeURIComponent(id) + "/prompt", { text, attachment_ids: ids });
+      if (state.current === id) {
+        $("prompt").value = "";
+        autoGrow();
+        state.upload = null;
+        renderAttachment();
+        $("composer-note").textContent = data && data.action === "interaction_resume" ? (data.canceled ? t("ctl_canceled") : t("ctl_returned")) : data && data.queued ? t("queued") : t("sent");
+      }
+      state.drafts.delete(id);
+      store.set("atlas.draft." + id, null);
+      state.errors.delete(id);
+      renderRunErrors();
+      toBottom();
+    } catch (e) {
+      $("composer-note").textContent = e.code === "not_paused" ? t("ctl_already") : t("failed") + ": " + e.message;
+      if (!e.status) setConn("offline");
+    } finally {
+      state.sending = false;
+      updateComposer();
+      if (text === "/resume-use" && state.current === id) loadTask(id).catch(() => {});
+    }
+  }
+  async function control(action, b) {
+    const d = state.detail;
+    if (!d || !d.workflow || !d.workflow.available) return;
+    if (action === "stop" && !confirm(t("stop_confirm"))) return;
+    if (b) b.disabled = true;
     try {
       await act("/api/sessions/" + encodeURIComponent(state.current) + "/control", { action, revision: d.workflow.revision });
     } catch (e) {

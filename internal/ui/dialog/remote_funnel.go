@@ -1,3 +1,74 @@
+		return ActionRemoteFunnelCheck{}
+	case rcFunnelInstall:
+		d.ask(d.com.Text("Download Tailscale's official Windows installer from pkgs.tailscale.com, check its published SHA-256 and its Tailscale Inc. signature, then open it? Windows asks for administrator approval. You sign in to your own Tailscale account afterwards."), func() Action {
+			return ActionRemoteFunnelTask{Task: FunnelTaskInstall}
+		})
+	case rcFunnelDownload:
+		return ActionRemoteFunnelOpen{URL: tsfunnel.DownloadPage}
+	case rcFunnelLogin:
+		return ActionRemoteFunnelTask{Task: FunnelTaskLogin}
+	case rcFunnelApp:
+		return ActionRemoteFunnelTask{Task: FunnelTaskApp}
+	case rcFunnelDNS:
+		return ActionRemoteFunnelOpen{URL: tsfunnel.AdminDNSPage}
+	case rcFunnelApprove:
+		if u := f.approvalURL(); u != "" {
+			return ActionRemoteFunnelOpen{URL: u}
+		}
+	}
+	return nil
+}
+
+// funnelState is the /rc headline in Tailscale mode.
+func (d *Remote) funnelState() (string, lipgloss.Style, remotecontrol.Message) {
+	t := d.com.Styles
+	quiet, bad, good, accent := t.Dialog.SecondaryText.Padding(0), t.Dialog.OAuth.ErrorText, t.Dialog.OAuth.Success, t.Dialog.TitleAccent
+	f := d.funnel()
+	switch f.Task {
+	case FunnelTaskInstall:
+		return "Installing Tailscale…", quiet, remotecontrol.Msg(installStepText(f.InstallStep))
+	case FunnelTaskLogin:
+		if f.ApprovalURL != "" {
+			return "Waiting for Tailscale sign-in", accent, remotecontrol.Msg("Finish signing in on Tailscale's page in your browser: %s", f.ApprovalURL)
+		}
+		return "Waiting for Tailscale sign-in", accent, remotecontrol.Msg("Finish signing in on Tailscale's page in your browser.")
+	case FunnelTaskApp:
+		return "Starting Tailscale…", quiet, remotecontrol.Message{}
+	}
+	if f.Starting {
+		switch f.Phase {
+		case tsfunnel.PhasePanel:
+			return "Starting the phone panel…", quiet, remotecontrol.Message{}
+		case tsfunnel.PhasePanelReady:
+			return "Phone panel ready; setting up Funnel…", quiet, remotecontrol.Msg("The panel listens only on this computer. Waiting for Tailscale to list Atlas' Funnel entry.")
+		case tsfunnel.PhaseApproval:
+			return "Waiting for your approval", accent, remotecontrol.Msg("Turn on HTTPS and Funnel for this device on Tailscale's page; Atlas continues by itself: %s", f.ApprovalURL)
+		}
+		return "Checking Tailscale…", quiet, remotecontrol.Message{}
+	}
+	if f.Checking {
+		return "Checking Tailscale…", quiet, remotecontrol.Message{}
+	}
+	if f.URL != "" {
+		switch {
+		case f.lost():
+			return rcStateDisconnected, bad, remotecontrol.Msg("Tailscale Funnel stopped: %s Choose Reconnect.", f.Detail)
+		case !f.Verified.IsZero():
+			return "Phone connected over the internet", good, remotecontrol.Msg("Last request from %s at %s, through Tailscale Funnel.", f.Device, f.Verified.Format("15:04:05"))
+		}
+		return "Funnel set up; internet access not verified", accent, remotecontrol.Msg("Open the QR on a phone with Wi-Fi turned off. This changes once a paired phone reaches this computer through the Funnel.")
+	}
+	var conflict *tsfunnel.PortConflictError
+	var approval *tsfunnel.ApprovalRequiredError
+	switch {
+	case f.Err == nil && !f.Checked:
+		return "Checking Tailscale…", quiet, remotecontrol.Message{}
+	case errors.As(f.Err, &conflict):
+		return "All Funnel ports are in use", bad, remotecontrol.Msg("Other apps use Tailscale Serve or Funnel on 443, 8443 and 10000. Atlas does not change their entries: %s", conflict.Error())
+	case errors.As(f.Err, &approval):
+		return "Waiting for your approval", accent, remotecontrol.Msg("Approve HTTPS and Funnel on Tailscale's page, then choose Reconnect.")
+	case errors.Is(f.Err, tsfunnel.ErrResidual):
+		return rcStateError, bad, remotecontrol.Msg("Tailscale still lists Atlas' Funnel entry. Restart the Tailscale app or remove it with the Tailscale CLI; Atlas does not remove entries by force.")
 	}
 	if !f.Ready.Ready() {
 		return d.funnelProblem(f.Ready)

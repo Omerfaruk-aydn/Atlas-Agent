@@ -1,3 +1,71 @@
+package captcha
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+// DetectScript classifies visible verification widgets on a page. It runs
+// in the page world (not the isolated secret world) because it must read
+// cross-origin iframe URLs and widget attributes. It never reads input
+// values or cookies.
+const DetectScript = `(() => {
+const vis = e => { try { return e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden" && getComputedStyle(e).display !== "none"; } catch { return false; } };
+const text = (document.body && document.body.innerText || "").slice(0, 8000);
+const lower = text.toLowerCase();
+const has = (...w) => w.some(x => lower.includes(x));
+const rect = e => { try { const r = e.getBoundingClientRect(); return {x: r.x + scrollX, y: r.y + scrollY, w: r.width, h: r.height}; } catch { return null; } };
+const sel = e => {
+  if (!e || e.nodeType !== 1) return "";
+  if (e.id) { const s = "#" + CSS.escape(e.id); if (document.querySelectorAll(s).length === 1) return s; }
+  if (e.name && e.tagName === "INPUT") { const s = e.tagName.toLowerCase() + "[name=" + JSON.stringify(e.name) + "]"; if (document.querySelectorAll(s).length === 1) return s; }
+  if (e.tagName === "IMG" && e.src) { const u = e.src.split("/").pop().split("?")[0]; if (u && u.length < 80) { const s = 'img[src*="' + CSS.escape(u) + '"]'; if (document.querySelectorAll(s).length === 1) return s; } }
+  const path = [];
+  for (let n = e; n && n.nodeType === 1 && path.length < 5; n = n.parentElement) {
+    let p = n.tagName.toLowerCase();
+    if (n.id) { p += "#" + CSS.escape(n.id); path.unshift(p); break; }
+    const i = n.parentElement ? Array.prototype.indexOf.call(n.parentElement.children, n) + 1 : 1;
+    path.unshift(p + ":nth-child(" + i + ")");
+  }
+  return path.join(" > ");
+};
+
+const out = {kind: "none", site_key: "", action: "", question: "", image_selector: "", answer_selector: "", verify_selector: "", frame_id: "", confidence: 0, rect: null, page_url: location.href};
+
+const recaptchaIframe = document.querySelector('iframe[src*="recaptcha"], .g-recaptcha iframe, iframe[src*="google.com/recaptcha"]');
+const hcaptchaIframe = document.querySelector('iframe[src*="hcaptcha"], .h-captcha iframe');
+const turnstileIframe = document.querySelector('iframe[src*="challenges.cloudflare.com"], .cf-turnstile iframe, #turnstile-wrapper iframe');
+
+const siteKeyOf = (root) => {
+  const host = root && root.closest && (root.closest("[data-sitekey]") || root.closest(".g-recaptcha,.h-captcha,.cf-turnstile,#turnstile-wrapper,[data-sitekey]"));
+  const el = host || document.querySelector("[data-sitekey]");
+  return (el && (el.getAttribute("data-sitekey") || el.getAttribute("data-sitekey".toLowerCase()))) || "";
+};
+
+if (recaptchaIframe && vis(recaptchaIframe)) {
+  const src = recaptchaIframe.getAttribute("src") || "";
+  out.kind = src.includes("anchor") || src.includes("bframe") ? "recaptcha_v2" : "recaptcha_v2";
+  out.site_key = siteKeyOf(recaptchaIframe);
+  out.frame_id = "";
+  out.confidence = 0.9;
+  out.rect = rect(recaptchaIframe);
+  const actionEl = document.querySelector("[data-action], .g-recaptcha[data-action]");
+  if (actionEl) out.action = actionEl.getAttribute("data-action") || "";
+  if (lower.includes("invisible") || src.includes("size=invisible")) out.kind = "recaptcha_v3";
+  return out;
+}
+if (hcaptchaIframe && vis(hcaptchaIframe)) {
+  out.kind = "hcaptcha";
+  out.site_key = siteKeyOf(hcaptchaIframe);
+  out.confidence = 0.9;
+  out.rect = rect(hcaptchaIframe);
+  return out;
+}
+if (turnstileIframe && vis(turnstileIframe)) {
+  out.kind = "turnstile";
+  out.site_key = siteKeyOf(turnstileIframe);
+  out.confidence = 0.9;
   out.rect = rect(turnstileIframe);
   return out;
 }

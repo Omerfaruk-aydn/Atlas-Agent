@@ -1,3 +1,74 @@
+
+// Result implements tsfunnel.Process.
+func (p *Proc) Result() (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.code, nil
+}
+
+// Stop implements tsfunnel.Process.
+func (p *Proc) Stop(time.Duration) { p.exit(1) }
+
+// Crash ends the process as if it died on its own.
+func (p *Proc) Crash() { p.exit(2) }
+
+func (p *Proc) exit(code int) {
+	p.once.Do(func() {
+		p.mu.Lock()
+		p.code = code
+		stop := p.onStop
+		p.mu.Unlock()
+		if stop != nil {
+			stop()
+		}
+		close(p.done)
+	})
+}
+
+// Procs returns the started processes.
+func (d *Daemon) Procs() []*Proc {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return slices.Clone(d.procs)
+}
+
+// Start implements tsfunnel.Exec.
+func (d *Daemon) Start(args []string, onLine func(string)) (tsfunnel.Process, error) {
+	d.mu.Lock()
+	d.calls = append(d.calls, slices.Clone(args))
+	if !d.Installed {
+		d.mu.Unlock()
+		return nil, tsfunnel.ErrNotInstalled
+	}
+	p := newProc(slices.Clone(args))
+	d.procs = append(d.procs, p)
+	d.mu.Unlock()
+	switch {
+	case len(args) == 1 && args[0] == "up":
+		go d.runUp(p, onLine)
+	case len(args) == 3 && args[0] == "funnel" && strings.HasPrefix(args[1], "--https="):
+		go d.runFunnel(p, strings.TrimPrefix(args[1], "--https="), args[2], onLine)
+	default:
+		onLine("fake tailscale: unexpected command")
+		p.exit(2)
+	}
+	return p, nil
+}
+
+func (d *Daemon) runUp(p *Proc, onLine func(string)) {
+	d.mu.Lock()
+	fail := d.LoginFails
+	d.mu.Unlock()
+	if fail != "" {
+		onLine(fail)
+		p.exit(1)
+		return
+	}
+	onLine("")
+	onLine("To authenticate, visit:")
+	onLine("")
+	onLine("\t" + LoginURL)
+	select {
 	case <-d.login:
 		d.mu.Lock()
 		d.Backend = "Running"

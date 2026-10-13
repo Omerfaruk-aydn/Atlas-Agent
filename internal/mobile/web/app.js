@@ -289,23 +289,64 @@
           lab.append(r, el("span", "", label));
           row.append(lab);
         }
-        c.append(row);
-        inputs.push(() => { const r = c.querySelector('input[name="' + CSS.escape(q.id + item.id) + '"]:checked'); return r ? { question_id: item.id, yes: r.value === "true" } : null; });
-      } else if (item.type === "single_choice" || item.type === "multi_choice") {
-        for (const ch of item.choices || []) {
-          const lab = el("label", "choice");
-          const r = el("input");
-          r.type = item.type === "single_choice" ? "radio" : "checkbox"; r.name = q.id + item.id; r.value = ch.id;
-          lab.append(r, el("span", "", ch.label + (ch.description ? " — " + ch.description : "")));
-          c.append(lab);
+        toast(done);
+      } catch (e) {
+        if (isStale(e)) { state.qDrafts.delete(key); dropPending("q", q.id); toast(t("stale")); }
+        else {
+          result.textContent = t("failed") + ": " + e.message;
+          result.classList.remove("hidden");
+          submit.disabled = cancel.disabled = state.conn !== "connected";
+          if (!e.status) setConn("offline");
         }
-        inputs.push(() => { const ids = Array.from(c.querySelectorAll('input[name="' + CSS.escape(q.id + item.id) + '"]:checked'), (x) => x.value); return ids.length ? { question_id: item.id, selected_ids: ids } : null; });
-      } else {
-        const ta = el("textarea");
-        ta.rows = 3;
-        c.append(ta);
-        inputs.push(() => (ta.value.trim() ? { question_id: item.id, fill_in_text: ta.value.trim() } : null));
+      } finally {
+        b.classList.remove("busy");
+        state.answering = false;
+        if (state.current) loadTask(state.current).catch(() => {});
       }
+    };
+    form.addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      const rs = readers.map((r) => r());
+      const missing = rs.filter((r) => !r.a);
+      for (const r of rs) if (!r.a) setQError(r.fs, r.err);
+      if (missing.length) {
+        result.textContent = t("missing_answers");
+        result.classList.remove("hidden");
+        const first = missing[0].fs.querySelector("input, textarea");
+        if (first) first.focus();
+        return;
+      }
+      send({ session_id: q.session_id, answers: rs.map((r) => r.a) }, submit, t("answer_sent"));
+    });
+    cancel.addEventListener("click", () => send({ session_id: q.session_id, cancel: true }, cancel, t("question_cancelled")));
+    return form;
+  }
+  function setQError(fs, err) {
+    err.replaceChildren(icon("alert"), document.createTextNode(t("missing_answer")));
+    err.classList.remove("hidden");
+    fs.querySelectorAll("input, textarea:not([id$='-note'])").forEach((i) => { i.setAttribute("aria-invalid", "true"); i.setAttribute("aria-errormessage", err.id); });
+  }
+  function clearQError(fs) {
+    fs.querySelector(".q-error").classList.add("hidden");
+    fs.querySelectorAll("[aria-invalid]").forEach((i) => i.removeAttribute("aria-invalid"));
+  }
+
+  // ---------- Secure credential card ----------
+  // The typed value lives only in this input element. It is sent once, in
+  // the body of one POST, and never stored in drafts, storage or the chat.
+  function fmtLeft(ms) {
+    const sec = Math.max(0, Math.round(ms / 1000));
+    return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
+  }
+  let credTimer = null;
+  function credentialView(c) {
+    const form = el("form", "cred-form");
+    form.noValidate = true;
+    form.dataset.credential = c.id;
+    form.autocomplete = "off";
+    const h = el("h2", "display", t("cred_title", c.service || c.origin));
+    h.id = "pending-h";
+    h.tabIndex = -1;
     form.append(h, el("p", "lead", t("cred_lead")));
     const card = el("div", "detail-card");
     const target = el("div", "detail-target");

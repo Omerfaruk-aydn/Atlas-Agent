@@ -1,3 +1,74 @@
+  page.on("response", (r) => { if (r.url().includes("/api/credentials")) debugLog.push("resp " + r.status()); });
+});
+after(async () => {
+  if (browser) await browser.close();
+  if (info) await ctl("POST", "/quit").catch(() => {});
+  if (server) await new Promise((r) => { server.once("exit", r); setTimeout(r, 10000); });
+});
+
+async function openTask() {
+  await page.goto(info.gateway + "/");
+  await page.locator(".task-row").first().click();
+}
+
+test("pairs over TLS with the computer's approval", async () => {
+  const { url } = await ctl("GET", "/pair");
+  await page.goto(info.gateway + "/" + new URL(url).hash);
+  await page.locator("#pair-name").fill("Test telefonu");
+  await page.locator("#pair-go").click();
+  await page.locator(".task-row").first().waitFor({ timeout: 15000 });
+  assert.equal(await page.evaluate(() => location.hash), "");
+  const cookies = await context.cookies();
+  assert.ok(cookies.some((c) => c.name === "__Host-atlas_phone" && c.httpOnly && c.secure));
+});
+
+test("credential card: show/hide, one delivery on double tap, value cleared and never stored", async () => {
+  const { id } = await ctl("POST", "/card");
+  await openTask();
+  const form = page.locator(`form.cred-form[data-credential="${id}"]`);
+  await form.waitFor();
+  const input = form.locator("input.input");
+  assert.equal(await input.getAttribute("type"), "password");
+  assert.match(await form.innerText(), /login\.example\.test/);
+  await form.locator(".secret-row button").click();
+  assert.equal(await input.getAttribute("type"), "text");
+  await form.locator(".secret-row button").click();
+  assert.equal(await input.getAttribute("type"), "password");
+
+  await input.fill(SECRET);
+  // A double tap: two clicks in the same task, before any response.
+  await form.locator('button[data-role="use"]').evaluate((b) => { b.click(); b.click(); });
+  try { await form.waitFor({ state: "detached", timeout: 8000 }); } catch (e) {
+    console.log("# DEBUG", await form.innerText(), JSON.stringify(await ctl("GET", "/card/" + id)), JSON.stringify(debugLog));
+    throw e;
+  }
+  const card = await ctl("GET", "/card/" + id);
+  assert.equal(card.state, "provided");
+  assert.equal(card.persist, false, "temporary unless the user opts in");
+  const check = await ctl("POST", "/card/" + id + "/check?expect=" + encodeURIComponent(SECRET));
+  assert.equal(check.match, true, "exactly what was typed arrived");
+  const again = await ctl("POST", "/card/" + id + "/check?expect=" + encodeURIComponent(SECRET));
+  assert.notEqual(again.error, "", "a credential is used once");
+
+  const leaked = await page.evaluate((s) => {
+    const all = document.documentElement.outerHTML + JSON.stringify(localStorage) + JSON.stringify(sessionStorage) + location.href;
+    return all.includes(s);
+  }, SECRET);
+  assert.equal(leaked, false);
+});
+
+test("credential card cancel withdraws the request", async () => {
+  const { id } = await ctl("POST", "/card");
+  await openTask();
+  const form = page.locator(`form.cred-form[data-credential="${id}"]`);
+  await form.waitFor();
+  await form.locator("input.input").fill("Synth-Not-Sent");
+  await form.locator("button.btn.secondary").click();
+  await form.waitFor({ state: "detached" });
+  const card = await ctl("GET", "/card/" + id);
+  assert.equal(card.state, "canceled");
+});
+
 test("return control resumes once through the real control path", async () => {
   const before = await ctl("GET", "/state");
   await ctl("POST", "/pause?reason=" + encodeURIComponent("Doğrulama kodu"));

@@ -1,3 +1,74 @@
+	// StatusRaw and ServeRaw replace the generated JSON when set.
+	StatusRaw []byte
+	ServeRaw  []byte
+	// Delay delays every short command; it honours cancellation.
+	Delay time.Duration
+	// Funnel scripts the funnel command.
+	Funnel FunnelMode
+	// KeepSessions leaves foreground sessions after their CLI stops,
+	// as a misbehaving daemon would.
+	KeepSessions bool
+	// LoginFails makes "tailscale up" fail with this text.
+	LoginFails string
+
+	background map[string]any
+	foreground map[string]map[string]any
+	nextID     int
+	calls      [][]string
+	approve    chan struct{}
+	login      chan struct{}
+	procs      []*Proc
+}
+
+// New returns a running, logged-in daemon with Funnel allowed.
+func New() *Daemon {
+	return &Daemon{
+		Installed: true, Backend: "Running", Version: "1.104.1-tfake-gfake",
+		Host: "atlas-pc.tail1234.ts.net.", MagicDNS: true,
+		Caps:       []string{"https", "funnel", "https://tailscale.com/cap/funnel-ports?ports=443,8443,10000"},
+		background: map[string]any{}, foreground: map[string]map[string]any{},
+		approve: make(chan struct{}), login: make(chan struct{}),
+	}
+}
+
+var _ tsfunnel.Exec = (*Daemon)(nil)
+
+// SetBackground replaces the background Serve configuration, which
+// belongs to other applications.
+func (d *Daemon) SetBackground(cfg map[string]any) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.background = cfg
+}
+
+// AddForeign adds a foreground session of another CLI on port.
+func (d *Daemon) AddForeign(id string, port uint16, target string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.foreground[id] = entry(strings.TrimSuffix(d.Host, "."), port, target)
+}
+
+// ServeJSON returns the configuration as "funnel status --json" prints it.
+func (d *Daemon) ServeJSON() []byte {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.serveJSONLocked()
+}
+
+// Background returns the current background configuration as JSON.
+func (d *Daemon) Background() []byte {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	b, _ := json.Marshal(d.background)
+	return b
+}
+
+// Sessions lists foreground session ids.
+func (d *Daemon) Sessions() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return slices.Sorted(maps.Keys(d.foreground))
+}
 
 // Calls returns every command run so far.
 func (d *Daemon) Calls() [][]string {

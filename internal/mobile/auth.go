@@ -94,6 +94,13 @@ type Auth struct {
 	// can end without waiting for their next periodic check.
 	OnRevoke func()
 }
+	expires  time.Time
+}
+
+// TransferTTL bounds a Home Screen transfer code.
+const TransferTTL = 3 * time.Minute
+
+const transferAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 // LoadAuth reads dir/devices.json.
 func LoadAuth(dir string) (*Auth, error) {
@@ -217,6 +224,23 @@ func (a *Auth) Decide(id string, accept bool) (Device, error) {
 	return d, nil
 }
 
+// Cancel lets the redeeming phone withdraw its own pending request, so the
+// computer no longer offers it for acceptance. Only the poll token holder
+// can cancel, and only while the request is still pending.
+func (a *Auth) Cancel(id, poll string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	p, ok := a.pending[id]
+	if !ok || subtle.ConstantTimeCompare([]byte(p.pollHash), []byte(hash(poll))) != 1 {
+		return ErrNotPending
+	}
+	if p.state != "pending" || a.now().After(p.Expires) {
+		return ErrNotPending
+	}
+	p.state = "cancelled"
+	return nil
+}
+
 // Poll lets the redeeming phone learn the decision. On acceptance it
 // returns the session secret exactly once.
 func (a *Auth) Poll(id, poll string) (state, session string, d Device, err error) {
@@ -313,12 +337,57 @@ func (a *Auth) revoke(match func(Device) bool, notFound error) error {
 		a.mu.Unlock()
 		return err
 	}
-	cb := a.OnRevoke
+	var removed []string
+	for _, d := range prev {
+		if match(d) {
+			removed = append(removed, d.ID)
+		}
+	}
+	for k, t := range a.transfers {
+		if slices.Contains(removed, t.deviceID) {
+			delete(a.transfers, k)
+		}
+	}
+	cb, cbDevices := a.OnRevoke, a.OnRevokeDevices
 	a.mu.Unlock()
+	if cbDevices != nil {
+		cbDevices(removed)
+	}
 	if cb != nil {
 		cb()
 	}
 	return nil
+}
+
+// NewTransfer issues a one-time code that lets the same phone's Home
+// Screen app join without a new QR code. Only an authenticated device can
+// ask, and a new code replaces that device's previous one.
+func (a *Auth) NewTransfer(deviceID string) (string, time.Time, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !slices.ContainsFunc(a.devices, func(d Device) bool { return d.ID == deviceID }) {
+		return "", time.Time{}, ErrNoSession
+	}
+	if a.transfers == nil {
+		a.transfers = map[string]*transfer{}
+	}
+	now := a.now()
+	for k, t := range a.transfers {
+		if t.deviceID == deviceID || now.After(t.expires) {
+			delete(a.transfers, k)
+		}
+	}
+	b := make([]byte, 8)
+	for i := range b {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(transferAlphabet))))
+		if err != nil {
+			return "", time.Time{}, err
+		}
+		b[i] = transferAlphabet[n.Int64()]
+	}
+	code := string(b)
+	t := &transfer{hash: hash(code), deviceID: deviceID, expires: now.Add(TransferTTL)}
+	a.transfers[t.hash] = t
 	return code, t.expires, nil
 }
 

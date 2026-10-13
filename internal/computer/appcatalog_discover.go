@@ -1,3 +1,31 @@
+package computer
+
+import (
+	"context"
+	"encoding/json"
+	"path/filepath"
+	"slices"
+	"strings"
+)
+
+// appPathValue is one registry App Paths registration.
+type appPathValue struct {
+	Exe   string // Key name, e.g. chrome.exe.
+	Path  string // Default value: the executable's full path.
+	Scope string // user (HKCU) or system (HKLM).
+}
+
+// startApp is one Start menu entry (Get-StartApps).
+type startApp struct {
+	Name  string `json:"name"`
+	AppID string `json:"app_id"`
+}
+
+// appSources are the discovery inputs. They are functions so discovery is
+// testable with fixtures and never touches the real registry in tests.
+type appSources struct {
+	AppPaths  func() []appPathValue
+	Env       func(string) string
 	Exists    func(string) bool
 	ReadFile  func(string) ([]byte, error)
 	StartApps func(context.Context) ([]startApp, error)

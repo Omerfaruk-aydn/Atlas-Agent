@@ -1,3 +1,74 @@
+	totalBytes := 0
+	for i, rel := range p.Screens {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		src, err := transfer.Resolve(root, rel)
+		if err != nil {
+			return nil, fmt.Errorf("screen %q must be inside the working directory", rel)
+		}
+		data, err := readDesignArtifact(src, 64<<20)
+		if err != nil {
+			return nil, fmt.Errorf("screen %q: %w", rel, err)
+		}
+		totalBytes += len(data)
+		if totalBytes > 128<<20 {
+			return nil, errors.New("design package exceeds 128 MiB total")
+		}
+		cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
+		if err != nil {
+			return nil, fmt.Errorf("screen %q is not a readable image: %w", rel, err)
+		}
+		if cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > MaxImageDeliveryPixels {
+			return nil, fmt.Errorf("screen %q exceeds the bounded image pixel limit", rel)
+		}
+		if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
+			return nil, fmt.Errorf("screen %q is a damaged %s image: %w", rel, format, err)
+		}
+		sum := sha256.Sum256(data)
+		ext := "." + format
+		if format == "jpeg" {
+			ext = ".jpg"
+		}
+		screens = append(screens, staged{data: data, scr: deliveredScreen{
+			Order: i + 1, File: fmt.Sprintf("screens/%02d-%s%s", i+1, slug(strings.TrimSuffix(filepath.Base(rel), filepath.Ext(rel))), ext),
+			Source: filepath.ToSlash(rel), Width: cfg.Width, Height: cfg.Height, SHA256: hex.EncodeToString(sum[:]), Bytes: int64(len(data)),
+		}})
+	}
+	m := designManifest{Name: p.Name, CreatedAt: now().UTC().Format(time.RFC3339), SystemVersion: rec.Version, SystemStatus: status, System: sys, QualityGate: checkDesignSystem(sys), OpenQuestions: p.OpenQuestions}
+	for _, s := range screens {
+		m.Screens = append(m.Screens, s.scr)
+	}
+	sources, err := prepareDesignSources(root, p.SourceFiles)
+	if err != nil {
+		return nil, err
+	}
+	for _, source := range sources {
+		m.Sources = append(m.Sources, source.info)
+		totalBytes += len(source.data)
+	}
+	if totalBytes > 128<<20 {
+		return nil, errors.New("design package exceeds 128 MiB total")
+	}
+	m.SourceURLs, err = validateDesignURLs(p.SourceURLs)
+	if err != nil {
+		return nil, err
+	}
+	m.RequiredScreens = slices.Clone(p.RequiredScreens)
+	m.Audits, err = loadPackageAudits(root, p.AuditIDs, m.Screens, m.Sources, now())
+	if err != nil {
+		return nil, err
+	}
+	m.Completion = designPackageCompletion(m)
+	if _, err := os.Stat(out); err == nil {
+		// Delivering the same screens with the same system again returns
+		// the existing package instead of a copy; anything else needs a
+		// new name, so a delivered package is never overwritten.
+		if prev, ok := readManifest(filepath.Join(out, "manifest.json")); ok && sameDelivery(prev, m) {
+			return map[string]any{"package": filepath.ToSlash(filepath.Join("design-delivery", p.Name)), "screens": len(prev.Screens), "quality_gate": prev.QualityGate, "unchanged": true, "completion": prev.Completion, "delivery": "assembled_locally_not_presented", "visual_inspection_required": true}, nil
+		}
+		return nil, fmt.Errorf("design-delivery/%s already exists with different content; choose a new name (packages are not overwritten)", p.Name)
+	}
 	m.QualityGate.Checks = append(m.QualityGate.Checks, DesignCheck{Rule: "design system approved by the user", Passed: status == "approved", Measured: fmt.Sprintf("version %d, %s", rec.Version, status), Required: "approved"})
 	m.QualityGate.Checks = append(m.QualityGate.Checks, screenFrameChecks(sys, m.Screens)...)
 	m.QualityGate.Passed = true

@@ -1,3 +1,74 @@
+	for _, e := range out {
+		if e.Launch.Method == LaunchExecutable {
+			bases[exeBase(e.Launch.Path)]++
+		}
+	}
+	for i := range out {
+		e := &out[i]
+		switch e.Launch.Method {
+		case LaunchExecutable:
+			base := exeBase(e.Launch.Path)
+			e.ID = "exe:" + base
+			if bases[base] > 1 {
+				sum := sha256.Sum256([]byte(strings.ToLower(e.Launch.Path)))
+				e.ID += "#" + hex.EncodeToString(sum[:3])
+			}
+		case LaunchAppsFolder:
+			e.ID = "start:" + e.Launch.AppID
+		}
+		e.Aliases = slices.DeleteFunc(slices.Clone(e.Aliases), func(a string) bool { return a == e.Name })
+		sort.Strings(e.Aliases)
+		e.Aliases = slices.Compact(e.Aliases)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if FoldName(out[i].Name) != FoldName(out[j].Name) {
+			return FoldName(out[i].Name) < FoldName(out[j].Name)
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
+}
+
+func launchKey(l AppLauncher) string {
+	switch l.Method {
+	case LaunchExecutable:
+		if l.Path == "" {
+			return ""
+		}
+		return "exe|" + strings.ToLower(filepath.Clean(l.Path))
+	case LaunchAppsFolder:
+		if l.AppID == "" {
+			return ""
+		}
+		return "start|" + strings.ToLower(l.AppID)
+	}
+	return ""
+}
+
+func exeBase(path string) string {
+	base := strings.ToLower(filepath.Base(strings.ReplaceAll(path, `\`, "/")))
+	return strings.TrimSuffix(base, ".exe")
+}
+
+// LaunchPlan is a structured launch: the program and its literal argv.
+type LaunchPlan struct {
+	Entry   AppEntry        `json:"app"`
+	Argv    []string        `json:"argv"`
+	Profile *BrowserProfile `json:"profile,omitempty"`
+	// ProcessName identifies the windows that verify the launch.
+	ProcessName string `json:"process_name,omitempty"`
+}
+
+// PlanLaunch builds the argv for an entry. args are literal arguments;
+// profile is a browser profile display name or directory, resolved against
+// the entry's discovered profiles. Nothing is joined into shell text.
+func PlanLaunch(entry AppEntry, args []string, profile string) (LaunchPlan, error) {
+	if len(args) > 32 {
+		return LaunchPlan{}, fmt.Errorf("%w: at most 32 arguments", ErrLaunchArgs)
+	}
+	for _, a := range args {
+		if strings.ContainsRune(a, 0) || len(a) > 4096 {
+			return LaunchPlan{}, fmt.Errorf("%w: arguments must be at most 4096 bytes without NUL", ErrLaunchArgs)
 		}
 		if strings.HasPrefix(strings.ToLower(a), "--profile-directory") {
 			return LaunchPlan{}, fmt.Errorf("%w: choose a profile with profile, not a raw --profile-directory argument", ErrLaunchArgs)

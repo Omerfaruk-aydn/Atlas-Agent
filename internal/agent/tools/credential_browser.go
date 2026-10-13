@@ -1,3 +1,73 @@
+			// only path that writes this value to the protected vault.
+			saved = persistCredential(ctx, store, view, secret)
+		}
+		return fill.Dispatched, fillErr
+	})
+	meta.State, meta.Fill = string(req.State), fill.Status
+	switch {
+	case errors.Is(err, vault.ErrCredentialScope):
+		meta.NextStep = NextScopeMismatch
+		return credentialError("scope_mismatch: this handle is bound to another task, origin or account; nothing was sent.", meta), nil
+	case errors.Is(err, vault.ErrCredentialExpired), errors.Is(err, vault.ErrCredentialUnknown), errors.Is(err, vault.ErrCredentialCanceled):
+		meta.NextStep = NextHandleExpired
+		return credentialError(err.Error()+"; nothing was sent.", meta), nil
+	case errors.Is(err, vault.ErrCredentialUsed):
+		meta.NextStep = NextLoginCheck
+		return credentialError("credential_used: this handle was already filled once and is never sent twice. Observe the page with login_check; if the password was wrong, request a new card.", meta), nil
+	case errors.Is(err, vault.ErrCredentialNotReady):
+		meta.NextStep = NextCredentialRequired
+		return credentialError("The user has not supplied this credential yet; nothing was sent.", meta), nil
+	case !fill.Dispatched:
+		meta.NextStep = NextTargetStale
+		msg := "nothing was sent"
+		if err != nil {
+			msg = err.Error()
+		}
+		return credentialError(msg+". The handle is valid only for its original target. Observe the password field; a changed target needs a new credential card.", meta), nil
+	}
+	if view.Persist {
+		meta.Verify = saved
+	}
+	meta.NextStep = NextLoginCheck
+	if fill.Status == browser.SecretFillUncertain {
+		meta.Status = "fill_uncertain"
+		resp := withToolOutcome(fantasy.NewTextResponse("fill_uncertain: input was dispatched to the authorized password field but the field did not confirm it. The handle is used up and is not resent. Observe with login_check before anything else."), ToolOutcome{Dispatch: "unknown", Mutation: true, Claim: "fill_uncertain"})
+		return withMergedMetadata(resp, meta), nil
+	}
+	meta.Status = "fill_dispatched"
+	resp := withToolOutcome(fantasy.NewTextResponse("fill_dispatched: the temporary password was typed into the authorized field (value not read back). This does not prove sign-in. Submit the form, then call login_check."), ToolOutcome{Dispatch: "sent", Mutation: true, Claim: "fill_dispatched"})
+	return withMergedMetadata(resp, meta), nil
+}
+
+// runLoginCheck classifies the sign-in state from structure, keeping
+// "filled", "failed", "waiting for the user" and "verified" apart.
+func runLoginCheck(ctx context.Context, sess browser.Session, params BrowserParams) (fantasy.ToolResponse, error) {
+	prober, ok := sess.(browser.LoginProber)
+	if !ok {
+		return fantasy.NewTextErrorResponse("This browser driver cannot observe sign-in state."), nil
+	}
+	expected := strings.TrimSpace(params.Advanced.Expected)
+	state, err := prober.LoginState(ctx, expected)
+	if err != nil {
+		return fantasy.NewTextErrorResponse("login_check could not observe the page: " + err.Error()), nil
+	}
+	login, verify, next := classifyLogin(state, strings.TrimSpace(params.URL), expected != "")
+	meta := credentialMeta{Status: login, Login: login, Verify: verify, NextStep: next, Origin: state.Origin}
+	data, _ := json.Marshal(struct {
+		Login        string `json:"login_status"`
+		Verification string `json:"verification,omitempty"`
+		NextStep     string `json:"next_step,omitempty"`
+		URL          string `json:"url"`
+		browser.LoginState
+	}{login, verify, next, state.URL, state})
+	resp := withToolOutcome(fantasy.NewTextResponse(string(data)), ToolOutcome{Dispatch: "none", Verified: login == "login_verified", Source: "observation", Claim: login})
+	if verify == "captcha" {
+		resp.Content += "\n\nA CAPTCHA is blocking the login. Call browser action captcha_solve now: it returns the challenge image; read the characters and call captcha_fill with the answer. Then submit and call login_check again. If the CAPTCHA answer was wrong (login_check still reports captcha), call captcha_solve again for a fresh image and retry with the new answer. Do not hand off and do not stop."
+	}
+	return withMergedMetadata(resp, meta), nil
+}
+
+// classifyLogin is generic: it reads page structure, not one provider's
 // selectors. Verified requires the caller's own expectation to match.
 func classifyLogin(s browser.LoginState, expectedURL string, expectText bool) (login, verify, next string) {
 	switch {

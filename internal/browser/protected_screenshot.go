@@ -1,3 +1,46 @@
+package browser
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"image"
+	"image/color"
+	"image/draw"
+	_ "image/jpeg"
+	"image/png"
+	"math"
+
+	"github.com/chromedp/chromedp"
+)
+
+// ProtectedScreenshotSession captures page layout with editable fields,
+// known plaintext secrets and opaque embedded surfaces masked in the PNG.
+// Neither field values nor the page DOM are modified.
+type ProtectedScreenshotSession interface {
+	ProtectedScreenshot(context.Context, bool, bool, func(string) string) ([]byte, int, error)
+}
+
+// ProtectedViewportSession retains coordinate grants for a protected,
+// annotated screenshot when its viewport remains stable.
+type ProtectedViewportSession interface {
+	ProtectedViewportScreenshot(context.Context, func(string) string) ([]byte, Viewport, int, error)
+}
+
+func (s *chromedpSession) ProtectedViewportScreenshot(ctx context.Context, redact func(string) string) ([]byte, Viewport, int, error) {
+	masks := 0
+	data, vp, err := s.captureViewportScreenshot(ctx, func() ([]byte, error) {
+		data, count, err := s.ProtectedScreenshot(ctx, false, true, redact)
+		masks = count
+		return data, err
+	})
+	return data, vp, masks, err
+}
+
+type privacyRegion struct {
+	Text string     `json:"text"`
 	Mask bool       `json:"mask"`
 	Rect [4]float64 `json:"rect"`
 }

@@ -116,14 +116,7 @@ func (d *Remote) statusLines(width int) []string {
 	}
 	lines = append(lines, t.Dialog.SecondaryText.Padding(0).Render(fmt.Sprintf(d.com.Text("Atlas on this computer: %s"), desktop)))
 	if gw != nil {
-		paired, active := 0, 0
-		for _, dev := range gw.Auth.Devices() {
-			paired++
-			if time.Since(time.UnixMilli(dev.LastSeen)) < 2*time.Minute {
-				active++
-			}
-		}
-		lines = append(lines, t.Dialog.SecondaryText.Padding(0).Render(fmt.Sprintf(d.com.Text("Phones: %d paired · %d active in the last 2 minutes · %d waiting for approval"), paired, active, len(gw.Auth.PendingList()))))
+		lines = append(lines, d.phoneCountLine())
 	}
 	last := d.com.Text("never")
 	if !snap.LastCheck.IsZero() {
@@ -421,6 +414,7 @@ func (d *Remote) diagnosticLines(width int) []string {
 			kv("Connected", fmt.Sprint(gw.RelayConnected())),
 			kv("Local certificate", shortFingerprint(gw.Fingerprint())))
 	}
+	lines = append(lines, d.funnelDiagnostics()...)
 	if len(snap.Diagnostics) > 0 {
 		lines = append(lines, "", h(d.com.Text("Server output (secrets removed)")))
 		for _, l := range snap.Diagnostics {

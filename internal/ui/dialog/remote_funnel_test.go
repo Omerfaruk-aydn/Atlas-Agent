@@ -1,3 +1,64 @@
+package dialog
+
+import (
+	"errors"
+	"runtime"
+	"testing"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/remotecontrol"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/tsfunnel"
+	"github.com/stretchr/testify/require"
+)
+
+func newFunnelDialog(t *testing.T, lang string, s *FunnelStatus) *Remote {
+	t.Helper()
+	d, _ := newRemoteDialog(t, lang)
+	d.env.Funnel = func() FunnelStatus { return *s }
+	return d
+}
+
+func funnelActionIDs(d *Remote) []string {
+	var ids []string
+	for _, a := range d.actions() {
+		ids = append(ids, a.id)
+	}
+	return ids
+}
+
+func readyTailscale() tsfunnel.Readiness {
+	return tsfunnel.Readiness{
+		CLIPath: `C:\Program Files\Tailscale\tailscale.exe`, Version: "1.80.0", Backend: "Running",
+		Host: "atlas-pc.example.ts.net", MagicDNS: true, HTTPS: true, Funnel: true, FunnelPorts: []uint16{443},
+	}
+}
+
+func TestRemoteFunnelOfferedWithoutServer(t *testing.T) {
+	t.Parallel()
+	s := &FunnelStatus{}
+	d := newFunnelDialog(t, "tr", s)
+	out := render(d, 120, 44)
+	require.Contains(t, out, "Tailscale ile bağlan")
+	require.Contains(t, out, "Ev ağında dene", "the home network option stays")
+	require.Nil(t, d.run(rcFunnel), "connecting asks first")
+	require.Equal(t, remoteConfirm, d.view)
+	require.Equal(t, ActionRemoteFunnel{}, press(d, "y"))
+}
+
+func TestRemoteFunnelStepsFollowTheCheckedState(t *testing.T) {
+	t.Parallel()
+	install := rcFunnelDownload
+	if runtime.GOOS == "windows" {
+		install = rcFunnelInstall
+	}
+	for _, tc := range []struct {
+		problem  tsfunnel.Problem
+		action   string
+		headline string
+	}{
+		{tsfunnel.ProblemNotInstalled, install, "Tailscale is not installed"},
+		{tsfunnel.ProblemOldVersion, install, "Tailscale is too old"},
 		{tsfunnel.ProblemServiceStopped, rcFunnelApp, "The Tailscale service is not running"},
 		{tsfunnel.ProblemNeedsLogin, rcFunnelLogin, "Tailscale sign-in needed"},
 		{tsfunnel.ProblemDisconnected, rcFunnelLogin, "Tailscale is disconnected"},

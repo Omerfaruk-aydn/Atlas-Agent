@@ -1,3 +1,73 @@
+	Exists    func(string) bool
+	ReadFile  func(string) ([]byte, error)
+	StartApps func(context.Context) ([]startApp, error)
+	Windows   func(context.Context) ([]nativeWindowSummary, error)
+}
+
+// nativeWindowSummary is the part of a window observation discovery uses.
+type nativeWindowSummary struct {
+	ID          string `json:"window_id"`
+	Name        string `json:"name"`
+	ProcessID   uint32 `json:"process_id"`
+	ProcessName string `json:"process_name"`
+}
+
+// knownApp describes applications Atlas recognizes by executable name: a
+// display name, localized aliases, well-known install folders and, for
+// Chromium browsers, where profile names live.
+type knownApp struct {
+	Exe      string
+	Name     string
+	Aliases  []string
+	Browser  bool
+	UserData string   // Relative to %LOCALAPPDATA%; Chromium only.
+	Folders  []string // "%VAR%\rest" install locations.
+	Chromium bool
+}
+
+var knownApps = []knownApp{
+	{Exe: "chrome.exe", Name: "Google Chrome", Aliases: []string{"Chrome", "Google Chrome", "Krom"}, Browser: true, Chromium: true, UserData: `Google\Chrome\User Data`, Folders: []string{`%ProgramFiles%\Google\Chrome\Application\chrome.exe`, `%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe`, `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe`}},
+	{Exe: "msedge.exe", Name: "Microsoft Edge", Aliases: []string{"Edge"}, Browser: true, Chromium: true, UserData: `Microsoft\Edge\User Data`, Folders: []string{`%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe`, `%ProgramFiles%\Microsoft\Edge\Application\msedge.exe`}},
+	{Exe: "brave.exe", Name: "Brave", Aliases: []string{"Brave Browser"}, Browser: true, Chromium: true, UserData: `BraveSoftware\Brave-Browser\User Data`, Folders: []string{`%ProgramFiles%\BraveSoftware\Brave-Browser\Application\brave.exe`, `%LOCALAPPDATA%\BraveSoftware\Brave-Browser\Application\brave.exe`}},
+	{Exe: "firefox.exe", Name: "Mozilla Firefox", Aliases: []string{"Firefox"}, Browser: true, Folders: []string{`%ProgramFiles%\Mozilla Firefox\firefox.exe`, `%ProgramFiles(x86)%\Mozilla Firefox\firefox.exe`}},
+}
+
+// localizedStartAliases adds the names an application has in other Windows
+// display languages, keyed by its AppUserModelID.
+var localizedStartAliases = map[string][]string{
+	"Microsoft.WindowsCalculator_8wekyb3d8bbwe!App":                                       {"Calculator", "Hesap Makinesi", "Rechner", "Calculatrice", "Calcolatrice", "الحاسبة"},
+	"Microsoft.WindowsNotepad_8wekyb3d8bbwe!App":                                          {"Notepad", "Not Defteri", "Editor", "Bloc-notes", "Blocco note"},
+	`{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\notepad.exe`:                                  {"Notepad", "Not Defteri", "Editor", "Bloc-notes", "Blocco note"},
+	"Microsoft.Windows.Explorer":                                                          {"File Explorer", "Explorer", "Windows Explorer", "Dosya Gezgini", "Datei-Explorer", "Explorateur de fichiers", "Esplora file", "Explorador de archivos"},
+	"windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel": {"Settings", "Ayarlar", "Einstellungen", "Paramètres"},
+	"Microsoft.Paint_8wekyb3d8bbwe!App":                                                   {"Paint"},
+}
+
+func knownByExe(exe string) (knownApp, bool) {
+	for _, k := range knownApps {
+		if strings.EqualFold(k.Exe, exe) {
+			return k, true
+		}
+	}
+	return knownApp{}, false
+}
+
+func expandFolder(pattern string, env func(string) string) (path, scope string, ok bool) {
+	if !strings.HasPrefix(pattern, "%") {
+		return pattern, "system", true
+	}
+	end := strings.Index(pattern[1:], "%")
+	if end < 0 {
+		return "", "", false
+	}
+	name := pattern[1 : end+1]
+	value := env(name)
+	if value == "" {
+		return "", "", false
+	}
+	scope = "system"
+	if strings.EqualFold(name, "LOCALAPPDATA") || strings.EqualFold(name, "APPDATA") {
+		scope = "user"
 	}
 	return value + pattern[end+2:], scope, true
 }

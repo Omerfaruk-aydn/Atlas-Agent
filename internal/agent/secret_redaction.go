@@ -1,3 +1,31 @@
+package agent
+
+import (
+	"errors"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
+)
+
+// redactRegisteredSecrets removes values registered as secrets (a password
+// a tool refused, or a temporary credential the user supplied) from every
+// text the next model request would carry: user text, tool-call arguments
+// and tool results. Stored history is not rewritten. Reasoning parts are
+// left untouched because providers reject edited signed reasoning; tools
+// never put secrets there.
+func redactRegisteredSecrets(sessionID string, msgs []fantasy.Message) []fantasy.Message {
+	if !vault.Sensitive(sessionID) {
+		return msgs
+	}
+	for i := range msgs {
+		parts := make([]fantasy.MessagePart, len(msgs[i].Content))
+		for j, part := range msgs[i].Content {
+			parts[j] = redactPart(sessionID, part)
+		}
+		msgs[i].Content = parts
+	}
+	return msgs
 }
 
 func redactPart(sessionID string, part fantasy.MessagePart) fantasy.MessagePart {

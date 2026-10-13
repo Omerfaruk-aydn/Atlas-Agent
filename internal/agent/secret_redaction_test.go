@@ -1,3 +1,10 @@
+package agent
+
+import (
+	"encoding/json"
+	"errors"
+	"testing"
+
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"

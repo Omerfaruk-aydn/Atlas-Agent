@@ -785,6 +785,14 @@ func runBrowserAction(ctx context.Context, sess browser.Session, action string, 
 		return fantasy.WithResponseMetadata(fantasy.NewTextResponse(string(resultJSON)), metadata), nil
 
 	case "screenshot":
+			}
+			resp := fantasy.NewImageResponse(data, "image/png")
+			resp.Content = "Numbered boxes mark interactive elements. Protected screenshot: editable fields, known plaintext credentials and opaque media are masked. Use observed refs for input; no new pixel-coordinate viewport grant was issued."
+			if !annotated {
+				resp.Content = "Clean protected screenshot without target annotations. No pointer viewport grant was issued; use current semantic refs. Editable fields, known plaintext credentials and opaque media are masked."
+			}
+			return withCredentialImageProof(resp, masks), nil
+		}
 		if params.Annotate != nil && !*params.Annotate {
 			data, err := sess.Screenshot(params.FullPage)
 			if err != nil {

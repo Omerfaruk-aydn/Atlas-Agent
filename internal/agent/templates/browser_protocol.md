@@ -94,14 +94,18 @@ without observing those properties. Honor authentication and confirmation gates.
 Authorized sign-in is ordinary browser work. Reuse the observed signed-in session,
 click Google/GitHub/Apple sign-in, select the intended account and approve only
 the consent scopes needed for the user's task. Do not hand off merely because
-a login form, password field or OAuth redirect appears. Use available protected
-credential filling and authorized code entry; never expose secrets in reports.
+a login form, password field or OAuth redirect appears. Use protected credential
+filling: a saved vault handle, or credential_request so the user types the
+password on their paired phone and you get only a handle; then vault_fill and
+login_check. Never ask for a password in chat or questions, never place one in
+arguments, and never expose secrets in reports.
 Ask only for missing input or an actual user-only challenge. Observe a visible
 CAPTCHA and attempt an ordinary checkbox or clear visible interaction before
 deciding; verify success from page state. A challenge that stays unsolved,
 passkey or device approval and unavailable credentials can require handoff,
-whose text names the exact blocked step. After a handoff the user runs
-/resume-use to return control.
+whose text names the exact blocked step. After a handoff the user returns
+control with /resume-use or the phone's "Return control" button; only then
+continue, from a fresh observation, without assuming the step was done.
 A waiting_for_user tool result stops the turn; do not retry or resume yourself.
 
 Unknown mutation outcomes remain blocked in the shared ledger until explicit

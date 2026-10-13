@@ -1,3 +1,74 @@
+}
+
+func enablePreviews(t *testing.T, g *Gateway, on bool) string {
+	t.Helper()
+	devices := g.Auth.Devices()
+	require.NotEmpty(t, devices)
+	id := devices[len(devices)-1].ID
+	require.NoError(t, g.Auth.SetPreviews(id, on))
+	return id
+}
+
+type streamPacket struct {
+	kind     byte
+	seq      uint64
+	captured time.Time
+	w, h     int
+	payload  []byte
+}
+
+type stream struct {
+	resp *http.Response
+	r    *bufio.Reader
+}
+
+func (p *phone) openStream(ctx context.Context, hdr map[string]string) (*http.Response, error) {
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/api/screen/stream", nil)
+	req.Header.Set("X-CSRF-Token", p.csrf)
+	for k, v := range hdr {
+		if v == "" {
+			req.Header.Del(k)
+		} else {
+			req.Header.Set(k, v)
+		}
+	}
+	return p.client.Do(req)
+}
+
+func (s *stream) next(t *testing.T) streamPacket {
+	t.Helper()
+	head := make([]byte, screenHeaderSize)
+	_, err := io.ReadFull(s.r, head)
+	require.NoError(t, err)
+	require.Equal(t, screenMagic, string(head[:4]))
+	n := binary.BigEndian.Uint32(head[28:])
+	require.LessOrEqual(t, n, uint32(screenMaxFrame*2))
+	payload := make([]byte, n)
+	_, err = io.ReadFull(s.r, payload)
+	require.NoError(t, err)
+	return streamPacket{kind: head[4], seq: binary.BigEndian.Uint64(head[8:]), captured: time.UnixMicro(int64(binary.BigEndian.Uint64(head[16:]))), w: int(binary.BigEndian.Uint16(head[24:])), h: int(binary.BigEndian.Uint16(head[26:])), payload: payload}
+}
+
+func (s *stream) nextFrame(t *testing.T) streamPacket {
+	t.Helper()
+	for range 200 {
+		pk := s.next(t)
+		if pk.kind == screenKindFrame {
+			return pk
+		}
+	}
+	t.Fatal("no frame")
+	return streamPacket{}
+}
+
+func (s *stream) nextStatus(t *testing.T, state string) screenStats {
+	t.Helper()
+	for range 400 {
+		pk := s.next(t)
+		if pk.kind != screenKindStatus {
+			continue
+		}
+		var st screenStats
 		require.NoError(t, json.Unmarshal(pk.payload, &st))
 		if state == "" || st.State == state {
 			return st

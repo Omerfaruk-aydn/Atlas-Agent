@@ -1,3 +1,73 @@
+	_, out = p.do("POST", "/api/questions/q1", map[string]any{"session_id": "s1", "cancel": true}, map[string]string{"Idempotency-Key": "q-2"})
+	require.Equal(t, "stale_request", code(out))
+
+	// A permission is answered exactly once.
+	b.pending["perm-1"] = true
+	g.Ingest(pubsub.Event[permission.PermissionRequest]{Payload: permission.PermissionRequest{ID: "perm-1", SessionID: "s1", ToolCallID: "call-1", ToolName: "bash", Action: "execute"}})
+	resp, _ = p.do("POST", "/api/permissions/perm-1", map[string]string{"decision": "allow", "session_id": "s1", "tool_call_id": "call-1"}, map[string]string{"Idempotency-Key": "p-1"})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	_, out = p.do("POST", "/api/permissions/perm-1", map[string]string{"decision": "deny", "session_id": "s1", "tool_call_id": "call-1"}, map[string]string{"Idempotency-Key": "p-2"})
+	require.Equal(t, "stale_request", code(out))
+
+	// An image upload passes the content check through the proxy.
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, _ := mw.CreateFormFile("file", "shot.png")
+	_, _ = fw.Write([]byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00"))
+	require.NoError(t, mw.Close())
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, p.base+"/api/sessions/s1/attachments", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Origin", p.base)
+	req.Header.Set("X-CSRF-Token", p.csrf)
+	req.Header.Set("Idempotency-Key", "img-1")
+	up, err := p.client.Do(req)
+	require.NoError(t, err)
+	up.Body.Close()
+	require.Equal(t, http.StatusOK, up.StatusCode)
+
+	// The screen preview stays off until enabled for this device.
+	_, out = p.do("GET", "/api/preview", nil, nil)
+	require.Equal(t, "previews_off", code(out))
+	require.NoError(t, g.Auth.SetPreviews(g.Auth.Devices()[0].ID, true))
+	resp, _ = p.do("GET", "/api/preview", nil, nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestFunnelRejectsForgedOriginCSRFAndHost(t *testing.T) {
+	t.Parallel()
+	f := newFunnelGateway(t, nil)
+	p := phoneThroughFunnel(t, f.g, f.ingress)
+	require.Equal(t, "accepted", p.pair(true))
+
+	_, out := p.do("POST", "/api/sessions/s1/prompt", map[string]string{"text": "x"}, map[string]string{"Idempotency-Key": "o1", "Origin": "https://evil.example"})
+	require.Equal(t, "bad_origin", code(out))
+	// The local origin is not the public one.
+	_, out = p.do("POST", "/api/sessions/s1/prompt", map[string]string{"text": "x"}, map[string]string{"Idempotency-Key": "o2", "Origin": "https://127.0.0.1"})
+	require.Equal(t, "bad_origin", code(out))
+	_, out = p.do("POST", "/api/sessions/s1/prompt", map[string]string{"text": "x"}, map[string]string{"Idempotency-Key": "o3", "X-CSRF-Token": "forged"})
+	require.Equal(t, "bad_csrf", code(out))
+	require.Zero(t, f.b.runs.Load())
+
+	for _, host := range []string{"other-pc.tail1234.ts.net", "atlas-pc.tail1234.ts.net:8443", "evil.example", "127.0.0.1", "localhost"} {
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, p.base+"/api/me", nil)
+		req.Host = host
+		resp, err := p.client.Do(req)
+		require.NoError(t, err)
+		resp.Body.Close()
+		require.Equal(t, http.StatusMisdirectedRequest, resp.StatusCode, host)
+	}
+
+	// The public host is not accepted on the local TLS listener either.
+	local := phoneVia(t, f.g, funnelHost)
+	resp, _ := local.do("GET", "/api/me", nil, nil)
+	require.Equal(t, http.StatusMisdirectedRequest, resp.StatusCode)
+}
+
+func TestFunnelUnpairedRevokedAndExpiredPhones(t *testing.T) {
+	t.Parallel()
+	f := newFunnelGateway(t, nil)
+	stranger := phoneThroughFunnel(t, f.g, f.ingress)
+	_, out := stranger.do("GET", "/api/sessions", nil, nil)
 	require.Equal(t, "not_paired", code(out))
 	_, out = stranger.do("POST", "/api/pair", map[string]string{"nonce": "guessed", "name": "x"}, nil)
 	require.Equal(t, "pairing_invalid", code(out))

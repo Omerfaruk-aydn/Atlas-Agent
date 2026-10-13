@@ -1,3 +1,74 @@
+		a, b string
+		want float64
+	}{
+		{"#000000", "#FFFFFF", 21},
+		{"#FFFFFF", "#FFFFFF", 1},
+		{"#777777", "#FFFFFF", 4.48}, // The classic just-failing grey.
+		{"#767676", "#FFFFFF", 4.54},
+		{"#0000FF", "#FFFFFF", 8.59},
+	} {
+		a, err := parseHexColor(tc.a)
+		require.NoError(t, err)
+		b, err := parseHexColor(tc.b)
+		require.NoError(t, err)
+		require.InDelta(t, tc.want, contrastRatio(a, b), 0.01, tc.a)
+	}
+}
+
+func mobileSystem() DesignSystem {
+	return DesignSystem{
+		Product:   "Atlas remote control",
+		Platform:  "mobile",
+		Direction: DesignDirection{Name: "Calm dark console", ChosenBy: "user", Alternatives: []string{"Bright minimal", "Playful"}},
+		Colors:    map[string]string{"bg": "#0F1115", "text": "#E8EAED", "muted": "#5F6368", "accent": "#7AA2F7"},
+		Pairs: []DesignColorPair{
+			{Foreground: "text", Background: "bg", Usage: "text"},
+			{Foreground: "muted", Background: "bg", Usage: "text"},
+			{Foreground: "accent", Background: "bg", Usage: "ui"},
+		},
+		TypeScale: []int{12, 14, 17, 22, 28},
+		SafeArea:  &DesignSafeArea{Top: 47, Bottom: 34},
+		Viewports: []DesignViewport{{Name: "iPhone 15", Width: 393, Height: 852}},
+		MinTouch:  44,
+	}
+}
+
+func TestDesignSystemCheckMeasuresContrast(t *testing.T) {
+	t.Parallel()
+	report := checkDesignSystem(mobileSystem())
+	require.False(t, report.Passed, "muted text on bg is too dark")
+	byRule := map[string]DesignCheck{}
+	for _, c := range report.Checks {
+		byRule[c.Rule] = c
+	}
+	require.True(t, byRule["contrast text on bg (text)"].Passed)
+	muted := byRule["contrast muted on bg (text)"]
+	require.False(t, muted.Passed)
+	require.Equal(t, "4.5:1", muted.Required)
+	require.True(t, byRule["contrast accent on bg (ui)"].Passed)
+	require.True(t, byRule["safe area declared"].Passed)
+	require.True(t, byRule["phone portrait viewport"].Passed)
+}
+
+// Reported session: the user wanted mobile app screens and got web
+// screens. A memory without the platform or the user's direction is
+// refused, and phone designs need a safe area.
+func TestDesignSystemRefusesGuessedPlatformAndDirection(t *testing.T) {
+	t.Parallel()
+	s := mobileSystem()
+	s.Platform = ""
+	require.ErrorContains(t, validateDesignSystem(s), "ask the user")
+	s = mobileSystem()
+	s.Direction = DesignDirection{}
+	require.ErrorContains(t, validateDesignSystem(s), "let the user choose")
+	s = mobileSystem()
+	s.SafeArea = nil
+	require.ErrorContains(t, validateDesignSystem(s), "safe_area is required")
+	s = mobileSystem()
+	s.Pairs = append(s.Pairs, DesignColorPair{Foreground: "nope", Background: "bg", Usage: "text"})
+	require.ErrorContains(t, validateDesignSystem(s), "nope is not a color token")
+	s = mobileSystem()
+	s.Colors["bad"] = "blue"
 	require.ErrorContains(t, validateDesignSystem(s), "#RRGGBB")
 }
 

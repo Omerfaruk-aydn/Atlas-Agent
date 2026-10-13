@@ -31,6 +31,11 @@ after restarting Atlas.
 No phone application, account, VPS or identity verification is needed for this
 test. It works on the same network only; access from outside still needs a
 separately configured remote connection.
+
+## Tailscale Funnel: no VPS or domain
+
+Run `/rc` and choose **Connect with Tailscale** (**Tailscale ile bağlan** in
+Turkish). The phone opens an `https://<device>.<tailnet>.ts.net` address in
 Safari or Chrome from anywhere. The phone needs no Tailscale app, no APK and
 no account; only this computer uses your own Tailscale account.
 

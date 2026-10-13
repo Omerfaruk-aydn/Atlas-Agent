@@ -236,3 +236,27 @@ prints one JSON result per step (`--sysinfo`, `--push`, `--pull`, `--exec`,
 ## Live acceptance on two computers
 
 See [remote-support-acceptance.md](remote-support-acceptance.md).
+## Live screen and operation timeline
+
+With a connected support session, press `o` in `/support` to open a private
+loopback viewer. It can open before the first agent screenshot. Press Start
+in the viewer to capture a read-only frame about once per second; Stop ends
+the capture worker. A hidden or abandoned panel stops capture after its idle
+grace period. Closing Atlas closes the viewer server as well.
+
+This viewing channel does not acquire the agent cursor, replace its observed
+input target or feed frames into the model conversation. One frame is kept in
+memory (8 MiB bound), with session, connection generation and capture time.
+No temporary screenshot files are created. Disconnected/old frames are marked
+cached; frames from another session or connection generation are rejected.
+Viewing still requires the remote owner's screen-view permission.
+
+The latest 50 operation events are shown with real dispatch, outcome and
+verification states. Task/session/call/workflow/step identities and start/end
+times are recorded when available. The durable history is restored when the
+viewer opens, and sensitive summaries are redacted in both memory and history.
+Workflow steps are currently reported from their final adapter result, not
+as a claim that every intermediate execution event is streamed live.
+
+The private viewer URL is local to the supporter's computer. It is not a
+public sharing link or a replacement for the authenticated `/rc` phone panel.

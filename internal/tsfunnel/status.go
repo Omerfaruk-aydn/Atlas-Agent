@@ -1,3 +1,62 @@
+package tsfunnel
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// MinVersion is the oldest tailscaled Atlas drives. 1.52 introduced the
+// current serve/funnel CLI, foreground sessions (ServeConfig.Foreground)
+// and the --https=<port> form Atlas uses.
+const MinVersion = "1.52.0"
+
+// FunnelPorts are the only public ports Funnel accepts, in the order Atlas
+// prefers them.
+var FunnelPorts = []uint16{443, 8443, 10000}
+
+// Capability names from tailcfg/nodecap. They appear as keys of
+// Self.CapMap in "tailscale status --json".
+const (
+	capHTTPS       = "https"
+	capFunnel      = "funnel"
+	capFunnelPorts = "https://tailscale.com/cap/funnel-ports"
+)
+
+// ServiceState is the Windows service state, when Atlas can read it.
+type ServiceState int
+
+// Service states.
+const (
+	ServiceUnknown ServiceState = iota
+	ServiceRunning
+	ServiceStarting
+	ServiceStopped
+	ServiceMissing
+)
+
+// Problem is the first thing preventing a Funnel, in the order the user
+// has to fix them.
+type Problem string
+
+// Problems.
+const (
+	ProblemNone           Problem = ""
+	ProblemNotInstalled   Problem = "not_installed"
+	ProblemServiceStopped Problem = "service_stopped"
+	ProblemOldVersion     Problem = "old_version"
+	ProblemNeedsLogin     Problem = "needs_login"
+	ProblemMachineAuth    Problem = "machine_auth"
+	ProblemDisconnected   Problem = "disconnected"
+	ProblemStarting       Problem = "starting"
+	ProblemNeedsMagicDNS  Problem = "needs_magicdns"
+	ProblemNoFunnelPort   Problem = "no_funnel_port"
 	ProblemMalformed      Problem = "malformed"
 	ProblemTimeout        Problem = "timeout"
 	ProblemFailed         Problem = "failed"

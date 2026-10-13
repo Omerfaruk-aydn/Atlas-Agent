@@ -283,6 +283,9 @@ func (g *Gateway) handlePrompt(w http.ResponseWriter, r *http.Request) {
 	g.idempotent(w, r, d, func() (int, any) {
 		if _, err := g.opts.Backend.GetSession(r.Context(), id); err != nil {
 			return http.StatusNotFound, map[string]any{"error": map[string]string{"code": "not_found", "message": "no such task"}}
+				return http.StatusBadRequest, map[string]any{"error": map[string]string{"code": "invalid_prompt", "message": resumeCommand + " takes no attachments"}}
+			}
+			return g.resumeInteraction(r.Context(), id, "", d.Name)
 		}
 		var atts []message.Attachment
 		g.mu.Lock()
@@ -317,11 +320,17 @@ func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 	if !strictJSON(w, r, &req) {
 		return
 	}
-	if !slices.Contains([]string{"pause", "resume", "stop"}, req.Action) {
-		apiError(w, http.StatusBadRequest, "invalid_action", "action must be pause, resume or stop")
+	if !slices.Contains([]string{"pause", "resume", "stop", "interaction_resume"}, req.Action) {
+		apiError(w, http.StatusBadRequest, "invalid_action", "action must be pause, resume, stop or interaction_resume")
 		return
 	}
 	g.idempotent(w, r, d, func() (int, any) {
+		if req.Action == "interaction_resume" {
+			if req.Revision == "" {
+				return http.StatusConflict, map[string]any{"error": map[string]string{"code": "stale_revision", "message": "reload the task and try again"}}
+			}
+			return g.resumeInteraction(r.Context(), id, req.Revision, d.Name)
+		}
 		snap, err := g.opts.Backend.WorkflowSnapshot(r.Context(), id)
 		if err != nil {
 			return http.StatusConflict, map[string]any{"error": map[string]string{"code": "unavailable", "message": err.Error()}}
@@ -494,6 +503,9 @@ func (g *Gateway) handleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
+	// WebKit reports an EventSource as open only after body bytes arrive,
+	// so an idle stream would look disconnected until the first keepalive.
+	fmt.Fprint(w, ": open\n\n")
 	d := device(r)
 	for {
 		events, gap, last := g.ring.since(since)

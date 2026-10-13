@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
@@ -64,7 +65,9 @@ type Options struct {
 	Events func(ctx context.Context) <-chan any
 	// Preview returns a downscaled JPEG of the screen; nil disables it.
 	Preview func() ([]byte, error)
-	Logger  *slog.Logger
+	// Screen captures frames for the live screen stream; nil disables it.
+	Screen ScreenSource
+	Logger *slog.Logger
 }
 
 // Gateway is a running phone control server.
@@ -82,6 +85,12 @@ type Gateway struct {
 	ring        *ring
 	cancel      context.CancelFunc
 	relay       *mobilerelay.Connector
+	// funnel is the loopback target of an Atlas-owned Tailscale Funnel.
+	funnel atomic.Pointer[funnelTarget]
+	// unsubscribeCredentials ends this gateway's role as a secure input
+	// channel for credential cards.
+	unsubscribeCredentials func()
+	screen                 *screenHub
 
 	mu          sync.Mutex
 	permissions map[string]permission.PermissionRequest
@@ -177,6 +186,14 @@ func Start(ctx context.Context, opts Options) (*Gateway, error) {
 	// Waking every event stream makes a revoked phone lose its stream at
 	// once; the others ignore this event type.
 	auth.OnRevoke = func() { g.ring.add("device_revoked", "", map[string]any{}) }
+	// A revoked phone's supplied passwords and live screen end at once.
+	auth.OnRevokeDevices = func(ids []string) {
+		for _, id := range ids {
+			vault.Ephemeral.PurgeDevice(id)
+		}
+		g.screen.revoke(ids)
+	}
+	g.screen = newScreenHub(opts.Screen, opts.Logger)
 	g.srv = &http.Server{Handler: g.handler(), TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{id.Certificate}}, ReadHeaderTimeout: 10 * time.Second}
 	g.redirect = &http.Server{Handler: http.HandlerFunc(g.redirectToHTTPS), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 10 * time.Second, MaxHeaderBytes: 16 << 10}
 	pumpCtx, cancel := context.WithCancel(ctx)
@@ -197,6 +214,7 @@ func Start(ctx context.Context, opts Options) (*Gateway, error) {
 	if opts.Events != nil {
 		go g.pump(pumpCtx, opts.Events(pumpCtx))
 	}
+	g.unsubscribeCredentials = g.subscribeCredentials()
 	go g.watchBusy(pumpCtx)
 	tlsListener, httpListener := splitProtocols(ln)
 	go func() {
@@ -214,7 +232,16 @@ func Start(ctx context.Context, opts Options) (*Gateway, error) {
 
 // Close stops the server.
 func (g *Gateway) Close() error {
+	var funnelErr error
+	if ft := g.funnel.Load(); ft != nil {
+		// Remove the public entry before the listener it points to.
+		funnelErr = ft.close()
+	}
 	g.cancel()
+	if g.unsubscribeCredentials != nil {
+		g.unsubscribeCredentials()
+	}
+	g.screen.close()
 	// Close the shared socket even if Serve has not registered it yet.
 	_ = g.ln.Close()
 	if g.relay != nil {
@@ -222,7 +249,7 @@ func (g *Gateway) Close() error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	return errors.Join(g.redirect.Close(), g.srv.Shutdown(ctx))
+	return errors.Join(funnelErr, g.redirect.Close(), g.srv.Shutdown(ctx))
 }
 
 // Fingerprint is the TLS certificate fingerprint shown to the user.
@@ -247,6 +274,9 @@ func (g *Gateway) URLs() []string {
 // the URL fragment, which browsers never send to the server or proxies.
 func (g *Gateway) PairingURL() (string, time.Time) {
 	nonce, expires := g.Auth.NewNonce()
+	if u := g.FunnelURL(); u != "" {
+		return u + "/#pair=" + nonce, expires
+	}
 	if g.opts.RelayURL != "" {
 		origin, _ := mobilerelay.Origin(g.opts.RelayURL)
 		return origin.String() + "/#pair=" + nonce, expires
@@ -429,7 +459,7 @@ func (g *Gateway) ingest(payload any) {
 		}
 	case pubsub.Event[message.Message]:
 		m := e.Payload
-		if m.Role == message.Tool {
+		if m.Role == message.Tool && len(messageImages(m)) == 0 {
 			return
 		}
 		g.ring.add("message", m.SessionID, messageView(m))
@@ -487,11 +517,24 @@ func messageView(m message.Message) map[string]any {
 	for _, tc := range m.ToolCalls() {
 		tools = append(tools, tc.Name)
 	}
-	return map[string]any{"id": m.ID, "role": string(m.Role), "text": text, "tools": tools, "created_at": m.CreatedAt, "updated_at": m.UpdatedAt, "finished": m.IsFinished()}
+	v := map[string]any{"id": m.ID, "role": string(m.Role), "text": text, "tools": tools, "tool_calls": toolCallViews(m), "created_at": m.CreatedAt, "updated_at": m.UpdatedAt, "finished": m.IsFinished()}
+	v["images"] = messageImages(m)
+	if m.Role == message.Tool {
+		v["text"] = ""
+	}
+	if m.Role == message.Assistant && m.Model != "" {
+		v["model"] = m.Model
+	}
+	if m.FinishReason() == message.FinishReasonError {
+		v["error"] = true
+	}
+	return v
 }
 
 func permissionView(p permission.PermissionRequest) map[string]any {
-	return map[string]any{"id": p.ID, "session_id": p.SessionID, "tool_call_id": p.ToolCallID, "tool": p.ToolName, "action": p.Action, "description": permission.RedactForDisplay(p.Description), "path": p.Path}
+	v := map[string]any{"id": p.ID, "session_id": p.SessionID, "tool_call_id": p.ToolCallID, "tool": p.ToolName, "action": p.Action, "description": permission.RedactForDisplay(p.Description), "path": p.Path}
+	permissionDetails(p, v)
+	return v
 }
 
 // allowedHost defends against DNS rebinding: requests must address one of

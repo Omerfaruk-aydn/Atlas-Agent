@@ -1,9 +1,30 @@
 "use strict";
+// A loopback stand-in for the phone gateway API. It serves the real panel
+// files and answers with the same JSON shapes as internal/mobile/handlers.go.
+// The Go tests cover the real gateway, TLS, cookies, pairing and
+// authorization; these fixtures only drive the browser UI.
 const assert = require("node:assert/strict");
 const http = require("node:http");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { devices } = require("playwright");
+
+const now = () => Math.floor(Date.now() / 1000);
+
+// sampleData returns realistic, fixture-only conversation data.
+function sampleData() {
+  const t = now();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  yesterday.setHours(18, 24, 0, 0);
+  const y = Math.floor(yesterday.getTime() / 1000);
+  const sessions = [
+    { id: "s1", title: "Remote arayüzü", busy: true, created_at: t - 7200, updated_at: t - 60, todos_done: 2, todos_total: 3, goal: "" },
+    { id: "s2", title: "Mobil yerleşim", busy: false, created_at: t - 9000, updated_at: t - 900, todos_done: 0, todos_total: 0, goal: "", pending_permissions: 1 },
+    { id: "s3", title: "Hesap sonuçları", busy: false, created_at: t - 12000, updated_at: t - 5400, todos_done: 3, todos_total: 3, goal: "" },
+    { id: "s4", title: "Tarayıcı akışları", busy: false, created_at: y - 3600, updated_at: y, todos_done: 0, todos_total: 0, goal: "Yeni günlük dosyası oluştur" },
+    { id: "s5", title: "Proje incelemesi", busy: false, created_at: y - 20000, updated_at: y - 15000, todos_done: 0, todos_total: 0, goal: "" },
+  ];
   const workflow = { available: true, revision: "r1", paused: false, busy: false };
   const details = {
     s1: {

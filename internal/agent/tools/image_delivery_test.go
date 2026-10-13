@@ -1,3 +1,74 @@
+	base := buf.Bytes()
+	iend := base[len(base)-12:]
+	head := base[:len(base)-12]
+	pad := size - len(base) - 12
+	require.GreaterOrEqual(t, pad, 0, "base PNG already larger than target")
+	chunk := make([]byte, 0, pad+12)
+	chunk = binary.BigEndian.AppendUint32(chunk, uint32(pad))
+	body := append([]byte("atLs"), make([]byte, pad)...)
+	chunk = append(chunk, body...)
+	chunk = binary.BigEndian.AppendUint32(chunk, crc32.ChecksumIEEE(body))
+	out := append(append(append([]byte{}, head...), chunk...), iend...)
+	require.Len(t, out, size)
+	_, err := png.Decode(bytes.NewReader(out))
+	require.NoError(t, err)
+	return out
+}
+
+func TestImageDeliveryLimitIsSeparateFromText(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, 2_097_152, MaxImageDeliveryBytes)
+	require.Equal(t, 200*1024, MaxViewSize, "the text limit must not grow with the image limit")
+	require.Equal(t, 2_796_204, ImageBase64Len(MaxImageDeliveryBytes))
+	require.Equal(t, 0, ImageBase64Len(0))
+	require.Equal(t, 4, ImageBase64Len(1))
+	require.Equal(t, 4, ImageBase64Len(3))
+	require.Equal(t, 8, ImageBase64Len(4))
+}
+
+func TestPrepareImageAcceptsTheExactLimitUnchanged(t *testing.T) {
+	t.Parallel()
+	data := paddedPNG(t, 64, 48, MaxImageDeliveryBytes)
+	d, err := PrepareImageForDelivery(data, "image/png")
+	require.NoError(t, err)
+	require.False(t, d.Preview)
+	require.Equal(t, data, d.Data, "an image at the limit is delivered byte for byte")
+	require.Equal(t, MaxImageDeliveryBytes, d.RawBytes)
+	require.Equal(t, 2_796_204, d.Base64Bytes)
+	require.Equal(t, "image/png", d.MediaType)
+	require.Equal(t, 64, d.Width)
+	require.Equal(t, "model", d.Recipient)
+}
+
+func TestPrepareImageOneByteOverTheLimitDeliversAMarkedPreview(t *testing.T) {
+	t.Parallel()
+	data := paddedPNG(t, 1920, 1080, MaxImageDeliveryBytes+1)
+	original := bytes.Clone(data)
+	d, err := PrepareImageForDelivery(data, "image/png")
+	require.NoError(t, err)
+	require.True(t, d.Preview)
+	require.Equal(t, original, data, "the original bytes are never modified")
+	require.LessOrEqual(t, d.RawBytes, MaxImageDeliveryBytes)
+	require.Equal(t, len(d.Data), d.RawBytes)
+	require.Equal(t, "image/jpeg", d.MediaType)
+	require.Equal(t, MaxImageDeliveryBytes+1, d.OriginalBytes)
+	require.Equal(t, 1920, d.OriginalWidth)
+	require.Equal(t, "image/png", d.OriginalType)
+	require.LessOrEqual(t, d.Width, 1600)
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(d.Data))
+	require.NoError(t, err)
+	require.Equal(t, "jpeg", format)
+	require.Equal(t, d.Width, cfg.Width)
+	require.Equal(t, d.Height, cfg.Height)
+	require.Contains(t, d.Note(), "Preview")
+	require.Contains(t, d.Note(), "original file is unchanged")
+	require.InDelta(t, 1920.0/float64(d.Width), d.CoordinateScale, 1e-9)
+}
+
+func TestPrepareImageRejectsCorruptAndEmptyData(t *testing.T) {
+	t.Parallel()
+	for name, data := range map[string][]byte{
+		"empty":     nil,
 		"text":      []byte("not an image"),
 		"truncated": noisePNG(t, 32, 32)[:40],
 	} {

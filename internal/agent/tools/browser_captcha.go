@@ -1,3 +1,74 @@
+				if img, err := captureClip(sess, box); err == nil && len(img) > 0 {
+					image = img
+				}
+			}
+		}
+		if len(image) == 0 {
+			img, err := captureCaptchaImage(ctx, sess, ch)
+			if err == nil {
+				image = img
+			}
+		}
+	}
+	if len(image) == 0 {
+		// Capture the whole challenge widget region from the detected rect.
+		if d, err := sess.Eval(captcha.DetectScript); err == nil {
+			if det, _, perr := captcha.ParseDetect(d, ""); perr == nil && det.Rect != nil {
+				if img, err := captureClip(sess, *det.Rect); err == nil {
+					image = img
+				}
+			}
+		}
+	}
+	if len(image) == 0 {
+		// Last resort: clean screenshot of the viewport.
+		if img, err := sess.Screenshot(false); err == nil {
+			image = img
+		}
+	}
+	if len(image) == 0 {
+		return browserJSONResponse(CaptchaResult{
+			Status:  "unsolved",
+			Kind:    string(ch.Kind),
+			PageURL: ch.PageURL,
+			Message: "Could not capture the challenge image.",
+			Next:    "Take a screenshot manually and solve it, or ask the user.",
+		}), nil
+	}
+
+	resp := fantasy.NewImageResponse(image, "image/png")
+	resp.Metadata = `{"captcha_challenge":true,"kind":"` + string(ch.Kind) + `"}`
+
+	switch ch.Kind {
+	case captcha.KindClick:
+		resp.Content = "CLICK-SEQUENCE CAPTCHA. Look at the image and identify the icons in the order they must be clicked. " +
+			"Then use pointer_click with viewport_id from an annotated screenshot to click each icon in order. " +
+			"Click targets: " + firstNonEmpty(ch.ClickTargetSelector, "(use screenshot coordinates)") + ". " +
+			"After clicking all icons in order, click Verify/Submit."
+	case captcha.KindRotate:
+		instructions := "ROTATE CAPTCHA. "
+		clickDeg := 15
+		if rotateInfo != nil && rotateInfo.Found {
+			if rotateInfo.ClickDegrees > 0 {
+				clickDeg = rotateInfo.ClickDegrees
+			}
+			angle := rotateInfo.EstimatedAngle
+			if rotateInfo.DeclaredAngle != nil {
+				angle = int(*rotateInfo.DeclaredAngle)
+			}
+			instructions += fmt.Sprintf("EXACT ANGLE from CSS transform: %d° (each click = %d°). ", angle, clickDeg)
+			if angle > 0 {
+				instructions += fmt.Sprintf("Current: +%d° (clockwise). To reach 0°: click 'Rotate LEFT' %d times. ", angle, abs(angle)/clickDeg)
+			} else if angle < 0 {
+				instructions += fmt.Sprintf("Current: %d° (counter-clockwise). To reach 0°: click 'Rotate RIGHT' %d times. ", angle, abs(angle)/clickDeg)
+			} else {
+				instructions += "Already at 0° — try Check. "
+			}
+		} else {
+			instructions += "Determine rotation visually. Each click = 15°. "
+		}
+		instructions += "\nCRITICAL: click/semantic_click may fail with 'target_changed_before_dispatch'. Use eval instead:\n" +
+			"Rotate left: eval: [...document.querySelectorAll('button')].find(b=>b.textContent.includes('Rotate left')||b.textContent.includes('Rotate Left'))?.click()\n" +
 			"Rotate right: eval: [...document.querySelectorAll('button')].find(b=>b.textContent.includes('Rotate right')||b.textContent.includes('Rotate Right'))?.click()\n" +
 			"Check: eval: [...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Check')?.click()\n" +
 			"After each click, verify angle: eval: [...document.querySelectorAll('img')].find(e=>e.src.includes('captcha-')&&e.getBoundingClientRect().width>100)?.style.transform\n" +

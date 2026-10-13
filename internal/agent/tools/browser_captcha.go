@@ -1,3 +1,74 @@
+	ClickDegrees   int      `json:"clickDegrees"`
+}
+
+// runCaptchaSolve answers what it can offline (math), then hands the
+// challenge crop to the model. The crop is element-scoped and carries the
+// captcha_challenge metadata mark so the credential media gate lets it
+// through: a CAPTCHA picture is a public widget, not a user secret.
+func runCaptchaSolve(ctx context.Context, sess browser.Session, params BrowserParams) (fantasy.ToolResponse, error) {
+	pageURL, _ := sess.URL()
+	raw, err := sess.Eval(captcha.DetectScript)
+	if err != nil {
+		return fantasy.NewTextErrorResponse("captcha detection failed: " + err.Error()), nil
+	}
+	detected, ch, err := captcha.ParseDetect(raw, pageURL)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	if !detected.Present() {
+		return browserJSONResponse(CaptchaResult{
+			Status:  "none",
+			PageURL: pageURL,
+			Next:    "No verification widget is visible; nothing to solve.",
+		}), nil
+	}
+	if ch.Kind == captcha.KindCheckbox {
+		return browserJSONResponse(CaptchaResult{
+			Status:  "needs_click",
+			Kind:    string(ch.Kind),
+			PageURL: ch.PageURL,
+			Next:    "Click the checkbox with the browser tool, then call login_check.",
+		}), nil
+	}
+
+	// Interactive challenges (click sequence, rotate, slider) need the
+	// model to perform pointer actions. Return the challenge image with
+	// specific instructions per type.
+	if ch.Kind.InteractionAnswer() {
+		return handleInteractiveCaptcha(ctx, sess, ch, params)
+	}
+
+	// Capture the challenge crop. For math without an image this is nil.
+	// The caller may override the detected image selector via params.Selector.
+	if ch.ImageSelector == "" && params.Selector != "" {
+		ch.ImageSelector = params.Selector
+	}
+	var image []byte
+	if ch.ImageSelector != "" {
+		if img, capErr := captureCaptchaImage(ctx, sess, ch); capErr == nil {
+			image = img
+		} else if ch.Kind == captcha.KindImageText {
+			return fantasy.NewTextErrorResponse("captcha image capture failed: " + capErr.Error()), nil
+		}
+	}
+
+	// Try offline solvers first (math; remote token farm if configured).
+	if captchaChain != nil && len(captchaChain.Solvers()) > 0 {
+		if result, solveErr := captchaChain.Solve(ctx, ch, image); solveErr == nil && result.Solved && !result.Solution.IsEmpty() {
+			report := CaptchaResult{
+				Status:         "solved",
+				Kind:           string(ch.Kind),
+				Answer:         firstNonEmpty(result.Solution.Text, result.Solution.Token),
+				Solver:         result.Solution.Solver,
+				Confidence:     result.Solution.Confidence,
+				SiteKey:        ch.SiteKey,
+				PageURL:        ch.PageURL,
+				Question:       ch.Question,
+				AnswerSelector: ch.AnswerSelector,
+				VerifySelector: ch.VerifySelector,
+				Attempts:       result.Attempts,
+				Fallbacks:      result.FallbackCount,
+			}
 			if ch.Kind.TextAnswer() && ch.AnswerSelector != "" {
 				if _, fillErr := fillCaptchaAnswer(ctx, sess, ch.AnswerSelector, report.Answer); fillErr != nil {
 					report.Message = "solved but fill failed: " + fillErr.Error()

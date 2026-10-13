@@ -1,3 +1,40 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/browser"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
+	"github.com/stretchr/testify/require"
+)
+
+const sourceFixture = "Beyzanur Akalın\nMerhabalar, mezun bölümüne giriş yapabilirsiniz.\nKullanıcı Adı:\tgraduate-fixture\nParola:\tSynthetic-Mail-Pass-73!\nÖğrenci İşleri Bilgi Sistemi:\thttp://ois.topkapi.edu.tr\n"
+
+func sourceContext(t *testing.T, id, instruction string) context.Context {
+	t.Helper()
+	t.Cleanup(func() { vault.Ephemeral.PurgeSession(id) })
+	return WithUserInstruction(context.WithValue(t.Context(), SessionIDContextKey, id), instruction)
+}
+
+func TestSourceCredentialImportsAuthorizedMailWithoutSecondPassword(t *testing.T) {
+	ctx := sourceContext(t, "source-mail", "Beyzanur un göndermiş olduğu mail e git ve ordaki kullanıcı adını ve şifreyi al ve ois topkapı sitesine git ve mezun bölümüne girip ordaki bilgiler ile orayı doldur")
+	text := importSourceCredential(ctx, "https://mail.google.com/mail/u/1/#inbox/message-fixture", sourceFixture)
+	require.NotContains(t, text, "Synthetic-Mail-Pass-73!")
+	require.Contains(t, text, "credential_request")
+	require.Contains(t, text, "https://ois.topkapi.edu.tr")
+	spec := vault.CredentialSpec{SessionID: "source-mail", Origin: "https://ois.topkapi.edu.tr", Account: "graduate-fixture", Target: vault.CredentialTarget{TabID: "t", Document: "d", Selector: "#pw", NodeToken: "n"}}
+	wrong := spec
+	wrong.Origin = "https://attacker.example.test"
+	_, _, err := vault.Ephemeral.Request(wrong)
+	require.Error(t, err)
+	req, _, err := vault.Ephemeral.Request(spec)
+	require.NoError(t, err)
+	_, err = vault.Ephemeral.Use(req.ID, spec.SessionID, spec.Origin, spec.Account, func(secret string) (bool, error) {
 		require.Equal(t, "Synthetic-Mail-Pass-73!", secret)
 		return true, nil
 	})

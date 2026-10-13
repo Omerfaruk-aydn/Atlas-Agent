@@ -350,6 +350,77 @@
     renderMessages(d.messages || []);
   }
 
+    } catch (_) {
+      // A corrupt frame is skipped; the next one replaces it.
+    } finally {
+      screen.decoding = false;
+      if (screen.pending) decodeNext();
+    }
+  }
+  function drawScreen(img, f) {
+    const canvas = $("screen-canvas");
+    const vp = $("screen-viewport");
+    if (canvas.width !== f.w || canvas.height !== f.h) {
+      // Keep the reader's relative position when the resolution changes.
+      const rx = vp.scrollWidth ? vp.scrollLeft / vp.scrollWidth : 0, ry = vp.scrollHeight ? vp.scrollTop / vp.scrollHeight : 0;
+      canvas.width = f.w;
+      canvas.height = f.h;
+      fitScreen();
+      vp.scrollLeft = rx * vp.scrollWidth;
+      vp.scrollTop = ry * vp.scrollHeight;
+    }
+    canvas.getContext("2d", { alpha: false }).drawImage(img, 0, 0, f.w, f.h);
+    screen.drawnSeq = f.seq;
+    const now = Date.now();
+    screen.lastRender = now;
+    screen.lastCapture = f.captured;
+    screen.rendered.push(now);
+    while (screen.rendered.length && now - screen.rendered[0] > 2000) screen.rendered.shift();
+    screen.metrics.frames++;
+    // Capture-to-render age by the two clocks; meaningful only when the
+    // phone and computer clocks agree (tests run both on one machine).
+    screen.metrics.latency.push(now - f.captured);
+    if (screen.metrics.latency.length > 600) screen.metrics.latency.shift();
+    if (!screen.chromeQueued) { screen.chromeQueued = true; requestAnimationFrame(() => { screen.chromeQueued = false; renderScreenChrome(); }); }
+  }
+  function measuredFPS() {
+    const r = screen.rendered;
+    if (r.length < 2) return 0;
+    const span = (r[r.length - 1] - r[0]) / 1000;
+    return span > 0 ? (r.length - 1) / span : 0;
+  }
+  function fitScreen() {
+    const pane = $("screen-pane"), vp = $("screen-viewport"), canvas = $("screen-canvas");
+    if (!pane.clientWidth || !pane.clientHeight) return;
+    const style = getComputedStyle(pane);
+    const children = [...pane.children].filter(el => {
+      const s = getComputedStyle(el);
+      return s.display !== "none" && s.position !== "absolute";
+    });
+    const otherHeight = children.filter(el => el !== vp).reduce((sum, el) => sum + el.getBoundingClientRect().height, 0);
+    const width = Math.max(1, pane.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 2);
+    const height = Math.max(1, pane.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom) - otherHeight - parseFloat(style.rowGap) * (children.length - 1) - 2);
+    // Fit the whole frame, then zoom inside this fixed, scrollable viewport.
+    const scale = Math.min(width / canvas.width, height / canvas.height);
+    vp.style.width = (canvas.width * scale + 2) + "px";
+    vp.style.height = (canvas.height * scale + 2) + "px";
+  }
+  function renderScreenChrome() {
+    if (!$("screen-pane")) return;
+    fitScreen();
+    const now = Date.now();
+    const age = screen.lastRender ? (now - screen.lastRender) / 1000 : Infinity;
+    const live = screen.conn === "live" && age < 2;
+    const stale = screen.open && !live && screen.lastRender > 0;
+    const label = { connecting: "scr_connecting", retrying: "scr_connecting", live: live ? "scr_live" : "scr_stale", paused: "scr_paused", stopped: "scr_stopped", error: "scr_error", idle: "scr_stopped" }[screen.conn] || "scr_stopped";
+    $("screen-state").textContent = t(label);
+    $("screen-dot").className = "dot " + (live ? "ok" : screen.conn === "error" ? "bad" : screen.conn === "connecting" || screen.conn === "retrying" || stale ? "warn" : "idle");
+    const parts = [];
+    if (live) parts.push(t("scr_fps", measuredFPS().toFixed(1)));
+    if (screen.lastRender) parts.push(t("scr_age", Math.max(0, age).toFixed(age < 10 ? 1 : 0)));
+    const canvas = $("screen-canvas");
+    if (screen.lastRender) parts.push(t("scr_res", canvas.width, canvas.height));
+    $("screen-metrics").textContent = parts.join(" · ");
     const st = screen.lastStats;
     if (st && live && st.capture_fps !== undefined) $("screen-note").textContent = t("scr_measured", Number(st.capture_fps).toFixed(0), Number(st.sent_fps || 0).toFixed(0), Math.round((st.bytes_per_sec || 0) / 1024));
     else if (!screen.lastRender) $("screen-note").textContent = t("scr_only_view");

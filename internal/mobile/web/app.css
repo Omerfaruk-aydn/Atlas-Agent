@@ -89,6 +89,77 @@ textarea { resize: vertical; }
   display: block; width: 100%; text-align: left; padding: 14px 16px; border-radius: var(--radius);
   background: var(--surface); border: 1px solid var(--border); color: inherit; font: inherit; cursor: pointer;
 }
+.prompt-box { flex: 1; min-width: 0; display: flex; align-items: flex-end; background: var(--bg-2); border-radius: 22px; border: 1px solid transparent; }
+.prompt-box:focus-within { border-color: var(--brand); }
+.prompt-box textarea {
+  flex: 1; min-width: 0; border: 0; background: transparent; resize: none; font-size: 16px; line-height: 22px;
+  padding: 11px 4px 11px 16px; min-height: 44px; max-height: 160px; color: var(--text);
+}
+.prompt-box textarea::placeholder { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prompt-box textarea:focus-visible { outline: none; }
+.send-btn { width: 36px; height: 36px; margin: 4px; border-radius: 50%; border: 0; display: grid; place-items: center; background: var(--brand); color: var(--on-brand); cursor: pointer; flex: none; }
+.send-btn svg { width: 20px; height: 20px; stroke-width: 2.25; }
+.send-btn:disabled { background: transparent; color: var(--text-2); cursor: default; }
+.composer-meta { display: flex; align-items: center; gap: var(--s3); min-height: 44px; margin-top: var(--s1); }
+.model { color: var(--text-2); font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; }
+.composer-note { flex: 1; color: var(--text-2); font-size: 14px; min-width: 0; }
+.stop-btn { display: inline-flex; align-items: center; gap: var(--s2); min-height: 44px; padding: 0 var(--s1); border: 0; background: none; color: var(--brand-text); font-size: 16px; font-weight: 500; cursor: pointer; }
+.stop-ico { width: 34px; height: 34px; border-radius: 9px; background: var(--brand); display: grid; place-items: center; color: #fff; }
+.stop-ico svg { width: 20px; height: 20px; }
+.attach-chip { display: flex; align-items: center; gap: var(--s2); margin: 0 0 var(--s2); padding: 4px 4px 4px var(--s3); border-radius: var(--r-input); background: var(--bg-2); }
+.attach-chip > svg { width: 20px; height: 20px; color: var(--text-2); }
+.attach-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.attach-state { color: var(--text-2); font-size: 13px; flex: none; }
+.attach-state.bad { color: var(--danger); }
+
+/* Permission and question pane, shown in place of the conversation. */
+.pending-pane { padding: var(--s4) var(--gutter) calc(var(--s6) + env(safe-area-inset-bottom)); }
+.pending-pane .display { font-size: 28px; margin: var(--s5) 0 var(--s2); }
+.pending-pane .lead { margin-bottom: var(--s4); font-size: 17px; }
+.wait-chip { display: flex; align-items: center; gap: var(--s3); padding: 10px 14px; border-radius: var(--r-input); background: var(--warn-bg); font-size: 16px; }
+.wait-chip .count { margin-left: auto; color: var(--text-2); font-size: 14px; }
+.detail-card { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--bg-2); padding: var(--s4); }
+.detail-target { display: flex; gap: var(--s3); align-items: flex-start; }
+.detail-target svg { width: 26px; height: 26px; margin-top: 2px; }
+.detail-target .label { color: var(--text-2); font-size: 14px; }
+.detail-target .value { font-family: var(--mono); font-size: 15px; overflow-wrap: anywhere; margin-top: 2px; }
+.detail-card hr { border: 0; border-top: 1px solid var(--line); margin: var(--s3) 0; }
+.detail-card .scope { font-size: 15px; color: var(--text); margin: 0; }
+.cmd { margin: var(--s2) 0 0; padding: var(--s3); border-radius: 10px; background: var(--bg); border: 1px solid var(--line); font: 13px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
+.diff { margin: var(--s2) 0 0; padding: var(--s2) 0; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); font: 12.5px/1.5 var(--mono); overflow: auto; max-height: 360px; }
+.diff span { display: block; padding: 0 var(--s3); white-space: pre; min-width: max-content; }
+.diff .add { background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.diff .del { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.diff .hunk { color: var(--text-2); }
+.actions { margin-top: var(--s5); }
+.actions .btn { margin-top: var(--s3); }
+.actions .btn:first-child { margin-top: 0; }
+.pending-foot { text-align: center; color: var(--text-2); font-size: 14px; margin: var(--s4) 0 0; }
+.back-to-chat { display: flex; justify-content: center; margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--line); }
+.result { margin-top: var(--s4); }
+
+fieldset.q { border: 0; margin: var(--s4) 0 0; padding: 0; min-width: 0; }
+fieldset.q legend { padding: 0; font-size: 15px; color: var(--text-2); margin-bottom: var(--s2); }
+fieldset.q legend.big { font-size: 18px; font-weight: 650; color: var(--text); }
+.q-desc { color: var(--text-2); font-size: 15px; margin: 0 0 var(--s3); }
+.option {
+  display: flex; gap: var(--s3); align-items: flex-start; padding: 14px var(--s4); margin-top: var(--s2); min-height: 56px;
+  border: 1px solid var(--line); border-radius: var(--r-input); background: var(--bg); cursor: pointer;
+}
+.option:has(input:checked) { border-color: var(--brand); background: var(--select); box-shadow: inset 0 0 0 1px var(--brand); }
+/* Drawn rather than native so both themes look the same on every engine. */
+.option input {
+  -webkit-appearance: none; appearance: none; width: 22px; height: 22px; margin: 1px 0 0; flex: none;
+  display: grid; place-content: center; border: 2px solid var(--control); border-radius: 50%; background: var(--bg); cursor: pointer;
+}
+.option input[type="checkbox"] { border-radius: 6px; }
+.option input[type="radio"]:checked { border: 7px solid var(--brand); }
+.option input[type="checkbox"]:checked { border-color: var(--brand); background: var(--brand); }
+.option input[type="checkbox"]:checked::before {
+  content: ""; width: 5px; height: 10px; margin-top: -2px; border: solid var(--on-brand); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg);
+}
+.option input:focus-visible { outline: 3px solid var(--focus, var(--brand)); outline-offset: 2px; }
+.option input[aria-invalid="true"] { border-color: var(--danger); }
 .option input:disabled { opacity: .5; cursor: not-allowed; }
 .option .opt-label { font-size: 17px; font-weight: 600; display: block; overflow-wrap: anywhere; }
 .option .opt-desc { font-size: 15px; color: var(--text-2); display: block; margin-top: 2px; overflow-wrap: anywhere; }

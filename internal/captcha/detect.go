@@ -1,3 +1,74 @@
+  out.click_target_selector = sel(clickCaptchaEl);
+  out.confidence = 0.85;
+  out.rect = rect(clickCaptchaEl);
+  out.question = "click the icons in the correct order";
+  return out;
+}
+// Generic text-driven classification when no specific widget element is
+// found but the page clearly describes one of these challenge types.
+if (!geetestEl && !rotateEl && !clickCaptchaEl) {
+  if (clickWords && questionWord) {
+    out.kind = "click";
+    out.confidence = 0.7;
+    out.question = "click the icons in the correct order";
+    return out;
+  }
+  if (rotateWords && questionWord) {
+    out.kind = "rotate";
+    out.confidence = 0.7;
+    out.question = "rotate the image to its correct orientation";
+    return out;
+  }
+  if (sliderWords && questionWord) {
+    out.kind = "slider";
+    out.confidence = 0.7;
+    out.question = "drag the slider to fill the puzzle gap";
+    return out;
+  }
+}
+
+const imgs = [...document.querySelectorAll("img")].filter(vis).map(e => ({
+  e, src: (e.getAttribute("src") || "").toLowerCase(), alt: (e.getAttribute("alt") || "").toLowerCase(),
+  cls: (e.className || "").toString().toLowerCase()
+}));
+// Prefer images that look like challenge rasters (auth/captcha/verify/
+// security in src/alt/class) and are not decorative icons (small squares
+// like graduationcap.png). A challenge image is typically wide and short.
+const captchaImg = imgs.find(i => {
+  const looksChallenge = i.src.includes("captcha") || i.src.includes("verify") || i.src.includes("security") ||
+    i.src.includes("challenge") || i.src.includes("auth") || i.src.includes("code") ||
+    i.alt.includes("captcha") || i.alt.includes("güvenlik") || i.alt.includes("guvenlik") || i.alt.includes("security") ||
+    i.cls.includes("captcha") || i.cls.includes("challenge") || i.cls.includes("auth");
+  const decorative = i.src.includes("graduation") || i.src.includes("logo") || i.src.includes("icon") ||
+    i.src.includes("banner") || i.src.includes("header") || i.alt === "img";
+  if (decorative) return false;
+  if (looksChallenge) return true;
+  // Fallback: a mid-size image inside a form that sits near a captcha-like
+  // input, with wide/short aspect (challenge rasters are landscape).
+  const near = i.e.closest("form") && i.e.naturalWidth > 50 && i.e.naturalHeight > 15 && i.e.naturalWidth < 600;
+  const aspect = i.e.naturalWidth / Math.max(i.e.naturalHeight, 1);
+  return near && aspect > 1.5 && aspect < 12 && (questionWord || mathWord);
+});
+
+const allInputs = [...document.querySelectorAll("input,textarea")].filter(vis);
+// A CAPTCHA answer box is a short text input near the challenge image.
+// Never pick username/password/login fields. Prefer explicit captcha
+// naming, then spatial proximity to the challenge image.
+const excludeInput = e => {
+  const id = (e.getAttribute("id") || "").toLowerCase();
+  const name = (e.getAttribute("name") || "").toLowerCase();
+  const ac = (e.getAttribute("autocomplete") || "").toLowerCase();
+  return id.includes("user") || id.includes("kullanici") || id.includes("login") || id.includes("eposta") ||
+    id.includes("mail") || id.includes("password") || id.includes("parola") || id.includes("sifre") ||
+    name.includes("user") || name.includes("kullanici") || name.includes("login") || name.includes("eposta") ||
+    name.includes("mail") || name.includes("password") || name.includes("parola") || name.includes("sifre") ||
+    ac.includes("user") || ac.includes("email") || ac.includes("password");
+};
+// Pass 1: explicit captcha/code/security naming (and not a login field).
+const answerInput = allInputs.find(e => {
+  if (e.type === "password" || e.type === "hidden" || e.type === "submit" || e.type === "checkbox") return false;
+  if (excludeInput(e)) return false;
+  const id = (e.getAttribute("id") || "").toLowerCase();
   const name = (e.getAttribute("name") || "").toLowerCase();
   return id.includes("captcha") || name.includes("captcha") || id.includes("guvenlik") || name.includes("guvenlik") ||
     id.includes("code") || name.includes("code") || id.includes("verify") || name.includes("verify") ||

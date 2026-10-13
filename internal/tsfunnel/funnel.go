@@ -1,3 +1,34 @@
+package tsfunnel
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/procown"
+)
+
+// Phase is where a Funnel connection stands. /rc shows it as is.
+type Phase string
+
+// Phases.
+const (
+	PhaseIdle     Phase = ""
+	PhaseChecking Phase = "checking"
+	// PhasePanel starts the local phone panel; PhasePanelReady means it
+	// listens on loopback and the Funnel is being set up.
+	PhasePanel      Phase = "panel"
 	PhasePanelReady Phase = "panel_ready"
 	// PhaseApproval waits for the user to enable HTTPS or Funnel on
 	// Tailscale's own page.

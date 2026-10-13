@@ -358,25 +358,33 @@
     try { await loadTask(id); } catch (e) { banner(t("failed") + ": " + e.message, true); }
   }
 
-  async function control(action, button) {
-    if (!state.detail) return;
-    if (action === "stop" && !confirm(t("stop_confirm"))) return;
-    try {
-      await act("/api/sessions/" + encodeURIComponent(state.current) + "/control", { action, revision: state.detail.workflow.revision }, button);
-      await loadTask(state.current);
-    } catch (_) {}
+    $("iphone-install").classList.toggle("hidden", !appleMobile || installed || inAppBrowser);
+    $("android-install").classList.toggle("hidden", appleMobile || installed);
+    $("install-details").classList.toggle("hidden", installed || inAppBrowser);
+    $("install-section").classList.toggle("hidden", !installed && !appleMobile && !android);
+    // Only a real beforeinstallprompt enables the button; otherwise the
+    // browser menu is the way, and the text says so.
+    $("install-prompt-wrap").classList.toggle("hidden", installed || !state.installPrompt);
+    $("transfer-wrap").classList.toggle("hidden", installed || !appleMobile || inAppBrowser);
+    $("install-summary").textContent = installed ? t("installed") : inAppBrowser ? t("install_inapp") : appleMobile ? t("install_ios_summary") : state.installPrompt ? "" : t("install_android_summary") + " " + t("install_android_none");
+    applyTheme();
   }
 
+  // ---------- Events ----------
   function notify(title, body) {
     try {
-      if (localStorage.getItem("atlas.notify") !== "1" || !("Notification" in window) || Notification.permission !== "granted") return;
-      if (!document.hidden) return;
-      new Notification(title, { body, tag: "atlas" });
+      if (store.get("atlas.notify") !== "1") return;
+      if (!document.hidden) { toast(title + (body ? ": " + body : "")); return; }
+      if ("Notification" in window && Notification.permission === "granted") new Notification(title, { body, tag: "atlas" });
     } catch (_) {}
   }
-
+  let listFrame = 0;
   function onEvent(e) {
-    state.seq = Math.max(state.seq, e.seq);
+    // The stream resumes from the last seen sequence number; anything at or
+    // below it was already applied, so replays never duplicate.
+    if (e.seq && e.seq <= state.seq) return;
+    state.seq = Math.max(state.seq, e.seq || 0);
+    state.lastSync = Date.now();
     const s = state.sessions.get(e.session_id);
     switch (e.type) {
       case "session":
@@ -387,22 +395,47 @@
         break;
       case "permission":
         if (s) s.pending_permissions = (s.pending_permissions || 0) + 1;
-        notify(t("perm_title"), e.data.tool + ": " + (e.data.description || ""));
+        notify(t("announce_permission"), e.data.tool + ": " + (e.data.description || ""));
+        if (state.current === e.session_id) announce(t("announce_permission"));
         break;
       case "permission_resolved":
         if (s) s.pending_permissions = Math.max(0, (s.pending_permissions || 1) - 1);
         break;
       case "question":
         if (s) s.pending_questions = (s.pending_questions || 0) + 1;
-        notify(t("q_title"), (e.data.questions && e.data.questions[0] && e.data.questions[0].question) || "");
+        notify(t("announce_question"), (e.data.questions && e.data.questions[0] && e.data.questions[0].question) || "");
+        if (state.current === e.session_id) announce(t("announce_question"));
         break;
       case "question_resolved":
         if (s) s.pending_questions = Math.max(0, (s.pending_questions || 1) - 1);
         break;
-      case "run_error":
-        if (state.detail && state.current === e.session_id) state.detail.errors.push(e.data.message);
+      case "credential":
+        if (s) s.pending_credentials = (s.pending_credentials || 0) + 1;
+        notify(t("announce_credential"), (e.data && (e.data.service || e.data.origin)) || "");
+        if (state.current === e.session_id) announce(t("announce_credential"));
         break;
+      case "credential_resolved":
+        if (s) s.pending_credentials = Math.max(0, (s.pending_credentials || 1) - 1);
+        break;
+      case "run_error": {
+        const list = state.errors.get(e.session_id) || [];
+        list.push(e.data.message);
+        state.errors.set(e.session_id, list.slice(-3));
+        break;
+      }
     }
+    if (!$("view-list").classList.contains("hidden")) {
+      cancelAnimationFrame(listFrame);
+      listFrame = requestAnimationFrame(renderList);
+    }
+    if (state.current === e.session_id && state.detail) {
+      const d = state.detail;
+      if (e.type === "message") {
+        const msgs = d.messages || (d.messages = []);
+        const i = msgs.findIndex((m) => m.id === e.data.id);
+        if (i >= 0) msgs[i] = e.data; else msgs.push(e.data);
+        if (msgs.length > 200) msgs.splice(0, msgs.length - 200);
+        renderMessages(false);
         renderTaskChrome();
       } else if (e.type === "busy") {
         d.session.busy = e.data.busy;

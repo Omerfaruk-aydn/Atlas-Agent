@@ -1,8 +1,11 @@
 package dialog
 
 import (
+	"time"
+
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/mobile"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/remotecontrol"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/tsfunnel"
 )
 
 // RemoteID identifies the remote control dialog (/rc).
@@ -36,6 +39,35 @@ type ActionRemotePair struct{}
 // It never changes the saved relay or mobile configuration.
 type ActionRemoteLAN struct{ Address string }
 
+// ActionRemoteFunnel connects with the user's own Tailscale Funnel. It
+// checks Tailscale first and starts nothing it cannot verify.
+type ActionRemoteFunnel struct{}
+
+// ActionRemoteFunnelStop removes Atlas' Funnel entry and stops the
+// Tailscale mode. The Tailscale app and service keep running.
+type ActionRemoteFunnelStop struct{}
+
+// ActionRemoteFunnelCheck reads the Tailscale state again.
+type ActionRemoteFunnelCheck struct{}
+
+// ActionRemoteFunnelTask runs a helper the user chose: FunnelTaskInstall,
+// FunnelTaskLogin or FunnelTaskApp.
+type ActionRemoteFunnelTask struct{ Task string }
+
+// ActionRemoteFunnelOpen opens one of Tailscale's own pages.
+type ActionRemoteFunnelOpen struct{ URL string }
+
+// Tailscale helper tasks.
+const (
+	FunnelTaskInstall = "install"
+	FunnelTaskLogin   = "login"
+	FunnelTaskApp     = "app"
+)
+
+// FunnelStatus is the Tailscale mode as /rc shows it. Every field comes
+// from a check, the running gateway or the Funnel process; nothing is
+// assumed.
+type FunnelStatus struct {
 	On       bool
 	Starting bool
 	Checking bool

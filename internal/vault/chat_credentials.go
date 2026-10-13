@@ -1,3 +1,73 @@
+	chatEmail    = regexp.MustCompile(`[A-Za-z0-9.!#$%&'*+/=?^_` + "`" + `{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
+	chatURL      = regexp.MustCompile(`https://[^\s<>"']+`)
+)
+
+// CaptureUserPrompt separates an explicitly supplied login password from
+// the instruction before persistence or provider dispatch. Ambiguous input
+// is not authorized for filling. Quoted passwords may contain spaces.
+func (c *Credentials) CaptureUserPrompt(sessionID, prompt string) (string, error) {
+	matches := chatPassword.FindAllStringSubmatchIndex(prompt, -1)
+	if len(matches) != 1 || sessionID == "" || strings.Contains(prompt, "```") {
+		return prompt, nil
+	}
+	m := matches[0]
+	instruction := prompt[:m[0]] + prompt[m[1]:]
+	accounts := chatEmail.FindAllString(instruction, -1)
+	if len(accounts) == 0 {
+		return prompt, nil
+	}
+	account := accounts[0]
+	for _, other := range accounts[1:] {
+		if !strings.EqualFold(account, other) {
+			return prompt, nil
+		}
+	}
+	origin := chatLoginOrigin(instruction)
+	if origin == "" {
+		return prompt, nil
+	}
+	secret := prompt[m[2]:m[3]]
+	quoted := len(secret) >= 2 && (secret[0] == '"' || secret[0] == '\'')
+	if quoted {
+		secret = secret[1 : len(secret)-1]
+	}
+	if !quoted && credentialDescription(secret) {
+		return prompt, nil
+	}
+	if len(secret) == 0 || len(secret) > maxCredentialSecret {
+		return "", errors.New("invalid explicitly supplied credential")
+	}
+	// Register before returning the sanitized prompt so later echoes are
+	// redacted without retaining a second plaintext copy.
+	if err := registerTemporary(sessionID, secret); err != nil {
+		return "", err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.chat) >= maxCredentialsTotal && c.chat[sessionID] == nil {
+		return "", ErrCredentialBudget
+	}
+	if old := c.chat[sessionID]; old != nil {
+		c.clearChatLocked(old)
+	}
+	e := &chatCredential{session: sessionID, origin: origin, account: account, secret: []byte(secret), expires: c.now().Add(CredentialRequestTTL)}
+	c.chat[sessionID] = e
+	e.timer = time.AfterFunc(CredentialRequestTTL, func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.chat[sessionID] == e {
+			c.clearChatLocked(e)
+		}
+	})
+	return Redact(sessionID, prompt[:m[0]]+" [credential supplied]"+prompt[m[1]:]) +
+		"\n[Atlas credential: the user already supplied a one-use password for " + account + " at " + origin +
+		". At the visible password field call browser action credential_request with that account, then browser action vault_fill with the returned handle. These are actions of the browser tool, not separate tools. Do not ask for the password again or hand off. Never put the value in tool arguments.]", nil
+}
+
+// Descriptions of a missing or failing password are not supplied values.
+func credentialDescription(value string) bool {
+	switch strings.ToLower(strings.Trim(value, ".,;!?")) {
+	case "yok", "yanlış", "yanlis", "hatalı", "hatali", "unuttum", "bilmiyorum", "nedir", "ne", "lazım", "lazim", "gerekli", "girin", "gir", "girmem", "girmemiz", "değişti", "degisti", "eksik", "missing", "unknown", "incorrect", "wrong", "forgotten":
 		return true
 	}
 	return false

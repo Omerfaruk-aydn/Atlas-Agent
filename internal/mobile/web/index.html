@@ -16,17 +16,68 @@
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<header class="bar">
-  <button class="icon-btn hidden" id="back" type="button" aria-label="Back">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+    <div class="brand"><svg class="mark" aria-hidden="true"><use href="#i-mark"/></svg><span>Atlas</span></div>
+    <button class="icon-btn" id="settings-btn" type="button" data-i18n-label="settings"><svg aria-hidden="true"><use href="#i-gear"/></svg></button>
+  </header>
+  <div class="page-body">
+    <button class="host-row" id="host-row" type="button">
+      <svg class="row-icon" aria-hidden="true"><use href="#i-laptop"/></svg>
+      <span class="host-name" id="host-name"></span>
+      <span class="conn" id="list-conn"></span>
+      <svg class="chev" aria-hidden="true"><use href="#i-chevron"/></svg>
+    </button>
+    <h1 tabindex="-1" class="display" id="list-h" data-i18n="chats"></h1>
+    <div class="search">
+      <svg aria-hidden="true"><use href="#i-search"/></svg>
+      <label class="sr-only" for="search" data-i18n="search"></label>
+      <input id="search" type="search" class="input" autocomplete="off" enterkeyhint="search" data-i18n-placeholder="search">
+    </div>
+    <div id="list-state" class="list-state hidden" role="status"></div>
+    <div id="task-list" class="groups"></div>
+    <p class="foot-note" id="list-foot" data-i18n="list_foot"></p>
+  </div>
+</section>
+
+<!-- Conversation, permission and question -->
+<section id="view-task" class="view chat hidden" aria-labelledby="task-h">
+  <header class="chat-bar">
+    <button class="icon-btn" id="back" type="button" data-i18n-label="back"><svg aria-hidden="true"><use href="#i-back"/></svg></button>
+    <div class="chat-title">
+      <h1 tabindex="-1" id="task-h"></h1>
+      <p class="conn-line"><span class="conn" id="task-conn"></span></p>
+    </div>
+    <button class="icon-btn hidden" id="screen-btn" type="button" aria-pressed="false" data-i18n-label="live_screen"><svg aria-hidden="true"><use href="#i-monitor"/></svg></button>
+    <div class="menu-wrap">
+      <button class="icon-btn" id="menu-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="task-menu" data-i18n-label="more"><svg aria-hidden="true"><use href="#i-more"/></svg></button>
+      <div class="menu hidden" id="task-menu" role="menu">
+        <button type="button" role="menuitem" id="m-pause"><svg aria-hidden="true"><use href="#i-pause"/></svg><span data-i18n="pause"></span></button>
+        <button type="button" role="menuitem" id="m-resume"><svg aria-hidden="true"><use href="#i-play"/></svg><span data-i18n="resume"></span></button>
+        <button type="button" role="menuitem" id="m-screen"><svg aria-hidden="true"><use href="#i-monitor"/></svg><span data-i18n="live_screen"></span></button>
+        <button type="button" role="menuitem" id="m-preview"><svg aria-hidden="true"><use href="#i-monitor"/></svg><span data-i18n="preview"></span></button>
+        <button type="button" role="menuitem" id="m-refresh"><svg aria-hidden="true"><use href="#i-refresh"/></svg><span data-i18n="refresh"></span></button>
+      </div>
+    </div>
+  </header>
+
+  <div class="offline-banner hidden" id="offline-banner" role="status">
+    <svg aria-hidden="true"><use href="#i-unlink"/></svg>
+    <div><strong id="offline-title"></strong><p id="offline-text"></p></div>
+  </div>
+  <button class="waiting-banner hidden" id="waiting-banner" type="button">
+    <span class="dot warn" aria-hidden="true"></span><span id="waiting-text"></span><span class="link" id="waiting-open" data-i18n="view"></span>
   </button>
-  <h1 id="title">Atlas</h1>
-  <span class="conn" id="conn" role="status" aria-live="polite"></span>
-  <button class="icon-btn" id="settings-btn" type="button" aria-label="Settings">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" /></svg>
-  </button>
-</header>
-<div class="banner hidden" id="banner" role="alert"></div>
+
+  <div class="view-switch segmented two hidden" id="view-switch" role="tablist" data-i18n-label="view_switch">
+    <button type="button" role="tab" id="tab-chat" aria-selected="true" aria-controls="scroll"><span data-i18n="tab_chat"></span></button>
+    <button type="button" role="tab" id="tab-screen" aria-selected="false" aria-controls="screen-pane"><span data-i18n="tab_screen"></span></button>
+  </div>
+
+  <section class="screen-pane hidden" id="screen-pane" aria-labelledby="screen-h">
+    <h2 class="sr-only" id="screen-h" data-i18n="live_screen"></h2>
+    <div class="screen-bar">
+      <span class="dot" id="screen-dot" aria-hidden="true"></span>
+      <span class="screen-state" id="screen-state" role="status" aria-live="polite"></span>
+      <span class="screen-metrics" id="screen-metrics"></span>
     </div>
     <div class="screen-viewport" id="screen-viewport" tabindex="0" data-i18n-label="live_screen">
       <canvas id="screen-canvas" width="16" height="9"></canvas>

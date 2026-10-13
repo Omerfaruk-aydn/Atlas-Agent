@@ -1,3 +1,23 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+)
+
+// RemoteTargetFunc reports the /support computer this one controls: its
+// name and session id, or empty strings when none is connected.
+type RemoteTargetFunc func() (name, sessionID string)
+
+// remoteLocalGuard stops the reflex of acting on this computer while the
+// user is working on a supported one. In the reported session, "go to
+// Google Stitch" during a /support session opened the local browser. The
 // changing local browser or desktop call is refused until the trusted user
 // instruction selects this computer. A tool retry cannot grant that choice.
 // Reads (screenshots, window lists, viewing an image) are never blocked.

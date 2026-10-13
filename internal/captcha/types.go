@@ -1,3 +1,51 @@
+// Package captcha detects and solves page CAPTCHA challenges so browser
+// automation can finish sign-in and form flows without a human handoff.
+//
+// The package is deliberately free of browser and model types: it takes
+// challenge images and page metadata in, and returns answers and tokens
+// out. Capture, fill and tool plumbing live in the browser tool layer.
+package captcha
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+)
+
+// Kind classifies the challenge family. Solvers declare which kinds they
+// accept so the chain never sends a reCAPTCHA token request to an OCR
+// backend or an image to a token farm.
+type Kind string
+
+const (
+	// KindImageText is a classic raster challenge: distorted characters
+	// typed into a nearby text box. Solved as text.
+	KindImageText Kind = "image_text"
+	// KindMath is an arithmetic expression rendered as text or image.
+	// Solved as a computed number.
+	KindMath Kind = "math"
+	// KindCheckbox is a bare "I'm not a robot" box with no widget
+	// provider. A single click is usually enough.
+	KindCheckbox Kind = "checkbox"
+	// KindRecaptchaV2 is Google reCAPTCHA v2 (sitekey + optional image
+	// grid). Solved as a response token.
+	KindRecaptchaV2 Kind = "recaptcha_v2"
+	// KindRecaptchaV3 is Google reCAPTCHA v3 (invisible score check).
+	// Solved as a response token with an action label.
+	KindRecaptchaV3 Kind = "recaptcha_v3"
+	// KindHCaptcha is hCaptcha (sitekey + optional image grid).
+	KindHCaptcha Kind = "hcaptcha"
+	// KindTurnstile is Cloudflare Turnstile (sitekey, often invisible).
+	KindTurnstile Kind = "turnstile"
+	// KindClick requires clicking a sequence of icons/images in order.
+	KindClick Kind = "click"
+	// KindRotate requires rotating an image to its correct orientation.
+	KindRotate Kind = "rotate"
+	// KindSlider requires dragging a slider to fill a puzzle gap.
+	KindSlider Kind = "slider"
+	// KindKeyCaptcha is the KeyCAPTCHA widget (drag piece or arrow click).
+	KindKeyCaptcha Kind = "keycaptcha"
 	// KindUnknown is a detected widget the classifier could not name.
 	KindUnknown Kind = "unknown"
 )

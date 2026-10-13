@@ -1,3 +1,74 @@
+}
+
+// CaptchaResult is the model-facing report. For image-text challenges
+// that local solvers cannot answer, the challenge crop is attached as
+// image data so the model reads it directly -- no external vision API.
+type CaptchaResult struct {
+	Status         string            `json:"status"`
+	Kind           string            `json:"kind,omitempty"`
+	Answer         string            `json:"answer,omitempty"`
+	Solver         string            `json:"solver,omitempty"`
+	Confidence     float64           `json:"confidence,omitempty"`
+	SiteKey        string            `json:"site_key,omitempty"`
+	PageURL        string            `json:"page_url,omitempty"`
+	Question       string            `json:"question,omitempty"`
+	AnswerSelector string            `json:"answer_selector,omitempty"`
+	VerifySelector string            `json:"verify_selector,omitempty"`
+	Fallbacks      int               `json:"fallbacks,omitempty"`
+	Attempts       []captcha.Attempt `json:"attempts,omitempty"`
+	Next           string            `json:"next,omitempty"`
+	Message        string            `json:"message,omitempty"`
+}
+
+func runBrowserCaptcha(ctx context.Context, sess browser.Session, action string, params BrowserParams, sessionID string) (fantasy.ToolResponse, error) {
+	switch action {
+	case "captcha_detect":
+		return runCaptchaDetect(ctx, sess)
+	case "captcha_solve":
+		return runCaptchaSolve(ctx, sess, params)
+	case "captcha_fill":
+		return runCaptchaFill(ctx, sess, params)
+	default:
+		return fantasy.NewTextErrorResponse("unknown captcha action: " + action), nil
+	}
+}
+
+func runCaptchaDetect(ctx context.Context, sess browser.Session) (fantasy.ToolResponse, error) {
+	pageURL, _ := sess.URL()
+	raw, err := sess.Eval(captcha.DetectScript)
+	if err != nil {
+		return fantasy.NewTextErrorResponse("captcha detection failed: " + err.Error()), nil
+	}
+	detected, ch, err := captcha.ParseDetect(raw, pageURL)
+	if err != nil {
+		return fantasy.NewTextErrorResponse(err.Error()), nil
+	}
+	if !detected.Present() {
+		return browserJSONResponse(CaptchaResult{
+			Status:  "none",
+			PageURL: pageURL,
+			Next:    "No verification widget is visible on this page.",
+		}), nil
+	}
+	return browserJSONResponse(CaptchaResult{
+		Status:         "detected",
+		Kind:           string(ch.Kind),
+		SiteKey:        ch.SiteKey,
+		PageURL:        ch.PageURL,
+		Question:       ch.Question,
+		AnswerSelector: ch.AnswerSelector,
+		VerifySelector: ch.VerifySelector,
+		Message:        detectSummary(ch),
+		Next:           "Call captcha_solve to see the challenge and answer it.",
+	}), nil
+}
+
+func detectSummary(ch captcha.Challenge) string {
+	switch ch.Kind {
+	case captcha.KindImageText:
+		return "Image-text CAPTCHA: captcha_solve returns the challenge image so you can read it, then call captcha_fill."
+	case captcha.KindMath:
+		return "Arithmetic CAPTCHA: captcha_solve computes it, or reads the expression from the image."
 	case captcha.KindCheckbox:
 		return "Checkbox widget: a single click usually clears it (use browser click)."
 	case captcha.KindClick:

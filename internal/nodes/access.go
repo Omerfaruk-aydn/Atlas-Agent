@@ -132,18 +132,12 @@ func (s *Server) resolveFor(g Grant, rel string) (root, full string, err error) 
 	label, rest, _ := strings.Cut(norm, "/")
 	for _, r := range g.Roots {
 		if r.Label == label {
-			if rest == "" || rest == "." {
-				return r.Path, r.Path, nil
-			}
-			full, err = transfer.Resolve(r.Path, rest)
-			return r.Path, full, err
-		}
 	}
-	labels := make([]string, 0, len(g.Roots))
-	for _, r := range sortedRoots(g.Roots) {
-		labels = append(labels, r.Label)
+	if rest == "" || rest == "." {
+		return r.Path, r.Path, nil
 	}
-	return "", "", &transfer.Error{Code: "path_denied", Message: fmt.Sprintf("path %q is not under an allowed folder; allowed: %s", rel, strings.Join(labels, ", "))}
+	full, err = transfer.Resolve(r.Path, rest)
+	return r.Path, full, err
 }
 
 // splitFor returns the root and the root-relative remainder of rel, for
@@ -152,18 +146,14 @@ func (s *Server) splitFor(g Grant, rel string) (root, inner string, err error) {
 	if len(g.Roots) == 0 {
 		return s.opts.Root, rel, nil
 	}
-	norm := strings.TrimLeft(strings.ReplaceAll(rel, "\\", "/"), "/")
-	label, rest, _ := strings.Cut(norm, "/")
-	for _, r := range g.Roots {
-		if r.Label == label {
-			if rest == "" {
-				return "", "", &transfer.Error{Code: "invalid_path", Message: "path must name a file inside the allowed folder " + label}
-			}
-			return r.Path, rest, nil
-		}
+	r, rest, err := matchRoot(g.Roots, rel)
+	if err != nil {
+		return "", "", err
 	}
-	_, _, err = s.resolveFor(g, rel)
-	return "", "", err
+	if rest == "" || rest == "." {
+		return "", "", &transfer.Error{Code: "invalid_path", Message: "path must name a file inside the allowed folder " + r.Label}
+	}
+	return r.Path, rest, nil
 }
 
 // defaultDir is the working directory for commands and launches.

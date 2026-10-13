@@ -1,3 +1,8 @@
+"use strict";
+// Renders every phone panel screen with fixture data and saves screenshots
+// for visual review. Usage:
+//   node internal/mobile/web_tests/screenshots.cjs <output-dir> [webkit|chromium]
+// Fixture screenshots are browser emulation, not physical phone acceptance.
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const pw = require("playwright");

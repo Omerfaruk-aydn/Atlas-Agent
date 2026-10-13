@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/jpeg"
 	"image/png"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/question"
@@ -66,6 +67,39 @@ func FromWorkspace(ws workspace.Workspace) (Backend, func(context.Context) <-cha
 		preview = func() ([]byte, error) { return screenPreview(backend) }
 	}
 	return appBackend{Workspace: ws, app: aw}, events, preview, nil
+}
+
+// DesktopScreen returns the live screen source of this computer, or nil
+// when the desktop cannot be captured. It prefers direct downscaled frame
+// capture and falls back to full screenshots where that is unavailable.
+func DesktopScreen() ScreenSource {
+	backend := computer.OpenOrNil()
+	if backend == nil {
+		return nil
+	}
+	return ScreenSourceFunc(func(maxWidth int) (*image.RGBA, int, int, time.Time, error) {
+		f, err := computer.CaptureFrame(maxWidth)
+		if err == nil {
+			return f.Image, f.Screen.Width, f.Screen.Height, f.Captured, nil
+		}
+		if !errors.Is(err, computer.ErrFrameCaptureUnsupported) {
+			return nil, 0, 0, time.Time{}, err
+		}
+		data, err := backend.Screenshot()
+		captured := time.Now()
+		if err != nil {
+			return nil, 0, 0, captured, err
+		}
+		src, err := png.Decode(bytes.NewReader(data))
+		if err != nil {
+			return nil, 0, 0, captured, err
+		}
+		sw, sh := src.Bounds().Dx(), src.Bounds().Dy()
+		w, h := computer.FrameScale(sw, sh, maxWidth)
+		dst := image.NewRGBA(image.Rect(0, 0, w, h))
+		xdraw.ApproxBiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), xdraw.Src, nil)
+		return dst, sw, sh, captured, nil
+	})
 }
 
 // screenPreview captures the screen and returns a small JPEG: at most 800

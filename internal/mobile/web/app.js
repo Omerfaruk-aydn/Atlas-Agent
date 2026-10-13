@@ -350,14 +350,73 @@
     renderMessages(d.messages || []);
   }
 
-  async function openTask(id) {
-    state.current = id;
-    state.detail = null;
-    $("preview-img").classList.add("hidden");
-    show("task");
-    try { await loadTask(id); } catch (e) { banner(t("failed") + ": " + e.message, true); }
+    const st = screen.lastStats;
+    if (st && live && st.capture_fps !== undefined) $("screen-note").textContent = t("scr_measured", Number(st.capture_fps).toFixed(0), Number(st.sent_fps || 0).toFixed(0), Math.round((st.bytes_per_sec || 0) / 1024));
+    else if (!screen.lastRender) $("screen-note").textContent = t("scr_only_view");
+    const vp = $("screen-viewport");
+    vp.classList.toggle("stale", stale);
+    let overlay = "";
+    if (screen.message) overlay = screen.message;
+    else if (screen.conn === "retrying") overlay = t("scr_retry_wait", Math.max(0, Math.ceil(((screen.retryAt || now) - now) / 1000)));
+    else if (stale && screen.conn !== "paused") overlay = t("scr_stale_text", Math.round(age));
+    else if (screen.conn === "error") overlay = t("scr_gave_up");
+    $("screen-overlay").classList.toggle("hidden", !overlay || (live && !screen.message));
+    $("screen-overlay-text").textContent = overlay;
+    $("screen-retry").classList.toggle("hidden", !(screen.gaveUp || screen.conn === "error"));
+    $("screen-zoom").textContent = Math.round(screen.zoom * 100) + "%";
+    const exp = $("screen-pane").classList.contains("expanded") || document.fullscreenElement === $("screen-pane");
+    $("screen-full").setAttribute("aria-label", t(exp ? "exit_fullscreen" : "fullscreen"));
+    $("screen-full").title = t(exp ? "exit_fullscreen" : "fullscreen");
+  }
+  function startScreenClock() {
+    clearInterval(screen.staleTimer);
+    screen.staleTimer = setInterval(() => { if (screen.open && !document.hidden) renderScreenChrome(); }, 500);
+  }
+  function setZoom(z, cx, cy) {
+    const vp = $("screen-viewport");
+    const old = screen.zoom;
+    z = Math.min(4, Math.max(1, z));
+    if (z === old) return;
+    // Zoom around a point (center by default) so the view does not jump.
+    const px = cx === undefined ? vp.clientWidth / 2 : cx, py = cy === undefined ? vp.clientHeight / 2 : cy;
+    const fx = (vp.scrollLeft + px) / vp.scrollWidth, fy = (vp.scrollTop + py) / vp.scrollHeight;
+    screen.zoom = z;
+    vp.style.setProperty("--zoom", String(z));
+    vp.classList.toggle("zoomed", z > 1);
+    vp.scrollLeft = fx * vp.scrollWidth - px;
+    vp.scrollTop = fy * vp.scrollHeight - py;
+    renderScreenChrome();
+  }
+  function exitExpanded() {
+    $("screen-pane").classList.remove("expanded");
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  }
+  function toggleFull() {
+    const pane = $("screen-pane");
+    if (document.fullscreenElement === pane || pane.classList.contains("expanded")) { exitExpanded(); renderScreenChrome(); return; }
+    // iPhone Safari has no element full screen; a fixed overlay stands in.
+    if (pane.requestFullscreen && !appleMobile) pane.requestFullscreen().catch(() => pane.classList.add("expanded")).finally(renderScreenChrome);
+    else { pane.classList.add("expanded"); renderScreenChrome(); }
   }
 
+  // ---------- Settings ----------
+  function renderSettings() {
+    const me = state.me;
+    if (!me) return;
+    $("set-device").textContent = me.device.name;
+    $("set-paired").textContent = me.device.paired_at ? t("paired_on", new Date(me.device.paired_at).toLocaleDateString(locale(), { day: "numeric", month: "long", year: "numeric" })) : "";
+    $("set-computer").textContent = computerName() + (me.computer && me.computer.os ? " · " + me.computer.os : "");
+    $("set-fp").textContent = me.fingerprint || "";
+    $("set-cert-note").textContent = t(me.tailscale ? "tailscale_note" : "certificate_note");
+    $("set-version").textContent = me.version ? t("version", me.version) : "Atlas Remote";
+    $("set-previews").textContent = !me.preview_available ? t("previews_unavailable") : me.device.previews ? t("previews_on") : t("previews_off");
+    $("set-previews-note").textContent = !me.preview_available ? "" : me.device.previews ? t("previews_on_note") : t("previews_off_note");
+    // In-app alerts remain available independently of browser permission.
+    const n = $("notify");
+    n.disabled = false;
+    n.checked = store.get("atlas.notify") === "1";
+    $("notify-note").textContent = t("notify_note");
+    const installed = standalone();
     $("iphone-install").classList.toggle("hidden", !appleMobile || installed || inAppBrowser);
     $("android-install").classList.toggle("hidden", appleMobile || installed);
     $("install-details").classList.toggle("hidden", installed || inAppBrowser);

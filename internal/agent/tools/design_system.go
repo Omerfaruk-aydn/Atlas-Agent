@@ -1,3 +1,73 @@
+	case "check":
+		sys := p.System
+		if sys == nil {
+			st, err := loadDesignStore(dir)
+			if err == nil && st.Approved == nil && st.Candidate == nil {
+				err = os.ErrNotExist
+			}
+			if err != nil {
+				return nil, fmt.Errorf("check needs system or a stored design system: %w", err)
+			}
+			eff, _ := st.effective()
+			sys = &eff.System
+		}
+		if err := validateDesignSystem(*sys); err != nil {
+			return nil, err
+		}
+		return checkDesignSystem(*sys), nil
+	case "package":
+		return packageDesign(ctx, dir, p, now)
+	}
+	return nil, fmt.Errorf("unknown action %q", p.Action)
+}
+
+// Design memory store. Schema 2 keeps the user-approved system apart from
+// the latest candidate and keeps earlier approved versions. Schema 1 (a
+// bare DesignSystem object) is migrated on read and rewritten as schema 2
+// on the next write.
+const (
+	designStoreSchema = 2
+	designHistoryCap  = 20
+)
+
+var designStoreLocks [64]sync.Mutex
+
+var errDesignCorrupt = errors.New("design memory is damaged")
+
+type designRecord struct {
+	Version int          `json:"version"`
+	System  DesignSystem `json:"system"`
+	At      string       `json:"at"`
+	Note    string       `json:"note,omitempty"`
+}
+
+type designStore struct {
+	SchemaVersion int            `json:"schema_version"`
+	Approved      *designRecord  `json:"approved,omitempty"`
+	Candidate     *designRecord  `json:"candidate,omitempty"`
+	History       []designRecord `json:"history,omitempty"`
+	MigratedFrom  int            `json:"migrated_from,omitempty"`
+}
+
+// effective is the system later work follows: the approved one, else the
+// candidate.
+func (s designStore) effective() (designRecord, string) {
+	if s.Approved != nil {
+		return *s.Approved, "approved"
+	}
+	if s.Candidate != nil {
+		return *s.Candidate, "candidate"
+	}
+	return designRecord{}, "none"
+}
+
+func (s designStore) nextVersion() int {
+	n := 0
+	for _, r := range s.History {
+		n = max(n, r.Version)
+	}
+	if s.Approved != nil {
+		n = max(n, s.Approved.Version)
 	}
 	if s.Candidate != nil {
 		n = max(n, s.Candidate.Version)

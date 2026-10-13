@@ -523,33 +523,58 @@
       } finally {
         $("pair-go").disabled = false;
       }
-    };
+    }
   }
-
-  async function poll(id, token) {
-    for (;;) {
-      await new Promise((r) => setTimeout(r, 1500));
-      try {
-        const resp = await fetch("/api/pair/poll", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ pending_id: id, poll: token }) });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error((data.error && data.error.message) || resp.statusText);
-        if (data.state === "accepted") { boot(); return; }
-        if (data.state === "rejected") { $("pair-status").textContent = t("pair_rejected"); return; }
-        if (data.state === "expired") { $("pair-status").textContent = t("pair_expired"); return; }
-      } catch (e) {
-        $("pair-status").textContent = t("pair_expired");
-        return;
-      }
+  async function cancelPairing() {
+    const p = state.pair;
+    if (!p) return;
+    p.stopped = true;
+    clearInterval(pairTick);
+    const b = $("pair-cancel");
+    b.disabled = true;
+    try {
+      const { resp, data } = await pairRequest("/api/pair/cancel", p);
+      if (resp.ok && data.state === "cancelled") { pairDone("cancelled"); return; }
+      // Already decided: report what really happened.
+      const poll = await pairRequest("/api/pair/poll", p);
+      if (poll.resp.ok && poll.data.state === "accepted") { state.pair = null; boot(); return; }
+      pairDone(poll.resp.ok && poll.data.state === "rejected" ? "rejected" : "expired");
+    } catch (_) {
+      pairDone("cancelled", true);
+    } finally {
+      b.disabled = false;
     }
   }
 
-  $("back").addEventListener("click", () => { state.current = null; show("list"); loadList().catch(() => {}); });
-  $("settings-btn").addEventListener("click", () => { state.current = null; show("settings"); });
-  $("ctl-pause").addEventListener("click", (e) => control("pause", e.currentTarget));
-  $("ctl-resume").addEventListener("click", (e) => control("resume", e.currentTarget));
-  $("ctl-stop").addEventListener("click", (e) => control("stop", e.currentTarget));
-  $("ctl-preview").addEventListener("click", async () => {
+  // ---------- Wiring ----------
+  $("pair-help-btn").addEventListener("click", (e) => {
+    const open = $("pair-help").classList.toggle("hidden") === false;
+    e.currentTarget.setAttribute("aria-expanded", String(open));
+  });
+  $("pair-cancel").addEventListener("click", cancelPairing);
+  $("pair-transfer").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const go = $("transfer-go");
+    const code = $("transfer-code").value.trim();
+    if (!code || go.disabled) return;
+    go.disabled = true;
+    go.classList.add("busy");
+    $("transfer-error").classList.add("hidden");
     try {
+      const resp = await fetch("/api/transfer/redeem", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", cache: "no-store", body: JSON.stringify({ code }) });
+      if (!resp.ok) throw Object.assign(new Error(t("transfer_invalid")), { status: resp.status });
+      $("transfer-code").value = "";
+      boot();
+    } catch (e) {
+      $("transfer-error").textContent = e.status ? t("transfer_invalid") : t("pair_network");
+      $("transfer-error").classList.remove("hidden");
+    } finally {
+      go.disabled = false;
+      go.classList.remove("busy");
+    }
+  });
+  $("transfer-btn").addEventListener("click", async (e) => {
+    const b = e.currentTarget;
     b.disabled = true;
     try {
       const data = await act("/api/transfer", {});

@@ -1,3 +1,33 @@
+package tsfunnel
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
+	"time"
+)
+
+// OfficialPackages is Tailscale's stable package index.
+const OfficialPackages = "https://pkgs.tailscale.com/stable/"
+
+// DownloadPage is the official manual download page.
+const DownloadPage = "https://tailscale.com/download/windows"
+
+// Signature is an Authenticode verdict for a downloaded file.
+type Signature struct {
+	Status  string
+	Subject string
 }
 
 // InstallStep names what the installer is doing, for the UI.

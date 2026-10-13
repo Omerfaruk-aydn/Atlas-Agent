@@ -1,3 +1,37 @@
+package tools
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
+	_ "image/gif" // Registers the GIF decoder for DecodeConfig/Decode.
+	"image/jpeg"
+	_ "image/png" // Registers the PNG decoder for DecodeConfig/Decode.
+	"strings"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/tidwall/sjson"
+	_ "golang.org/x/image/webp" // Registers the WebP decoder.
+)
+
+// Image delivery contract.
+//
+// MaxImageDeliveryBytes bounds the raw (decoded) bytes of one image handed
+// to the model. It is deliberately separate from MaxViewSize, which bounds
+// text, so raising one never raises the other. Providers receive the image
+// base64-encoded, which is ImageBase64Len(raw) bytes: at the limit that is
+// 2,796,204 bytes, below Anthropic's 5 MB per-image cap and the 20 MB
+// OpenAI and Gemini inline caps.
+const (
+	MaxImageDeliveryBytes = 2 * 1024 * 1024
+	// MaxImageDeliveryPixels refuses decompression bombs before decoding.
 	MaxImageDeliveryPixels = 60_000_000
 	// previewMaxWidth is the first preview width tried for an oversized
 	// image; it matches the screenshot width models aim at.

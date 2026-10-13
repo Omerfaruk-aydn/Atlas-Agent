@@ -1,3 +1,10 @@
+package vault
+
+import (
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"

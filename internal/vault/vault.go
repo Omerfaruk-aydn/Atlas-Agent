@@ -151,6 +151,12 @@ func Register(session, value string) error {
 }
 
 func Sensitive(session string) bool {
+	temporaryRedaction.RLock()
+	temporary := len(temporaryRedaction.entries[session]) > 0 || session == "" && len(temporaryRedaction.entries) > 0
+	temporaryRedaction.RUnlock()
+	if temporary {
+		return true
+	}
 	redaction.RLock()
 	defer redaction.RUnlock()
 	if session == "" {
@@ -173,5 +179,5 @@ func Redact(session, value string) string {
 			}
 		}
 	}
-	return value
+	return redactTemporary(value)
 }

@@ -1643,6 +1643,11 @@
           "type": "string",
           "description": "Absolute path to the private connector key shared with your own mobile-relay server. Generate with mobile-relay keygen and keep outside the workspace. Never put this key in a URL or phone browser."
         },
+        "mobile_funnel": {
+          "type": "boolean",
+          "description": "Let /rc publish the phone gateway with your own Tailscale Funnel (https://<device>.<tailnet>.ts.net). Set and cleared by /rc; Atlas reconnects it at launch only while this is on. Needs Tailscale signed in with MagicDNS and HTTPS certificates and Funnel allowed for this device.",
+          "default": false
+        },
         "support_name": {
           "type": "string",
           "description": "Name this computer shows in /support sessions. Defaults to the computer name. The other side sees it as a name sent by the device; the verified identity is the certificate fingerprint."

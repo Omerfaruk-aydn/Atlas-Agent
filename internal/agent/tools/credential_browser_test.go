@@ -1,3 +1,58 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/browser"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
+	"github.com/stretchr/testify/require"
+)
+
+// Synthetic login fixture values; never a real account or password.
+const (
+	credOrigin = "https://login.example.test"
+	credSecret = "Synth-Tool-Pass-9921!"
+)
+
+// secretSession is a password-capable page double. It records what would
+// reach the page so tests can count dispatches.
+type secretSession struct {
+	fakeBrowserSession
+	mu         sync.Mutex
+	tab, doc   string
+	fieldFound bool
+	fills      []string
+	fillResult browser.SecretFillResult
+	fillErr    error
+	login      browser.LoginState
+	typeErr    error
+}
+
+// Type refuses like the real driver does for a password field.
+func (s *secretSession) Type(selector, text string) error {
+	if s.typeErr != nil {
+		return s.typeErr
+	}
+	return s.fakeBrowserSession.Type(selector, text)
+}
+
+func (s *secretSession) PasswordTarget(_ context.Context, frameID, selector string) (browser.PasswordTarget, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.fieldFound {
+		return browser.PasswordTarget{Reason: "target_missing", Origin: credOrigin, TabID: s.tab, Document: s.doc}, nil
+	}
+	return browser.PasswordTarget{Found: true, Count: 1, Origin: credOrigin, TabID: s.tab, Document: s.doc, FrameID: frameID, Selector: "#pw"}, nil
+}
+
 func (s *secretSession) FillSecret(_ context.Context, target browser.SecretTarget, secret string) (browser.SecretFillResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

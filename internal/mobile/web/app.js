@@ -306,8 +306,79 @@
         c.append(ta);
         inputs.push(() => (ta.value.trim() ? { question_id: item.id, fill_in_text: ta.value.trim() } : null));
       }
+    form.append(h, el("p", "lead", t("cred_lead")));
+    const card = el("div", "detail-card");
+    const target = el("div", "detail-target");
+    target.append(icon("key"));
+    const txt = el("div", "target-text");
+    txt.append(el("div", "label", t("cred_service")), el("div", "value", c.service || ""));
+    txt.append(el("div", "label", t("cred_origin")), el("div", "value", c.origin));
+    if (c.account) txt.append(el("div", "label", t("cred_account")), el("div", "value", c.account));
+    target.append(txt);
+    card.append(target);
+    form.append(card);
+    const id = "cred-" + c.id;
+    const lab = el("label", "field", t("cred_password"));
+    lab.htmlFor = id;
+    const row = el("div", "secret-row");
+    const input = el("input", "input");
+    input.id = id;
+    input.type = "password";
+    input.autocomplete = "off";
+    input.setAttribute("autocapitalize", "off");
+    input.setAttribute("autocorrect", "off");
+    input.spellcheck = false;
+    input.maxLength = 4096;
+    input.setAttribute("enterkeyhint", "done");
+    const eye = button("icon-btn");
+    eye.setAttribute("aria-pressed", "false");
+    eye.setAttribute("aria-label", t("cred_show"));
+    eye.title = t("cred_show");
+    eye.append(icon("eye"));
+    eye.addEventListener("click", () => {
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      eye.setAttribute("aria-pressed", String(show));
+      eye.setAttribute("aria-label", t(show ? "cred_hide" : "cred_show"));
+      eye.title = t(show ? "cred_hide" : "cred_show");
+      eye.replaceChildren(icon(show ? "eye-off" : "eye"));
+      input.focus({ preventScroll: true });
+    });
+    row.append(input, eye);
+    form.append(lab, row);
+    let persist = null;
+    if (c.can_persist) {
+      const pl = el("label", "check-row");
+      persist = el("input");
+      persist.type = "checkbox";
+      pl.append(persist, el("span", "", t("cred_persist")));
+      form.append(pl);
     }
+    const expiry = el("p", "cred-expiry");
+    expiry.setAttribute("aria-live", "off");
+    form.append(expiry);
     const actions = el("div", "actions");
+    const use = button("btn primary block", t("cred_use"), "submit");
+    use.dataset.role = "use";
+    const cancel = button("btn secondary block", t("cred_cancel"));
+    actions.append(use, cancel);
+    const result = el("p", "form-error result hidden");
+    result.setAttribute("role", "alert");
+    form.append(actions, result, el("p", "cred-note", t("cred_note")), el("p", "cred-note", t("cred_verify_note")));
+    const expired = () => Date.now() >= c.expires;
+    const tick = () => {
+      if (!form.isConnected) { clearInterval(credTimer); credTimer = null; return; }
+      if (expired()) {
+        input.value = "";
+        input.disabled = true;
+        use.disabled = true;
+        expiry.textContent = t("cred_expired");
+        clearInterval(credTimer);
+        credTimer = null;
+        return;
+      }
+      expiry.textContent = t("cred_expires", fmtLeft(c.expires - Date.now()));
+    };
     clearInterval(credTimer);
     credTimer = setInterval(tick, 1000);
     tick();

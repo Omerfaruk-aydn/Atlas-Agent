@@ -1,3 +1,73 @@
+	case len(exact) > 1:
+		return AppEntry{}, ambiguous(idOrName, exact)
+	case len(partial) == 1:
+		return partial[0], nil
+	case len(partial) > 1:
+		return AppEntry{}, ambiguous(idOrName, partial)
+	}
+	return AppEntry{}, fmt.Errorf("%w: no installed application matches %q; list apps to see what is installed", ErrAppNotFound, idOrName)
+}
+
+func ambiguous(q string, entries []AppEntry) error {
+	ids := make([]string, 0, len(entries))
+	for _, e := range entries {
+		ids = append(ids, fmt.Sprintf("%s (%s, %s)", e.ID, e.Name, e.Scope))
+	}
+	return fmt.Errorf("%w: %q matches %s; pass one app_id", ErrAppAmbiguous, q, strings.Join(ids, "; "))
+}
+
+// matchEntries splits entries into exact name/alias matches and partial
+// (token subset) matches of query.
+func matchEntries(entries []AppEntry, query string) (exact, partial []AppEntry) {
+	q := FoldName(query)
+	if q == "" {
+		return nil, nil
+	}
+	for _, e := range entries {
+		names := append([]string{e.Name}, e.Aliases...)
+		hit := 0
+		for _, n := range names {
+			f := FoldName(n)
+			switch {
+			case f == q:
+				hit = 2
+			case hit == 0 && tokenSubset(q, f):
+				hit = 1
+			}
+		}
+		switch hit {
+		case 2:
+			exact = append(exact, e)
+		case 1:
+			partial = append(partial, e)
+		}
+	}
+	return exact, partial
+}
+
+// tokenSubset reports whether every token of the shorter name occurs in
+// the longer one ("chrome" in "google chrome", "omer faruk" in "omer faruk
+// aydin").
+func tokenSubset(a, b string) bool {
+	ta, tb := strings.Fields(a), strings.Fields(b)
+	if len(ta) == 0 || len(tb) == 0 {
+		return false
+	}
+	if len(ta) > len(tb) {
+		ta, tb = tb, ta
+	}
+	for _, t := range ta {
+		if !slices.Contains(tb, t) {
+			return false
+		}
+	}
+	return true
+}
+
+// FoldName normalizes a display name for matching: case-insensitive
+// without Turkish dotted/dotless I surprises, Turkish letters folded to
+// ASCII, punctuation collapsed to single spaces.
+func FoldName(s string) string {
 	var b strings.Builder
 	space := true
 	for _, r := range s {

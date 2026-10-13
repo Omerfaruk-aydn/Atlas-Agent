@@ -178,7 +178,7 @@ func validateDesktopFlowNode(f *DesktopFlowParams, i int, n DesktopFlowNode, cal
 	}
 	switch n.Kind {
 	case "prepare":
-		if n.Application == "" || n.Title != "" || n.OwnerRef != "" || n.WindowRef != "" || n.Input.Action != "" || len(n.Inputs) != 0 || n.Checkpoint != (computer.AutomationRequest{}) || n.Focus || n.FailureCrop || n.WaitMS < 0 || n.WaitMS > 15000 {
+		if n.Application == "" || n.Title != "" || n.OwnerRef != "" || n.WindowRef != "" || n.Input.Action != "" || len(n.Inputs) != 0 || !n.Checkpoint.IsZero() || n.Focus || n.FailureCrop || n.WaitMS < 0 || n.WaitMS > 15000 {
 			return fail("", "prepare requires application and optional wait_ms without other node parameters")
 		}
 		*calls += 32
@@ -190,7 +190,7 @@ func validateDesktopFlowNode(f *DesktopFlowParams, i int, n DesktopFlowNode, cal
 		*calls += 2
 		return nil
 	case "file_check":
-		if n.WindowRef != "" || n.Application != "" || n.Title != "" || n.OwnerRef != "" || n.WaitMS != 0 || n.Input.Action != "" || len(n.Inputs) != 0 || n.Checkpoint != (computer.AutomationRequest{}) || n.Focus || n.FailureCrop {
+		if n.WindowRef != "" || n.Application != "" || n.Title != "" || n.OwnerRef != "" || n.WaitMS != 0 || n.Input.Action != "" || len(n.Inputs) != 0 || !n.Checkpoint.IsZero() || n.Focus || n.FailureCrop {
 			return fail("", "file_check takes only file and next; it reads the file system, never a window")
 		}
 		if err := validateDesktopFileCheck(n.File); err != nil {
@@ -209,7 +209,7 @@ func validateDesktopFlowNode(f *DesktopFlowParams, i int, n DesktopFlowNode, cal
 		return fail("checkpoint.window_id", "omit window_id; the binding supplies it at run time")
 	}
 	if n.Kind == "close" || n.Kind == "rename" {
-		if n.Input.Action != "" || len(n.Inputs) > 0 || n.Checkpoint != (computer.AutomationRequest{}) || n.FailureCrop {
+		if n.Input.Action != "" || len(n.Inputs) > 0 || !n.Checkpoint.IsZero() || n.FailureCrop {
 			return fail("", "close/rename verify their own result and cannot include other inputs/checkpoints")
 		}
 		if n.Kind == "rename" {

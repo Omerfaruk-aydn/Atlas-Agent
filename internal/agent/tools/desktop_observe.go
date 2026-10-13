@@ -12,7 +12,7 @@ import (
 
 // Observe reads an explicit window without activating or changing applications.
 func runDesktopObserve(ctx context.Context, p DesktopWorkflowParams, parent fantasy.ToolCall, invoke func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error)) (fantasy.ToolResponse, error) {
-	if p.WindowID == "" || p.Application != "" || p.Rename != nil || p.Flow != nil || p.Result != "" || p.Transition != nil || len(p.Inputs)+len(p.Steps)+len(p.AdaptiveSteps) != 0 || !reflect.DeepEqual(p.Input, ComputerParams{}) || p.WaitFor != (computer.AutomationRequest{}) || p.WaitMS != 0 || p.MaxElements < 0 || p.MaxElements > 500 {
+	if p.WindowID == "" || p.Application != "" || p.Rename != nil || p.Flow != nil || p.Result != "" || p.Transition != nil || len(p.Inputs)+len(p.Steps)+len(p.AdaptiveSteps) != 0 || !reflect.DeepEqual(p.Input, ComputerParams{}) || !p.WaitFor.IsZero() || p.WaitMS != 0 || p.MaxElements < 0 || p.MaxElements > 500 {
 		return fantasy.NewTextErrorResponse("observe requires only explicit window_id, optional max_elements and observation; no inputs or launch parameters"), nil
 	}
 	if p.Observation == "" {

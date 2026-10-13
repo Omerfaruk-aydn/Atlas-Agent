@@ -119,7 +119,7 @@ func desktopRenameEditor(e *desktopElement, item desktopElement, expected string
 }
 
 func runDesktopRename(ctx context.Context, p DesktopWorkflowParams, parent fantasy.ToolCall, invoke func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error)) (fantasy.ToolResponse, error) {
-	if p.Rename == nil || p.WindowID == "" || p.Application != "" || !reflect.DeepEqual(p.Input, ComputerParams{}) || len(p.Inputs) != 0 || len(p.Steps) != 0 || len(p.AdaptiveSteps) != 0 || p.Transition != nil || p.Flow != nil || p.Result != "" || p.WaitFor != (computer.AutomationRequest{}) || p.WaitMS != 0 || p.MaxElements != 0 || (p.Observation != "" && p.Observation != "auto" && p.Observation != "semantic") {
+	if p.Rename == nil || p.WindowID == "" || p.Application != "" || !reflect.DeepEqual(p.Input, ComputerParams{}) || len(p.Inputs) != 0 || len(p.Steps) != 0 || len(p.AdaptiveSteps) != 0 || p.Transition != nil || p.Flow != nil || p.Result != "" || !p.WaitFor.IsZero() || p.WaitMS != 0 || p.MaxElements != 0 || (p.Observation != "" && p.Observation != "auto" && p.Observation != "semantic") {
 		return fantasy.NewTextErrorResponse("rename requires only window_id and rename names"), nil
 	}
 	if !desktopRenameName(p.Rename.OldName) || !desktopRenameName(p.Rename.NewName) {

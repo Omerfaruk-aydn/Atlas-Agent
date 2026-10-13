@@ -1,3 +1,20 @@
+package tools
+
+import (
+	"encoding/json"
+	"image"
+	"image/png"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestContrastRatioMatchesWCAG(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
 		a, b string
 		want float64
 	}{

@@ -1,3 +1,65 @@
+package computer
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+	"unicode"
+)
+
+// The application catalog is the one place Atlas finds and launches
+// installed applications: the local computer tool's launch_app and the
+// remote /support launch both resolve through it on the computer that runs
+// the application, so paths discovered on one computer are never used on
+// another. Discovery is on demand and targeted (registry App Paths, Start
+// menu entries, a few well-known install folders, running windows); it
+// never scans the whole filesystem.
+
+// Launch methods.
+const (
+	// LaunchExecutable starts a verified executable with structured args.
+	LaunchExecutable = "executable"
+	// LaunchAppsFolder starts a Start menu entry through the shell by its
+	// AppUserModelID; it accepts no arguments.
+	LaunchAppsFolder = "apps_folder"
+)
+
+// AppLauncher is how an entry is started. Arguments are always passed as a
+// list; they are never joined into shell text.
+type AppLauncher struct {
+	Method string `json:"method"`
+	Path   string `json:"path,omitempty"`
+	AppID  string `json:"app_user_model_id,omitempty"`
+}
+
+// AppWindow relates a running process to its visible window.
+type AppWindow struct {
+	WindowID  string `json:"window_id"`
+	ProcessID uint32 `json:"process_id"`
+	Title     string `json:"title,omitempty"`
+}
+
+// BrowserProfile names a browser profile by its directory and display name
+// only. Account e-mail addresses, cookies, passwords and tokens are never
+// read into the catalog.
+type BrowserProfile struct {
+	Directory string `json:"directory"`
+	Name      string `json:"name"`
+}
+
+// AppEntry is one installed application.
+type AppEntry struct {
+	ID           string           `json:"app_id"`
+	Name         string           `json:"name"`
 	Aliases      []string         `json:"aliases,omitempty"`
 	Launch       AppLauncher      `json:"launch"`
 	Sources      []string         `json:"sources"`

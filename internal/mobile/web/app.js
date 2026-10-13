@@ -144,6 +144,77 @@
         if (e.status) throw e;
         return await api(path, { method: "POST", body, key });
       }
+    if (s.pending_credentials > 0) return ["waiting", t("st_credential"), "ring"];
+    if (s.pending_permissions > 0) return ["waiting", t("st_permission"), "ring"];
+    if (s.pending_questions > 0) return ["waiting", t("st_question"), "ring"];
+    if (s.paused) return ["paused", t("st_paused"), "pause"];
+    if (s.busy) return ["running", t("st_running"), "ring"];
+    if ((state.errors.get(s.id) || []).length) return ["error", t("st_error"), "alert"];
+    // Only a finished step list is evidence of completion; idle is "ready".
+    if (s.todos_total > 0 && s.todos_done === s.todos_total) return ["done", t("st_done"), "check"];
+    return ["", t("st_ready"), ""];
+  }
+  function renderList() {
+    const box = $("task-list");
+    const msg = $("list-state");
+    box.replaceChildren();
+    msg.replaceChildren();
+    msg.classList.add("hidden");
+    if (state.listStatus === "loading" && !state.sessions.size) {
+      for (let i = 0; i < 4; i++) box.append(el("div", "skeleton"));
+      msg.classList.remove("hidden");
+      msg.append(el("span", "sr-only", t("loading")));
+      return;
+    }
+    if (state.listStatus === "error" && !state.sessions.size) {
+      msg.classList.remove("hidden");
+      msg.append(el("p", "", t("list_error")));
+      const b = button("btn secondary", t("retry"));
+      b.addEventListener("click", () => { state.listStatus = "loading"; renderList(); loadList().catch(() => {}); });
+      msg.append(b);
+      return;
+    }
+    const q = fold(state.query.trim());
+    const items = Array.from(state.sessions.values())
+      .filter((s) => !q || fold(s.title).includes(q) || fold(s.goal).includes(q))
+      .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+    if (!state.sessions.size) {
+      msg.classList.remove("hidden");
+      msg.append(el("p", "", t("no_tasks")));
+      return;
+    }
+    if (!items.length) {
+      msg.classList.remove("hidden");
+      msg.append(el("p", "", t("no_results", state.query.trim())));
+      return;
+    }
+    let group = null;
+    let label = "";
+    for (const s of items) {
+      const l = dayLabel(s.updated_at || s.created_at || 0);
+      if (l !== label) {
+        label = l;
+        const sec = el("section");
+        sec.append(el("h2", "", l));
+        group = el("ul");
+        sec.append(group);
+        box.append(sec);
+      }
+      group.append(taskRow(s));
+    }
+  }
+  function taskRow(s) {
+    const li = el("li");
+    const b = button("task-row");
+    b.dataset.id = s.id;
+    const main = el("span", "task-main");
+    main.append(el("span", "task-title", s.title || s.id));
+    let sub = s.goal || "";
+    if (!sub && s.todos_total) sub = t("steps_done", s.todos_done, s.todos_total);
+    if (sub) main.append(el("span", "task-sub", sub));
+    const [cls, text, ic] = statusOf(s);
+    let pill;
+    if (cls) {
       pill = el("span", "pill " + cls);
       if (ic) pill.append(icon(ic === "check" ? "check-circle" : ic));
       pill.append(document.createTextNode(text));

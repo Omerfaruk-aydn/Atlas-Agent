@@ -76,23 +76,46 @@
     </form>
   </section>
 
-  <section id="view-settings" class="view hidden" aria-labelledby="settings-h">
-    <h2 id="settings-h" data-i18n="settings"></h2>
-    <dl class="kv">
-      <dt data-i18n="this_device"></dt><dd id="set-device"></dd>
-      <dt data-i18n="certificate"></dt><dd id="set-fp" class="mono small"></dd>
-      <dt data-i18n="previews"></dt><dd id="set-previews"></dd>
-    </dl>
-    <label class="switch"><input type="checkbox" id="notify"><span data-i18n="notifications"></span></label>
-    <p class="muted small" id="notify-note" data-i18n="notify_note"></p>
-    <aside class="install-guide hidden" id="iphone-install" aria-labelledby="iphone-install-title">
-      <h3 id="iphone-install-title" data-i18n="iphone_install_title"></h3>
-      <p data-i18n="iphone_install_steps"></p>
-      <p class="muted small" data-i18n="iphone_install_note"></p>
-    </aside>
-    <button class="btn danger block" id="logout" type="button" data-i18n="sign_out"></button>
-  </section>
-</main>
+    </div>
+
+    <div id="install-section">
+      <h2 class="group-h" data-i18n="install_group"></h2>
+      <div class="group">
+        <details class="row-details" id="install-details">
+          <summary class="row"><svg class="row-icon" aria-hidden="true"><use href="#i-share"/></svg><span class="row-main" data-i18n="install_row"></span><svg class="chev" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
+          <div class="details-body">
+            <ol class="steps hidden" id="iphone-install"><li data-i18n="ios_step1"></li><li data-i18n="ios_step2"></li><li data-i18n="ios_step3"></li></ol>
+            <ol class="steps hidden" id="android-install"><li data-i18n="android_step1"></li><li data-i18n="android_step2"></li><li data-i18n="android_step3"></li></ol>
+            <p class="muted small" data-i18n="install_note"></p>
+          </div>
+        </details>
+        <p class="row-note" id="install-summary"></p>
+        <div class="row-note hidden" id="install-prompt-wrap"><button class="btn primary block" id="install-btn" type="button" data-i18n="install_now"></button></div>
+        <div class="row-note hidden" id="transfer-wrap">
+          <p data-i18n="transfer_offer"></p>
+          <button class="btn secondary block" id="transfer-btn" type="button" data-i18n="transfer_create"></button>
+          <p class="code transfer-code hidden" id="transfer-code-out" aria-live="polite"></p>
+          <p class="muted small hidden" id="transfer-code-note"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="group danger-group">
+      <button class="row danger" id="logout" type="button" aria-controls="logout-confirm" aria-expanded="false">
+        <svg class="row-icon" aria-hidden="true"><use href="#i-trash"/></svg><span class="row-main" data-i18n="sign_out"></span>
+      </button>
+      <div class="confirm hidden" id="logout-confirm" role="group" aria-labelledby="logout-confirm-text">
+        <p id="logout-confirm-text" data-i18n="sign_out_confirm"></p>
+        <p class="form-error hidden" id="logout-error" role="alert"></p>
+        <div class="confirm-actions">
+          <button class="btn danger-fill" id="logout-yes" type="button" data-i18n="sign_out_yes"></button>
+          <button class="btn secondary" id="logout-no" type="button" data-i18n="cancel"></button>
+        </div>
+      </div>
+    </div>
+    <p class="foot-note" id="set-version"></p>
+  </div>
+</section>
 <script src="/app.js"></script>
 </body>
 </html>

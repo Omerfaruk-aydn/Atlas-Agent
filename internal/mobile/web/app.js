@@ -2,6 +2,15 @@
 (() => {
   const T = {
     en: {
+      help: "How pairing works", back: "Back", more: "More", settings: "Settings", search: "Search chats", chats: "Chats",
+      pair_title: "Connect to your computer", pair_help: "Atlas on your computer shows a QR code with /mobile. Scanning it opens this page with a one-time link. Your computer shows the same six-digit code; accept only if both match.",
+      pair_need_qr: "Open the pairing QR code in Atlas on your computer and scan it with this phone.",
+      pair_step_open: "In Atlas on your computer, type /mobile.", pair_step_scan: "Scan the QR code with this phone's camera.", pair_step_compare: "Compare the six-digit code on both screens and accept on the computer.",
+      pair_invalid_title: "This QR code can't be used", pair_invalid: "It is invalid, expired or already used. Show a new QR code on your computer and scan it again.",
+      pair_intro: "Name this phone. Your computer will show it with a code to compare.", device_name: "Phone name", pair_name_hint: "You can't rename the phone after sending the request.",
+      pair_button: "Send connection request", pair_compare: "Check that your computer shows the same code.", your_computer: "Your computer",
+      pair_waiting: "Waiting for approval on the computer.", pair_waiting_left: "Waiting for approval on the computer · %s left",
+      pair_after: "Once you accept, you can continue your chats from here.", cancel: "Cancel",
       pair_rejected_title: "Pairing declined", pair_rejected: "The request was declined on the computer. To try again, show a new QR code there.",
       pair_expired_title: "Request expired", pair_expired: "The computer did not answer in time. Show a new QR code on the computer and scan it again.",
       pair_cancelled_title: "Request withdrawn", pair_cancelled: "The computer no longer offers this request. Show a new QR code there to pair again.",

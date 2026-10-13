@@ -1,3 +1,74 @@
+	// the user may take minutes and other observers must not stall.
+	release, err := interaction.Default.Acquire(ctx, controlID, resource, true)
+	if err != nil {
+		return interactionAcquireResponse(err), nil
+	}
+	origin, originErr := pageOrigin(sess)
+	target, targetErr := filler.PasswordTarget(ctx, params.Advanced.FrameID, selector)
+	release()
+	if originErr != nil {
+		return credentialError("credential_request needs an HTTPS page (or a loopback development page); nothing was requested.", credentialMeta{NextStep: NextScopeMismatch}), nil
+	}
+	if targetErr != nil {
+		return credentialError("Cannot inspect the password field: "+targetErr.Error()+". Observe the page and retry with the field's ref.", credentialMeta{NextStep: NextTargetStale, Origin: origin}), nil
+	}
+	if !target.Found {
+		return credentialError(fmt.Sprintf("No single visible password field (%s). Advance the sign-in flow to the password step, then call credential_request with the field's ref. Nothing was requested.", target.Reason), credentialMeta{NextStep: NextTargetStale, Origin: origin}), nil
+	}
+	if target.Origin != origin && params.Advanced.FrameID == "" {
+		return credentialError("The password field's document origin differs from the page origin; nothing was requested.", credentialMeta{NextStep: NextScopeMismatch, Origin: origin}), nil
+	}
+	frameOrigin, err := vault.CredentialOrigin(target.Origin)
+	if err != nil {
+		return credentialError("The password field is not on an HTTPS origin; nothing was requested.", credentialMeta{NextStep: NextScopeMismatch, Origin: origin}), nil
+	}
+	account := strings.TrimSpace(params.Account)
+	if saved := savedCredentialsFor(ctx, store, frameOrigin); len(saved) > 0 && params.Advanced.Mode != "temporary" && !vault.Ephemeral.ChatHasCredential(sessionID) {
+		for _, item := range saved {
+			if account == "" || strings.EqualFold(item.Username, account) {
+				return credentialError(fmt.Sprintf("A saved credential exists for %s (credential_id %s, account %s). Use vault_fill with it; no card was opened. If the site rejected it, call credential_request again with advanced.mode \"temporary\".", frameOrigin, item.ID, item.Username), credentialMeta{NextStep: NextSavedCredential, Credential: item.ID, Origin: frameOrigin, Account: item.Username}), nil
+			}
+		}
+	}
+	service := strings.TrimSpace(params.Service)
+	if r := []rune(service); len(r) > credentialServiceMaxRune {
+		service = string(r[:credentialServiceMaxRune])
+	}
+	req, reused, err := vault.Ephemeral.Request(vault.CredentialSpec{
+		SessionID: sessionID, InteractionID: callID, Service: service, Origin: frameOrigin, Account: account,
+		Target: vault.CredentialTarget{TabID: target.TabID, Document: target.Document, FrameID: target.FrameID, Selector: target.Selector, NodeToken: target.NodeToken},
+	})
+	switch {
+	case errors.Is(err, vault.ErrNoInputChannel):
+		// No phone is fine: a source (email/document) the user named may
+		// already hold the credential. Send the agent back to read it with
+		// the text action so importSourceCredential can stage it. Never
+		// hand off when reading the source is an option.
+		if vault.Ephemeral.ChatHasCredential(sessionID) {
+			meta := credentialMeta{NextStep: NextCredentialFill, Origin: frameOrigin, Account: account}
+			return withMergedMetadata(fantasy.NewTextResponse(
+				"A credential from the authorized source is already staged for this session. Call vault_fill with the password field's ref and the user's account; no phone card is needed."), meta), nil
+		}
+		meta := credentialMeta{NextStep: NextCredentialRequired, Origin: frameOrigin, Account: account}
+		return withMergedMetadata(fantasy.NewTextResponse(
+			"No paired phone, but a named source (email/document) may hold this credential. Open that source and read it with the browser text action (ref or selector, not eval): the labeled password is imported internally and a handle is returned automatically. Then call vault_fill with the password field's ref. Do not hand off and do not ask the user to retype the password already in the source."), meta), nil
+	case err != nil:
+		return credentialError(err.Error(), credentialMeta{Origin: frameOrigin}), nil
+	}
+	meta := credentialMeta{Credential: req.ID, Origin: req.Origin, Account: req.Account}
+	if reused && req.State == vault.CredentialProvided {
+		meta.Status, meta.State, meta.NextStep = "credential_ready", string(req.State), NextCredentialFill
+		return withMergedMetadata(withToolOutcome(fantasy.NewTextResponse(fmt.Sprintf("The user already supplied credential %s for %s; it is now bound to the current password field. Call vault_fill with credential_id %s and the same field.", req.ID, req.Origin, req.ID)), ToolOutcome{Dispatch: "none", Claim: "credential_ready"}), meta), nil
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, credentialWaitCeiling)
+	defer cancel()
+	final, err := vault.Ephemeral.Wait(waitCtx, req.ID)
+	if err != nil {
+		// A stopped task withdraws the card; it must not linger.
+		_, _ = vault.Ephemeral.Cancel(req.ID, sessionID)
+		if ctx.Err() != nil {
+			return fantasy.ToolResponse{}, ctx.Err()
+		}
 		meta.State, meta.NextStep = string(vault.CredentialExpired), NextHandleExpired
 		return waitingForUser("The credential card on the phone was not answered in time and is closed. Nothing was filled.", meta), nil
 	}

@@ -1,3 +1,74 @@
+		}
+		checks = append(checks, DesignCheck{Rule: "touch target size", Passed: s.MinTouch >= minTouch, Measured: strconv.Itoa(s.MinTouch), Required: ">= " + strconv.Itoa(minTouch)})
+		phone := false
+		for _, v := range s.Viewports {
+			if v.Width >= 320 && v.Width <= 480 && v.Height > v.Width {
+				phone = true
+			}
+		}
+		if s.Platform != "tablet" {
+			checks = append(checks, DesignCheck{Rule: "phone portrait viewport", Passed: phone, Measured: viewportList(s.Viewports), Required: "a portrait frame 320-480 wide"})
+		}
+	}
+	if len(s.TypeScale) > 0 {
+		checks = append(checks, DesignCheck{Rule: "type scale ascending", Passed: slices.IsSorted(s.TypeScale) && s.TypeScale[0] >= 11, Measured: intList(s.TypeScale), Required: "ascending, smallest >= 11"})
+	}
+	report := designReport{Passed: true, Checks: checks}
+	for _, c := range checks {
+		report.Passed = report.Passed && c.Passed
+	}
+	return report
+}
+
+func viewportList(vs []DesignViewport) string {
+	parts := make([]string, 0, len(vs))
+	for _, v := range vs {
+		parts = append(parts, fmt.Sprintf("%s %dx%d", v.Name, v.Width, v.Height))
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func intList(v []int) string {
+	parts := make([]string, 0, len(v))
+	for _, n := range v {
+		parts = append(parts, strconv.Itoa(n))
+	}
+	return strings.Join(parts, ", ")
+}
+
+type rgb struct{ R, G, B uint8 }
+
+func parseHexColor(s string) (rgb, error) {
+	if !hexColor.MatchString(s) {
+		return rgb{}, fmt.Errorf("not #RRGGBB: %q", s)
+	}
+	v, err := strconv.ParseUint(s[1:], 16, 32)
+	if err != nil {
+		return rgb{}, err
+	}
+	return rgb{uint8(v >> 16), uint8(v >> 8), uint8(v)}, nil
+}
+
+func relativeLuminance(c rgb) float64 {
+	ch := func(v uint8) float64 {
+		s := float64(v) / 255
+		if s <= 0.04045 {
+			return s / 12.92
+		}
+		return math.Pow((s+0.055)/1.055, 2.4)
+	}
+	return 0.2126*ch(c.R) + 0.7152*ch(c.G) + 0.0722*ch(c.B)
+}
+
+// contrastRatio is the WCAG 2.x contrast ratio, 1 to 21.
+func contrastRatio(a, b rgb) float64 {
+	la, lb := relativeLuminance(a), relativeLuminance(b)
+	if la < lb {
+		la, lb = lb, la
+	}
 	return (la + 0.05) / (lb + 0.05)
 }
 

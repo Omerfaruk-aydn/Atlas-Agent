@@ -1,3 +1,62 @@
+package tools
+
+import (
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/support"
+)
+
+// Power requests end the connection they were sent over. Losing the
+// connection right after one is the expected result, not a failure, and
+// the request is never sent a second time on its own.
+
+// Power request kinds.
+const (
+	powerShutdown = "shutdown"
+	powerRestart  = "restart"
+)
+
+// Power request states, in order.
+const (
+	// powerSent: the request left this computer; no answer yet.
+	powerSent = "sent"
+	// powerAccepted: the remote command exited 0 before the connection
+	// dropped.
+	powerAccepted = "accepted"
+	// powerDisconnected: the connection dropped after the request, which
+	// is what a shutdown or restart does.
+	powerDisconnected = "disconnected_as_expected"
+)
+
+// powerRequest is the last power request sent to one support session.
+type powerRequest struct {
+	Kind        string `json:"kind"`
+	State       string `json:"state"`
+	DeviceID    string `json:"remote_device_id"`
+	SessionID   string `json:"session_id"`
+	OperationID string `json:"operation_id,omitempty"`
+	SentAt      string `json:"sent_at"`
+}
+
+// powerLedger remembers power requests per device for the life of the
+// tool, so later calls explain an offline computer instead of reporting a
+// connection fault, and a second identical request is refused.
+type powerLedger struct {
+	mu       sync.Mutex
+	requests map[string]*powerRequest
+	now      func() time.Time
+}
+
+func (l *powerLedger) get(deviceID, sessionID string) (powerRequest, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	r := l.requests[deviceID]
+	if r == nil {
+		return powerRequest{}, false
 	}
 	if r.SessionID != sessionID && sessionID != "" {
 		// A new support session: the computer came back (or someone

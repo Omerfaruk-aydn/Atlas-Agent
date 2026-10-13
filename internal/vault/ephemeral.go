@@ -1,3 +1,74 @@
+// Request opens (or reuses) a credential card. An unconsumed request for
+// the same task, origin and account is reused and rebound to the current
+// target, so the user is not asked twice for the same authorization.
+func (c *Credentials) Request(spec CredentialSpec) (CredentialRequest, bool, error) {
+	origin, err := CredentialOrigin(spec.Origin)
+	if err != nil {
+		return CredentialRequest{}, false, err
+	}
+	if spec.SessionID == "" || len(spec.Service) > 120 || len(spec.Account) > 320 {
+		return CredentialRequest{}, false, errors.New("invalid credential request")
+	}
+	service := strings.TrimSpace(spec.Service)
+	if service == "" {
+		service = strings.TrimPrefix(strings.TrimPrefix(origin, "https://"), "http://")
+	}
+	account := strings.TrimSpace(spec.Account)
+	c.mu.Lock()
+	events := c.sweepLocked()
+	if e := c.bindChatLocked(spec, origin, account, service); e != nil {
+		view := e.req
+		c.mu.Unlock()
+		c.emit(events)
+		return view, true, nil
+	}
+	pending := 0
+	for _, e := range c.entries {
+		if e.req.SessionID != spec.SessionID || (e.req.State != CredentialPending && e.req.State != CredentialProvided) {
+			continue
+		}
+		if e.req.Origin == origin && strings.EqualFold(e.req.Account, account) {
+			if e.req.Target != spec.Target {
+				events = append(events, c.finishLocked(e, CredentialCanceled))
+				continue
+			}
+			view := e.req
+			c.mu.Unlock()
+			c.emit(events)
+			return view, true, nil
+		}
+		pending++
+	}
+	if len(c.channels) == 0 {
+		c.mu.Unlock()
+		c.emit(events)
+		return CredentialRequest{}, false, ErrNoInputChannel
+	}
+	if pending >= maxPendingPerSession || len(c.entries) >= maxCredentialsTotal {
+		c.mu.Unlock()
+		c.emit(events)
+		return CredentialRequest{}, false, ErrCredentialBudget
+	}
+	now := c.now()
+	e := &credentialEntry{changed: make(chan struct{}), req: CredentialRequest{
+		ID: credentialHandleBits + randomHandle(), SessionID: spec.SessionID, InteractionID: spec.InteractionID,
+		Service: service, Origin: origin, Account: account, State: CredentialPending,
+		CreatedAt: now, ExpiresAt: now.Add(CredentialRequestTTL), Target: spec.Target,
+	}}
+	c.entries[e.req.ID] = e
+	c.scheduleExpiryLocked(e, CredentialRequestTTL)
+	events = append(events, CredentialEvent{Request: e.req})
+	view := e.req
+	c.mu.Unlock()
+	c.emit(events)
+	return view, false, nil
+}
+
+// Get returns the non-secret view of a request.
+func (c *Credentials) Get(id string) (CredentialRequest, bool) {
+	c.mu.Lock()
+	events := c.sweepLocked()
+	e, ok := c.entries[id]
 	var view CredentialRequest
 	if ok {
 		view = e.req

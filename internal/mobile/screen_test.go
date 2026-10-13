@@ -1,3 +1,73 @@
+	st := s.nextStatus(t, "previews_off")
+	require.Equal(t, "previews_off", st.State)
+	_, err := s.r.ReadByte()
+	require.ErrorIs(t, err, io.EOF, "the stream ends when viewing is turned off")
+
+	require.NoError(t, g.Auth.SetPreviews(id, true))
+	s2, _ := openPhoneStream(t, p)
+	s2.nextFrame(t)
+	start := time.Now()
+	require.NoError(t, g.Auth.Revoke(id))
+	for {
+		_, err := s2.r.ReadByte()
+		if err != nil {
+			break
+		}
+	}
+	require.Less(t, time.Since(start), 3*time.Second, "revocation ends the stream at once")
+}
+
+func TestScreenSharesOneCaptureLoopAndStopsAfterLastViewer(t *testing.T) {
+	src := &syntheticScreen{width: 640, height: 360}
+	g, b := newScreenGateway(t, src)
+	p1 := newPhone(t, g)
+	p1.pair(true)
+	enablePreviews(t, g, true)
+	p2 := newPhone(t, g)
+	p2.pair(true)
+	enablePreviews(t, g, true)
+
+	s1, cancel1 := openPhoneStream(t, p1)
+	s2, cancel2 := openPhoneStream(t, p2)
+	before := src.calls.Load()
+	var seen1, seen2 []uint64
+	for range 12 {
+		seen1 = append(seen1, s1.nextFrame(t).seq)
+		seen2 = append(seen2, s2.nextFrame(t).seq)
+	}
+	captures := src.calls.Load() - before
+	// Two viewers see the same frames from one loop; two loops would
+	// capture about twice as often.
+	require.LessOrEqual(t, captures, int64(20), "one capture loop serves every viewer")
+	common := map[uint64]bool{}
+	for _, s := range seen1 {
+		common[s] = true
+	}
+	shared := 0
+	for _, s := range seen2 {
+		if common[s] {
+			shared++
+		}
+	}
+	require.Greater(t, shared, 6, "both viewers received the same encoded frames")
+
+	cancel1()
+	cancel2()
+	require.Eventually(t, func() bool {
+		g.screen.mu.Lock()
+		defer g.screen.mu.Unlock()
+		return !g.screen.running && len(g.screen.viewers) == 0
+	}, 3*time.Second, 20*time.Millisecond, "capture stops after the last viewer leaves")
+	stopped := src.calls.Load()
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, stopped, src.calls.Load())
+	require.Zero(t, b.runs.Load(), "watching never starts or changes agent work")
+	b.mu.Lock()
+	require.Empty(t, b.controls)
+	b.mu.Unlock()
+}
+
+func TestScreenSlowViewerGetsNewestFrameOnly(t *testing.T) {
 	h := newScreenHub(&syntheticScreen{width: 320, height: 200}, nil)
 	defer h.close()
 	v, err := h.join("phone")

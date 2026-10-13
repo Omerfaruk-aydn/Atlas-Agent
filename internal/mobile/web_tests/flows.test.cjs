@@ -1,3 +1,74 @@
+  assert.match(await page.locator("#pending-pane").innerText(), /Bazı sorular hâlâ yanıt bekliyor/);
+  assert.equal(await page.locator('#pending-pane fieldset[data-question="theme"] [aria-invalid="true"]').count(), 2);
+  await page.locator('#pending-pane input[value="dark"]').check();
+  await page.locator('#pending-pane input[value="list"]').check();
+  await page.locator('#pending-pane input[value="chat"]').check();
+  await page.locator("#q-3-text").fill("Daha okunaklı");
+  await page.locator("#q-1-note").fill("Kontrastı da ölç");
+  // An unrelated event must not wipe the draft.
+  await stream(page, () => window.emit("update", { seq: 9, type: "busy", session_id: "s1", data: { busy: false } }));
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(await page.locator("#q-3-text").inputValue(), "Daha okunaklı");
+  assert.ok(await page.locator('#pending-pane input[value="dark"]').isChecked());
+  await page.locator("#pending-pane button[type=submit]").click();
+  await page.locator("#pending-pane").waitFor({ state: "hidden" });
+  const post = state.posts.find((p) => p.path === "/api/questions/qa");
+  assert.deepEqual(post.body, { session_id: "s1", answers: [
+    { question_id: "go", yes: true },
+    { question_id: "theme", selected_ids: ["dark"], notes: { _question: "Kontrastı da ölç" } },
+    { question_id: "parts", selected_ids: ["list", "chat"] },
+    { question_id: "why", fill_in_text: "Daha okunaklı" },
+  ] });
+  assert.ok(await page.locator("#view-task").isVisible(), "the same chat stays open after answering");
+});
+
+test("cancelling a question uses the real endpoint", async (t) => {
+  const { page, state, url } = await fixture(t, { setup: (s) => { s.details.s1.questions = [themeQuestion()]; } });
+  await page.goto(url);
+  await page.locator('.task-row[data-id="s1"]').click();
+  await page.locator("#pending-pane form").waitFor();
+  await page.locator("#pending-pane .actions .btn.secondary").click();
+  await page.locator("#pending-pane").waitFor({ state: "hidden" });
+  assert.deepEqual(state.posts[0].body, { session_id: "s1", cancel: true });
+});
+
+// ---------- Offline ----------
+test("disconnect keeps the chat and draft, blocks sending and answers, then reconnects without duplicates", async (t) => {
+  const { page, state, url } = await fixture(t, { setup: (s) => { s.details.s1.questions = [themeQuestion()]; } });
+  await page.goto(url);
+  await page.locator('.task-row[data-id="s1"]').click();
+  await page.locator("#pending-pane form").waitFor();
+  await page.locator("#pending-pane .back-to-chat button").click();
+  await page.locator("#prompt").fill("Bağlantı gidince kaybolmasın");
+  state.unavailable = true;
+  await page.evaluate(() => window.testStreams.at(-1).fail());
+  await page.locator("#offline-banner").waitFor();
+  assert.match(await page.locator("#status-card").innerText(), /Durum doğrulanamıyor/);
+  assert.match(await page.locator("#status-card").innerText(), /Son güncelleme \d\d:\d\d/);
+  assert.match(await page.locator("#task-conn").innerText(), /Çevrimdışı/);
+  assert.equal(await page.locator("#messages .msg").count(), 2, "the conversation is not cleared");
+  assert.ok(await page.locator("#send").isDisabled());
+  assert.equal(await page.locator("#prompt").inputValue(), "Bağlantı gidince kaybolmasın");
+  assert.ok(await page.locator("#stop-btn").isHidden(), "no stop control while state is unverified");
+  assert.equal(await page.locator("#activity-time").innerText(), "2/3", "no live timer while offline");
+  await page.locator("#waiting-banner").click();
+  assert.ok(await page.locator("#pending-pane button[type=submit]").isDisabled(), "a pending question is not answered before it is verified");
+  await page.locator("#pending-pane .back-to-chat button").click();
+  state.unavailable = false;
+  await page.locator("#retry-btn").click();
+  await page.waitForFunction(() => document.getElementById("offline-banner").classList.contains("hidden"));
+  await page.waitForFunction(() => !document.getElementById("send").disabled, null, { timeout: 5000 });
+  assert.equal(await page.locator("#messages .msg").count(), 2, "reload does not duplicate messages");
+  assert.equal(state.posts.length, 0);
+});
+
+test("retries stop after a bounded number of attempts", async (t) => {
+  const { page, state, url } = await fixture(t);
+  await page.addInitScript(() => {
+    const orig = window.setTimeout;
+    window.setTimeout = (fn, ms, ...a) => orig(fn, Math.min(ms || 0, 20), ...a);
+  });
+  await page.goto(url);
   await page.locator(".task-row").first().waitFor();
   state.unavailable = true;
   await page.evaluate(() => window.testStreams.at(-1).fail());

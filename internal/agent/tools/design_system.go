@@ -1,3 +1,74 @@
+	if strings.TrimSpace(s.Product) == "" {
+		problems = append(problems, "product is required")
+	}
+	if !slices.Contains(designPlatforms, s.Platform) {
+		problems = append(problems, "platform must be one of "+strings.Join(designPlatforms, ", ")+"; ask the user when it is not clear")
+	}
+	if strings.TrimSpace(s.Direction.Name) == "" || (s.Direction.ChosenBy != "user" && s.Direction.ChosenBy != "default") {
+		problems = append(problems, "direction.name and direction.chosen_by (user or default) are required; offer directions and let the user choose")
+	}
+	if len(s.Colors) == 0 || len(s.Colors) > 64 {
+		problems = append(problems, "colors needs 1-64 tokens")
+	}
+	for name, v := range s.Colors {
+		if !hexColor.MatchString(v) {
+			problems = append(problems, fmt.Sprintf("color %s must be #RRGGBB, got %q", name, v))
+		}
+	}
+	if len(s.Pairs) == 0 {
+		problems = append(problems, "pairs must list each text/icon color on each background it is used on")
+	}
+	for _, pr := range s.Pairs {
+		if _, ok := s.Colors[pr.Foreground]; !ok {
+			problems = append(problems, "pair foreground "+pr.Foreground+" is not a color token")
+		}
+		if _, ok := s.Colors[pr.Background]; !ok {
+			problems = append(problems, "pair background "+pr.Background+" is not a color token")
+		}
+		if !slices.Contains([]string{"text", "large_text", "ui"}, pr.Usage) {
+			problems = append(problems, "pair usage must be text, large_text or ui")
+		}
+	}
+	if designIsMobile(s.Platform) && s.SafeArea == nil {
+		problems = append(problems, "safe_area is required for "+s.Platform)
+	}
+	if len(problems) > 0 {
+		sort.Strings(problems)
+		return errors.New("invalid design system: " + strings.Join(problems, "; "))
+	}
+	return nil
+}
+
+// checkDesignSystem measures what can be measured. Contrast ratios are
+// computed from the tokens (WCAG 2.x relative luminance), not judged.
+func checkDesignSystem(s DesignSystem) designReport {
+	var checks []DesignCheck
+	for _, pr := range s.Pairs {
+		fg, err1 := parseHexColor(s.Colors[pr.Foreground])
+		bg, err2 := parseHexColor(s.Colors[pr.Background])
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		ratio := contrastRatio(fg, bg)
+		need := 4.5
+		if pr.Usage != "text" {
+			need = 3
+		}
+		checks = append(checks, DesignCheck{
+			Rule:     fmt.Sprintf("contrast %s on %s (%s)", pr.Foreground, pr.Background, pr.Usage),
+			Passed:   ratio >= need,
+			Measured: strconv.FormatFloat(math.Floor(ratio*100)/100, 'f', 2, 64) + ":1",
+			Required: strconv.FormatFloat(need, 'f', 1, 64) + ":1",
+			Ratio:    ratio,
+		})
+	}
+	if designIsMobile(s.Platform) {
+		if s.SafeArea != nil {
+			checks = append(checks, DesignCheck{Rule: "safe area declared", Passed: s.SafeArea.Top > 0 && s.SafeArea.Bottom > 0, Measured: fmt.Sprintf("top %d, bottom %d", s.SafeArea.Top, s.SafeArea.Bottom), Required: "top and bottom insets > 0"})
+		}
+		minTouch := 44
+		if s.Platform == "android" {
+			minTouch = 48
 		}
 		checks = append(checks, DesignCheck{Rule: "touch target size", Passed: s.MinTouch >= minTouch, Measured: strconv.Itoa(s.MinTouch), Required: ">= " + strconv.Itoa(minTouch)})
 		phone := false

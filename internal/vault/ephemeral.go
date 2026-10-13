@@ -1,3 +1,74 @@
+
+// Typed errors let tools map refusals onto an actionable next step.
+var (
+	ErrCredentialUnknown  = errors.New("credential_unknown: the handle does not exist or already ended")
+	ErrCredentialExpired  = errors.New("handle_expired: the temporary credential expired; request it again")
+	ErrCredentialScope    = errors.New("scope_mismatch: the handle belongs to another task, origin or account")
+	ErrCredentialNotReady = errors.New("credential_not_ready: the user has not supplied this credential yet")
+	ErrCredentialUsed     = errors.New("credential_used: this temporary credential was already used once")
+	ErrCredentialCanceled = errors.New("credential_canceled: the user or the task canceled this credential")
+	ErrCredentialBudget   = errors.New("credential_budget: too many open credential requests")
+	ErrNoInputChannel     = errors.New("secure_input_unavailable: no paired phone can receive a secure credential card")
+)
+
+// CredentialTarget is the page target observed when the request was made.
+// A fill is dispatched only into this same tab, document and frame.
+type CredentialTarget struct {
+	TabID     string `json:"tab_id,omitempty"`
+	Document  string `json:"document,omitempty"`
+	FrameID   string `json:"frame_id,omitempty"`
+	Selector  string `json:"selector,omitempty"`
+	NodeToken string `json:"node_token,omitempty"`
+}
+
+// CredentialRequest is the non-secret view of a temporary credential. It
+// is safe to show to the model, the phone and logs.
+type CredentialRequest struct {
+	ID            string           `json:"id"`
+	SessionID     string           `json:"session_id"`
+	InteractionID string           `json:"interaction_id,omitempty"`
+	Service       string           `json:"service"`
+	Origin        string           `json:"origin"`
+	Account       string           `json:"account,omitempty"`
+	State         CredentialState  `json:"state"`
+	CreatedAt     time.Time        `json:"created_at"`
+	ExpiresAt     time.Time        `json:"expires_at"`
+	ProvidedBy    string           `json:"provided_by,omitempty"`
+	Persist       bool             `json:"persist,omitempty"`
+	Target        CredentialTarget `json:"-"`
+}
+
+// CredentialSpec describes a new request. Origin must be the page's real
+// origin, observed by the tool, never a value copied from page text.
+type CredentialSpec struct {
+	SessionID     string
+	InteractionID string
+	Service       string
+	Origin        string
+	Account       string
+	Target        CredentialTarget
+}
+
+// CredentialEvent notifies input channels (the phone gateway) about a
+// changed request. It never carries the secret.
+type CredentialEvent struct {
+	Request CredentialRequest
+}
+
+type credentialEntry struct {
+	req    CredentialRequest
+	secret []byte
+	timer  *time.Timer
+	// changed is closed and replaced whenever the state moves, so a
+	// waiting tool wakes without polling.
+	changed chan struct{}
+}
+
+// Credentials is an in-memory store of temporary, target-bound secrets.
+// Nothing is written to disk. Go cannot guarantee that every copy of a
+// string or slice is zeroed under garbage collection; the store clears the
+// buffers it owns and drops all references at the end of each lifetime.
+type Credentials struct {
 	mu       sync.Mutex
 	entries  map[string]*credentialEntry
 	channels map[int]func(CredentialEvent)

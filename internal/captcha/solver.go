@@ -1,3 +1,74 @@
+// Chain runs solvers in priority order until one returns a usable answer.
+// Built-in solvers (math) need no network and no API key. When every
+// solver fails the caller falls back to showing the challenge image to
+// the model, which can read it with its own vision.
+type Chain struct {
+	solvers []Solver
+	// AttemptTimeout bounds a single solver try. Zero means the parent
+	// context alone.
+	AttemptTimeout time.Duration
+	// Audit, when non-nil, receives one row per try.
+	Audit func(Attempt)
+}
+
+// NewChain builds a chain from solvers in caller-preference order.
+func NewChain(solvers ...Solver) *Chain {
+	return &Chain{
+		solvers:        append([]Solver(nil), solvers...),
+		AttemptTimeout: 30 * time.Second,
+	}
+}
+
+// WithAttemptTimeout overrides the per-solver deadline.
+func (c *Chain) WithAttemptTimeout(d time.Duration) *Chain {
+	if d > 0 {
+		c.AttemptTimeout = d
+	}
+	return c
+}
+
+// WithAudit installs an attempt observer.
+func (c *Chain) WithAudit(fn func(Attempt)) *Chain {
+	c.Audit = fn
+	return c
+}
+
+// Add appends a solver to the end of the chain.
+func (c *Chain) Add(s Solver) {
+	if s != nil {
+		c.solvers = append(c.solvers, s)
+	}
+}
+
+// Solvers returns the configured backend names in order.
+func (c *Chain) Solvers() []string {
+	names := make([]string, 0, len(c.solvers))
+	for _, s := range c.solvers {
+		names = append(names, s.Name())
+	}
+	return names
+}
+
+// Supports reports whether any solver can handle the kind.
+func (c *Chain) Supports(kind Kind) bool {
+	for _, s := range c.solvers {
+		if s.Supports(kind) {
+			return true
+		}
+	}
+	return false
+}
+
+// Solve runs the chain against one challenge. Image may be nil for token
+// kinds. The returned Result always carries the attempt list.
+func (c *Chain) Solve(ctx context.Context, ch Challenge, image []byte) (Result, error) {
+	res := Result{}
+	if ch.Kind == KindCheckbox || ch.Kind == KindUnknown || ch.Kind == "" || ch.Kind == KindNone {
+		return res, fmt.Errorf("%w: %s", ErrUnsupportedKind, ch.Kind)
+	}
+	candidates := make([]Solver, 0, len(c.solvers))
+	for _, s := range c.solvers {
+		if s.Supports(ch.Kind) {
 			candidates = append(candidates, s)
 		}
 	}

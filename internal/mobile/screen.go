@@ -1,3 +1,74 @@
+	screenMaxFrame     = 900 << 10
+	screenWriteTimeout = 5 * time.Second
+)
+
+// screenWidths are the resolution tiers. The loop steps down when capture
+// and encoding cannot keep the frame interval, and back up when they can.
+var screenWidths = []int{1600, 1280, 960, 720}
+
+// ScreenSource captures one downscaled desktop frame.
+type ScreenSource interface {
+	CaptureScreen(maxWidth int) (img *image.RGBA, screenW, screenH int, captured time.Time, err error)
+}
+
+// ScreenSourceFunc adapts a function to ScreenSource.
+type ScreenSourceFunc func(maxWidth int) (*image.RGBA, int, int, time.Time, error)
+
+func (f ScreenSourceFunc) CaptureScreen(maxWidth int) (*image.RGBA, int, int, time.Time, error) {
+	return f(maxWidth)
+}
+
+// screenPacket is an encoded frame or status shared by every viewer.
+type screenPacket struct {
+	kind     byte
+	seq      uint64
+	captured time.Time
+	width    int
+	height   int
+	payload  []byte
+}
+
+func (p *screenPacket) encode() []byte {
+	out := make([]byte, screenHeaderSize+len(p.payload))
+	copy(out, screenMagic)
+	out[4] = p.kind
+	binary.BigEndian.PutUint64(out[8:], p.seq)
+	binary.BigEndian.PutUint64(out[16:], uint64(p.captured.UnixMicro()))
+	binary.BigEndian.PutUint16(out[24:], uint16(p.width))
+	binary.BigEndian.PutUint16(out[26:], uint16(p.height))
+	binary.BigEndian.PutUint32(out[28:], uint32(len(p.payload)))
+	copy(out[screenHeaderSize:], p.payload)
+	return out
+}
+
+// screenViewer holds at most one undelivered frame: a slow phone always
+// gets the newest picture instead of a growing backlog.
+type screenViewer struct {
+	deviceID string
+	slot     chan *screenPacket
+	status   chan *screenPacket
+	done     chan struct{}
+	once     sync.Once
+	dropped  atomic.Uint64
+	sent     atomic.Uint64
+	bytes    atomic.Uint64
+}
+
+func (v *screenViewer) end() { v.once.Do(func() { close(v.done) }) }
+
+func (v *screenViewer) offer(p *screenPacket) {
+	ch := v.slot
+	if p.kind == screenKindStatus {
+		ch = v.status
+	}
+	for {
+		select {
+		case ch <- p:
+			return
+		default:
+		}
+		select {
+		case <-ch:
 			if p.kind == screenKindFrame {
 				v.dropped.Add(1)
 			}

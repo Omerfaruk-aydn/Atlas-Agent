@@ -1,3 +1,21 @@
+package tools
+
+import (
+	"encoding/json"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+)
+
+// Design audit provenance belongs to this adapter process, not writable
+// workspace JSON. Restarting requires a fresh observation before completion.
+var observedDesignAudits = struct {
+	sync.Mutex
+	keys   []string
+	hashes map[string]string
+}{hashes: map[string]string{}}
+
 func designEvidenceKey(root, id string) string {
 	path, err := filepath.Abs(root)
 	if err != nil {

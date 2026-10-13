@@ -1,3 +1,50 @@
+package mobile
+
+import (
+	"bytes"
+	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"image"
+	"image/jpeg"
+	"log/slog"
+	"net/http"
+	"slices"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+// Live screen transport.
+//
+// One authenticated HTTP GET streams length-prefixed binary frames, read in
+// the page with fetch() and a ReadableStream. This was chosen over a
+// WebSocket because fetch sends the same SameSite=Strict cookie and can
+// carry the X-CSRF-Token header (a browser WebSocket cannot set headers),
+// it passes Tailscale Funnel and the relay like the existing event stream,
+// and TCP flow control is the backpressure signal. JPEG bytes travel raw,
+// never base64.
+//
+// Frame layout (big endian):
+//
+//	0  4  magic "ATS1"
+//	4  1  kind: 1 JPEG frame, 2 JSON status
+//	5  3  reserved
+//	8  8  sequence number
+//	16 8  capture time, Unix microseconds
+//	24 2  width
+//	26 2  height
+//	28 4  payload length
+//	32 …  payload
+
+const (
+	screenMagic        = "ATS1"
+	screenHeaderSize   = 32
+	screenKindFrame    = 1
+	screenKindStatus   = 2
+	screenTargetFPS    = 24
+	screenInterval     = time.Second / screenTargetFPS
+	screenMaxViewers   = 4
 	screenMaxFrame     = 900 << 10
 	screenWriteTimeout = 5 * time.Second
 )

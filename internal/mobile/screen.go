@@ -1,3 +1,74 @@
+			if p.kind == screenKindFrame {
+				v.dropped.Add(1)
+			}
+		default:
+		}
+	}
+}
+
+// screenStats are measured by the capture loop, not assumed.
+type screenStats struct {
+	State      string  `json:"state"`
+	Message    string  `json:"message,omitempty"`
+	CaptureFPS float64 `json:"capture_fps"`
+	CaptureMS  float64 `json:"capture_ms"`
+	EncodeMS   float64 `json:"encode_ms"`
+	FrameBytes int     `json:"frame_bytes"`
+	Width      int     `json:"width"`
+	Height     int     `json:"height"`
+	ScreenW    int     `json:"screen_width"`
+	ScreenH    int     `json:"screen_height"`
+	Quality    int     `json:"quality"`
+	Viewers    int     `json:"viewers"`
+	Missed     uint64  `json:"missed_ticks"`
+	Target     int     `json:"target_fps"`
+	Changed    string  `json:"quality_change,omitempty"`
+	// Per-viewer fields are filled in by each stream.
+	SentFPS     float64 `json:"sent_fps,omitempty"`
+	BytesPerSec float64 `json:"bytes_per_sec,omitempty"`
+	Dropped     uint64  `json:"dropped,omitempty"`
+}
+
+// screenHub runs a single capture loop for all viewers of this gateway and
+// stops it when the last viewer leaves.
+type screenHub struct {
+	src     ScreenSource
+	log     *slog.Logger
+	mu      sync.Mutex
+	viewers map[*screenViewer]struct{}
+	running bool
+	closed  bool
+	stats   screenStats
+	seq     uint64
+}
+
+func newScreenHub(src ScreenSource, log *slog.Logger) *screenHub {
+	if log == nil {
+		log = slog.Default()
+	}
+	return &screenHub{src: src, log: log, viewers: map[*screenViewer]struct{}{}}
+}
+
+var errScreenBusy = errors.New("too many live screen viewers")
+
+func (h *screenHub) join(deviceID string) (*screenViewer, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed || h.src == nil {
+		return nil, errors.New("live screen unavailable")
+	}
+	if len(h.viewers) >= screenMaxViewers {
+		return nil, errScreenBusy
+	}
+	v := &screenViewer{deviceID: deviceID, slot: make(chan *screenPacket, 1), status: make(chan *screenPacket, 1), done: make(chan struct{})}
+	h.viewers[v] = struct{}{}
+	if !h.running {
+		h.running = true
+		go h.loop()
+	}
+	return v, nil
+}
+
 func (h *screenHub) leave(v *screenViewer) {
 	h.mu.Lock()
 	delete(h.viewers, v)

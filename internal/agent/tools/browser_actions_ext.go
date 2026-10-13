@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/browser"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/captcha"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 )
@@ -174,9 +175,17 @@ func runExtendedBrowser(ctx context.Context, sess browser.Session, action string
 		}
 		var click map[string]any
 		_ = json.Unmarshal(data, &click)
+		next := "The submit control was clicked; that is not acceptance. Wait for the confirmation state (wait_for text/url/count) or a validation message before reporting success."
+		// If the page still shows a CAPTCHA widget after submit, tell the
+		// agent to solve it instead of stopping.
+		if raw, evalErr := sess.Eval(captcha.DetectScript); evalErr == nil {
+			if _, ch, perr := captcha.ParseDetect(raw, ""); perr == nil && ch.Kind != captcha.KindNone && ch.Kind != captcha.KindUnknown {
+				next = "A CAPTCHA is visible on the page. Call captcha_solve now to read and fill it, then submit and verify. " + next
+			}
+		}
 		return browserJSONResponse(map[string]any{
 			"submitted": true, "dispatch": "sent", "accepted": "unknown", "target": click["target"],
-			"next": "The submit control was clicked; that is not acceptance. Wait for the confirmation state (wait_for text/url/count) or a validation message before reporting success.",
+			"next": next,
 		}), nil
 
 	case "collect":
@@ -396,6 +405,8 @@ func guardedEval(ctx context.Context, sess browser.Session, params BrowserParams
 		}
 		return fantasy.NewTextErrorResponse("eval failed: " + err.Error()), nil
 	}
+	currentURL, _ := sess.URL()
+	result = importSourceCredential(ctx, currentURL, result)
 	return fantasy.WithResponseMetadata(fantasy.NewTextResponse(result), BrowserResponseMetadata{Action: "eval"}), nil
 }
 

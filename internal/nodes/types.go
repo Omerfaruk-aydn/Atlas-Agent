@@ -147,6 +147,8 @@ type AutomationRequest struct {
 	Name        string `json:"name,omitempty"`
 	Role        string `json:"role,omitempty"`
 	MaxElements int    `json:"max_elements,omitempty"`
+	// Refresh rediscovers the application catalog (apps only).
+	Refresh bool `json:"refresh,omitempty"`
 }
 
 // DesktopInput is one input action bound to an observation.

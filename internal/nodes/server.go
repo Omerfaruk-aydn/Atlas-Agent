@@ -66,6 +66,10 @@ type Server struct {
 
 	desktopMu sync.Mutex
 	obs       *observationState
+	// consumed is the observation the last pointer input used up. It
+	// still authorizes keyboard input (which aims at the focused window,
+	// not a point) until a newer observation replaces it.
+	consumed *observationState
 
 	limitMu  sync.Mutex
 	failures map[string][]time.Time
@@ -153,6 +157,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/node/uploads/{id}/complete", s.guard(NeedFileWrite, s.handleUploadComplete))
 	mux.HandleFunc("DELETE /v1/node/uploads/{id}", s.guard(NeedFileWrite, s.handleUploadAbort))
 	mux.HandleFunc("GET /v1/node/desktop/observe", s.guard(NeedDesktopView, s.handleObserve))
+	mux.HandleFunc("GET /v1/node/desktop/preview", s.guard(NeedDesktopView, s.handlePreview))
 	mux.HandleFunc("POST /v1/node/desktop/input", s.guard(NeedDesktopInput, s.handleInput))
 	mux.HandleFunc("POST /v1/node/desktop/automation", s.guard(NeedDesktopView, s.handleAutomation))
 	mux.HandleFunc("POST /v1/node/desktop/launch", s.guard(NeedDesktopLaunch, s.handleLaunch))

@@ -1,3 +1,16 @@
+package nodes
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestMatchRootSeparatesDriveLabelFromDrivePath(t *testing.T) {
+	t.Parallel()
+	roots := []Root{{Label: "C", Path: `C:\`}, {Label: "Work", Path: `D:\Work`}}
+	cases := []struct {
+		in, label, rest string
 		denied          bool
 	}{
 		{in: `C:\Users\ersen\Downloads\a.png`, label: "C", rest: "Users/ersen/Downloads/a.png"},

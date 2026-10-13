@@ -84,6 +84,9 @@ type Controller struct {
 	id      nodes.Identity
 	history *History
 
+	// live is the panel's in-memory frame and timeline.
+	live liveView
+
 	mu        sync.Mutex
 	machine   *Machine
 	remote    *Remote
@@ -100,6 +103,8 @@ type Controller struct {
 	closed    bool
 	work      sync.WaitGroup
 	closeOnce sync.Once
+	viewer    *ScreenViewer
+	viewerMu  sync.Mutex
 }
 
 // NewController loads or creates this device's support identity.
@@ -623,10 +628,18 @@ func (c *Controller) Record(e Event) {
 	if remote == nil {
 		return
 	}
-	e.SessionID, e.Role = remote.SessionID, "supporter"
+	if e.SessionID == "" {
+		e.SessionID = remote.SessionID
+	}
+	e.Role = "supporter"
+	if e.At == 0 {
+		e.At = time.Now().UnixMilli()
+	}
 	if e.Generation == 0 {
 		e.Generation = remote.Generation
 	}
+	e = sanitizeEvent(e)
+	c.live.record(e)
 	_ = c.history.Append(e)
 }
 
@@ -669,6 +682,9 @@ func (c *Controller) end(sessionID string, state State, reason string) {
 	if conn != nil {
 		_ = conn.Close()
 	}
+	c.live.mu.Lock()
+	c.live.frame = nil
+	c.live.mu.Unlock()
 	_ = c.history.Append(Event{SessionID: sessionID, Role: "supporter", Kind: "session_ended", State: string(state), Detail: reason, Generation: gen})
 	c.notify()
 }
@@ -681,6 +697,11 @@ func (c *Controller) Close() {
 		c.mu.Unlock()
 		c.Disconnect("Atlas was closed on the supporting computer")
 		c.cancel()
+		c.viewerMu.Lock()
+		if c.viewer != nil {
+			c.viewer.Close()
+		}
+		c.viewerMu.Unlock()
 		c.work.Wait()
 	})
 }

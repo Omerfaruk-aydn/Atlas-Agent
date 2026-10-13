@@ -1,3 +1,74 @@
+	credentialServiceMaxRune = 80
+)
+
+// credentialMeta is the non-secret metadata attached to credential results.
+type credentialMeta struct {
+	Status     string `json:"status"`
+	NextStep   string `json:"next_step,omitempty"`
+	Credential string `json:"credential_id,omitempty"`
+	Origin     string `json:"origin,omitempty"`
+	Account    string `json:"account,omitempty"`
+	State      string `json:"credential_state,omitempty"`
+	Fill       string `json:"fill_status,omitempty"`
+	Login      string `json:"login_status,omitempty"`
+	Verify     string `json:"verification,omitempty"`
+}
+
+// withMergedMetadata adds keys to a response without discarding metadata
+// other layers already attached (outcome, question or permission data).
+func withMergedMetadata(resp fantasy.ToolResponse, extra any) fantasy.ToolResponse {
+	meta := map[string]json.RawMessage{}
+	if resp.Metadata != "" && json.Unmarshal([]byte(resp.Metadata), &meta) != nil {
+		meta = map[string]json.RawMessage{"native_metadata": json.RawMessage(strconvJSON(resp.Metadata))}
+	}
+	if meta == nil {
+		meta = map[string]json.RawMessage{}
+	}
+	data, _ := json.Marshal(extra)
+	var add map[string]json.RawMessage
+	if json.Unmarshal(data, &add) == nil {
+		for k, v := range add {
+			meta[k] = v
+		}
+	}
+	stop := resp.StopTurn
+	resp = fantasy.WithResponseMetadata(resp, meta)
+	resp.StopTurn = stop
+	return resp
+}
+
+// waitingForUser ends the turn: the next step belongs to the user, which
+// is neither success nor a finished delivery.
+func waitingForUser(content string, meta credentialMeta) fantasy.ToolResponse {
+	resp := fantasy.NewTextResponse(content)
+	resp.StopTurn = true
+	meta.Status = "waiting_for_user"
+	resp = withToolOutcome(resp, ToolOutcome{Dispatch: "none", Claim: "waiting_for_user"})
+	return withMergedMetadata(resp, meta)
+}
+
+func credentialError(content string, meta credentialMeta) fantasy.ToolResponse {
+	resp := fantasy.NewTextErrorResponse(content)
+	if meta.Status == "" {
+		meta.Status = "not_sent"
+	}
+	return withMergedMetadata(resp, meta)
+}
+
+func pageOrigin(sess browser.Session) (string, error) {
+	current, err := sess.URL()
+	if err != nil {
+		return "", err
+	}
+	u, err := url.Parse(current)
+	if err != nil || u.Host == "" {
+		return "", errors.New("invalid page URL")
+	}
+	return vault.CredentialOrigin(u.Scheme + "://" + u.Host)
+}
+
+// savedCredentialsFor lists saved vault handles for an origin without
+// unsealing anything.
 func savedCredentialsFor(ctx context.Context, store *vault.Store, origin string) []vault.Item {
 	if store == nil || store.State == nil {
 		return nil

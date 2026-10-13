@@ -2,11 +2,15 @@ package nodes
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"image/png"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -22,7 +26,7 @@ var inputActions = append([]string{"type", "key", "hotkey"}, pointerActions...)
 
 // readOnlyAutomation are the accessibility queries a controller may run on a
 // node desktop without an operation id; none of them send input.
-var readOnlyAutomation = []string{"windows", "inspect", "find", "monitors"}
+var readOnlyAutomation = []string{"windows", "inspect", "find", "monitors", "apps"}
 
 // isBlank reports whether a capture is a single solid color, which is what
 // a disconnected or minimized remote session produces.
@@ -78,6 +82,7 @@ func (s *Server) handleObserve(w http.ResponseWriter, r *http.Request) {
 			obs.Monitors = raw
 		}
 	}
+	s.consumed = nil
 	s.obs = &observationState{id: obs.ObservationID, size: size, at: time.Now(), session: g.SessionID, generation: g.Generation}
 	writeJSON(w, http.StatusOK, obs)
 }
@@ -87,6 +92,16 @@ func (s *Server) handleObserve(w http.ResponseWriter, r *http.Request) {
 // over the same connection generation.
 func (s *Server) checkObservation(g Grant, id string, pointer bool) error {
 	if !pointer && id == "" {
+		return nil
+	}
+	if !pointer && s.obs == nil && s.consumed != nil && s.consumed.id == id {
+		c := s.consumed
+		if c.session != g.SessionID || c.generation != g.Generation {
+			return errors.New("observation belongs to an earlier connection; observe again")
+		}
+		if time.Since(c.at) > observationTTL {
+			return errors.New("observation is older than two minutes; observe again")
+		}
 		return nil
 	}
 	if s.obs == nil || s.obs.id != id {
@@ -173,7 +188,10 @@ func (s *Server) handleInput(w http.ResponseWriter, r *http.Request) {
 	})
 	if pointer {
 		// Pointer input may change the layout; the next pointer action needs
-		// a fresh observation.
+		// a fresh observation. Keyboard input may still use it.
+		if s.obs != nil {
+			s.consumed = s.obs
+		}
 		s.obs = nil
 	}
 	if ferr != nil {
@@ -241,7 +259,7 @@ func (s *Server) handleAutomation(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "automation_unavailable", "accessibility automation is not available on this node", false, "none")
 		return
 	}
-	areq := computer.AutomationRequest{Action: req.Action, WindowID: req.WindowID, Name: req.Name, Role: req.Role, MaxElements: req.MaxElements}
+	areq := computer.AutomationRequest{Action: req.Action, WindowID: req.WindowID, Name: req.Name, Role: req.Role, MaxElements: req.MaxElements, Refresh: req.Refresh}
 	if err := computer.ValidateAutomationRequest(areq); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), false, "none")
 		return
@@ -257,9 +275,45 @@ func (s *Server) handleAutomation(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(json.RawMessage(raw))
 }
 
-// LaunchRequest starts a GUI program in the node's desktop session.
+// LaunchRequest starts a GUI program in the node's desktop session. A
+// program is named either by literal argv or by App (a catalog app_id or
+// name) with literal Args and an optional browser Profile; App is resolved
+// by the node's own application catalog, so install paths of one computer
+// are never used on another.
 type LaunchRequest struct {
 	OperationID string   `json:"operation_id"`
+	Argv        []string `json:"argv,omitempty"`
+	App         string   `json:"app,omitempty"`
+	Args        []string `json:"args,omitempty"`
+	Profile     string   `json:"profile,omitempty"`
+}
+
+// resolveLaunch turns a launch request into literal argv. A bare program
+// name that is not on PATH (chrome is usually not) is looked up in the
+// application catalog, the way the Run dialog uses App Paths.
+func (s *Server) resolveLaunch(ctx context.Context, req LaunchRequest) ([]string, *computer.LaunchPlan, *APIError) {
+	launcher, hasCatalog := s.opts.Desktop.(computer.AppLauncherBackend)
+	if req.App == "" {
+		if len(req.Argv) == 0 || req.Argv[0] == "" || len(req.Argv) > 64 {
+			return nil, nil, &APIError{Code: "invalid_request", Message: "argv must contain 1-64 literal arguments, or name app", Effect: "none"}
+		}
+		if req.Profile != "" || len(req.Args) > 0 {
+			return nil, nil, &APIError{Code: "invalid_request", Message: "args and profile need app; pass the whole command line in argv otherwise", Effect: "none"}
+		}
+		name := req.Argv[0]
+		if !hasCatalog || strings.ContainsAny(name, `/\`) {
+			return req.Argv, nil, nil
+		}
+		if _, err := exec.LookPath(name); err == nil {
+			return req.Argv, nil, nil
+		}
+		req.App, req.Args = name, req.Argv[1:]
+	} else if len(req.Argv) > 0 {
+		return nil, nil, &APIError{Code: "invalid_request", Message: "pass either argv or app, not both", Effect: "none"}
+	}
+	if !hasCatalog {
+		return nil, nil, &APIError{Code: "app_catalog_unavailable", Message: "this computer has no application catalog; pass literal argv", Effect: "none"}
+	}
 	entry, err := launcher.Apps().Resolve(ctx, req.App)
 	if err == nil {
 		var plan computer.LaunchPlan

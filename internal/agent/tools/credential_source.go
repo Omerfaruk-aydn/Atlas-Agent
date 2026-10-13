@@ -1,3 +1,74 @@
+		return true
+	}
+	return false
+}
+
+// extractSenderLine scans the first few lines of a mail read for the
+// actual sender. Gmail UI chrome ("Yazdır", "Yeni pencerede") sits above
+// the header, so the first line is not reliable.
+func extractSenderLine(text string) string {
+	lines := strings.SplitN(text, "\n", 12)
+	for _, line := range lines {
+		l := strings.TrimSpace(line)
+		if l == "" {
+			continue
+		}
+		// Skip Gmail chrome labels.
+		lower := normalizedSourceName(l)
+		if lower == "yazdir" || lower == "yeni pencerede" || lower == "gelen kutusu" || lower == "tumunu sec" || lower == "sil" || lower == "arsivle" || lower == "spam olarak isaretle" || lower == "diger" || lower == "etiketle" {
+			continue
+		}
+		// An email address or a short name line is the sender.
+		if strings.Contains(l, "@") || len([]rune(l)) < 80 {
+			return l
+		}
+	}
+	// Fallback: first email-looking token anywhere in the first 500 chars.
+	if m := regexp.MustCompile(`[\w.+-]+@[\w.-]+\.\w+`).FindString(text[:min(len(text), 500)]); m != "" {
+		return m
+	}
+	return strings.TrimSpace(lines[0])
+}
+
+// isSystemSender reports whether a mail header looks like an automated
+// system address rather than a person's name.
+func isSystemSender(header string) bool {
+	h := strings.TrimSpace(strings.ToLower(header))
+	if strings.Contains(h, "@") {
+		return true
+	}
+	systemWords := []string{"ois", "otomasyon", "sistem", "system", "no-reply", "noreply", "bilgi", "info", "admin", "destek", "support", "ogrenci", "öğrenci", "isleri", "işleri"}
+	for _, w := range systemWords {
+		if strings.Contains(h, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// sourceDestination uses the human's explicit URL when present. For a
+// named service, a link in the selected source must match at least two
+// meaningful host labels in the human instruction (e.g. OIS and Topkapi).
+// The source itself cannot redirect the credential to an unrelated host.
+func sourceDestination(instruction, text, currentURL string) string {
+	source, _ := url.Parse(currentURL)
+	origins := make(map[string]bool)
+	for _, raw := range sourceLinks.FindAllString(instruction, -1) {
+		u, err := url.Parse(raw)
+		if err != nil || u.User != nil || source != nil && u.Host == source.Host {
+			continue
+		}
+		if origin := sourceLinkOrigin(u); origin != "" {
+			origins[origin] = true
+		}
+	}
+	if len(origins) == 0 {
+		p := " " + normalizedSourceName(instruction) + " "
+		for _, raw := range sourceLinks.FindAllString(text, -1) {
+			u, err := url.Parse(strings.TrimRight(raw, ".,);"))
+			if err != nil || u.User != nil || source != nil && u.Host == source.Host {
+				continue
+			}
 			matches := 0
 			unmatched := false
 			for _, label := range strings.Split(strings.ToLower(u.Hostname()), ".") {

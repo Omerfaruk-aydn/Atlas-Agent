@@ -1,3 +1,74 @@
+		meta.State, meta.NextStep = string(vault.CredentialExpired), NextHandleExpired
+		return waitingForUser("The credential card on the phone was not answered in time and is closed. Nothing was filled.", meta), nil
+	}
+	meta.State = string(final.State)
+	switch final.State {
+	case vault.CredentialProvided:
+		meta.Status, meta.NextStep = "credential_ready", NextCredentialFill
+		return withMergedMetadata(withToolOutcome(fantasy.NewTextResponse(fmt.Sprintf("The user supplied a temporary credential for %s on their phone. Handle: %s (single use, expires in about %d minutes; the value is never shown to you). Next: vault_fill with credential_id %s and the same password field, then submit and call login_check.", final.Origin, final.ID, int(vault.CredentialSecretTTL.Minutes()), final.ID)), ToolOutcome{Dispatch: "none", Claim: "credential_ready"}), meta), nil
+	case vault.CredentialExpired:
+		meta.NextStep = NextHandleExpired
+		return waitingForUser("The credential card expired before the user answered. Nothing was filled.", meta), nil
+	default:
+		meta.NextStep = NextCredentialRequired
+		return waitingForUser("The user canceled the credential card (or the phone disconnected). Nothing was filled; do not ask for the password in chat.", meta), nil
+	}
+}
+
+// fillBrowserCredential places a temporary credential into its bound
+// field. The handle is consumed before dispatch, so it can never be sent
+// twice; a refusal before dispatch keeps it usable.
+func fillBrowserCredential(ctx context.Context, sess browser.Session, store *vault.Store, params BrowserParams, sessionID string) (fantasy.ToolResponse, error) {
+	filler, ok := sess.(browser.SecretFiller)
+	meta := credentialMeta{Credential: params.CredentialID}
+	if !ok {
+		return credentialError("This browser driver cannot fill a temporary credential.", meta), nil
+	}
+	origin, err := pageOrigin(sess)
+	if err != nil {
+		meta.NextStep = NextScopeMismatch
+		return credentialError("The current page has no credential origin; nothing was sent.", meta), nil
+	}
+	meta.Origin = origin
+	target, ok := vault.Ephemeral.Target(params.CredentialID, sessionID)
+	if !ok {
+		meta.NextStep = NextHandleExpired
+		return credentialError("Unknown or ended credential handle for this task; nothing was sent. Request a new credential card.", meta), nil
+	}
+	selector := target.Selector
+	if params.Ref != "" || params.Selector != "" {
+		var err error
+		selector, err = resolveTargetSelector("vault_fill", params)
+		if err != nil {
+			return credentialError(err.Error(), meta), nil
+		}
+	}
+	probe, err := filler.PasswordTarget(ctx, target.FrameID, selector)
+	if err != nil || !probe.Found || probe.Document != target.Document || probe.TabID != target.TabID || probe.FrameID != target.FrameID || probe.NodeToken != target.NodeToken {
+		meta.NextStep = NextTargetStale
+		return credentialError("target_stale: the given field is not the password field the user authorized; nothing was sent. Request a new credential card for the current field.", meta), nil
+	}
+	// An authorized iframe may have a different origin from its parent page.
+	// The current pinned password field, not the parent, establishes scope.
+	frameOrigin, err := vault.CredentialOrigin(probe.Origin)
+	if err != nil {
+		meta.NextStep = NextScopeMismatch
+		return credentialError("The password frame has no valid credential origin; nothing was sent.", meta), nil
+	}
+	if target.FrameID == "" && frameOrigin != origin {
+		meta.NextStep = NextScopeMismatch
+		return credentialError("The password field origin does not match the current page; nothing was sent.", meta), nil
+	}
+	origin = frameOrigin
+	meta.Origin = origin
+	var fill browser.SecretFillResult
+	view, _ := vault.Ephemeral.Get(params.CredentialID)
+	saved := ""
+	req, err := vault.Ephemeral.Use(params.CredentialID, sessionID, origin, strings.TrimSpace(params.Account), func(secret string) (bool, error) {
+		var fillErr error
+		fill, fillErr = filler.FillSecret(ctx, browser.SecretTarget{Origin: origin, TabID: target.TabID, Document: target.Document, FrameID: target.FrameID, Selector: target.Selector, NodeToken: target.NodeToken}, secret)
+		if fill.Dispatched && view.Persist {
+			// Saving is the user's explicit choice on the phone and the
 			// only path that writes this value to the protected vault.
 			saved = persistCredential(ctx, store, view, secret)
 		}

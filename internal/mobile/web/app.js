@@ -144,19 +144,76 @@
         if (e.status) throw e;
         return await api(path, { method: "POST", body, key });
       }
+      pill = el("span", "pill " + cls);
+      if (ic) pill.append(icon(ic === "check" ? "check-circle" : ic));
+      pill.append(document.createTextNode(text));
+    } else {
+      pill = el("span", "sr-only", text);
+    }
+    b.append(main, pill, el("span", "task-time", fmtClock(s.updated_at)), icon("chevron", "chev"));
+    b.addEventListener("click", () => navigate("task", s.id));
+    li.append(b);
+    return li;
+  }
+  async function loadList() {
+    try {
+      const data = await api("/api/sessions");
+      state.sessions = new Map((data.sessions || []).map((s) => [s.id, s]));
+      state.seq = Math.max(state.seq, data.seq || 0);
+      state.listStatus = "ready";
+      state.lastSync = Date.now();
     } catch (e) {
-      if (e.code === "stale_request" || e.code === "stale_revision") {
-        banner(t("stale"));
-        if (state.current) await loadTask(state.current);
-      } else {
-        banner(t("failed") + ": " + e.message, true);
-      }
+      state.listStatus = "error";
+      if (e.status === 401) startPairing("expired");
       throw e;
     } finally {
-      if (button) button.disabled = false;
+      if (!$("view-list").classList.contains("hidden")) renderList();
     }
   }
 
+  // ---------- Conversation ----------
+  function leaveTask() {
+    if (screen.open) { screen.open = false; exitExpanded(); screenDisconnect("stopped"); }
+    state.view = "chat";
+    state.current = null;
+    state.detail = null;
+    state.paneKey = "";
+    state.pendingOpen = false;
+    stopTick();
+    const img = $("preview-img");
+    if (img.src) { URL.revokeObjectURL(img.src); img.removeAttribute("src"); }
+    img.classList.add("hidden");
+  }
+  async function openTask(id) {
+    if (state.current !== id) {
+      leaveTask();
+      state.current = id;
+      state.upload = null;
+      state.unseen = false;
+      $("messages").replaceChildren();
+      $("activity").replaceChildren();
+      $("status-card").replaceChildren();
+      $("run-errors").replaceChildren();
+      $("pending-pane").replaceChildren();
+      const s = state.sessions.get(id);
+      $("task-h").textContent = (s && s.title) || "";
+      $("prompt").value = state.drafts.get(id) || store.get("atlas.draft." + id) || "";
+      $("composer-note").textContent = "";
+    }
+    show("task");
+    renderAttachment();
+    updateComposer();
+    autoGrow();
+    try { await loadTask(id, true); } catch (e) {
+      if (e.status === 404) { toast(t("stale"), true); goBack(); return; }
+      if (!e.status) setConn("offline");
+      renderTaskChrome();
+    }
+  }
+  async function loadTask(id, initial) {
+    const d = await api("/api/sessions/" + encodeURIComponent(id));
+    if (state.current !== id) return;
+    state.detail = d;
     state.seq = Math.max(state.seq, d.seq || 0);
     state.lastSync = Date.now();
     const s = state.sessions.get(id);

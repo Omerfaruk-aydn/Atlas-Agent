@@ -1,0 +1,30 @@
+	url, err := c.OpenScreenViewer()
+	require.NoError(t, err)
+	post := func(action string) {
+		t.Helper()
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, url+action, nil)
+		require.NoError(t, err)
+		req.Header.Set("Origin", "http://"+c.viewer.host)
+		r, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		r.Body.Close()
+		require.Equal(t, http.StatusNoContent, r.StatusCode)
+	}
+	post("start")
+	require.Eventually(t, func() bool { return desk.captures.Load() >= 2 }, 5*time.Second, 20*time.Millisecond)
+	frame, ok := c.LatestFrame()
+	require.True(t, ok)
+	require.NotEmpty(t, frame.PNG)
+	overlay.mu.Lock()
+	started := overlay.started
+	inputRuns := overlay.open
+	overlay.mu.Unlock()
+	require.Equal(t, baselineStarts, started, "viewing must not start another control surface")
+	require.Zero(t, inputRuns, "read-only human viewing must not acquire the agent's cursor")
+	post("stop")
+	count := desk.captures.Load()
+	time.Sleep(1200 * time.Millisecond)
+	require.Equal(t, count, desk.captures.Load(), "stop ended the capture goroutine")
+	running, _ := c.viewer.watch.status()
+	require.False(t, running)
+}

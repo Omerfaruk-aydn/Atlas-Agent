@@ -1,3 +1,44 @@
+package support
+
+import (
+	"context"
+	"crypto/rand"
+	"embed"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"io/fs"
+	"net"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+)
+
+//go:embed viewer
+var viewerFiles embed.FS
+
+// ScreenViewer is a private, loopback-only human display. It writes no
+// screenshots to disk and never sends its frames into the model context.
+type ScreenViewer struct {
+	controller *Controller
+	session    string
+	host       string
+	key        string
+	server     *http.Server
+	watch      screenWatch
+	ctx        context.Context
+	cancel     context.CancelFunc
+	done       chan struct{}
+	mu         sync.Mutex
+	lastSeen   time.Time
+	closeOnce  sync.Once
+}
+
+// OpenScreenViewer reuses a display for this session, or opens a fresh one.
+// The returned URL is an unguessable local capability and must not be logged.
+func (c *Controller) OpenScreenViewer() (string, error) {
+	if c == nil {
 		return "", errors.New("no support controller")
 	}
 	c.viewerMu.Lock()

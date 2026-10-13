@@ -1,3 +1,74 @@
+	defer c.mu.Unlock()
+	remote := c.remote
+	if remote == nil || remote.SessionID != f.SessionID || remote.Generation != f.Generation {
+		return
+	}
+	if f.CapturedAt == 0 {
+		f.CapturedAt = time.Now().UnixMilli()
+	}
+	f.PNG = slices.Clone(f.PNG)
+	c.live.mu.Lock()
+	if old := c.live.frame; old != nil && old.SessionID == f.SessionID && old.Generation == f.Generation && old.CapturedAt > f.CapturedAt {
+		c.live.mu.Unlock()
+		return
+	}
+	c.live.frame = &f
+	c.live.mu.Unlock()
+}
+
+// LatestFrame returns the latest frame of the current session.
+func (c *Controller) LatestFrame() (Frame, bool) {
+	if c == nil {
+		return Frame{}, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	remote := c.remote
+	c.live.mu.Lock()
+	defer c.live.mu.Unlock()
+	f := c.live.frame
+	if f == nil || remote == nil || remote.SessionID != f.SessionID || remote.Generation != f.Generation {
+		return Frame{}, false
+	}
+	out := *f
+	out.PNG = slices.Clone(f.PNG)
+	if c.machine != nil {
+		state, _, _ := c.machine.State()
+		out.Cached = out.Cached || state != StateConnected && state != StatePaused
+	}
+	return out, true
+}
+
+// viewerSnapshot binds the device, image and timeline in one lock interval.
+// Separate Status/LatestFrame calls could straddle a session replacement.
+func (c *Controller) viewerSnapshot(session string) (string, State, Frame, bool, []Event) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.remote == nil || c.remote.SessionID != session {
+		return "", StateDisconnected, Frame{}, false, nil
+	}
+	state, _, _ := c.machine.State()
+	c.live.mu.Lock()
+	defer c.live.mu.Unlock()
+	var events []Event
+	for _, event := range c.live.timeline {
+		if event.SessionID == session {
+			events = append(events, event)
+		}
+	}
+	frame := c.live.frame
+	if frame == nil || frame.SessionID != session || frame.Generation != c.remote.Generation {
+		return c.remote.RemoteName, state, Frame{}, false, events
+	}
+	copy := *frame
+	copy.PNG = slices.Clone(frame.PNG)
+	copy.Cached = copy.Cached || !state.Active()
+	return c.remote.RemoteName, state, copy, true, events
+}
+
+// Timeline returns up to n recent events of the current session, oldest
+// first.
+func (c *Controller) Timeline(n int) []Event {
 	if c == nil {
 		return nil
 	}

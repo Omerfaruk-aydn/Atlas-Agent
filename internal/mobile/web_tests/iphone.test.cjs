@@ -74,13 +74,27 @@ test("Safari with unavailable storage can still show pairing", async (t) => {
 });
 
 test("a replacement question does not inherit an earlier answer draft", async (t) => {
-  const { page, state, url } = await fixture(t);
   await page.goto(url);
-  await page.locator("#task-list .card").click();
-  await page.locator('#pending input[value="true"]').check();
-  state.questionID = "q2";
+  await page.locator('.task-row[data-id="s1"]').click();
+  await page.locator('#pending-pane input[value="dark"]').check();
+  state.details.s1.questions = [themeQuestion("q2")];
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
   await page.waitForFunction(() => window.testStreams.length === 2);
-  assert.equal(await page.locator('#pending input[value="true"]').isChecked(), false);
+  await page.locator("#pending-pane form").waitFor();
+  assert.equal(await page.locator('#pending-pane input[value="dark"]').isChecked(), false);
   assert.equal(state.posts.length, 0);
+});
+
+test("iPhone chat keeps the composer reachable when the keyboard shrinks the viewport", async (t) => {
+  const { page, url } = await fixture(t);
+  await page.goto(url);
+  await page.locator('.task-row[data-id="s1"]').click();
+  await page.locator("#messages .msg").first().waitFor();
+  await page.locator("#prompt").focus();
+  // Emulate an on-screen keyboard taking 45% of the screen.
+  await page.setViewportSize({ width: 390, height: 464 });
+  await page.waitForTimeout(100);
+  const box = await page.locator("#send").boundingBox();
+  assert.ok(box && box.y + box.height <= 464, "send button must stay inside the visible viewport");
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
 });

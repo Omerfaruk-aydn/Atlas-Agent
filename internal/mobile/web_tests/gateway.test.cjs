@@ -1,3 +1,50 @@
+"use strict";
+// Acceptance against the real gateway: TLS, the paired cookie, CSRF,
+// credential cards, returned control and the live screen stream. The Go
+// side runs TestBrowserAcceptanceServer with a synthetic screen and a
+// simulated computer that accepts pairing; nothing here touches a real
+// account. Set ATLAS_ENGINE=webkit for WebKit with the iPhone 13 profile.
+const { test, before, after } = require("node:test");
+const assert = require("node:assert/strict");
+const { spawn } = require("node:child_process");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const pw = require("playwright");
+
+const webkit = process.env.ATLAS_ENGINE === "webkit";
+const root = path.resolve(__dirname, "..", "..", "..");
+const SECRET = "Synth-Phone-Pass-1";
+let server, browser, context, page, info;
+const debugLog = [];
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function ctl(method, p) {
+  const resp = await fetch(info.control + p, { method });
+  return resp.json();
+}
+async function until(fn, ms = 10000, what = "condition") {
+  const end = Date.now() + ms;
+  for (;;) {
+    const v = await fn();
+    if (v) return v;
+    if (Date.now() > end) throw new Error("timed out waiting for " + what);
+    await sleep(100);
+  }
+}
+
+before(async () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "atlas-e2e-")), "info.json");
+  server = spawn("go", ["test", "-p", "1", "-count=1", "-timeout", "30m", "-run", "^TestBrowserAcceptanceServer$", "./internal/mobile"], {
+    cwd: root, env: { ...process.env, ATLAS_MOBILE_E2E_INFO: file }, stdio: ["ignore", "inherit", "inherit"],
+  });
+  info = await until(() => { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch (_) { return null; } }, 600000, "the gateway to start");
+  browser = webkit ? await pw.webkit.launch() : await pw.chromium.launch({ channel: process.env.ATLAS_CHROMIUM_CHANNEL || undefined });
+  const device = webkit ? pw.devices["iPhone 13"] : pw.devices["Pixel 7"];
+  context = await browser.newContext({ ...device, ignoreHTTPSErrors: true, locale: "tr-TR", serviceWorkers: "block" });
+  page = await context.newPage();
+  page.on("console", (m) => debugLog.push(m.type() + ": " + m.text()));
+  page.on("requestfailed", (r) => debugLog.push("failed " + r.url() + " " + (r.failure() || {}).errorText));
   page.on("response", (r) => { if (r.url().includes("/api/credentials")) debugLog.push("resp " + r.status()); });
 });
 after(async () => {

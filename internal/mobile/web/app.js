@@ -59,24 +59,71 @@
   // Reconnect delays grow from 1 s to 30 s with jitter, so a phone does not
   // hammer a relay whose computer is asleep; any success resets them.
   let retryDelay = 1000;
-  function scheduleRetry(fn) {
-    clearTimeout(resumeTimer);
-    const delay = retryDelay + Math.floor(Math.random() * 500);
-    retryDelay = Math.min(retryDelay * 2, 30000);
-    resumeTimer = setTimeout(fn, delay);
+    n.textContent = text;
+    n.classList.toggle("bad", !!bad);
+    n.classList.remove("hidden");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => n.classList.add("hidden"), 3200);
+  }
+  function announce(text) {
+    const a = $("announce");
+    a.textContent = "";
+    setTimeout(() => { a.textContent = text; }, 50);
   }
 
   function applyI18n() {
     document.documentElement.lang = lang;
-    document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
-    $("iphone-install").classList.toggle("hidden", !appleMobile || standalone());
-    if (appleMobile || !("Notification" in window)) {
-      $("notify").disabled = true;
-      $("notify").checked = false;
-      $("notify-note").textContent = t("notify_unsupported");
-    }
+    document.querySelectorAll("[data-i18n]").forEach((n) => { n.textContent = t(n.dataset.i18n); });
+    document.querySelectorAll("[data-i18n-label]").forEach((n) => { n.setAttribute("aria-label", t(n.dataset.i18nLabel)); n.title = t(n.dataset.i18nLabel); });
+    document.querySelectorAll("[data-i18n-placeholder]").forEach((n) => { n.placeholder = t(n.dataset.i18nPlaceholder); });
+    updateComposer();
   }
 
+  // ---------- Theme ----------
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  function themePref() { const v = store.get("atlas.theme"); return v === "light" || v === "dark" ? v : "system"; }
+  function applyTheme() {
+    const pref = themePref();
+    if (pref === "system") delete document.documentElement.dataset.theme;
+    else document.documentElement.dataset.theme = pref;
+    const dark = pref === "dark" || (pref === "system" && darkQuery.matches);
+    $("theme-color").setAttribute("content", dark ? "#141519" : "#ffffff");
+    document.querySelectorAll('input[name="theme"]').forEach((r) => { r.checked = r.value === pref; });
+  }
+  darkQuery.addEventListener("change", applyTheme);
+
+  // ---------- Formatting ----------
+  const locale = () => (lang === "tr" ? "tr-TR" : "en");
+  function fmtClock(sec) {
+    if (!sec) return "";
+    return new Date(sec * 1000).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
+  }
+  function dayKey(d) { return d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate(); }
+  // dayLabel groups by the phone's own calendar day and time zone.
+  function dayLabel(sec) {
+    const d = new Date(sec * 1000);
+    const now = new Date();
+    const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    if (dayKey(d) === dayKey(now)) return t("today");
+    if (dayKey(d) === dayKey(y)) return t("yesterday");
+    const opts = { day: "numeric", month: "long" };
+    if (d.getFullYear() !== now.getFullYear()) opts.year = "numeric";
+    return d.toLocaleDateString(locale(), opts);
+  }
+  function fmtElapsed(sec) {
+    sec = Math.max(0, Math.floor(sec));
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    const two = (n) => String(n).padStart(2, "0");
+    return h ? h + ":" + two(m) + ":" + two(s) : two(m) + ":" + two(s);
+  }
+  function fmtSize(n) { return n < 1024 ? n + " B" : n < 1048576 ? Math.round(n / 1024) + " KB" : (n / 1048576).toFixed(1) + " MB"; }
+  function fold(s) { return (s || "").normalize("NFC").toLocaleLowerCase(locale()); }
+  function basename(p) { const parts = String(p).split(/[\\/]/); return parts[parts.length - 1] || p; }
+  function computerName() { return (state.me && state.me.computer && state.me.computer.name) || t("your_computer"); }
+
+  // ---------- Safe markdown: builds DOM nodes, never HTML strings ----------
+  const INLINE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\[[^\]\n]+\]\((https?:\/\/[^\s)]+)\))|(https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"])/g;
+  function safeLink(href, label) {
     const a = el("a", "", label);
     try {
       const u = new URL(href);

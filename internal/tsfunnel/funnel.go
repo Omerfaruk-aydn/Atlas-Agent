@@ -1,3 +1,74 @@
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var keep []string
+	for _, l := range p.lines {
+		// Drop the CLI's decorative tree and blank-ish lines.
+		if strings.HasPrefix(l, "|") || strings.HasPrefix(l, "Press Ctrl+C") {
+			continue
+		}
+		keep = append(keep, l)
+	}
+	return Sanitize(strings.Join(keep[max(0, len(keep)-3):], " "))
+}
+
+var urlPattern = regexp.MustCompile(`https://[^\s"'<>]+`)
+
+func findLoginURL(s string) string {
+	for _, raw := range urlPattern.FindAllString(s, -1) {
+		if u := loginURL(strings.TrimRight(raw, ".,;)")); u != "" {
+			return u
+		}
+	}
+	return ""
+}
+
+// PortConflictError means every Funnel port is used by something else.
+// Atlas never replaces those entries.
+type PortConflictError struct{ Occupants []Occupant }
+
+func (e *PortConflictError) Error() string {
+	var parts []string
+	for _, o := range e.Occupants {
+		parts = append(parts, fmt.Sprintf("%d: %s", o.Port, o.What))
+	}
+	return "every Funnel port is already used by another Serve or Funnel entry (" + strings.Join(parts, "; ") + ")"
+}
+
+// ApprovalRequiredError means the CLI asked the user to enable HTTPS or
+// Funnel in the browser and exited without waiting.
+type ApprovalRequiredError struct{ URL string }
+
+func (e *ApprovalRequiredError) Error() string {
+	return "Tailscale needs your approval in the browser before Funnel can start"
+}
+
+// ErrResidual means Atlas' own Funnel entry is still listed after its CLI
+// stopped. Atlas does not remove entries by force.
+var ErrResidual = errors.New("tailscale still lists Atlas' Funnel entry")
+
+// Plan is a chosen public address.
+type Plan struct {
+	Host string
+	Port uint16
+}
+
+// HostHeader is the Host header phones send: the port only when not 443.
+func (p Plan) HostHeader() string {
+	if p.Port == 443 {
+		return p.Host
+	}
+	return net.JoinHostPort(p.Host, strconv.Itoa(int(p.Port)))
+}
+
+// URL is the address phones open.
+func (p Plan) URL() string { return "https://" + p.HostHeader() }
+
+// Manager starts and stops Atlas' Funnel entry.
+type Manager struct {
+	CLI Exec
+	// StateFile records the owned CLI process and session so a crashed
+	// run can be cleaned up on the next start.
+	StateFile string
 	// Poll, ConfirmTimeout, ApprovalTimeout and CleanupTimeout default to
 	// production values; tests shorten them.
 	Poll            time.Duration

@@ -1,3 +1,74 @@
+}
+
+type designReport struct {
+	Passed bool          `json:"passed"`
+	Checks []DesignCheck `json:"checks"`
+}
+
+var hexColor = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+// NewDesignSystemTool creates the design memory and delivery tool.
+func NewDesignSystemTool(workingDir string, services ...DesignServices) fantasy.AgentTool {
+	var deps DesignServices
+	if len(services) > 0 {
+		deps = services[0]
+	}
+	return fantasy.NewAgentTool(DesignSystemToolName, designSystemDescription,
+		func(ctx context.Context, p DesignSystemParams, call fantasy.ToolCall) (resp fantasy.ToolResponse, runErr error) {
+			journal := &designDispatch{}
+			ctx = context.WithValue(ctx, designDispatchKey{}, journal)
+			defer func() {
+				mutation := CallMutates(DesignSystemToolName, call.Input)
+				dispatch := "none"
+				claim := "design_" + p.Action
+				if resp.IsError || runErr != nil {
+					if !journal.sent {
+						return
+					}
+					dispatch = "unknown"
+				}
+				if mutation && runErr == nil && !resp.IsError {
+					dispatch = "sent"
+				}
+				resp = withToolOutcome(resp, ToolOutcome{Dispatch: dispatch, Mutation: mutation, Subjects: []string{"design:" + filepath.Clean(workingDir)}, Kind: outcome.KindOutput, Claim: claim})
+			}()
+			if p.Action == "directions" {
+				return designDirections(ctx, workingDir, p, call, deps)
+			}
+			if p.Action == "audit" {
+				return auditDesign(ctx, workingDir, p, call, deps)
+			}
+			if p.Action == "approve" && (!designUserApproved(ctx) || p.ExpectedVersion <= 0) {
+				return fantasy.NewTextErrorResponse("design_approval_required: approval needs the accepted user's explicit design choice and the current expected_version. A model-authored note is not user approval."), nil
+			}
+			if p.Action == "reset" && !designUserReset(ctx) {
+				return fantasy.NewTextErrorResponse("design_reset_not_requested: reset only when the user explicitly asks to clear the design memory"), nil
+			}
+			out, err := runDesignSystem(ctx, workingDir, p, time.Now)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			data, err := json.Marshal(out)
+			if err != nil {
+				return fantasy.ToolResponse{}, err
+			}
+			return fantasy.NewTextResponse(string(data)), nil
+		})
+}
+
+func runDesignSystem(ctx context.Context, dir string, p DesignSystemParams, now func() time.Time) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// Serialize read-modify-write and package decisions for this project.
+	// Striped locks avoid an unbounded per-project registry.
+	key, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	if real, err := filepath.EvalSymlinks(key); err == nil {
+		key = real
+	}
 	if _, err := transfer.Resolve(key, designSystemPath); err != nil {
 		return nil, fmt.Errorf("design memory path: %w", err)
 	}

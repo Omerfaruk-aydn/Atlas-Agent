@@ -1,3 +1,37 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/browser"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/taskstate"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/transfer"
+)
+
+// DesignServices routes rendering through existing allowed, hooked tools.
+type DesignServices struct {
+	Invoke      ToolInvoker
+	Permissions permission.Service
+}
+
+type (
+	designDispatchKey struct{}
+	designDispatch    struct{ sent bool }
+)
+
+type designBrowserFailure struct{ response fantasy.ToolResponse }
+
 func (e *designBrowserFailure) Error() string { return e.response.Content }
 
 func designFailure(err error) (fantasy.ToolResponse, error) {

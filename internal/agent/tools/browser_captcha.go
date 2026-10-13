@@ -1,3 +1,73 @@
+	case captcha.KindCheckbox:
+		return "Checkbox widget: a single click usually clears it (use browser click)."
+	case captcha.KindClick:
+		return "Click-sequence CAPTCHA: captcha_solve returns the challenge image; identify the icons and click them in the correct order using pointer_click or click."
+	case captcha.KindRotate:
+		return "Rotate CAPTCHA: captcha_solve returns the image; determine the correct orientation and use pointer_drag to rotate it, then click Verify."
+	case captcha.KindSlider:
+		return "Slider puzzle CAPTCHA: captcha_solve returns the puzzle image; find the gap and drag the slider to fill it using pointer_drag, then release."
+	case captcha.KindKeyCaptcha:
+		return "KeyCAPTCHA widget: captcha_solve returns the widget image; find the arrow/button and click or drag it to the correct position."
+	case captcha.KindRecaptchaV2, captcha.KindRecaptchaV3, captcha.KindHCaptcha, captcha.KindTurnstile:
+		return "Token widget (" + string(ch.Kind) + "): needs a remote token solver, or the user completes it by hand."
+	default:
+		return "Unrecognized verification widget."
+	}
+}
+
+// handleInteractiveCaptcha returns the challenge image and type-specific
+// interaction instructions for click-sequence, rotate and slider puzzles.
+// For slider puzzles it runs gap detection; for rotate it estimates the angle.
+func handleInteractiveCaptcha(ctx context.Context, sess browser.Session, ch captcha.Challenge, params BrowserParams) (fantasy.ToolResponse, error) {
+	// For slider puzzles: run gap detection first to get the exact position.
+	var gapInfo *GapDetectResult
+	if ch.Kind == captcha.KindSlider {
+		if raw, err := sess.Eval(captcha.GapDetectScript); err == nil {
+			var g GapDetectResult
+			if json.Unmarshal([]byte(strings.TrimSpace(raw)), &g) == nil && g.Found {
+				gapInfo = &g
+			}
+		}
+	}
+
+	// For rotate puzzles: estimate the current rotation angle.
+	var rotateInfo *RotateAngleResult
+	if ch.Kind == captcha.KindRotate {
+		if raw, err := sess.Eval(captcha.RotateAngleScript); err == nil {
+			var r RotateAngleResult
+			if json.Unmarshal([]byte(strings.TrimSpace(raw)), &r) == nil && r.Found {
+				rotateInfo = &r
+			}
+		}
+	}
+
+	// Capture the challenge area at high resolution. For interactive
+	// captchas, capture the full widget container (not just the image
+	// element) so the model can see buttons, slider handle, and the
+	// puzzle together.
+	var image []byte
+	if ch.ImageSelector != "" || ch.ClickTargetSelector != "" || ch.SliderSelector != "" {
+		// Try to find the widget container first (parent of the image or
+		// slider) for a more complete capture.
+		containerSel := firstNonEmpty(ch.SliderSelector, ch.ClickTargetSelector, ch.ImageSelector)
+		containerScript := fmt.Sprintf(`(() => {
+const e = document.querySelector(%q);
+if (!e) return null;
+// Walk up to find a container that includes both the image and the
+// interactive controls (max 3 levels).
+let c = e;
+for (let i = 0; i < 3 && c.parentElement; i++) {
+  const p = c.parentElement;
+  if (p.querySelector('button, [class*="slider"], [class*="rotate"], [class*="verify"]') || p.offsetHeight > c.offsetHeight * 1.3) {
+    c = p;
+  } else break;
+}
+const r = c.getBoundingClientRect();
+return {x: r.x + scrollX, y: r.y + scrollY, w: r.width, h: r.height};
+})()`, containerSel)
+		if boxRaw, err := sess.Eval(containerScript); err == nil {
+			var box captcha.DOMRect
+			if json.Unmarshal([]byte(strings.TrimSpace(boxRaw)), &box) == nil && box.W >= 10 && box.H >= 10 {
 				if img, err := captureClip(sess, box); err == nil && len(img) > 0 {
 					image = img
 				}

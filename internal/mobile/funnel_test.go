@@ -1,3 +1,74 @@
+	ingress *httptest.Server
+	closed  *atomic.Int32
+}
+
+func newFunnelGateway(t *testing.T, preview func() ([]byte, error)) funnelFixture {
+	t.Helper()
+	b := &fakeBackend{pending: map[string]bool{}, questions: map[string]bool{}, revision: "r1"}
+	g, err := Start(t.Context(), Options{StateDir: t.TempDir(), Listen: "127.0.0.1:0", Backend: b, Preview: preview})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = g.Close() })
+	var closed atomic.Int32
+	port, err := g.ServeFunnel(t.Context(), funnelHost, func() error { closed.Add(1); return nil })
+	require.NoError(t, err)
+	return funnelFixture{g: g, b: b, ingress: funnelIngress(t, port, "203.0.113.7"), closed: &closed}
+}
+
+func TestFunnelPairingAndControlEndToEnd(t *testing.T) {
+	t.Parallel()
+	f := newFunnelGateway(t, func() ([]byte, error) { return []byte("\xff\xd8jpeg"), nil })
+	g, b := f.g, f.b
+	require.True(t, g.UsesFunnel())
+	require.Equal(t, "https://"+funnelHost, g.FunnelURL())
+	u, _ := g.PairingURL()
+	require.True(t, strings.HasPrefix(u, "https://"+funnelHost+"/#pair="), u)
+
+	p := phoneThroughFunnel(t, g, f.ingress)
+	resp, _ := p.do("GET", "/", nil, nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotContains(t, resp.Header.Get("Content-Security-Policy"), "*")
+	at, _ := g.FunnelVerified()
+	require.True(t, at.IsZero(), "an unauthenticated request proves nothing about a phone")
+	require.False(t, g.FunnelSeen().IsZero(), "the request came through the Funnel")
+
+	// The pairing request shows the phone's internet address, not loopback.
+	nonce := u[strings.Index(u, "=")+1:]
+	_, out := p.do("POST", "/api/pair", map[string]string{"nonce": nonce, "name": "iPhone"}, nil)
+	pending := g.Auth.PendingList()
+	require.Len(t, pending, 1)
+	require.Equal(t, "203.0.113.7", pending[0].Remote)
+	_, err := g.Auth.Decide(pending[0].ID, true)
+	require.NoError(t, err)
+	resp, poll := p.do("POST", "/api/pair/poll", map[string]string{"pending_id": out["pending_id"].(string), "poll": out["poll"].(string)}, nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "accepted", poll["state"])
+	cookie := resp.Header.Get("Set-Cookie")
+	require.Contains(t, cookie, "__Host-")
+	require.Contains(t, cookie, "Secure")
+	require.Contains(t, cookie, "SameSite=Strict")
+	p.csrf = poll["csrf"].(string)
+
+	resp, me := p.do("GET", "/api/me", nil, nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, true, me["tailscale"])
+	require.Empty(t, me["fingerprint"], "the phone sees Tailscale's certificate, not this computer's")
+	at, name := g.FunnelVerified()
+	require.False(t, at.IsZero(), "a paired phone reached the computer through the Funnel")
+	require.Equal(t, "iPhone", name)
+
+	// Messages, with a double tap replayed instead of repeated.
+	h := map[string]string{"Idempotency-Key": "tap-1"}
+	r1, _ := p.do("POST", "/api/sessions/s1/prompt", map[string]string{"text": "hello"}, h)
+	r2, _ := p.do("POST", "/api/sessions/s1/prompt", map[string]string{"text": "hello"}, h)
+	require.Equal(t, http.StatusAccepted, r1.StatusCode)
+	require.Equal(t, "true", r2.Header.Get("Idempotent-Replay"))
+	require.Eventually(t, func() bool { return b.runs.Load() == 1 }, 2*time.Second, 10*time.Millisecond)
+
+	// A question is answered exactly once.
+	b.questions["q1"] = true
+	g.Ingest(pubsub.Event[question.Request]{Payload: question.Request{ID: "q1", SessionID: "s1", Questions: []question.Question{{ID: "a", Type: question.TypeFreeText, Text: "Name?"}}}})
+	resp, _ = p.do("POST", "/api/questions/q1", map[string]any{"session_id": "s1", "answers": []map[string]string{{"question_id": "a", "fill_in_text": "Ada"}}}, map[string]string{"Idempotency-Key": "q-1"})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	_, out = p.do("POST", "/api/questions/q1", map[string]any{"session_id": "s1", "cancel": true}, map[string]string{"Idempotency-Key": "q-2"})
 	require.Equal(t, "stale_request", code(out))
 

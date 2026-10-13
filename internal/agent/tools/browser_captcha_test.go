@@ -1,3 +1,74 @@
+	var out CaptchaResult
+	require.NoError(t, json.Unmarshal([]byte(resp.Content), &out))
+	require.Equal(t, "solved", out.Status)
+	require.Equal(t, "12", out.Answer)
+	require.Equal(t, "math", out.Solver)
+	require.Equal(t, "#answer", sess.typedSel)
+	require.Equal(t, "12", sess.typedText)
+}
+
+func TestCaptchaSolveImageTextReturnsImageToModel(t *testing.T) {
+	// No solver answers image_text, so the challenge crop must be handed
+	// to the model -- NOT sent to an external API. The response carries
+	// image data plus the captcha_challenge marker so the credential
+	// media gate lets it through.
+	withCaptchaChain(t, captcha.NewChain(captcha.MathSolver{}))
+
+	sess := newCaptchaSession("https://ois.example/auth", map[string]string{
+		captcha.DetectScript: `{"kind":"image_text","image_selector":"img.captcha","answer_selector":"#code","confidence":0.9,"question":"Güvenlik Resmi"}`,
+	})
+	sess.evalFn = func(script string) (string, error) {
+		switch {
+		case script == captcha.DetectScript:
+			return `{"kind":"image_text","image_selector":"img.captcha","answer_selector":"#code","confidence":0.9,"question":"Güvenlik Resmi"}`, nil
+		case strings.Contains(script, "getBoundingClientRect"):
+			return `{"x":10,"y":20,"w":120,"h":40}`, nil
+		case strings.Contains(script, "devicePixelRatio"):
+			return `1`, nil
+		case strings.Contains(script, "toDataURL"):
+			return `data:image/png;base64,iVBORw0KGgo=`, nil
+		}
+		return "null", nil
+	}
+	sess.cdpResult = map[string]any{"data": "iVBORw0KGgo="}
+
+	resp, err := runBrowserCaptcha(context.Background(), sess, "captcha_solve", BrowserParams{Action: "captcha_solve"}, "sess1")
+	require.NoError(t, err)
+	require.False(t, resp.IsError, resp.Content)
+	require.NotEmpty(t, resp.Data, "model must receive the challenge crop")
+	require.True(t, strings.Contains(resp.Metadata, `"captcha_challenge":true`),
+		"metadata must mark the crop as a captcha challenge so the media gate allows it; got %s", resp.Metadata)
+	require.Contains(t, resp.Content, "captcha_fill")
+}
+
+func TestCaptchaSolveMathWithVerify(t *testing.T) {
+	withCaptchaChain(t, captcha.NewChain(captcha.MathSolver{}).WithAttemptTimeout(5*time.Second))
+
+	sess := newCaptchaSession("https://example.com", map[string]string{
+		captcha.DetectScript:           `{"kind":"math","question":"3 * 4","answer_selector":"#a","verify_selector":"#go","confidence":0.9}`,
+		`document.querySelector("#a")`: "true",
+	})
+	resp, err := runBrowserCaptcha(context.Background(), sess, "captcha_solve", BrowserParams{
+		Action:   "captcha_solve",
+		Advanced: browser.Request{Verify: true},
+	}, "sess1")
+	require.NoError(t, err)
+	require.False(t, resp.IsError, resp.Content)
+	var out CaptchaResult
+	require.NoError(t, json.Unmarshal([]byte(resp.Content), &out))
+	require.Equal(t, "solved", out.Status)
+	require.Equal(t, "12", out.Answer)
+	require.Contains(t, sess.clicks, "#go")
+	require.Contains(t, out.Next, "login_check")
+}
+
+func TestCaptchaFill(t *testing.T) {
+	t.Parallel()
+	sess := newCaptchaSession("https://ois.example/auth", map[string]string{
+		captcha.DetectScript:              `{"kind":"image_text","answer_selector":"#code","confidence":0.9}`,
+		`document.querySelector("#code")`: "true",
+	})
+	resp, err := runBrowserCaptcha(context.Background(), sess, "captcha_fill", BrowserParams{
 		Action: "captcha_fill",
 		Value:  "a7k2m",
 	}, "sess1")

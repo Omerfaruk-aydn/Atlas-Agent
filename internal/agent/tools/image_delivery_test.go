@@ -1,3 +1,74 @@
+		"text":      []byte("not an image"),
+		"truncated": noisePNG(t, 32, 32)[:40],
+	} {
+		_, err := PrepareImageForDelivery(data, "image/png")
+		require.ErrorIs(t, err, ErrImageInvalid, name)
+	}
+}
+
+func TestPrepareImageRejectsDecompressionBombDimensions(t *testing.T) {
+	t.Parallel()
+	// A header claiming 100000×100000 pixels is refused before decoding.
+	hdr := noisePNG(t, 1, 1)
+	binary.BigEndian.PutUint32(hdr[16:], 100000)
+	binary.BigEndian.PutUint32(hdr[20:], 100000)
+	binary.BigEndian.PutUint32(hdr[29:], crc32.ChecksumIEEE(hdr[12:29]))
+	_, err := PrepareImageForDelivery(hdr, "image/png")
+	require.ErrorIs(t, err, ErrImageInvalid)
+}
+
+func TestViewDeliversAScreenshotLargerThan200KB(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	// The case from the reported session: a 723,545 byte screenshot was
+	// refused by the shared 200 KB text limit.
+	data := paddedPNG(t, 1920, 1080, 723_545)
+	path := filepath.Join(dir, "ekran.png")
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	ctx := context.WithValue(context.Background(), SessionIDContextKey, "s")
+	ctx = context.WithValue(ctx, SupportsImagesContextKey, true)
+	resp := runViewTool(t, newViewToolForTest(dir), ctx, ViewParams{FilePath: path})
+	require.False(t, resp.IsError, resp.Content)
+	require.Equal(t, "image", resp.Type)
+	require.Equal(t, data, resp.Data)
+	require.Equal(t, "image/png", resp.MediaType)
+	require.Contains(t, resp.Content, "not shown to the user")
+	require.False(t, gjson.Get(resp.Metadata, "image_delivery.preview").Bool())
+	require.EqualValues(t, 723_545, gjson.Get(resp.Metadata, "image_delivery.raw_bytes").Int())
+}
+
+func TestViewPreviewsAnImageOverTheLimitAndKeepsTheOriginal(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	data := paddedPNG(t, 1920, 1080, MaxImageDeliveryBytes+10)
+	path := filepath.Join(dir, "big.png")
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+
+	ctx := context.WithValue(context.Background(), SessionIDContextKey, "s")
+	ctx = context.WithValue(ctx, SupportsImagesContextKey, true)
+	resp := runViewTool(t, newViewToolForTest(dir), ctx, ViewParams{FilePath: path})
+	require.False(t, resp.IsError, resp.Content)
+	require.Equal(t, "image/jpeg", resp.MediaType)
+	require.LessOrEqual(t, len(resp.Data), MaxImageDeliveryBytes)
+	require.True(t, gjson.Get(resp.Metadata, "image_delivery.preview").Bool())
+	require.Contains(t, resp.Content, "over the 2097152 byte image limit")
+	onDisk, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, data, onDisk)
+}
+
+func TestViewReportsACorruptImage(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "broken.png")
+	require.NoError(t, os.WriteFile(path, bytes.Repeat([]byte("a"), MaxViewSize+1), 0o644))
+	ctx := context.WithValue(context.Background(), SessionIDContextKey, "s")
+	ctx = context.WithValue(ctx, SupportsImagesContextKey, true)
+	resp := runViewTool(t, newViewToolForTest(dir), ctx, ViewParams{FilePath: path})
+	require.True(t, resp.IsError)
+	require.Contains(t, resp.Content, "corrupt or not a supported format")
+}
 
 func TestEnforceImageDeliveryKeepsStructuredTextAndMarksPreview(t *testing.T) {
 	t.Parallel()

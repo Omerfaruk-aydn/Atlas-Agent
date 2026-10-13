@@ -1,3 +1,74 @@
+			return nil, err
+		}
+		out := map[string]any{"saved": designSystemPath, "status": "candidate", "version": st.Candidate.Version, "check": checkDesignSystem(sys)}
+		if st.Approved != nil {
+			out["note"] = fmt.Sprintf("Stored as a candidate; approved version %d stays in use until the user approves this one (approve).", st.Approved.Version)
+		} else {
+			out["note"] = "Stored as a candidate. Show it to the user and call approve once they explicitly approve it."
+		}
+		if backup != "" {
+			out["corrupt_backup"] = backup
+		}
+		return out, nil
+	case "approve":
+		st, err := loadDesignStore(dir)
+		if err != nil {
+			return nil, fmt.Errorf("approve needs a stored candidate: %w", err)
+		}
+		if st.Candidate == nil {
+			return nil, errors.New("approve needs a candidate: store the system the user approved with set first")
+		}
+		if p.ExpectedVersion > 0 && p.ExpectedVersion != st.Candidate.Version {
+			return nil, errors.New("stale_design_revision: the candidate changed; show the new candidate before approval")
+		}
+		if st.Approved != nil {
+			st.pushHistory(*st.Approved)
+		}
+		rec := *st.Candidate
+		rec.At, rec.Note = stamp(), strings.TrimSpace(p.Note)
+		st.Approved, st.Candidate = &rec, nil
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := saveDesignStore(dir, st); err != nil {
+			return nil, err
+		}
+		return map[string]any{"approved": rec.Version, "path": designSystemPath}, nil
+	case "reset":
+		st, backup, err := loadDesignStoreForWrite(dir, now)
+		if err != nil {
+			return nil, err
+		}
+		if st.Approved == nil && st.Candidate == nil && backup == "" {
+			return map[string]any{"reset": false, "note": "Nothing was stored."}, nil
+		}
+		if st.Approved != nil {
+			rec := *st.Approved
+			rec.Note = strings.Trim(rec.Note+"; reset: "+strings.TrimSpace(p.Note), "; ")
+			st.pushHistory(rec)
+		}
+		st.Approved, st.Candidate = nil, nil
+		if err := saveDesignStore(dir, st); err != nil {
+			return nil, err
+		}
+		out := map[string]any{"reset": true, "history_versions": st.versions()}
+		if backup != "" {
+			out["corrupt_backup"] = backup
+		}
+		return out, nil
+	case "history":
+		st, err := loadDesignStore(dir)
+		if errors.Is(err, os.ErrNotExist) {
+			return map[string]any{"history": []designRecord{}}, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		recs := slices.Clone(st.History)
+		if st.Approved != nil {
+			recs = append(recs, *st.Approved)
+		}
+		return map[string]any{"history": recs}, nil
 	case "check":
 		sys := p.System
 		if sys == nil {

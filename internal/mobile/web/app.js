@@ -550,6 +550,77 @@
   $("ctl-stop").addEventListener("click", (e) => control("stop", e.currentTarget));
   $("ctl-preview").addEventListener("click", async () => {
     try {
+    b.disabled = true;
+    try {
+      const data = await act("/api/transfer", {});
+      const out = $("transfer-code-out");
+      out.textContent = data.code;
+      out.classList.remove("hidden");
+      const note = $("transfer-code-note");
+      note.classList.remove("hidden");
+      const until = data.expires;
+      clearInterval(transferTimer);
+      const upd = () => {
+        const left = until - Date.now();
+        if (left <= 0) { out.classList.add("hidden"); note.classList.add("hidden"); clearInterval(transferTimer); return; }
+        note.textContent = t("transfer_code_note") + " " + fmtLeft(left);
+      };
+      upd();
+      transferTimer = setInterval(upd, 1000);
+    } catch (err) {
+      toast(t("failed") + ": " + err.message, true);
+    } finally {
+      b.disabled = false;
+    }
+  });
+  $("install-btn").addEventListener("click", async () => {
+    const p = state.installPrompt;
+    if (!p) return;
+    state.installPrompt = null;
+    try {
+      await p.prompt();
+      await p.userChoice;
+    } catch (_) {}
+    // Success is reported by the appinstalled event, not by this tap.
+    renderSettings();
+  });
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    state.installPrompt = e;
+    if (!$("view-settings").classList.contains("hidden")) renderSettings();
+  });
+  window.addEventListener("appinstalled", () => {
+    state.installPrompt = null;
+    toast(t("install_done"));
+    if (!$("view-settings").classList.contains("hidden")) renderSettings();
+  });
+  $("update-reload").addEventListener("click", () => location.reload());
+  $("pair-again").addEventListener("click", () => { $("pair-again").classList.add("hidden"); pairStage("none"); });
+  $("settings-btn").addEventListener("click", () => navigate("settings"));
+  $("host-row").addEventListener("click", () => navigate("settings"));
+  $("settings-back").addEventListener("click", goBack);
+  $("back").addEventListener("click", goBack);
+  $("search").addEventListener("input", (e) => { state.query = e.target.value; renderList(); });
+  $("waiting-banner").addEventListener("click", () => { state.pendingOpen = true; state.paneKey = ""; renderTaskChrome(); const h = $("pending-h"); if (h) h.focus(); });
+  $("new-msgs").addEventListener("click", toBottom);
+  $("scroll").addEventListener("scroll", () => { if (nearBottom()) { state.unseen = false; $("new-msgs").classList.add("hidden"); } }, { passive: true });
+
+  function closeMenu() { $("task-menu").classList.add("hidden"); $("menu-btn").setAttribute("aria-expanded", "false"); }
+  $("menu-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = $("task-menu").classList.toggle("hidden") === false;
+    $("menu-btn").setAttribute("aria-expanded", String(open));
+    if (open) { const first = $("task-menu").querySelector("button:not(.hidden):not(:disabled)"); if (first) first.focus(); }
+  });
+  document.addEventListener("click", (e) => { if (!$("task-menu").contains(e.target)) closeMenu(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("task-menu").classList.contains("hidden")) { closeMenu(); $("menu-btn").focus(); } });
+  $("m-pause").addEventListener("click", (e) => { closeMenu(); control("pause", e.currentTarget); });
+  $("m-resume").addEventListener("click", (e) => { closeMenu(); control("resume", e.currentTarget); });
+  $("m-refresh").addEventListener("click", () => { closeMenu(); manualRetry(); });
+  $("m-screen").addEventListener("click", () => { closeMenu(); openScreen(); });
+  $("screen-btn").addEventListener("click", () => { if (screen.open && state.view === "screen") closeScreen(); else openScreen(); });
+  $("tab-chat").addEventListener("click", () => setView("chat"));
+  $("tab-screen").addEventListener("click", () => { if (screen.open) setView("screen"); });
   $("screen-stop").addEventListener("click", closeScreen);
   $("screen-retry").addEventListener("click", () => { screen.gaveUp = false; screen.retries = 0; screen.message = ""; screenDisconnect("idle"); applyView(false); });
   $("screen-zoom-in").addEventListener("click", () => setZoom(screen.zoom * 1.5));

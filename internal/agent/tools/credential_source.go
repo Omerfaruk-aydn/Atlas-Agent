@@ -1,3 +1,74 @@
+		}
+		value = v
+	}
+	return value
+}
+
+// sourceInstructionAllows requires a real human request to use credentials
+// from this source. Page text and model arguments never grant permission.
+func sourceInstructionAllows(instruction, text, currentURL string) bool {
+	p := normalizedSourceName(instruction)
+	hasAny := func(words ...string) bool {
+		for _, word := range words {
+			if strings.Contains(p, word) {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasAny("sifre", "parola", "password", "credential") || !hasAny("mail", "mesaj", "e-posta", "email", "document", "dosya") || !hasAny("gir", "doldur", "login", "sign in", "fill", "use", "kullan", "al") || hasAny("kullanma", "girme", "doldurma", "do not", "don't", "only read", "yalnizca oku") {
+		// The current turn may not repeat "şifre" (e.g. "okul mailime giriş
+		// yap"). When the text itself carries labeled credentials and the
+		// instruction names a destination to use them at, accept.
+		if !hasAny("kullanma", "girme", "doldurma", "do not", "don't", "only read", "yalnizca oku") &&
+			sourcePasswordLine.MatchString(text) && sourceAccountLine.MatchString(text) &&
+			hasAny("gir", "doldur", "login", "sign in", "fill", "use", "kullan", "al", "gec", "geç", "yap") {
+			// fall through to destination checks below
+		} else {
+			return false
+		}
+	}
+	u, err := url.Parse(currentURL)
+	if err != nil || u.User != nil {
+		return false
+	}
+	if _, err := vault.CredentialOrigin(u.Scheme + "://" + u.Host); err != nil {
+		return false
+	}
+	// An explicitly named source URL authorizes that exact source host.
+	for _, raw := range sourceLinks.FindAllString(instruction, -1) {
+		expected, err := url.Parse(raw)
+		if err == nil && expected.Host == u.Host && expected.Scheme == u.Scheme && (expected.Path == "" || expected.Path == "/" || expected.Path == u.Path) && (expected.RawQuery == "" || expected.RawQuery == u.RawQuery) && (expected.Fragment == "" || expected.Fragment == u.Fragment) {
+			return true
+		}
+	}
+	mailHost := u.Hostname() == "mail.google.com" || u.Hostname() == "outlook.live.com" || u.Hostname() == "outlook.office.com" || u.Hostname() == "outlook.office365.com"
+	if !mailHost {
+		return false
+	}
+	// Sender-name match authorizes. When the instruction does not name a
+	// specific sender, a clear source+credential+action request on a mail
+	// host is enough. When the named sender is a person but the message
+	// comes from a system address (ois@topkapi.edu.tr), the human pointed
+	// at a mailbox holding a reminder, not at another person's account.
+	senderNamed := sourceSender.MatchString(instruction) || sourceFrom.MatchString(instruction)
+	if !senderNamed && hasSourceCredentialInstruction(instruction) {
+		return true
+	}
+	// The tool read may include Gmail UI chrome ("Yazdır", "Yeni pencerede")
+	// before the real sender line. Scan the first few lines for a sender.
+	senderLine := extractSenderLine(text)
+	senderNorm := normalizedSourceName(senderLine)
+	for _, re := range []*regexp.Regexp{sourceSender, sourceFrom} {
+		match := re.FindStringSubmatch(instruction)
+		if len(match) > 1 && len([]rune(match[1])) >= 3 && regexp.MustCompile(`(?:^|[^\pL\pN])`+regexp.QuoteMeta(normalizedSourceName(match[1]))+`(?:$|[^\pL\pN])`).MatchString(senderNorm) {
+			return true
+		}
+	}
+	// Named sender did not match. Accept only when the sender is a system
+	// address (not a person) and the instruction clearly authorizes using
+	// a credential from a named source at a named destination.
+	if senderNamed && hasSourceCredentialInstruction(instruction) && isSystemSender(senderNorm) {
 		return true
 	}
 	return false

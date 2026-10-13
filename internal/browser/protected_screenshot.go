@@ -1,3 +1,74 @@
+	Mask bool       `json:"mask"`
+	Rect [4]float64 `json:"rect"`
+}
+
+type privacyLayout struct {
+	Width   float64         `json:"width"`
+	Height  float64         `json:"height"`
+	Ratio   float64         `json:"ratio"`
+	Regions []privacyRegion `json:"regions"`
+	Version float64         `json:"version"`
+}
+
+const privacyLayoutScript = `(full => {
+  const key = '__atlasPrivacyObserver';
+  if (!globalThis[key]) {
+    const state = {version: 0};
+    state.observer = new MutationObserver(() => state.version++);
+    state.observer.observe(document, {subtree:true, childList:true, characterData:true, attributes:true});
+    globalThis[key] = state;
+  }
+  const rows = [], sx = full ? scrollX : 0, sy = full ? scrollY : 0;
+  let textSize = 0;
+  const add = (r, text, mask) => {
+    if (rows.length >= 15000) throw new Error('privacy_layout_too_large');
+    if (r.width > 0 && r.height > 0) {
+      textSize += text.length;
+      if (textSize > 2097152) throw new Error('privacy_layout_too_large');
+      rows.push({text, mask, rect:[r.left+sx,r.top+sy,r.width,r.height]});
+    }
+  };
+  const walk = root => {
+    for (const el of root.querySelectorAll('*')) {
+      const tag = el.tagName.toLowerCase();
+      if (['input','textarea','select','iframe','frame','canvas','img','video','object','embed','svg'].includes(tag) || el.isContentEditable || (tag.includes('-') && !el.shadowRoot)) {
+        add(el.getBoundingClientRect(), '', true);
+      }
+      for (const pseudo of ['::before','::after']) {
+        const content = getComputedStyle(el, pseudo).content;
+        if (content && content !== 'none' && content !== 'normal') add(el.getBoundingClientRect(), content, false);
+      }
+      // Catch a known credential split across adjacent inline elements.
+      if (tag !== 'body' && tag !== 'html' && el.childElementCount > 0 && el.childElementCount < 16 && [...el.children].every(child => getComputedStyle(child).display.startsWith('inline'))) {
+        const text = el.innerText || '';
+        if (text.length > 0 && text.length <= 4096) add(el.getBoundingClientRect(), text, false);
+      }
+      if (el.shadowRoot) {
+        globalThis[key].observer.observe(el.shadowRoot, {subtree:true, childList:true, characterData:true, attributes:true});
+        walk(el.shadowRoot);
+      }
+    }
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (!node.textContent.trim() || ['SCRIPT','STYLE','NOSCRIPT'].includes(node.parentElement?.tagName)) continue;
+      const range = document.createRange(); range.selectNodeContents(node);
+      for (const rect of range.getClientRects()) add(rect, node.textContent, false);
+    }
+  };
+  walk(document);
+  return {width: full ? Math.max(document.documentElement.scrollWidth, innerWidth) : innerWidth, height: full ? Math.max(document.documentElement.scrollHeight, innerHeight) : innerHeight, ratio:Math.max(1, devicePixelRatio || 1), regions:rows, version:globalThis[key].version};
+})(%s)`
+
+func (s *chromedpSession) privacyLayout(ctx context.Context, full bool) (privacyLayout, error) {
+	var result privacyLayout
+	flag := "false"
+	if full {
+		flag = "true"
+	}
+	script := bytes.ReplaceAll([]byte(privacyLayoutScript), []byte("%s"), []byte(flag))
+	err := s.runContext(ctx, chromedp.Evaluate(string(script), &result))
+	return result, err
 }
 
 // ProtectedScreenshot refuses unstable pages rather than delivering pixels

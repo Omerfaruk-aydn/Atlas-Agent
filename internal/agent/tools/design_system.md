@@ -1,3 +1,14 @@
+Project design memory, measured design checks and delivery packages.
+
+Use it for any screen design work, including designs made in an external
+generator such as Google Stitch or Figma (also on a remote computer).
+
+Before generating:
+1. `get` first. If a design system exists, keep its platform, direction and
+   tokens; do not silently switch.
+2. If none exists, settle the platform with the user: phone (ios/android/
+   mobile), tablet, web, desktop or tui. "Mobile app screens" means portrait
+   phone frames; in a generator, pick its mobile/app device type, never Web.
 3. Offer 2-3 short, distinct visual directions (question tool) and let the
    user choose. Record it with `set` (direction.chosen_by "user"; "default"
    only when they asked you to decide).

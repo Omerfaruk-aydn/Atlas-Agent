@@ -1,3 +1,74 @@
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/tsfunnel"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/tsfunnel/fakecli"
+)
+
+func manager(t *testing.T, d *fakecli.Daemon) *tsfunnel.Manager {
+	t.Helper()
+	return &tsfunnel.Manager{
+		CLI:             d,
+		StateFile:       filepath.Join(t.TempDir(), "funnel.json"),
+		Poll:            5 * time.Millisecond,
+		ConfirmTimeout:  2 * time.Second,
+		ApprovalTimeout: 3 * time.Second,
+		CleanupTimeout:  300 * time.Millisecond,
+	}
+}
+
+func ready(t *testing.T, d *fakecli.Daemon) tsfunnel.Readiness {
+	t.Helper()
+	r := tsfunnel.Inspect(t.Context(), d, nil)
+	require.True(t, r.Ready(), "problem %q: %s", r.Problem, r.Detail)
+	return r
+}
+
+func TestInspectStates(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		setup func(*fakecli.Daemon)
+		svc   tsfunnel.ServiceState
+		want  tsfunnel.Problem
+	}{
+		{"not installed", func(d *fakecli.Daemon) { d.Installed = false }, tsfunnel.ServiceUnknown, tsfunnel.ProblemNotInstalled},
+		{"service missing", func(*fakecli.Daemon) {}, tsfunnel.ServiceMissing, tsfunnel.ProblemNotInstalled},
+		{"service stopped", func(*fakecli.Daemon) {}, tsfunnel.ServiceStopped, tsfunnel.ProblemServiceStopped},
+		{"daemon unreachable", func(d *fakecli.Daemon) { d.ServiceDown = true }, tsfunnel.ServiceUnknown, tsfunnel.ProblemServiceStopped},
+		{"needs login", func(d *fakecli.Daemon) { d.Backend = "NeedsLogin" }, tsfunnel.ServiceRunning, tsfunnel.ProblemNeedsLogin},
+		{"machine auth", func(d *fakecli.Daemon) { d.Backend = "NeedsMachineAuth" }, tsfunnel.ServiceRunning, tsfunnel.ProblemMachineAuth},
+		{"stopped", func(d *fakecli.Daemon) { d.Backend = "Stopped" }, tsfunnel.ServiceRunning, tsfunnel.ProblemDisconnected},
+		{"starting", func(d *fakecli.Daemon) { d.Backend = "Starting" }, tsfunnel.ServiceRunning, tsfunnel.ProblemStarting},
+		{"old version", func(d *fakecli.Daemon) { d.Version = "1.50.1-t1" }, tsfunnel.ServiceRunning, tsfunnel.ProblemOldVersion},
+		{"garbage version", func(d *fakecli.Daemon) { d.Version = "dev" }, tsfunnel.ServiceRunning, tsfunnel.ProblemOldVersion},
+		{"no magicdns", func(d *fakecli.Daemon) { d.MagicDNS = false }, tsfunnel.ServiceRunning, tsfunnel.ProblemNeedsMagicDNS},
+		{"custom domain", func(d *fakecli.Daemon) { d.Host = "pc.example.com." }, tsfunnel.ServiceRunning, tsfunnel.ProblemNeedsMagicDNS},
+		{"bad json", func(d *fakecli.Daemon) { d.StatusRaw = []byte("{not json") }, tsfunnel.ServiceRunning, tsfunnel.ProblemMalformed},
+		{"empty json", func(d *fakecli.Daemon) { d.StatusRaw = []byte("{}") }, tsfunnel.ServiceRunning, tsfunnel.ProblemMalformed},
+		{"unknown backend", func(d *fakecli.Daemon) { d.Backend = "Weird" }, tsfunnel.ServiceRunning, tsfunnel.ProblemMalformed},
+		{"no allowed port", func(d *fakecli.Daemon) {
+			d.Caps = []string{"https", "funnel", "https://tailscale.com/cap/funnel-ports?ports=80,9000-9999"}
+		}, tsfunnel.ServiceRunning, tsfunnel.ProblemNoFunnelPort},
+		{"ready", func(*fakecli.Daemon) {}, tsfunnel.ServiceRunning, tsfunnel.ProblemNone},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			d := fakecli.New()
+			tc.setup(d)
+			r := tsfunnel.Inspect(t.Context(), d, func() tsfunnel.ServiceState { return tc.svc })
+			require.Equal(t, tc.want, r.Problem, r.Detail)
+		})
+	}
+}
+
+func TestInspectReadsHostAndCapabilities(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	d.Caps = []string{"https", "funnel", "https://tailscale.com/cap/funnel-ports?ports=8443,10000"}
+	r := ready(t, d)
+	require.Equal(t, "atlas-pc.tail1234.ts.net", r.Host)
+	require.Equal(t, []uint16{8443, 10000}, r.FunnelPorts)
+	require.False(t, r.NeedsApproval())
+
 	d.Caps = nil
 	r = ready(t, d)
 	require.True(t, r.NeedsApproval(), "missing https/funnel capabilities need the browser approval")

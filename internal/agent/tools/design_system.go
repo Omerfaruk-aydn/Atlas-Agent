@@ -1,3 +1,74 @@
+	m.QualityGate.Checks = append(m.QualityGate.Checks, DesignCheck{Rule: "design system approved by the user", Passed: status == "approved", Measured: fmt.Sprintf("version %d, %s", rec.Version, status), Required: "approved"})
+	m.QualityGate.Checks = append(m.QualityGate.Checks, screenFrameChecks(sys, m.Screens)...)
+	m.QualityGate.Passed = true
+	for _, c := range m.QualityGate.Checks {
+		m.QualityGate.Passed = m.QualityGate.Passed && c.Passed
+	}
+	m.Completion = designPackageCompletion(m)
+	tmp, err := os.MkdirTemp(filepath.Join(root), ".design-delivery-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmp)
+	if err := os.MkdirAll(filepath.Join(tmp, "screens"), 0o755); err != nil {
+		return nil, err
+	}
+	for _, s := range screens {
+		if err := os.WriteFile(filepath.Join(tmp, filepath.FromSlash(s.scr.File)), s.data, 0o644); err != nil {
+			return nil, err
+		}
+	}
+	if len(sources) > 0 {
+		if err := os.MkdirAll(filepath.Join(tmp, "sources"), 0o755); err != nil {
+			return nil, err
+		}
+	}
+	for _, source := range sources {
+		if err := os.WriteFile(filepath.Join(tmp, filepath.FromSlash(source.info.File)), source.data, 0o600); err != nil {
+			return nil, err
+		}
+	}
+	manifest, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "manifest.json"), manifest, 0o644); err != nil {
+		return nil, err
+	}
+	sysData, _ := json.MarshalIndent(sys, "", "  ")
+	if err := os.WriteFile(filepath.Join(tmp, "design-system.json"), sysData, 0o644); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "README.md"), []byte(deliveryReadme(m)), 0o644); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(tmp, out); err != nil {
+		return nil, err
+	}
+	return map[string]any{"package": filepath.ToSlash(filepath.Join("design-delivery", p.Name)), "screens": len(m.Screens), "quality_gate": m.QualityGate, "completion": m.Completion, "delivery": "assembled_locally_not_presented", "visual_inspection_required": true}, nil
+}
+
+func readManifest(path string) (designManifest, bool) {
+	var m designManifest
+	data, err := readDesignArtifact(path, 4<<20)
+	if err != nil {
+		return m, false
+	}
+	return m, json.Unmarshal(data, &m) == nil
+}
+
+func sameDelivery(a, b designManifest) bool {
+	if a.SystemVersion != b.SystemVersion || a.SystemStatus != b.SystemStatus || len(a.Screens) != len(b.Screens) {
+		return false
+	}
+	left, _ := json.Marshal(a.System)
+	right, _ := json.Marshal(b.System)
 	if !bytes.Equal(left, right) || !slices.Equal(a.OpenQuestions, b.OpenQuestions) {
 		return false
 	}

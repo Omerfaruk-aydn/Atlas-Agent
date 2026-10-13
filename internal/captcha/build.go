@@ -1,3 +1,27 @@
+package captcha
+
+import (
+	"os"
+	"strings"
+	"time"
+)
+
+// Options configures a default Chain. Zero values select the free,
+// offline solvers only. External token farms are opt-in: they are needed
+// for reCAPTCHA/hCaptcha/Turnstile response tokens, not for ordinary
+// image-text or math challenges, which the model can read itself.
+type Options struct {
+	// Enabled turns the whole subsystem off when false.
+	Enabled bool
+	// Solvers is the preference order by backend name. Recognized names:
+	// "math", "remote", "2captcha", "capsolver", "anticaptcha".
+	// Empty selects the default chain (math, plus remote when a key is
+	// configured).
+	Solvers []string
+	// RemoteProvider is "2captcha", "capsolver" or "anticaptcha".
+	// RemoteAPIKey comes from atlas.json or ATLAS_CAPTCHA_API_KEY.
+	RemoteProvider string
+	RemoteAPIKey   string
 	// AttemptTimeout bounds a single solver try.
 	AttemptTimeout time.Duration
 	// Audit receives one row per solver try when non-nil.

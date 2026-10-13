@@ -1,3 +1,74 @@
+			return fail(ready, err)
+		}
+		progress.Set(tsfunnel.PhasePanelReady)
+		l, err := mgr.Start(ctx, plan, port, progress)
+		if err != nil {
+			_ = gw.Close()
+			if generation != r.generation.Load() {
+				return nil
+			}
+			return fail(ready, err)
+		}
+		mu.Lock()
+		link = l
+		mu.Unlock()
+		if generation != r.generation.Load() {
+			_ = gw.Close()
+			return nil
+		}
+		return funnelStartedMsg{generation: generation, gw: gw, ready: ready, auto: auto}
+	}
+}
+
+func (m *UI) handleFunnelStarted(msg funnelStartedMsg) tea.Cmd {
+	r := &m.devices.remote
+	f := &m.devices.funnel
+	if msg.generation != r.generation.Load() {
+		return closeGatewayCmd(msg.gw)
+	}
+	r.starting = false
+	f.ready, f.checked = msg.ready, msg.ready.Problem != "" || msg.ready.Host != ""
+	if msg.err != nil {
+		f.err, r.startErr = msg.err, msg.err
+		if msg.auto {
+			return m.scheduleRemoteRetry()
+		}
+		return nil
+	}
+	f.err, r.startErr, r.retry = nil, nil, 0
+	m.setGateway(msg.gw)
+	if msg.auto {
+		return nil
+	}
+	if m.dialog.ContainsDialog(dialog.MobileID) {
+		return nil
+	}
+	d := dialog.NewMobile(m.com, msg.gw)
+	m.dialog.OpenDialog(d)
+	return tea.Batch(d.Init(), util.ReportInfo(m.com.Text("Tailscale Funnel is set up; pair a phone to verify internet access")))
+}
+
+// stopFunnel closes the gateway, which removes Atlas' Funnel entry and
+// waits until Tailscale no longer lists it, then forgets the choice.
+func (m *UI) stopFunnel() tea.Cmd {
+	r := &m.devices.remote
+	f := &m.devices.funnel
+	generation := r.generation.Add(1)
+	gw := m.devices.gateway
+	m.setGateway(nil)
+	m.dialog.CloseDialog(dialog.MobileID)
+	r.starting, r.startErr, r.retry = false, nil, 0
+	f.on, f.err, f.task = false, nil, ""
+	ws := m.com.Workspace
+	return func() tea.Msg {
+		r.lifecycle.Lock()
+		defer r.lifecycle.Unlock()
+		var closeErr error
+		if gw != nil {
+			closeErr = gw.Close()
+		}
+		if generation != r.generation.Load() {
+			return nil
 		}
 		err := ws.RemoveConfigField(config.ScopeGlobal, funnelConfigKey)
 		return funnelStoppedMsg{generation: generation, err: errors.Join(closeErr, err)}

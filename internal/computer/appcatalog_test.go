@@ -1,3 +1,74 @@
+		[]startApp{
+			{Name: "Hesap Makinesi", AppID: "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"},
+			{Name: "Dosya Gezgini", AppID: "Microsoft.Windows.Explorer"},
+			// Real computers list Chrome's shortcut too.
+			{Name: "Google Chrome", AppID: "Chrome"},
+		},
+		[]appPathValue{{Exe: "chrome.exe", Path: `"` + userChrome + `"`, Scope: "user"}},
+	)
+	c := NewAppCatalog(func(ctx context.Context) ([]AppEntry, error) { return discoverApps(ctx, src) }, time.Minute)
+	c.exists = func(p string) bool { return files[p] }
+	return c
+}
+
+func TestCatalogFindsPerUserChromeOutsidePath(t *testing.T) {
+	t.Parallel()
+	c := fixtureCatalog(t, map[string]bool{userChrome: true})
+	for _, name := range []string{"chrome", "Chrome", "google chrome", "GOOGLE CHROME", "Krom", "exe:chrome"} {
+		e, err := c.Resolve(t.Context(), name)
+		require.NoError(t, err, name)
+		require.Equal(t, "exe:chrome", e.ID)
+		require.Equal(t, userChrome, e.Launch.Path)
+		require.Equal(t, "user", e.Scope)
+		require.ElementsMatch(t, []string{"app_paths_user", "known_location", "start_menu"}, e.Sources, "all sources merge into one entry")
+		require.Len(t, e.Running, 1)
+		require.Equal(t, "198000", e.Running[0].WindowID)
+	}
+}
+
+func TestCatalogReadsOnlyProfileNames(t *testing.T) {
+	t.Parallel()
+	c := fixtureCatalog(t, map[string]bool{userChrome: true})
+	e, err := c.Resolve(t.Context(), "chrome")
+	require.NoError(t, err)
+	require.Equal(t, []BrowserProfile{{"Default", "Kişisel"}, {"Profile 3", "Ömer Faruk"}, {"Profile 4", "İş"}}, e.Profiles)
+	raw, err := json.Marshal(e)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "secret@example.com")
+	require.NotContains(t, string(raw), "hidden")
+}
+
+func TestCatalogLocalizedTurkishNames(t *testing.T) {
+	t.Parallel()
+	c := fixtureCatalog(t, map[string]bool{userChrome: true})
+	for name, id := range map[string]string{
+		"hesap makinesi": "start:Microsoft.WindowsCalculator_8wekyb3d8bbwe!App",
+		"HESAP MAKİNESİ": "start:Microsoft.WindowsCalculator_8wekyb3d8bbwe!App",
+		"Calculator":     "start:Microsoft.WindowsCalculator_8wekyb3d8bbwe!App",
+		"dosya gezgini":  "start:Microsoft.Windows.Explorer",
+		"File Explorer":  "start:Microsoft.Windows.Explorer",
+	} {
+		e, err := c.Resolve(t.Context(), name)
+		require.NoError(t, err, name)
+		require.Equal(t, id, e.ID, name)
+	}
+	require.Equal(t, "omer faruk aydin", FoldName("ÖMER FARUK AYDIN"))
+	require.Equal(t, "is", FoldName("İş"))
+}
+
+func TestCatalogSameExecutableNameAtTwoPathsIsAmbiguous(t *testing.T) {
+	t.Parallel()
+	system := `C:\Program Files\Google\Chrome\Application\chrome.exe`
+	c := fixtureCatalog(t, map[string]bool{userChrome: true, system: true})
+	entries, err := c.List(t.Context(), "chrome", false)
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	require.NotEqual(t, entries[0].ID, entries[1].ID)
+	_, err = c.Resolve(t.Context(), "chrome")
+	require.ErrorIs(t, err, ErrAppAmbiguous)
+	require.ErrorContains(t, err, "pass one app_id")
+	e, err := c.Resolve(t.Context(), entries[1].ID)
+	require.NoError(t, err)
 	require.Equal(t, entries[1].Launch.Path, e.Launch.Path)
 }
 

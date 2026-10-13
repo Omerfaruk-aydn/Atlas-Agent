@@ -144,6 +144,76 @@
         if (e.status) throw e;
         return await api(path, { method: "POST", body, key });
       }
+    for (const id of ["list-conn", "set-conn"]) {
+      const c = $(id);
+      c.className = "conn " + cls;
+      c.textContent = t(kind);
+    }
+    const tc = $("task-conn");
+    tc.className = "conn " + cls;
+    tc.replaceChildren(el("span", "", computerName() + " · " + t(kind)));
+    $("host-name").textContent = computerName();
+    if (!$("view-task").classList.contains("hidden") && state.detail) renderTaskChrome();
+    if (!$("view-settings").classList.contains("hidden")) renderSettings();
+  }
+  function scheduleRetry(fn) {
+    clearTimeout(resumeTimer);
+    if (state.retries >= MAX_RETRIES) {
+      state.retryStopped = true;
+      if (state.detail) renderTaskChrome();
+      return;
+    }
+    state.retries++;
+    const delay = retryDelay + Math.floor(Math.random() * 500);
+    retryDelay = Math.min(retryDelay * 2, 30000);
+    resumeTimer = setTimeout(fn, delay);
+  }
+  function manualRetry() {
+    state.retries = 0;
+    state.retryStopped = false;
+    retryDelay = 1000;
+    clearTimeout(resumeTimer);
+    if (state.me) resumeConnection(); else boot();
+  }
+
+  // ---------- Routing ----------
+  function show(view) {
+    ["pair", "list", "task", "settings"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== view));
+    document.body.classList.toggle("chat-open", view === "task");
+    closeMenu();
+    if (view !== "task") stopTick();
+    if (view === "settings") renderSettings();
+    if (view === "list") renderList();
+    window.scrollTo(0, 0);
+    // Move focus to the new screen's heading so screen readers announce it.
+    const h = $("view-" + view).querySelector("h1");
+    if (h && document.activeElement && document.activeElement !== document.body) h.focus({ preventScroll: true });
+  }
+  function navigate(view, id) {
+    history.pushState({ view, id: id || null }, "", "/");
+    route({ view, id });
+  }
+  function route(st) {
+    if (!state.me) return;
+    if (st.view === "task" && st.id) {
+      openTask(st.id);
+    } else if (st.view === "settings") {
+      leaveTask();
+      show("settings");
+    } else {
+      leaveTask();
+      show("list");
+      loadList().catch(() => {});
+    }
+  }
+  function goBack() {
+    if (history.state && history.state.view && history.state.view !== "list") history.back();
+    else { history.replaceState({ view: "list" }, "", "/"); route({ view: "list" }); }
+  }
+  window.addEventListener("popstate", (e) => route(e.state || { view: "list" }));
+
+  // ---------- Conversation list ----------
+  function statusOf(s) {
     if (s.pending_credentials > 0) return ["waiting", t("st_credential"), "ring"];
     if (s.pending_permissions > 0) return ["waiting", t("st_permission"), "ring"];
     if (s.pending_questions > 0) return ["waiting", t("st_question"), "ring"];

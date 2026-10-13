@@ -18,6 +18,7 @@ Built-in Atlas tool: work on the other computer the user connected to with `/sup
 - `automation` {device_id, query, window_id?, name?, role?} → read-only accessibility data of the remote desktop. Prefer it over screenshots.
 - `input` {device_id, observation_id, input_action, x, y, …} → mouse/keyboard on the remote desktop, aimed with the latest observation of the same connection. Observe again after each pointer action.
 - `launch` {device_id, argv} → open a program (or a browser with a URL) on the remote desktop. Browsers open there, never here.
+- `launch` {device_id, app, args?, profile?} → open an installed application by the remote computer's own catalog (`automation` with query `apps` lists app_id, names, running windows and Chromium profile names). Use this for programs not on PATH (Chrome usually is not); args is a literal list such as a URL. A profile name that matches several profiles is refused: ask the user which one. A launch result is not proof: observe once, and never launch the same app again before that observation.
 - `tool` {device_id, session_id, generation, tool, arguments} → run the host's native `browser`, `computer` or `tool_pipeline`. Use the current session and generation from `status`. Ordinary browser/computer argument objects work here; never send a JSON string. Pipelines may contain only host browser/computer steps, semantic browser workflows or durable desktop flows. Each child checks the owner's current permissions and hooks. All requests on one host session are serialized so focus and observations cannot race.
 - `operation_status` / `cancel` {device_id, operation_id} → reconcile or stop an earlier operation.
 - `request_permission` {device_id, capabilities, reason} → ask the owner; then poll `permission_status` {device_id, permission_id}. A request is not a grant.
@@ -49,6 +50,20 @@ For a remote browser workflow:
 ```
 The generation above is illustrative; always use the live value. Screen results include an actual image part alongside the device/operation envelope, not a base64 blob to interpret as text. Native question, permission, hook and stop metadata survives the transport. A stopped or unknown operation is not success. Resume a durable desktop flow by its host `run_id` and a new outer call after reconciling the old operation; never replay uncertain input. Raw eval/CDP, credential access and local shell steps are excluded from native remote workflows; authorized system commands use remote `exec` instead.
 </remote_workflow>
+
+Shutdown and restart: the user's request authorizes the requested action;
+retain the host's permission check and send it once. A clean command exit
+proves that the OS accepted the request. A dropped connection after dispatch
+is `effect: unknown`: report that the request was sent and the connection
+dropped, not that power-off was independently verified. Never resend it
+automatically. Later calls retain the previous request and explain the
+offline state until a new session starts.
+
+Waiting: never sleep in bash to wait for the remote computer (a page loading, a design generating, an installer finishing). Use `wait` {device_id, wait_for, timeout_ms, name?, image?}: `stable` returns when the screen stops changing, `change` when it changes, `text` / `text_gone` when a control named `name` appears / disappears. It returns as soon as the condition holds, with the last observation; at the timeout it reports `met: false` with what it saw.
+
+`stable` proves only unchanged pixels, not completed generation or loading.
+Use an actual completion control/status to verify completion. A truncated,
+failed or unknown accessibility query cannot prove `text_gone`. The wait's
 deadline also bounds the remote query; cancellation sends no extra input.
 
 Human viewing: /support → o opens a private loopback live viewer. Start/stop

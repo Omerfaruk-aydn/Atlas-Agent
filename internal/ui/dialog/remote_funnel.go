@@ -1,3 +1,74 @@
+	var approval *tsfunnel.ApprovalRequiredError
+	if errors.As(f.Err, &approval) {
+		return approval.URL
+	}
+	if f.Starting && f.Phase == tsfunnel.PhaseApproval {
+		return f.ApprovalURL
+	}
+	return ""
+}
+
+func (f FunnelStatus) busy() bool { return f.Task != "" || f.Checking || f.Starting }
+
+func (f FunnelStatus) lost() bool { return f.URL != "" && f.Phase == tsfunnel.PhaseLost }
+
+// addFunnelActions lists only the steps that fit the checked state.
+func (d *Remote) addFunnelActions(add func(id, label, hint string)) {
+	f := d.funnel()
+	if d.env.Funnel == nil {
+		return
+	}
+	if !f.On {
+		add(rcFunnel, "Connect with Tailscale", "No VPS or domain needed")
+		return
+	}
+	if u := f.approvalURL(); u != "" {
+		add(rcFunnelApprove, "Open the Tailscale approval page", "Turn on HTTPS and Funnel for this device there")
+	}
+	switch {
+	case f.URL != "":
+		add(rcFunnelPair, "Pair a phone / show QR", "")
+		if f.lost() {
+			add(rcFunnel, "Reconnect with Tailscale", "")
+		}
+	case f.busy():
+	default:
+		switch f.Ready.Problem {
+		case tsfunnel.ProblemNotInstalled, tsfunnel.ProblemOldVersion:
+			if runtime.GOOS == "windows" {
+				add(rcFunnelInstall, "Install Tailscale", "Official installer, checked before it runs")
+			} else {
+				add(rcFunnelDownload, "Open the Tailscale download page", "")
+			}
+		case tsfunnel.ProblemServiceStopped, tsfunnel.ProblemStarting:
+			add(rcFunnelApp, "Open the Tailscale app", "It starts the Tailscale service")
+		case tsfunnel.ProblemNeedsLogin, tsfunnel.ProblemDisconnected:
+			add(rcFunnelLogin, "Sign in to Tailscale", "Opens Tailscale's sign-in page in your browser")
+		case tsfunnel.ProblemNeedsMagicDNS:
+			add(rcFunnelDNS, "Open Tailscale DNS settings", "Turn on MagicDNS and HTTPS certificates")
+		}
+		if f.Ready.Ready() {
+			add(rcFunnel, "Reconnect with Tailscale", "")
+		}
+		add(rcFunnelCheck, "Check Tailscale again", "")
+	}
+	add(rcFunnelStop, "Stop Tailscale connection", "The address stops reaching this computer")
+}
+
+func (d *Remote) runFunnel(id string) Action {
+	f := d.funnel()
+	switch id {
+	case rcFunnel:
+		if f.On {
+			return ActionRemoteFunnel{}
+		}
+		d.ask(d.com.Text("Publish Atlas' phone panel at your Tailscale address on the internet? Only phones you pair and approve here can use it. A VPS connection that is on is turned off on this computer; its server is not changed."), func() Action { return ActionRemoteFunnel{} })
+	case rcFunnelStop:
+		return ActionRemoteFunnelStop{}
+	case rcFunnelPair:
+		return ActionOpenMobile{}
+	case rcFunnelCheck:
+		d.setNotice(remotecontrol.Msg("Checking Tailscale…"), true)
 		return ActionRemoteFunnelCheck{}
 	case rcFunnelInstall:
 		d.ask(d.com.Text("Download Tailscale's official Windows installer from pkgs.tailscale.com, check its published SHA-256 and its Tailscale Inc. signature, then open it? Windows asks for administrator approval. You sign in to your own Tailscale account afterwards."), func() Action {

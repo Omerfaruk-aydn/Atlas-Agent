@@ -1,3 +1,74 @@
+	ProblemMalformed      Problem = "malformed"
+	ProblemTimeout        Problem = "timeout"
+	ProblemFailed         Problem = "failed"
+)
+
+// Readiness is what "tailscale status --json" says about this computer.
+type Readiness struct {
+	Problem Problem
+	// Detail is short technical text for diagnostics; never a secret.
+	Detail  string
+	CLIPath string
+	Version string
+	Backend string
+	// AuthURL is set only for an https URL on login.tailscale.com.
+	AuthURL  string
+	Host     string
+	MagicDNS bool
+	// HTTPS and Funnel report the node capabilities. When either is
+	// missing, starting a Funnel shows Tailscale's own approval page.
+	HTTPS       bool
+	Funnel      bool
+	FunnelPorts []uint16
+	Tailnet     string
+	CheckedAt   time.Time
+}
+
+// Ready reports whether a Funnel can be started now. Missing HTTPS or
+// funnel capabilities are not blocking: the CLI then shows an approval
+// link that the user opens explicitly.
+func (r Readiness) Ready() bool { return r.Problem == ProblemNone }
+
+// NeedsApproval reports that starting will ask the user to enable HTTPS
+// certificates or Funnel for the tailnet in the browser.
+func (r Readiness) NeedsApproval() bool { return r.Ready() && (!r.HTTPS || !r.Funnel) }
+
+// statusJSON lists only the fields Atlas reads from ipnstate.Status. The
+// CLI warns that the format may change, so unknown fields are ignored and
+// required ones are checked explicitly.
+type statusJSON struct {
+	Version        string
+	BackendState   string
+	AuthURL        string
+	Self           *peerJSON
+	CurrentTailnet *struct {
+		Name            string
+		MagicDNSSuffix  string
+		MagicDNSEnabled bool
+	}
+	CertDomains []string
+}
+
+type peerJSON struct {
+	DNSName      string
+	Online       bool
+	CapMap       map[string]json.RawMessage
+	Capabilities []string
+}
+
+func (p *peerJSON) hasCap(name string) bool {
+	if _, ok := p.CapMap[name]; ok {
+		return true
+	}
+	return slices.Contains(p.Capabilities, name)
+}
+
+// Inspect reads the local Tailscale state. It runs only read-only
+// commands and changes nothing.
+func Inspect(ctx context.Context, cli Exec, service func() ServiceState) Readiness {
+	r := Readiness{CheckedAt: time.Now()}
+	path, err := cli.Path()
+	if err != nil {
 		r.Problem = ProblemNotInstalled
 		return r
 	}

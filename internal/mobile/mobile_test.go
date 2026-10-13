@@ -35,6 +35,11 @@ type fakeBackend struct {
 	controls  []string
 	revision  string
 	paused    bool
+	// Handed-off browser/desktop control, as interaction.State reports it.
+	interPaused   bool
+	interCanceled bool
+	interReason   string
+	prompts       []string
 }
 
 func (f *fakeBackend) ListSessions(context.Context) ([]session.Session, error) {
@@ -54,7 +59,10 @@ func (f *fakeBackend) ListMessages(context.Context, string) ([]message.Message, 
 	return []message.Message{m}, nil
 }
 
-func (f *fakeBackend) AgentRun(context.Context, string, string, ...message.Attachment) error {
+func (f *fakeBackend) AgentRun(_ context.Context, _ string, prompt string, _ ...message.Attachment) error {
+	f.mu.Lock()
+	f.prompts = append(f.prompts, prompt)
+	f.mu.Unlock()
 	f.runs.Add(1)
 	return nil
 }
@@ -91,7 +99,9 @@ func (f *fakeBackend) QuestionCancelRequest(id string) bool { return f.QuestionA
 func (f *fakeBackend) WorkflowSnapshot(context.Context, string) (engineering.WorkflowSnapshot, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return engineering.WorkflowSnapshot{Revision: f.revision, Paused: f.paused}, nil
+	snap := engineering.WorkflowSnapshot{SessionID: "s1", Revision: f.revision, Paused: f.paused}
+	snap.Interactions.Paused, snap.Interactions.Canceled, snap.Interactions.Reason = f.interPaused, f.interCanceled, f.interReason
+	return snap, nil
 }
 
 func (f *fakeBackend) WorkflowControl(_ context.Context, _ string, c engineering.WorkflowControl) error {
@@ -101,7 +111,11 @@ func (f *fakeBackend) WorkflowControl(_ context.Context, _ string, c engineering
 		return fmt.Errorf("revision changed")
 	}
 	f.controls = append(f.controls, c.Action)
-	f.paused = c.Action == "pause" || c.Action == "stop"
+	if c.Action == "interaction_resume" {
+		f.interPaused, f.interCanceled, f.interReason = false, false, ""
+	} else {
+		f.paused = c.Action == "pause" || c.Action == "stop"
+	}
 	f.revision += "+"
 	return nil
 }

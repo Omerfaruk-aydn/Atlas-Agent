@@ -1,3 +1,33 @@
+package mobile
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"image"
+	"image/png"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
+	"github.com/stretchr/testify/require"
+)
+
+type imageBackend struct {
+	*fakeBackend
+	media message.Message
+}
+
+func (b *imageBackend) ListMessages(context.Context, string) ([]message.Message, error) {
+	return []message.Message{b.media}, nil
+}
+
+func TestChatImagesServeStoredMediaWithoutExposingPaths(t *testing.T) {
+	g, backend := newGateway(t)
+	var pngData bytes.Buffer
+	require.NoError(t, png.Encode(&pngData, image.NewRGBA(image.Rect(0, 0, 2, 2))))
+	m := message.Message{ID: "picture", SessionID: "s1", Role: message.Tool, Parts: []message.ContentPart{
+		message.ToolResult{MIMEType: "image/png", Data: base64.StdEncoding.EncodeToString(pngData.Bytes())},
 	}}
 	g.opts.Backend = &imageBackend{fakeBackend: backend, media: m}
 	phone := newPhone(t, g)

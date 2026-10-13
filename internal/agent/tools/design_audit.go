@@ -1,3 +1,74 @@
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+)
+
+// DesignPrototypeStep is deliberately flat; arbitrary scripts are not steps.
+type DesignPrototypeStep struct {
+	Action   string `json:"action" enum:"click,key"`
+	Selector string `json:"selector,omitempty"`
+	Key      string `json:"key,omitempty"`
+}
+
+type designAudit struct {
+	ID               string            `json:"id"`
+	URL              string            `json:"url"`
+	Document         string            `json:"document"`
+	Width            int               `json:"width"`
+	Height           int               `json:"height"`
+	Overflow         int               `json:"overflow"`
+	SmallTargets     int               `json:"small_targets"`
+	UnnamedTargets   int               `json:"unnamed_targets"`
+	LowContrast      int               `json:"low_contrast"`
+	UnknownContrast  int               `json:"unknown_contrast"`
+	Truncated        bool              `json:"truncated"`
+	AssertionsPassed bool              `json:"assertions_passed"`
+	PrototypeSteps   int               `json:"prototype_steps"`
+	AssertionCount   int               `json:"assertion_count"`
+	SourceHashes     map[string]string `json:"source_hashes,omitempty"`
+	Screenshot       string            `json:"screenshot"`
+	ScreenshotSHA256 string            `json:"screenshot_sha256"`
+	CapturedAt       int64             `json:"captured_at"`
+	Passed           bool              `json:"passed"`
+}
+
+const designAuditScript = `(()=>{
+ const all=[...document.querySelectorAll('body *')];let overflow=0,small=0,unnamed=0,low=0,unknown=0;
+ const rgb=s=>{const m=s.match(/^rgba?\(([^)]+)\)$/);if(!m)return null;const a=m[1].split(/[, ]+/).filter(Boolean).map(Number);return a.length>=3&&a.slice(0,3).every(Number.isFinite)?a:null};
+ const luminance=c=>c.slice(0,3).map(x=>{x/=255;return x<=.04045?x/12.92:((x+.055)/1.055)**2.4}).reduce((s,x,i)=>s+x*[.2126,.7152,.0722][i],0);
+ for(const e of all.slice(0,1200)){
+  const r=e.getBoundingClientRect(),s=getComputedStyle(e);if(r.width<=0||r.height<=0||s.visibility==='hidden'||s.display==='none')continue;
+  if(r.left<-.5||r.right>innerWidth+.5)overflow++;
+  if(e.matches('button,a[href],input,select,textarea,[role="button"]')){
+   const hit=e.closest('label')?.getBoundingClientRect()||r;if(hit.width<44||hit.height<44)small++;
+   if(!(e.getAttribute('aria-label')||e.getAttribute('aria-labelledby')||e.labels?.length||e.innerText?.trim()||e.getAttribute('title')||e.getAttribute('alt')))unnamed++;
+  }
+  if(![...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim()))continue;
+  const fg=rgb(s.color);let bg=null,node=e,uncertain=Number(s.opacity)<1;
+  while(node){const style=getComputedStyle(node),c=rgb(style.backgroundColor);if(style.backgroundImage!=='none')uncertain=true;if(c&&c[3]!==0){if(c[3]===undefined||c[3]===1){bg=c;break}uncertain=true}node=node.parentElement}
+  if(!fg||!bg||(fg[3]!==undefined&&fg[3]<1)||uncertain){unknown++;continue}
+  const a=luminance(fg),b=luminance(bg),ratio=(Math.max(a,b)+.05)/(Math.min(a,b)+.05),size=parseFloat(s.fontSize),large=size>=24||(size>=18.66&&Number(s.fontWeight)>=700);if(ratio<(large?3:4.5))low++;
+ }
+ return {url:location.href,document:String(performance.timeOrigin),width:innerWidth,height:innerHeight,overflow:overflow,small_targets:small,unnamed_targets:unnamed,low_contrast:low,unknown_contrast:unknown,truncated:all.length>1200};
+})()`
+
+func auditDesign(ctx context.Context, root string, p DesignSystemParams, call fantasy.ToolCall, deps DesignServices) (fantasy.ToolResponse, error) {
+	fail := designFailure
+	if p.URL == "" || len(p.PrototypeSteps) > 16 || len(p.Assertions) > 16 {
+		return fail(fmt.Errorf("audit needs an actual URL and at most 16 steps/assertions"))
+	}
+	if p.Width == 0 {
+		p.Width = 390
+	}
+	if p.Height == 0 {
+		p.Height = 844
+	}
+	if p.Width < 240 || p.Width > 3840 || p.Height < 240 || p.Height > 2160 {
+		return fail(fmt.Errorf("invalid audit viewport"))
+	}
+	for i, step := range p.PrototypeSteps {
+		if step.Action != "click" && step.Action != "key" || step.Action == "click" && step.Selector == "" || step.Action == "key" && step.Key == "" {
+			return fail(fmt.Errorf("invalid prototype step %d", i))
 		}
 	}
 	for _, a := range p.Assertions {

@@ -1,3 +1,73 @@
+	pp, poll, err := g.Auth.Redeem(u[strings.Index(u, "=")+1:], "Pixel", "test", "127.0.0.1")
+	require.NoError(t, err)
+	_, err = g.Auth.Decide(pp.ID, true)
+	require.NoError(t, err)
+	require.ErrorIs(t, g.Auth.Cancel(pp.ID, poll), ErrNotPending)
+	state, _, _, err := g.Auth.Poll(pp.ID, poll)
+	require.NoError(t, err)
+	require.Equal(t, "accepted", state)
+}
+
+func TestPairedPhoneSeesComputerAndTaskSteps(t *testing.T) {
+	t.Parallel()
+	g, _ := newGateway(t)
+	p := newPhone(t, g)
+	require.Equal(t, "accepted", p.pair(true))
+	_, out := p.do("GET", "/api/me", nil, nil)
+	computer, ok := out["computer"].(map[string]any)
+	require.True(t, ok, out)
+	require.NotEmpty(t, computer["os"])
+	device := out["device"].(map[string]any)
+	require.NotZero(t, device["paired_at"])
+}
+
+func TestTruncateUTF8KeepsWholeRunes(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "kısa", truncateUTF8("kısa", 10))
+	s := truncateUTF8(strings.Repeat("ğ", 10), 5)
+	require.True(t, utf8.ValidString(s))
+	require.Equal(t, "ğğ…", s)
+}
+
+func TestTodoViewsCarryRealStepsWithinLimits(t *testing.T) {
+	t.Parallel()
+	s := session.Session{ID: "s1", Todos: []session.Todo{
+		{Content: "Read the code", ActiveForm: "Reading the code", Status: session.TodoStatusCompleted},
+		{Content: strings.Repeat("x", 1000), ActiveForm: "Writing", Status: session.TodoStatusInProgress},
+	}}
+	out := todoViews(s)
+	require.Len(t, out, 2)
+	require.Equal(t, "Read the code", out[0]["content"])
+	require.Equal(t, string(session.TodoStatusCompleted), out[0]["status"])
+	require.LessOrEqual(t, len(out[1]["content"]), maxTodoBytes+len("…"))
+	require.Empty(t, todoViews(session.Session{}))
+}
+
+func TestToolCallViewsExposeOnlyNameAndPath(t *testing.T) {
+	t.Parallel()
+	m := message.Message{ID: "m1", SessionID: "s1", Role: message.Assistant}
+	m.AddToolCall(message.ToolCall{ID: "a", Name: "edit", Input: `{"file_path":"internal/x.go","old_string":"secret body"}`, Finished: true})
+	m.AddToolCall(message.ToolCall{ID: "b", Name: "bash", Input: `{"command":"go test ./..."}`})
+	out := toolCallViews(m)
+	require.Len(t, out, 2)
+	require.Equal(t, map[string]any{"name": "edit", "finished": true, "path": "internal/x.go"}, out[0])
+	require.Equal(t, map[string]any{"name": "bash", "finished": false}, out[1], "tool input other than a path stays on the computer")
+}
+
+func TestPermissionDetailsShowWhatReallyChanges(t *testing.T) {
+	t.Parallel()
+	edit := permission.PermissionRequest{SessionID: "s1", ToolName: "edit", Path: "D:/p", Params: map[string]any{
+		"file_path":   "D:/p/app.css",
+		"old_content": "a {\n  padding: 6px;\n}\n",
+		"new_content": "a {\n  padding: 8px 16px;\n}\n",
+	}}
+	v := map[string]any{}
+	permissionDetails(edit, v)
+	require.Equal(t, "D:/p/app.css", v["file_path"])
+	require.Contains(t, v["diff"], "+  padding: 8px 16px;")
+	require.Contains(t, v["diff"], "-  padding: 6px;")
+	require.Equal(t, 1, v["additions"])
+	require.Equal(t, 1, v["removals"])
 	require.NotContains(t, v, "command")
 
 	// A tool that supplies no content gets no invented diff.

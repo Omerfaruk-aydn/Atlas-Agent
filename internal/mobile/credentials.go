@@ -1,3 +1,63 @@
+package mobile
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strings"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
+)
+
+// resumeCommand is the only slash command the phone composer routes to a
+// control action. Everything else is an ordinary message to the agent.
+const resumeCommand = "/resume-use"
+
+// credentialView is what the phone sees about a credential card. It never
+// carries the secret or the bound page target.
+func credentialView(r vault.CredentialRequest) map[string]any {
+	return map[string]any{
+		"id": r.ID, "session_id": r.SessionID, "service": r.Service, "origin": r.Origin,
+		"account": r.Account, "state": string(r.State), "expires": r.ExpiresAt.UnixMilli(),
+		"can_persist": r.Account != "" && strings.HasPrefix(r.Origin, "https://"),
+	}
+}
+
+// interactionView reports a handed-off browser/desktop control without the
+// workflow internals.
+func interactionView(snap engineering.WorkflowSnapshot) map[string]any {
+	return map[string]any{"paused": snap.Interactions.Paused, "reason": vault.Redact(snap.SessionID, snap.Interactions.Reason), "canceled": snap.Interactions.Canceled}
+}
+
+// handleCredential receives a secret typed into a credential card, or the
+// user's cancellation. The value goes straight into the in-memory store
+// bound to the task, origin and this device. It is never echoed, logged or
+// written to the conversation.
+func (g *Gateway) handleCredential(w http.ResponseWriter, r *http.Request) {
+	d := device(r)
+	id := r.PathValue("id")
+	if g.rateLimited("cred:"+d.ID, 12) {
+		apiError(w, http.StatusTooManyRequests, "rate_limited", "too many credential attempts; wait a moment")
+		return
+	}
+	var req struct {
+		SessionID string `json:"session_id"`
+		Secret    string `json:"secret"`
+		Persist   bool   `json:"persist"`
+		Cancel    bool   `json:"cancel"`
+	}
+	if !strictJSON(w, r, &req) {
+		return
+	}
+	secret := []byte(req.Secret)
+	req.Secret = ""
+	defer clear(secret)
+	g.idempotent(w, r, d, func() (int, any) {
+		if req.Cancel {
+			view, err := vault.Ephemeral.Cancel(id, req.SessionID)
+			if err != nil {
 				return http.StatusConflict, map[string]any{"error": map[string]string{"code": "stale_request", "message": "this credential card is no longer open"}}
 			}
 			g.ring.add("credential_resolved", view.SessionID, map[string]any{"id": id, "state": string(view.State), "by": d.Name})

@@ -1,0 +1,11 @@
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/api/events", nil)
+	resp, err := p.client.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	line, err := bufio.NewReader(resp.Body).ReadString('\n')
+	require.NoError(t, err, "the first bytes must not wait for an event or keepalive")
+	require.True(t, strings.HasPrefix(line, ":"), line)
+}

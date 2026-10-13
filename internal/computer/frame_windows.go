@@ -1,3 +1,56 @@
+//go:build windows
+
+package computer
+
+import (
+	"fmt"
+	"image"
+	"runtime"
+	"time"
+	"unsafe"
+)
+
+var (
+	procStretchBlt        = modGdi32.NewProc("StretchBlt")
+	procSetStretchBltMode = modGdi32.NewProc("SetStretchBltMode")
+	procSetBrushOrgEx     = modGdi32.NewProc("SetBrushOrgEx")
+)
+
+const halftone = 4
+
+// CaptureFrame copies the virtual desktop straight into a downscaled DIB
+// with GDI's halftone filter. Unlike Screenshot it does not encode PNG and
+// does not hide the activity overlay, so a live viewer sees what the user
+// would see and never disturbs the agent's own observations. The desktop
+// size is read on every call, so monitor, resolution and orientation
+// changes apply to the next frame.
+func CaptureFrame(maxWidth int) (Frame, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	x := getSystemMetrics(smXVirtualScreen)
+	y := getSystemMetrics(smYVirtualScreen)
+	w := getSystemMetrics(smCXVirtualScreen)
+	h := getSystemMetrics(smCYVirtualScreen)
+	if w <= 0 || h <= 0 {
+		return Frame{}, fmt.Errorf("computer-use: unexpected screen size %dx%d", w, h)
+	}
+	ow, oh := FrameScale(w, h, maxWidth)
+	screenDC, _, _ := procGetDC.Call(0)
+	if screenDC == 0 {
+		return Frame{}, fmt.Errorf("computer-use: GetDC failed")
+	}
+	defer procReleaseDC.Call(0, screenDC)
+	memDC, _, _ := procCreateCompatibleDC.Call(screenDC)
+	if memDC == 0 {
+		return Frame{}, fmt.Errorf("computer-use: CreateCompatibleDC failed")
+	}
+	defer procDeleteDC.Call(memDC)
+	info := bitmapInfo{Header: dibHeader(ow, oh)}
+	var bits unsafe.Pointer
+	bitmap, _, callErr := procCreateDIBSection.Call(screenDC, uintptr(unsafe.Pointer(&info)), 0, uintptr(unsafe.Pointer(&bits)), 0, 0)
+	if bitmap == 0 || bits == nil {
+		return Frame{}, fmt.Errorf("computer-use: CreateDIBSection failed: %v", callErr)
+	}
 	defer procDeleteObject.Call(bitmap)
 	err := withCaptureBitmap(func() (uintptr, error) {
 		old, _, callErr := procSelectObject.Call(memDC, bitmap)

@@ -1,3 +1,74 @@
+// Cancel withdraws a request that has not been used.
+func (c *Credentials) Cancel(id, sessionID string) (CredentialRequest, error) {
+	c.mu.Lock()
+	events := c.sweepLocked()
+	e, ok := c.entries[id]
+	if !ok || e.req.SessionID != sessionID {
+		c.mu.Unlock()
+		c.emit(events)
+		return CredentialRequest{}, ErrCredentialUnknown
+	}
+	if e.req.State != CredentialPending && e.req.State != CredentialProvided {
+		view := e.req
+		c.mu.Unlock()
+		c.emit(events)
+		return view, nil
+	}
+	events = append(events, c.finishLocked(e, CredentialCanceled))
+	view := e.req
+	c.mu.Unlock()
+	c.emit(events)
+	return view, nil
+}
+
+// Wait blocks until the request leaves the pending state, expires or ctx
+// ends. It returns the final non-secret view.
+func (c *Credentials) Wait(ctx context.Context, id string) (CredentialRequest, error) {
+	for {
+		c.mu.Lock()
+		events := c.sweepLocked()
+		e, ok := c.entries[id]
+		if !ok {
+			c.mu.Unlock()
+			c.emit(events)
+			return CredentialRequest{}, ErrCredentialUnknown
+		}
+		view, changed, deadline := e.req, e.changed, e.req.ExpiresAt
+		c.mu.Unlock()
+		c.emit(events)
+		if view.State != CredentialPending {
+			return view, nil
+		}
+		timer := time.NewTimer(max(time.Until(deadline), 10*time.Millisecond))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return view, ctx.Err()
+		case <-changed:
+		case <-timer.C:
+		}
+		timer.Stop()
+	}
+}
+
+// Use dispatches the secret once. The handle is marked consumed before
+// fill runs, so a timeout or retry after dispatch can never send it twice.
+// fill reports whether anything reached the page: a refusal before
+// dispatch (stale target) returns the handle to the provided state.
+func (c *Credentials) Use(id, sessionID, origin, account string, fill func(secret string) (dispatched bool, err error)) (CredentialRequest, error) {
+	normalized, err := CredentialOrigin(origin)
+	if err != nil {
+		return CredentialRequest{}, ErrCredentialScope
+	}
+	c.mu.Lock()
+	events := c.sweepLocked()
+	e, ok := c.entries[id]
+	var fail error
+	switch {
+	case !ok:
+		fail = ErrCredentialUnknown
+	case e.req.SessionID != sessionID || e.req.Origin != normalized || (account != "" && !strings.EqualFold(account, e.req.Account)):
+		fail = ErrCredentialScope
 	case e.req.State == CredentialExpired:
 		fail = ErrCredentialExpired
 	case e.req.State == CredentialCanceled:

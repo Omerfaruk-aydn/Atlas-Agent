@@ -1,3 +1,74 @@
+  assert.equal(await page.locator("#model-name").innerText(), "claude-haiku-4-5");
+  assert.ok(await page.locator("#send").isDisabled(), "nothing to send yet");
+  await page.locator("#attach").setInputFiles({ name: "notlar.txt", mimeType: "text/plain", buffer: Buffer.from("merhaba") });
+  await page.waitForFunction(() => document.getElementById("attach-state").textContent.includes("KB"));
+  assert.equal(await page.locator("#attach-name").innerText(), "notlar.txt");
+  await page.locator("#attach-remove").click();
+  assert.ok(await page.locator("#attach-chip").isHidden());
+  await page.locator("#attach").setInputFiles({ name: "ekran.txt", mimeType: "text/plain", buffer: Buffer.from("ikinci") });
+  await page.waitForFunction(() => document.getElementById("attach-state").textContent.includes("KB"));
+  await page.locator("#prompt").fill("Bu dosyaya bak");
+  await page.locator("#send").click();
+  await page.waitForFunction(() => document.getElementById("composer-note").textContent === "Gönderildi");
+  const prompts = state.posts.filter((p) => p.path.endsWith("/prompt"));
+  assert.equal(prompts.length, 1);
+  assert.deepEqual(prompts[0].body, { text: "Bu dosyaya bak", attachment_ids: ["up-2"] });
+  assert.equal(await page.locator("#prompt").inputValue(), "");
+  assert.ok(await page.locator("#attach-chip").isHidden());
+});
+
+test("streamed messages append once; a reader scrolled up is not pulled down", async (t) => {
+  const { page, url } = await fixture(t);
+  await page.goto(url);
+  await page.locator('.task-row[data-id="s1"]').click();
+  await page.locator("#messages .msg").first().waitFor();
+  await page.waitForFunction(() => window.testStreams.length > 0 && window.testStreams.at(-1).readyState === 1);
+  const long = Array.from({ length: 40 }, (_, i) => "Satır " + (i + 1)).join("\n");
+  const at = Math.floor(Date.now() / 1000);
+  await stream(page, (a) => window.emit("update", { seq: 5, type: "message", session_id: "s1", data: { id: "m9", role: "assistant", text: a.long, tools: [], tool_calls: [], created_at: a.at } }), { long, at });
+  await page.waitForFunction(() => document.querySelector('#messages [data-id="m9"]'));
+  await page.locator("#scroll").evaluate((n) => { n.scrollTop = 0; });
+  await stream(page, (a) => window.emit("update", { seq: 6, type: "message", session_id: "s1", data: { id: "m10", role: "assistant", text: "Yeni gelen", tools: [], tool_calls: [], created_at: a.at } }), { at });
+  await page.locator("#new-msgs").waitFor();
+  assert.equal(await page.locator("#scroll").evaluate((n) => n.scrollTop), 0, "position is kept");
+  // A replayed event (same or older sequence) must not duplicate anything.
+  await stream(page, (a) => window.emit("update", { seq: 6, type: "message", session_id: "s1", data: { id: "m11", role: "assistant", text: "Tekrar", tools: [], tool_calls: [], created_at: a.at } }), { at });
+  assert.equal(await page.locator('#messages [data-id="m11"]').count(), 0);
+  await page.locator("#new-msgs").click();
+  assert.ok(await page.locator("#new-msgs").isHidden());
+});
+
+test("stop asks once and sends the real control with the current revision", async (t) => {
+  const { page, state, url } = await fixture(t);
+  await page.goto(url);
+  await page.locator('.task-row[data-id="s1"]').click();
+  await page.locator("#stop-btn").waitFor();
+  page.once("dialog", (d) => d.accept());
+  await page.locator("#stop-btn").click();
+  while (!state.posts.some((p) => p.path.endsWith("/control"))) await new Promise((r) => setTimeout(r, 50));
+  const controls = state.posts.filter((p) => p.path.endsWith("/control"));
+  assert.equal(controls.length, 1);
+  assert.deepEqual(controls[0].body, { action: "stop", revision: "r1" });
+});
+
+test("hostile text, long paths, big code blocks and empty chats render safely", async (t) => {
+  const evil = "<img src=x onerror=\"window.pwned=1\"> [tıkla](javascript:alert(1)) " + "C:/Users/" + "çok-uzun-klasör-adı/".repeat(12) + "dosya.go\n```\n" + "x".repeat(400) + "\n" + "satır\n".repeat(80) + "```";
+  const { page, url } = await fixture(t, { viewport: { width: 360, height: 800 }, setup: (s) => {
+    s.details.s1.messages.push({ id: "evil", role: "assistant", text: evil, tools: [], tool_calls: [{ name: "edit", path: "C:/" + "derin/".repeat(30) + "a.go", finished: false }], created_at: Math.floor(Date.now() / 1000) });
+    s.details.s1.session.title = "Çok uzun bir Türkçe başlık: kullanıcı arayüzündeki düzenlemelerin ayrıntılı gözden geçirilmesi";
+  } });
+  await page.goto(url);
+  await page.locator('.task-row[data-id="s1"]').click();
+  await page.locator('#messages [data-id="evil"]').waitFor();
+  assert.equal(await page.locator("#messages img").count(), 0);
+  assert.equal(await page.evaluate(() => window.pwned), undefined);
+  assert.equal(await page.locator('#messages a[href^="javascript"]').count(), 0);
+  assert.ok(await noOverflow(page));
+  const pre = await page.locator('#messages [data-id="evil"] pre').evaluate((n) => ({ sw: n.scrollWidth, cw: n.clientWidth }));
+  assert.ok(pre.sw > pre.cw, "the code block scrolls inside its own box");
+  await page.locator("#back").click();
+  await page.locator('.task-row[data-id="s5"]').click();
+  await page.locator("#view-task").waitFor();
   assert.equal(await page.locator("#messages .msg").count(), 0);
   assert.ok(await noOverflow(page));
 });

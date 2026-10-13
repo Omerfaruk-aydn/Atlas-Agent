@@ -1,3 +1,74 @@
+	case e.req.State == CredentialExpired:
+		fail = ErrCredentialExpired
+	case e.req.State == CredentialCanceled:
+		fail = ErrCredentialCanceled
+	case e.req.State == CredentialConsumed:
+		fail = ErrCredentialUsed
+	case e.req.State == CredentialPending:
+		fail = ErrCredentialNotReady
+	}
+	if fail != nil {
+		c.mu.Unlock()
+		c.emit(events)
+		return CredentialRequest{}, fail
+	}
+	secret := string(e.secret)
+	e.req.State = CredentialConsumed
+	c.mu.Unlock()
+	c.emit(events)
+
+	dispatched, fillErr := fill(secret)
+	c.mu.Lock()
+	if !dispatched && fillErr != nil && e.req.State == CredentialConsumed && c.now().Before(e.req.ExpiresAt) {
+		// Nothing reached the page; the user's authorization still stands.
+		e.req.State = CredentialProvided
+		view := e.req
+		c.mu.Unlock()
+		return view, fillErr
+	}
+	event := c.finishLocked(e, CredentialConsumed)
+	view := e.req
+	c.mu.Unlock()
+	c.emit([]CredentialEvent{event})
+	return view, fillErr
+}
+
+// Target returns the bound target of an unconsumed request of a session.
+func (c *Credentials) Target(id, sessionID string) (CredentialTarget, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	e, ok := c.entries[id]
+	if !ok || e.req.SessionID != sessionID {
+		return CredentialTarget{}, false
+	}
+	return e.req.Target, true
+}
+
+// PurgeSession ends every open credential of a session, for task
+// cancellation or session deletion.
+func (c *Credentials) PurgeSession(sessionID string) int {
+	c.purgeChat(sessionID)
+	return c.purge(func(r CredentialRequest) bool { return r.SessionID == sessionID })
+}
+
+// PurgeDevice ends every open credential supplied by a revoked device.
+func (c *Credentials) PurgeDevice(deviceID string) int {
+	if deviceID == "" {
+		return 0
+	}
+	return c.purge(func(r CredentialRequest) bool { return r.ProvidedBy == deviceID })
+}
+
+// PurgeAll ends every open credential, for shutdown.
+func (c *Credentials) PurgeAll() int {
+	c.purgeChat("")
+	return c.purge(func(CredentialRequest) bool { return true })
+}
+
+func (c *Credentials) purge(match func(CredentialRequest) bool) int {
+	c.mu.Lock()
+	var events []CredentialEvent
+	for _, e := range c.entries {
 		if (e.req.State == CredentialPending || e.req.State == CredentialProvided) && match(e.req) {
 			events = append(events, c.finishLocked(e, CredentialCanceled))
 		}

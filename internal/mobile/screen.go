@@ -1,3 +1,74 @@
+				state, msg = "frame_too_large", "a frame exceeded the size limit and was skipped"
+			}
+		}
+		inflight = make(chan encodeResult, 1)
+		go h.encode(img, captured, quality, viewers, inflight)
+		now := time.Now()
+		window = append(window, now)
+		for len(window) > 0 && now.Sub(window[0]) > time.Second {
+			window = window[1:]
+		}
+		captureAvg = ewma(captureAvg, float64(captureDur.Microseconds())/1000)
+		work := max(captureAvg, encodeAvg)
+		budget := float64(screenInterval.Microseconds()) / 1000
+		switch {
+		case work > budget*0.95:
+			slowRun, fastRun = slowRun+1, 0
+		case work < budget*0.5:
+			fastRun, slowRun = fastRun+1, 0
+		default:
+			slowRun, fastRun = 0, 0
+		}
+		if slowRun >= 24 && tier < len(screenWidths)-1 {
+			tier++
+			slowRun = 0
+			changed = "resolution lowered: capture and encoding could not keep up"
+		} else if fastRun >= 96 && tier > 0 {
+			tier--
+			fastRun = 0
+			changed = "resolution raised: capture has headroom"
+		}
+		b := img.Bounds()
+		h.mu.Lock()
+		h.stats = screenStats{State: state, Message: msg, CaptureFPS: float64(len(window)), CaptureMS: round1(captureAvg), EncodeMS: round1(encodeAvg), FrameBytes: frameBytes, Width: b.Dx(), Height: b.Dy(), ScreenW: sw, ScreenH: sh, Quality: quality, Missed: missed, Target: screenTargetFPS}
+		st := h.stats
+		h.mu.Unlock()
+		if changed != "" || now.Sub(lastStatus) >= time.Second {
+			st.Changed = changed
+			st.Viewers = len(viewers)
+			h.status(st, viewers)
+			lastStatus = now
+		}
+		next = next.Add(screenInterval)
+		if behind := time.Since(next); behind > 0 {
+			missed += uint64(behind / screenInterval)
+			next = time.Now()
+		}
+		if !sleepUntil(h, next) {
+			return
+		}
+	}
+}
+
+// sleepUntil waits for t unless the hub closes.
+// encodeResult reports one finished encode back to the capture loop.
+type encodeResult struct {
+	dur     time.Duration
+	size    int
+	quality int
+	changed string
+	tooBig  bool
+}
+
+// encode compresses one captured frame and offers it to the viewers it was
+// captured for. Sequence numbers are taken here, so frames keep their
+// capture order: only one encode runs at a time.
+func (h *screenHub) encode(img *image.RGBA, captured time.Time, quality int, viewers []*screenViewer, out chan<- encodeResult) {
+	start := time.Now()
+	r := encodeResult{quality: quality}
+	var buf bytes.Buffer
+	_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: quality})
+	if buf.Len() > screenMaxFrame && quality > 35 {
 		r.quality -= 10
 		buf.Reset()
 		_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: r.quality})

@@ -1,3 +1,56 @@
+package captcha
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestEvalMath(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in   string
+		want float64
+	}{
+		{"1+2", 3},
+		{"10-4", 6},
+		{"3*4", 12},
+		{"12/4", 3},
+		{"2+3*4", 14},
+		{"(2+3)*4", 20},
+		{"-5+8", 3},
+		{"3 + 4 = ?", 7},
+		{"10/2*3", 15},
+	}
+	for _, c := range cases {
+		got, err := EvalMath(NormalizeMath(c.in))
+		require.NoError(t, err, c.in)
+		require.InDelta(t, c.want, got, 1e-9, c.in)
+	}
+}
+
+func TestEvalMathRejectsGarbage(t *testing.T) {
+	t.Parallel()
+	for _, in := range []string{"", "abc", "1++", "(1+2", "1/0"} {
+		_, err := EvalMath(NormalizeMath(in))
+		require.Error(t, err, in)
+	}
+}
+
+func TestMathSolver(t *testing.T) {
+	t.Parallel()
+	s := MathSolver{}
+	require.True(t, s.Supports(KindMath))
+	require.True(t, s.Supports(KindImageText))
+	require.False(t, s.Supports(KindRecaptchaV2))
+
+	sol, err := s.Solve(context.Background(), Challenge{Kind: KindMath, Question: "7 + 5"}, nil)
+	require.NoError(t, err)
+	require.Equal(t, "12", sol.Text)
+}
 
 func TestNormalizeAnswer(t *testing.T) {
 	t.Parallel()

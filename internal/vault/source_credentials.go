@@ -1,3 +1,9 @@
+package vault
+
+import (
+	"strings"
+	"time"
+)
 
 // SupplyFromSource stages a credential read by a trusted tool after that
 // tool checked the human's source-to-destination instruction. sourceKey is

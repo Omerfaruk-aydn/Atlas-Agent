@@ -1,3 +1,74 @@
+  const name = (e.getAttribute("name") || "").toLowerCase();
+  return id.includes("captcha") || name.includes("captcha") || id.includes("guvenlik") || name.includes("guvenlik") ||
+    id.includes("code") || name.includes("code") || id.includes("verify") || name.includes("verify") ||
+    id.includes("security") || name.includes("security") || id.includes("resim") || name.includes("resim");
+});
+// Pass 2: an empty text input near the challenge image (within 200px
+// vertically), excluding login fields.
+let answerNear = null;
+if (!answerInput && captchaImg) {
+  const imgRect = captchaImg.e.getBoundingClientRect();
+  answerNear = allInputs.find(e => {
+    if (e.type !== "text" && e.type !== "") return false;
+    if (excludeInput(e)) return false;
+    if (e.value && e.value.length > 0) return false;
+    const r = e.getBoundingClientRect();
+    const dy = Math.abs(r.top - imgRect.bottom);
+    return dy < 200 && r.width > 30 && r.width < 300;
+  });
+}
+// Pass 3: any empty short text input on the page (last resort), still
+// excluding login fields.
+const answerFallback = !answerInput && !answerNear ? allInputs.find(e => {
+  if (e.type !== "text" && e.type !== "") return false;
+  if (excludeInput(e)) return false;
+  return !e.value || e.value.length === 0;
+}) : null;
+const finalAnswer = answerInput || answerNear || answerFallback;
+
+const verifyBtn = [...document.querySelectorAll('button, input[type="submit"], input[type="button"], a[role="button"]')].filter(vis).find(b => {
+  const t = ((b.innerText || b.value || "") + " " + (b.getAttribute("aria-label") || "")).toLowerCase().trim();
+  return t.includes("giriş") || t.includes("giris") || t.includes("login") || t.includes("sign in") ||
+    t.includes("doğrula") || t.includes("verify") || t.includes("onayla") || t.includes("confirm") ||
+    t.includes("kontrol") || t.includes("check") || t.includes("submit") || t.includes("gönder") || t.includes("devam");
+});
+
+if (captchaImg || (questionWord && finalAnswer)) {
+  const isMath = !!mathWord && !captchaImg;
+  out.kind = isMath ? "math" : "image_text";
+  out.image_selector = captchaImg ? sel(captchaImg.e) : "";
+  out.answer_selector = finalAnswer ? sel(finalAnswer) : "";
+  out.verify_selector = verifyBtn ? sel(verifyBtn) : "";
+  out.confidence = captchaImg && finalAnswer ? 0.95 : captchaImg || finalAnswer ? 0.75 : 0.6;
+  out.rect = captchaImg ? rect(captchaImg.e) : (finalAnswer ? rect(finalAnswer) : null);
+  if (isMath) {
+    const m = lower.match(/(\d+\s*[+\-x×÷*/]\s*\d+(?:\s*[+\-x×÷*/]\s*\d+)*)/);
+    if (m) out.question = m[1];
+  }
+  if (!out.question && captchaImg) out.question = (captchaImg.alt || captchaImg.e.getAttribute("title") || "security image");
+  return out;
+}
+
+if (questionWord && !finalAnswer) {
+  out.kind = "image_text";
+  out.question = "captcha widget detected without a clear answer field";
+  out.confidence = 0.5;
+  return out;
+}
+
+if (has("i'm not a robot", "ben robot değilim", "ben robot degilim")) {
+  out.kind = "checkbox";
+  out.confidence = 0.6;
+}
+return out;
+})()`
+
+// Detected is the decoded DetectScript result plus the raw page URL when
+// the script did not run.
+type Detected struct {
+	Kind           Kind     `json:"kind"`
+	SiteKey        string   `json:"site_key"`
+	Action         string   `json:"action"`
 	Question       string   `json:"question"`
 	ImageSelector  string   `json:"image_selector"`
 	AnswerSelector string   `json:"answer_selector"`

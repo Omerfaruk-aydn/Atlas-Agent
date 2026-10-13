@@ -1,3 +1,73 @@
+	}
+}
+
+func TestCredentialRefusedBeforeDispatchStaysUsable(t *testing.T) {
+	t.Parallel()
+	c, _, _ := newTestCredentials(t)
+	req, _, err := c.Request(spec("s1"))
+	require.NoError(t, err)
+	_, err = c.Provide(req.ID, "s1", "phone-1", []byte(syntheticSecret), false)
+	require.NoError(t, err)
+	view, err := c.Use(req.ID, "s1", "https://login.example.test", "", func(string) (bool, error) { return false, errors.New("target_stale") })
+	require.Error(t, err)
+	require.Equal(t, CredentialProvided, view.State)
+	// A new document requires a new human authorization, not silent rebinding.
+	again, reused, err := c.Request(CredentialSpec{SessionID: "s1", Origin: "https://login.example.test", Account: "user@example.test", Target: CredentialTarget{TabID: "tab-1", Document: "doc-2", Selector: "#pw"}})
+	require.NoError(t, err)
+	require.False(t, reused)
+	require.NotEqual(t, req.ID, again.ID)
+	old, _ := c.Get(req.ID)
+	require.Equal(t, CredentialCanceled, old.State)
+	target, ok := c.Target(again.ID, "s1")
+	require.True(t, ok)
+	require.Equal(t, "doc-2", target.Document)
+	_, err = c.Provide(again.ID, "s1", "phone-1", []byte(syntheticSecret), false)
+	require.NoError(t, err)
+	_, err = c.Use(again.ID, "s1", "https://login.example.test", "", func(string) (bool, error) { return true, nil })
+	require.NoError(t, err)
+}
+
+func TestCredentialScopeIsBound(t *testing.T) {
+	t.Parallel()
+	c, _, _ := newTestCredentials(t)
+	req, _, err := c.Request(spec("s1"))
+	require.NoError(t, err)
+	_, err = c.Provide(req.ID, "other-session", "phone-1", []byte(syntheticSecret), false)
+	require.ErrorIs(t, err, ErrCredentialUnknown, "another task cannot answer this card")
+	_, err = c.Provide(req.ID, "s1", "phone-1", []byte(syntheticSecret), false)
+	require.NoError(t, err)
+	never := func(string) (bool, error) { t.Fatal("dispatched outside the authorized scope"); return true, nil }
+	_, err = c.Use(req.ID, "other-session", "https://login.example.test", "", never)
+	require.ErrorIs(t, err, ErrCredentialScope)
+	_, err = c.Use(req.ID, "s1", "https://evil.example.test", "", never)
+	require.ErrorIs(t, err, ErrCredentialScope)
+	_, err = c.Use(req.ID, "s1", "http://login.example.test", "", never)
+	require.ErrorIs(t, err, ErrCredentialScope)
+	_, err = c.Use(req.ID, "s1", "https://login.example.test", "someone-else@example.test", never)
+	require.ErrorIs(t, err, ErrCredentialScope)
+	_, err = c.Use("cr_unknown", "s1", "https://login.example.test", "", never)
+	require.ErrorIs(t, err, ErrCredentialUnknown)
+}
+
+func TestCredentialExpiryCancelAndPurge(t *testing.T) {
+	t.Parallel()
+	c, clock, _ := newTestCredentials(t)
+	req, _, err := c.Request(spec("s1"))
+	require.NoError(t, err)
+	clock.Add(CredentialRequestTTL + time.Second)
+	_, err = c.Provide(req.ID, "s1", "phone-1", []byte(syntheticSecret), false)
+	require.ErrorIs(t, err, ErrCredentialExpired)
+
+	req2, _, err := c.Request(spec("s1"))
+	require.NoError(t, err)
+	require.NotEqual(t, req.ID, req2.ID)
+	_, err = c.Provide(req2.ID, "s1", "phone-1", []byte(syntheticSecret), false)
+	require.NoError(t, err)
+	clock.Add(CredentialSecretTTL + time.Second)
+	_, err = c.Use(req2.ID, "s1", "https://login.example.test", "", func(string) (bool, error) { t.Fatal("expired secret used"); return true, nil })
+	require.ErrorIs(t, err, ErrCredentialExpired)
+
+	req3, _, err := c.Request(spec("s1"))
 	require.NoError(t, err)
 	view, err := c.Cancel(req3.ID, "s1")
 	require.NoError(t, err)

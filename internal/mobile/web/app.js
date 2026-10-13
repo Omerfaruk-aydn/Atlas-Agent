@@ -347,9 +347,77 @@
     state.seq = Math.max(state.seq, d.seq || 0);
     renderTaskHead(d);
     renderPending(d);
-    renderMessages(d.messages || []);
   }
 
+  // ---------- Live screen ----------
+  // Frames arrive on one authenticated fetch stream (see screen.go). The
+  // phone keeps only the newest undecoded frame, so a slow phone shows the
+  // latest picture instead of falling behind.
+  const screen = {
+    open: false, ctrl: null, conn: "idle", lastSeq: 0, rendered: [], lastRender: 0, lastStats: null,
+    zoom: 1, retries: 0, retryTimer: null, staleTimer: null, decoding: false, pending: null, message: "", gaveUp: false,
+    metrics: { frames: 0, latency: [], bytes: 0 },
+  };
+  window.__atlasScreen = screen;
+  function screenAllowed() { return !!(state.me && state.me.screen_available && state.me.device && state.me.device.previews); }
+  function openScreen() {
+    if (!screenAllowed()) { toast(t("scr_off"), true); return; }
+    screen.open = true;
+    screen.gaveUp = false;
+    screen.retries = 0;
+    screen.message = "";
+    setView("screen");
+    renderScreenChrome();
+  }
+  function closeScreen() {
+    screen.open = false;
+    exitExpanded();
+    screenDisconnect("stopped");
+    setView("chat");
+    renderScreenChrome();
+  }
+  function screenDisconnect(conn) {
+    clearTimeout(screen.retryTimer);
+    screen.retryTimer = null;
+    if (screen.ctrl) screen.ctrl.abort();
+    screen.ctrl = null;
+    screen.pending = null;
+    screen.conn = conn || "idle";
+    renderScreenChrome();
+  }
+  async function screenConnect() {
+    if (screen.ctrl || !screen.open || screen.gaveUp || document.hidden || !state.me) return;
+    clearTimeout(screen.retryTimer);
+    const ctrl = new AbortController();
+    screen.ctrl = ctrl;
+    screen.conn = "connecting";
+    // A new connection starts fresh: nothing from an older stream replays.
+    screen.lastSeq = 0;
+    screen.drawnSeq = 0;
+    screen.pending = null;
+    renderScreenChrome();
+    try {
+      const resp = await fetch("/api/screen/stream", { headers: { "X-CSRF-Token": state.csrf }, credentials: "same-origin", cache: "no-store", signal: ctrl.signal });
+      if (!resp.ok) {
+        let code = "", message = resp.statusText;
+        try { const j = await resp.json(); code = j.error.code; message = j.error.message; } catch (_) {}
+        if (resp.status === 401) { screen.open = false; screenDisconnect("stopped"); startPairing("expired"); return; }
+        if (code === "previews_off") { screen.message = t("scr_off"); screen.gaveUp = true; throw Object.assign(new Error(message), { final: true }); }
+        if (resp.status === 429) screen.message = t("scr_busy");
+        throw new Error(message);
+      }
+      const reader = resp.body.getReader();
+      let buf = new Uint8Array(0);
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (screen.ctrl !== ctrl) return;
+        buf = concatBytes(buf, value);
+        while (buf.length >= 32) {
+          const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+          if (buf[0] !== 65 || buf[1] !== 84 || buf[2] !== 83 || buf[3] !== 49) throw new Error("bad stream");
+          const len = dv.getUint32(28);
+          if (len > 4 << 20) throw new Error("frame too large");
           if (buf.length < 32 + len) break;
           const kind = buf[4];
           const seq = Number(dv.getBigUint64(8));

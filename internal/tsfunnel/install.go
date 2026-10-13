@@ -1,3 +1,74 @@
+}
+
+// InstallStep names what the installer is doing, for the UI.
+type InstallStep string
+
+// Install steps.
+const (
+	StepMetadata InstallStep = "metadata"
+	StepDownload InstallStep = "download"
+	StepVerify   InstallStep = "verify"
+	StepInstall  InstallStep = "install"
+)
+
+// Installer downloads the official Windows MSI, verifies it and runs it
+// with its normal user interface. Every check must pass before the
+// installer starts; nothing runs on a partial or mismatched download.
+type Installer struct {
+	Client  *http.Client
+	BaseURL string
+	Arch    string
+	// TempRoot is the parent of the new, empty download directory.
+	TempRoot string
+	// MaxBytes bounds the download.
+	MaxBytes int64
+	// Verify checks the Authenticode signature (Windows only).
+	Verify func(ctx context.Context, path string) (Signature, error)
+	// Run starts the installer and waits for it.
+	Run func(ctx context.Context, path string) error
+	// Step reports progress; it may be nil.
+	Step func(InstallStep)
+}
+
+var hexSHA256 = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// msiArch maps GOARCH to the MSIs key of the package index.
+func msiArch(goarch string) string {
+	switch goarch {
+	case "amd64":
+		return "amd64"
+	case "arm64":
+		return "arm64"
+	case "386":
+		return "x86"
+	}
+	return ""
+}
+
+// Install runs the whole flow. Running it again after an interruption
+// starts over in a fresh directory; earlier partial files are removed.
+func (in Installer) Install(ctx context.Context) error {
+	step := func(s InstallStep) {
+		if in.Step != nil {
+			in.Step(s)
+		}
+	}
+	if in.Verify == nil || in.Run == nil {
+		return errors.New("automatic installation is only available on Windows; use the official download page")
+	}
+	base, err := url.Parse(orString(in.BaseURL, OfficialPackages))
+	if err != nil || base.Scheme != "https" {
+		return fmt.Errorf("package index must be https")
+	}
+	client := in.Client
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Minute}
+	}
+	// Downloads may redirect to Tailscale's CDN; never to plain HTTP.
+	c := *client
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if req.URL.Scheme != "https" || len(via) > 5 {
+			return errors.New("refusing a non-https or looping redirect")
 		}
 		return nil
 	}

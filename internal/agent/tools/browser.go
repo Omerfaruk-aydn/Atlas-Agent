@@ -56,11 +56,13 @@ var browserActions = []string{
 	"navigate", "back", "forward", "click", "type", "key", "scroll", "eval",
 	"text", "html", "snapshot", "images", "console", "dialog", "cdp",
 	"screenshot", "url", "close", "export_test", "trace_start", "trace_stop",
-	"vault_list", "vault_fill",
+	"vault_list", "vault_fill", "credential_request", "login_check",
 	"find", "assert", "semantic_click", "semantic_type", "tabs", "tab_new", "tab_select", "tab_close", "frames", "network", "capture_region", "upload", "download_start", "download_wait", "handoff", "status", "trace", "auth_code",
-	browser.InputPointerMove, browser.InputPointerClick, browser.InputPointerDrag, browser.InputKeyCombo, browser.InputInsertText,
+	browser.InputPointerMove, browser.InputPointerClick, browser.InputPointerDrag, browser.InputCSSDrag, browser.InputKeyCombo, browser.InputInsertText,
 	"observe", "set_field", "read_field", "select_option", "fill_form", "submit", "collect", "research", "health", "tab_return", "undo", "knowledge",
 	"task_plan", "task_update", "task_status",
+	"layout_audit",
+	"captcha_detect", "captcha_solve", "captcha_fill",
 }
 
 // browserReadOnlyActions are the actions that only observe the current page
@@ -82,13 +84,17 @@ var browserReadOnlyActions = map[string]bool{
 	"close":      true,
 	"find":       true, "assert": true, "tabs": true, "frames": true, "network": true, "capture_region": true, "status": true, "trace": true, "handoff": true,
 	"observe": true, "read_field": true, "health": true, "knowledge": true, "task_plan": true, "task_update": true, "task_status": true,
+	"layout_audit": true, "login_check": true,
+	"captcha_detect": true,
 }
 
 type BrowserParams struct {
-	CredentialID string          `json:"credential_id,omitempty" description:"Saved vault handle for vault_fill. Never supply passwords in tool arguments."`
+	CredentialID string          `json:"credential_id,omitempty" description:"For vault_fill: a saved vault handle or a temporary handle (cr_...) returned by credential_request. Never supply passwords in tool arguments."`
+	Service      string          `json:"service,omitempty" description:"For credential_request: the service the user signs in to, shown on their phone (for example \"Google\"). Not a secret."`
+	Account      string          `json:"account,omitempty" description:"For credential_request/vault_fill: the account identifier (email or username) the password belongs to, when known. Never a password."`
 	Advanced     browser.Request `json:"advanced,omitempty" description:"Parameters for semantic targets/scope, document/tab/origin guards, conditions, tabs/popups/dialogs, frames, upload/download. Action is taken from the outer action field."`
 	SecretEnv    string          `json:"secret_env,omitempty" description:"For auth_code: environment variable containing an authorized TOTP seed; never supply the seed itself."`
-	Action       string          `json:"action" description:"Browser action: navigate/back/forward/click/type/key/scroll/eval/text/html/snapshot/images/console/dialog/cdp/screenshot/url/close, find/assert/wait_for/semantic_click/semantic_type, tabs/tab_new/tab_select/tab_close/popup_wait/dialog_wait/dialog_handle/frames/network/capture_region/upload/download_start/download_wait, handoff/status/trace/trace_start/trace_stop/export_test/auth_code/vault_list/vault_fill, pointer_move/pointer_click/pointer_drag/key_combo/insert_text. See tool description."`
+	Action       string          `json:"action" description:"Browser action: navigate/back/forward/click/type/key/scroll/eval/text/html/snapshot/images/console/dialog/cdp/screenshot/url/close, find/assert/wait_for/semantic_click/semantic_type, tabs/tab_new/tab_select/tab_close/popup_wait/dialog_wait/dialog_handle/frames/network/capture_region/upload/download_start/download_wait, handoff/status/trace/trace_start/trace_stop/export_test/auth_code/vault_list/vault_fill, captcha_detect/captcha_solve/captcha_fill, pointer_move/pointer_click/pointer_drag/css_drag/key_combo/insert_text. See tool description."`
 	// URL is required for navigate.
 	URL string `json:"url,omitempty" description:"Destination for the navigate action. Must start with http:// or https://."`
 	// Selector is an alternative to Ref for click, type, text, and html.
@@ -127,6 +133,8 @@ type BrowserParams struct {
 
 type BrowserPermissionsParams struct {
 	CredentialID string             `json:"credential_id,omitempty"`
+	Service      string             `json:"service,omitempty"`
+	Account      string             `json:"account,omitempty"`
 	Advanced     browser.Request    `json:"advanced,omitempty"`
 	SecretEnv    string             `json:"secret_env,omitempty"`
 	Action       string             `json:"action"`
@@ -220,7 +228,7 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 					Action:      action,
 					Description: browserActionDescription(action, params),
 					Params:      BrowserPermissionsParams(params),
-					Safe:        browserReadOnlyActions[action],
+					Safe:        browserReadOnlyActions[action] || credentialAuthorized(action, params, sessionID),
 				},
 			)
 			if err != nil {
@@ -233,6 +241,9 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 				step, err := handoffStep(params.Text)
 				if err != nil {
 					return contractResponse(err), nil
+				}
+				if redirect := handoffRedirect(step); redirect != nil {
+					return contractResponse(redirect), nil
 				}
 				interaction.Default.Pause(controlID, step)
 				if err := interaction.Default.Record(workingDir, controlID, interaction.Entry{Time: time.Now(), Resource: "browser", Action: action, Status: "paused"}); err != nil {
@@ -283,6 +294,13 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 			resource := "browser/" + sessionID
 			if manager, ok := sessions.(interface{ OwnershipResource(string) string }); ok {
 				resource = manager.OwnershipResource(sessionID)
+			}
+			if action == "credential_request" {
+				sess, err := browserSessionFor(ctx, sessions, sessionID)
+				if err != nil {
+					return fantasy.NewTextErrorResponse("failed to start browser: " + err.Error()), nil
+				}
+				return runCredentialRequest(ctx, sess, credentialStore, params, sessionID, call.ID, controlID, resource)
 			}
 			release, err := interaction.Default.Acquire(ctx, controlID, resource)
 			if err != nil {
@@ -379,7 +397,7 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 					return visual.BeginActivity(ctx, controlID, action, selector)
 				})()
 			}
-			recordImages := !vault.Sensitive("") && interaction.Default.Snapshot(controlID).RecordImages && recordableBrowserAction(action)
+			recordImages := !vault.Sensitive("") && !credentialSourceRead(ctx, action) && interaction.Default.Snapshot(controlID).RecordImages && recordableBrowserAction(action)
 			if recordImages {
 				before = captureBrowserTrace(ctx, sess, workingDir, controlID)
 			}
@@ -391,10 +409,16 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 				response = fantasy.NewTextErrorResponse(refErr.Error())
 			} else if typeErr := keyWouldType(ctx, sess, action, params); typeErr != nil {
 				response = errorResponse(typeErr)
+			} else if action == "vault_fill" && vault.IsCredentialHandle(params.CredentialID) {
+				response, err = fillBrowserCredential(ctx, sess, credentialStore, params, sessionID)
 			} else if action == "vault_fill" {
 				response, err = fillBrowserVault(ctx, sess, credentialStore, params)
+			} else if action == "login_check" {
+				response, err = runLoginCheck(ctx, sess, params)
 			} else if action == "auth_code" {
 				response, err = runBrowserAuth(ctx, sess, params)
+			} else if captchaActions[action] {
+				response, err = runBrowserCaptcha(ctx, sess, action, params, sessionID)
 			} else if browser.IsInputAction(action) {
 				response, err = runBrowserInput(ctx, sess, stateID, action, params)
 			} else if browserExtendedActions[action] {
@@ -403,6 +427,17 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 				response, err = runAdvancedBrowser(ctx, sess, action, params, workingDir)
 			} else {
 				response, err = runBrowserAction(ctx, sess, action, params)
+			}
+			if err == nil && response.IsError {
+				response.Content = dialogBlockAppends(sess, response.Content)
+			}
+			if err == nil && response.IsError && strings.Contains(response.Content, "password_field") {
+				// The refused value may be a password the model copied from
+				// chat. Protect it from every later observation and request.
+				for _, value := range refusedSecretCandidates(params) {
+					_ = vault.Register(sessionID, value)
+				}
+				response = passwordFieldGuidance(ctx, sess, credentialStore, response)
 			}
 			if err == nil && !response.IsError {
 				status = "succeeded"
@@ -444,7 +479,9 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 				}
 				var op BrowserOp
 				response, op = recordBrowserOp(stateID, action, params, response, started, exec)
-				response = withToolOutcome(response, browserOutcome(op))
+				if !credentialOwnedOutcome(action, params) {
+					response = withToolOutcome(response, browserOutcome(op))
+				}
 				recordBrowserStep(workingDir, sessionID, op)
 			}
 			return withBrowserFailure(response), err
@@ -511,6 +548,8 @@ func browserActionDescription(action string, params BrowserParams) string {
 		return "Read browser field: " + firstNonEmpty(describeTarget(params), params.Advanced.Label, params.Advanced.Name, params.Advanced.Selector)
 	case "select_option":
 		return "Select option " + params.Advanced.Value + " in: " + firstNonEmpty(describeTarget(params), params.Advanced.Label, params.Advanced.Name, params.Advanced.Selector)
+	case "credential_request":
+		return "Open a secure credential card on the paired phone for " + firstNonEmpty(params.Service, "the visible password field")
 	case "login_check":
 		return "Observe the sign-in state of the page"
 	case "fill_form":

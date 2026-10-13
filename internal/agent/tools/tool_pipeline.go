@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -447,6 +448,9 @@ type pipelineRun struct {
 	imageData      []byte
 	imageMediaType string
 	imageIndex     int
+	imageProtected bool
+	imageProofHash [32]byte
+	imageMasks     int
 	failed         bool
 	resumeStep     string
 	stopTurn       *fantasy.ToolResponse
@@ -704,6 +708,15 @@ func executePipeline(ctx context.Context, steps []PipelineStep, ret []string, ca
 					}
 					// Keep one selected image without retaining intermediate frames.
 					run.imageData, run.imageMediaType, run.imageIndex = response.Data, response.MediaType, at
+					run.imageProtected = protectedCredentialMedia(s.Tool, response)
+					if run.imageProtected {
+						run.imageProofHash = sha256.Sum256(response.Data)
+						var meta struct {
+							Proof credentialImageProof `json:"credential_image_redaction"`
+						}
+						_ = json.Unmarshal([]byte(response.Metadata), &meta)
+						run.imageMasks = meta.Proof.Masks
+					}
 				}
 			}
 			if !response.IsError {
@@ -896,8 +909,14 @@ func pipelineResponse(run pipelineRun, ret []string) (fantasy.ToolResponse, erro
 		return fantasy.ToolResponse{}, err
 	}
 	if run.imageIndex >= 0 {
+		if run.imageProtected && run.imageProofHash != sha256.Sum256(run.imageData) {
+			return fantasy.NewTextErrorResponse("credential_redaction_image_changed: the selected protected image changed before delivery"), nil
+		}
 		response := fantasy.NewImageResponse(run.imageData, run.imageMediaType)
 		response.Content = string(data)
+		if run.imageProtected {
+			response = withCredentialImageProof(response, run.imageMasks)
+		}
 		return response, nil
 	}
 	return fantasy.NewTextResponse(string(data)), nil

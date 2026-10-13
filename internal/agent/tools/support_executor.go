@@ -52,7 +52,7 @@ func NewSupportExecutor(stateDir string, backend computer.Backend, cfg config.To
 	return e
 }
 
-var supportBrowserActions = []string{"navigate", "back", "forward", "click", "type", "key", "scroll", "snapshot", "observe", "screenshot", "text", "html", "url", "find", "assert", "wait_for", "semantic_click", "semantic_type", "set_field", "read_field", "select_option", "fill_form", "submit", "collect", "tabs", "tab_new", "tab_select", "tab_close", "tab_return", "frames", "popup_wait", "dialog_wait", "dialog_handle", "health", "pointer_move", "pointer_click", "pointer_drag", "key_combo", "insert_text"}
+var supportBrowserActions = []string{"navigate", "back", "forward", "click", "type", "key", "scroll", "snapshot", "observe", "screenshot", "text", "html", "url", "find", "assert", "wait_for", "semantic_click", "semantic_type", "set_field", "read_field", "select_option", "fill_form", "submit", "collect", "tabs", "tab_new", "tab_select", "tab_close", "tab_return", "frames", "popup_wait", "dialog_wait", "dialog_handle", "health", "pointer_move", "pointer_click", "pointer_drag", "key_combo", "insert_text", "layout_audit"}
 
 func (e *supportExecutor) Validate(req nodes.RemoteToolRequest) (bool, error) {
 	switch req.Tool {

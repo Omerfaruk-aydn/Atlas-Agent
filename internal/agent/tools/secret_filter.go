@@ -33,12 +33,18 @@ func (t *secretFilteredTool) Run(ctx context.Context, call fantasy.ToolCall) (fa
 	if err != nil {
 		err = errors.New(vault.Redact(id, err.Error()))
 	}
-	if vault.Sensitive("") && len(r.Data) > 0 {
+	if vault.Sensitive("") && len(r.Data) > 0 && !isCaptchaChallengeMedia(r) && !protectedCredentialMedia(t.AgentTool.Info().Name, r) {
 		stop := r.StopTurn
 		r = fantasy.NewTextErrorResponse("Media observation is disabled in a credential-bearing session to prevent visual secret exposure. Use redacted text observations.")
 		r.StopTurn = stop
 	}
 	return r, err
+}
+
+// isCaptchaChallengeMedia reports whether the binary payload is an
+// element-scoped CAPTCHA challenge crop. Those images are public
+// verification widgets, not user secrets, so the credential media gate
+// lets them through: the model can read a CAPTCHA picture with its own
 // vision without any external solver API.
 func isCaptchaChallengeMedia(r fantasy.ToolResponse) bool {
 	return r.Type == "image" && strings.Contains(r.Metadata, `"captcha_challenge":true`)

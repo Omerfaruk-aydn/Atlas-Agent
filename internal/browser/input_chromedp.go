@@ -65,13 +65,17 @@ func (s *chromedpSession) inputContext(parent context.Context, extra time.Durati
 // ViewportScreenshot captures the annotated viewport and issues a pointer
 // grant when the viewport did not change during capture.
 func (s *chromedpSession) ViewportScreenshot(parent context.Context) ([]byte, Viewport, error) {
+	return s.captureViewportScreenshot(parent, func() ([]byte, error) { return s.AnnotatedScreenshot(false) })
+}
+
+func (s *chromedpSession) captureViewportScreenshot(parent context.Context, capture func() ([]byte, error)) ([]byte, Viewport, error) {
 	ctx, cancel := s.inputContext(parent, 0)
 	defer cancel()
 	before, err := s.viewportState(ctx)
 	if err != nil {
 		return nil, Viewport{}, s.explainFailure(err)
 	}
-	data, err := s.AnnotatedScreenshot(false)
+	data, err := capture()
 	if err != nil {
 		return nil, Viewport{}, err
 	}

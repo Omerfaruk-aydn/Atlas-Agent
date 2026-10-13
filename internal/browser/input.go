@@ -18,12 +18,13 @@ const (
 	InputPointerMove  = "pointer_move"
 	InputPointerClick = "pointer_click"
 	InputPointerDrag  = "pointer_drag"
+	InputCSSDrag      = "css_drag"
 	InputKeyCombo     = "key_combo"
 	InputInsertText   = "insert_text"
 )
 
 // InputActions lists the typed input actions in a stable order.
-var InputActions = []string{InputPointerMove, InputPointerClick, InputPointerDrag, InputKeyCombo, InputInsertText}
+var InputActions = []string{InputPointerMove, InputPointerClick, InputPointerDrag, InputCSSDrag, InputKeyCombo, InputInsertText}
 
 // IsInputAction reports whether action is one of InputActions.
 func IsInputAction(action string) bool { return slices.Contains(InputActions, action) }
@@ -211,6 +212,24 @@ func ValidateInputRequest(p Request) error {
 		if p.Text == "" || len(p.Text) > 64*1024 {
 			return fmt.Errorf("insert_text requires text of at most 64 KiB")
 		}
+	case InputCSSDrag:
+		// CSS drag: coordinates are CSS pixels directly (no viewport needed).
+		if p.ToX == 0 && p.ToY == 0 {
+			return fmt.Errorf("css_drag requires to_x/to_y (destination in CSS pixels)")
+		}
+		if p.X == 0 && p.Y == 0 {
+			return fmt.Errorf("css_drag requires x/y (start position in CSS pixels, from getBoundingClientRect); got (0,0)")
+		}
+		if p.X < 0 || p.Y < 0 || p.ToX < 0 || p.ToY < 0 {
+			return fmt.Errorf("css_drag coordinates must be non-negative, got (%.0f,%.0f)->(%.0f,%.0f)", p.X, p.Y, p.ToX, p.ToY)
+		}
+		// Sanity: CSS coordinates should be in reasonable range (not screenshot pixels)
+		if p.X < 10 && p.Y < 10 {
+			return fmt.Errorf("css_drag coordinates (%.0f,%.0f) look too small; use CSS pixels from getBoundingClientRect, not screenshot pixels", p.X, p.Y)
+		}
+		if p.ViewportID != "" {
+			return fmt.Errorf("css_drag does not use viewport_id; pass CSS coordinates in x/y/to_x/to_y directly (remove viewport_id)")
+		}
 	}
 	return nil
 }
@@ -252,6 +271,19 @@ func planInput(p Request, vp Viewport) ([]inputEvent, error) {
 			held &^= bit
 			events = append(events, keyEvent("keyUp", modifierKeys[bit], held, ""))
 		}
+		return events, nil
+	case InputCSSDrag:
+		// CSS drag: coordinates are CSS pixels directly (no viewport needed).
+		// Produces trusted CDP events for sliders like GeeTest.
+		// Also dispatches on document/window for event delegation.
+		cssX, cssY := p.X, p.Y
+		cssTX, cssTY := p.ToX, p.ToY
+		steps := p.Steps
+		if steps == 0 {
+			steps = defaultDragSeg
+		}
+		btn := p.Button
+		if btn == "" {
 			btn = "left"
 		}
 		btns := mouseButtons[btn]

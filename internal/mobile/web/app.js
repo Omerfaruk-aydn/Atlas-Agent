@@ -403,63 +403,75 @@
         if (state.detail && state.current === e.session_id) state.detail.errors.push(e.data.message);
         break;
     }
-    if (!$("view-list").classList.contains("hidden")) renderList();
-    if (state.current === e.session_id && !$("view-task").classList.contains("hidden")) {
-      if (e.type === "message") upsertMessage(e.data);
-      else if (["permission", "permission_resolved", "question", "question_resolved", "busy", "control", "session", "run_error"].includes(e.type)) loadTask(state.current).catch(() => {});
+        renderTaskChrome();
+      } else if (e.type === "busy") {
+        d.session.busy = e.data.busy;
+        renderTaskChrome();
+        if (!e.data.busy) scheduleReload();
+      } else if (e.type === "run_error") {
+        renderRunErrors();
+      } else if (["permission", "permission_resolved", "question", "question_resolved", "credential", "credential_resolved", "control", "session"].includes(e.type)) {
+        scheduleReload();
+      }
     }
   }
 
   function connect() {
     if (state.es) state.es.close();
     state.es = null;
-    if (!state.me || document.hidden || !navigator.onLine) return;
-    setConn("reconnecting");
+    if (!state.me || document.hidden) return;
+    if (!navigator.onLine) { setConn("offline", "network"); return; }
+    if (state.conn !== "connected") setConn("reconnecting");
     const es = new EventSource("/api/events?since=" + state.seq);
     state.es = es;
-    es.addEventListener("open", () => { retryDelay = 1000; setConn("connected"); banner(""); });
+    es.addEventListener("open", () => { retryDelay = 1000; state.retries = 0; setConn("connected"); });
     es.addEventListener("update", (m) => { try { onEvent(JSON.parse(m.data)); } catch (_) {} });
     es.addEventListener("resync", async (m) => {
       try { state.seq = JSON.parse(m.data).seq || state.seq; } catch (_) {}
-      banner(t("resynced"));
       await loadList().catch(() => {});
       if (state.current && !$("view-task").classList.contains("hidden")) await loadTask(state.current).catch(() => {});
     });
-    es.addEventListener("revoked", () => { es.close(); banner(t("revoked"), true); startPairing(); });
+    es.addEventListener("revoked", () => { es.close(); startPairing("unpaired"); });
     es.addEventListener("error", () => {
-      setConn(navigator.onLine ? "reconnecting" : "offline");
+      if (state.es !== es) return;
+      if (!navigator.onLine) setConn("offline", "network");
+      else if (state.conn === "connected") setConn("reconnecting");
       // The browser retries a dropped stream itself, but gives up after an
       // HTTP error such as 503 while the computer is offline.
-      if (es.readyState === 2 && state.es === es) scheduleRetry(resumeConnection);
+      if (es.readyState === 2) {
+        setConn("offline", navigator.onLine ? "computer" : "network");
+        scheduleRetry(resumeConnection);
+      }
     });
   }
 
   // iOS suspends web apps when locked or backgrounded. Refresh authentication
   // and snapshots before opening a new stream; never replay a user action.
   function resumeConnection() {
-    if (document.hidden || !navigator.onLine || !state.me) return Promise.resolve();
+    if (document.hidden || !state.me) return Promise.resolve();
+    if (!navigator.onLine) { setConn("offline", "network"); return Promise.resolve(); }
     if (refreshing) return refreshing;
     refreshing = (async () => {
       if (state.es) state.es.close();
       state.es = null;
-      setConn("reconnecting");
+      if (state.conn !== "connected") setConn("reconnecting");
       try {
         const me = await api("/api/me");
         if (!state.me) return;
         state.me = me;
         state.csrf = me.csrf;
-        state.seq = me.seq || 0;
-        const activeTask = state.current;
+        state.seq = Math.max(state.seq, me.seq || 0);
+        const active = state.current;
         await loadList();
-        if (activeTask && state.current === activeTask && !$("view-task").classList.contains("hidden")) {
-          await loadTask(activeTask);
+        if (active && state.current === active && !$("view-task").classList.contains("hidden")) {
+          state.paneKey = "";
+          await loadTask(active);
         }
         connect();
       } catch (e) {
-        if (e.status === 401) startPairing();
+        if (e.status === 401) startPairing("expired");
         else {
-          setConn("offline");
-          banner(t("failed") + ": " + e.message, true);
+          setConn("offline", !navigator.onLine ? "network" : "computer");
           scheduleRetry(resumeConnection);
         }
       }
@@ -475,17 +487,25 @@
       if (me.language && T[me.language.slice(0, 2)]) lang = me.language.slice(0, 2);
       applyI18n();
       state.seq = me.seq || 0;
-      $("set-device").textContent = me.device.name;
-      $("set-fp").textContent = me.fingerprint;
-      $("set-previews").textContent = me.device.previews ? t("previews_on") : t("previews_off");
-      await loadList();
+      state.retries = 0;
+      history.replaceState({ view: "list" }, "", "/");
       show("list");
+      setConn("reconnecting");
+      await loadList().catch(() => {});
       connect();
     } catch (e) {
-      if (e.status === 401) startPairing(); else { banner(t("failed") + ": " + e.message, true); setConn("offline"); scheduleRetry(boot); }
+      if (e.status === 401) startPairing();
+      else {
+        state.listStatus = "error";
+        setConn("offline", navigator.onLine ? "computer" : "network");
+        show("list");
+        scheduleRetry(boot);
+      }
     }
   }
 
+  // ---------- Pairing ----------
+  function pairStage(stage) {
     for (const s of ["none", "invalid", "start", "wait", "done", "transfer"]) $("pair-" + s).classList.toggle("hidden", s !== stage && !(stage === "invalid" && s === "none"));
   }
   function startPairing(reason) {

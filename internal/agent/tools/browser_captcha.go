@@ -1,3 +1,74 @@
+			if ch.Kind.TextAnswer() && ch.AnswerSelector != "" {
+				if _, fillErr := fillCaptchaAnswer(ctx, sess, ch.AnswerSelector, report.Answer); fillErr != nil {
+					report.Message = "solved but fill failed: " + fillErr.Error()
+					report.Next = "Type the answer into " + ch.AnswerSelector + " yourself."
+					return browserJSONResponse(report), nil
+				}
+				report.Message = "solved and typed into " + ch.AnswerSelector
+				if params.Advanced.Verify && ch.VerifySelector != "" {
+					_ = sess.Click(ch.VerifySelector)
+					report.Next = "Answer filled and verify clicked; call login_check."
+				} else {
+					report.Next = "Answer filled; submit the form then call login_check."
+				}
+				return browserJSONResponse(report), nil
+			}
+			if ch.Kind.TokenAnswer() {
+				if ok, injectErr := injectCaptchaToken(ctx, sess, ch, report.Answer); injectErr == nil && ok {
+					report.Message = "token injected"
+					report.Next = "Submit the form then call login_check."
+				} else {
+					report.Next = "Token ready; inject it manually or retry."
+				}
+				return browserJSONResponse(report), nil
+			}
+			report.Next = "Answer ready; call captcha_fill to type it."
+			return browserJSONResponse(report), nil
+		}
+	}
+
+	// Nothing offline solved it: show the challenge crop to the model.
+	if len(image) > 0 {
+		return captchaChallengeImage(ch, image), nil
+	}
+	return browserJSONResponse(CaptchaResult{
+		Status:         "unsolved",
+		Kind:           string(ch.Kind),
+		SiteKey:        ch.SiteKey,
+		PageURL:        ch.PageURL,
+		Question:       ch.Question,
+		AnswerSelector: ch.AnswerSelector,
+		VerifySelector: ch.VerifySelector,
+		Message:        "No challenge image was captured and no solver could answer from the question text.",
+		Next:           nextAfterUnsolved(ch),
+	}), nil
+}
+
+// captchaChallengeImage returns the element-scoped challenge crop as an
+// image response the model can look at. The captcha_challenge metadata
+// mark lets it through the credential media gate: the crop contains only
+// the public verification widget, never surrounding page content.
+func captchaChallengeImage(ch captcha.Challenge, image []byte) fantasy.ToolResponse {
+	resp := fantasy.NewImageResponse(image, "image/png")
+	resp.Metadata = `{"captcha_challenge":true,"kind":"` + string(ch.Kind) + `"}`
+	resp.Content = "CAPTCHA challenge (element crop only). Read the characters or expression in the image, " +
+		"then call captcha_fill with the answer. " +
+		"Selector: " + firstNonEmpty(ch.AnswerSelector, "(observe to find the answer field)") +
+		". Do not describe the image; just read the answer and fill it."
+	return resp
+}
+
+// runCaptchaFill types a model-supplied answer into the challenge's
+// answer box. The answer is a public challenge response, not a user
+// secret.
+func runCaptchaFill(ctx context.Context, sess browser.Session, params BrowserParams) (fantasy.ToolResponse, error) {
+	answer := strings.TrimSpace(firstNonEmpty(params.Value, params.Text, params.Advanced.Value))
+	if answer == "" {
+		return fantasy.NewTextErrorResponse("value (the CAPTCHA answer) is required for captcha_fill"), nil
+	}
+	selector := firstNonEmpty(params.Advanced.Selector, params.Selector)
+	if selector == "" {
+		// Fall back to a fresh detection so the caller does not need to
 		// paste a selector back from the report.
 		pageURL, _ := sess.URL()
 		if raw, err := sess.Eval(captcha.DetectScript); err == nil {

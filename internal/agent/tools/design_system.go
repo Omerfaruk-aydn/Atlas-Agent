@@ -1,3 +1,5 @@
+package tools
+
 import (
 	"bytes"
 	"context"

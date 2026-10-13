@@ -1,3 +1,73 @@
+	require.Eventually(t, func() bool {
+		phase, _, _ := link.Progress().Snapshot()
+		return phase == tsfunnel.PhaseLost
+	}, 2*time.Second, 5*time.Millisecond)
+	require.False(t, link.Alive())
+	require.NoError(t, link.Close())
+}
+
+func TestCloseReportsResidualEntry(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	d.KeepSessions = true
+	m := manager(t, d)
+	link, err := m.Start(t.Context(), tsfunnel.Plan{Host: "atlas-pc.tail1234.ts.net", Port: 443}, 5000, nil)
+	require.NoError(t, err)
+	require.ErrorIs(t, link.Close(), tsfunnel.ErrResidual)
+	require.FileExists(t, m.StateFile, "the record stays so the next start can retry cleanup")
+
+	// A later start refuses to add a second entry while the old one is
+	// listed, and never removes it by force.
+	_, err = m.Prepare(t.Context(), ready(t, d))
+	require.ErrorIs(t, err, tsfunnel.ErrResidual)
+	require.Len(t, d.Sessions(), 1)
+}
+
+func TestRecoverAfterCrash(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	m := manager(t, d)
+	link, err := m.Start(t.Context(), tsfunnel.Plan{Host: "atlas-pc.tail1234.ts.net", Port: 443}, 5000, nil)
+	require.NoError(t, err)
+	// Simulate Atlas dying: the CLI ends (job object) but Close never ran.
+	d.Procs()[0].Crash()
+	require.FileExists(t, m.StateFile)
+	_ = link
+
+	m2 := manager(t, d)
+	m2.StateFile = m.StateFile
+	plan, err := m2.Prepare(t.Context(), ready(t, d))
+	require.NoError(t, err)
+	require.Equal(t, uint16(443), plan.Port)
+	require.NoFileExists(t, m.StateFile)
+}
+
+func TestRecoverIgnoresDamagedRecord(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	m := manager(t, d)
+	require.NoError(t, os.WriteFile(m.StateFile, []byte("{broken"), 0o600))
+	require.NoError(t, m.Recover(t.Context()))
+	require.NoFileExists(t, m.StateFile)
+}
+
+func TestPrepareRejectsMalformedServeStatus(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	d.ServeRaw = []byte(`{"TCP":{"notaport":{}}}`)
+	_, err := manager(t, d).Prepare(t.Context(), ready(t, d))
+	require.ErrorIs(t, err, tsfunnel.ErrMalformed)
+	d.ServeRaw = []byte(`[1,2`)
+	_, err = manager(t, d).Prepare(t.Context(), ready(t, d))
+	require.ErrorIs(t, err, tsfunnel.ErrMalformed)
+}
+
+func TestLoginOpensOnlyTailscaleURL(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	d.Backend = "NeedsLogin"
+	var opened atomic.Value
+	errc := make(chan error, 1)
 	go func() {
 		errc <- tsfunnel.Login(t.Context(), d, nil, func(u string) error { opened.Store(u); return nil })
 	}()

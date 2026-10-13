@@ -1,3 +1,17 @@
+package vault
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+// Synthetic values only; no real account or password appears in tests.
 const syntheticSecret = "Synth-Pass-4417!"
 
 type fakeClock struct {

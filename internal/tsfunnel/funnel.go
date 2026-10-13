@@ -1,3 +1,74 @@
+		_ = procown.KillOwned(rec.Process)
+	}
+	gone, err := m.waitGone(ctx, rec.Session)
+	if err != nil {
+		return err
+	}
+	if !gone {
+		return fmt.Errorf("%w (%s, session %s); restart Tailscale or remove it with the Tailscale CLI", ErrResidual, Plan{Host: rec.Host, Port: rec.Port}.URL(), Sanitize(rec.Session))
+	}
+	return m.removeRecord()
+}
+
+func (m *Manager) waitGone(ctx context.Context, session string) (bool, error) {
+	deadline := time.Now().Add(m.cleanup())
+	for {
+		sc, err := readServe(ctx, m.CLI)
+		if err != nil {
+			return false, err
+		}
+		if !sc.hasSession(session) {
+			return true, nil
+		}
+		if time.Now().After(deadline) {
+			return false, nil
+		}
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case <-time.After(m.poll()):
+		}
+	}
+}
+
+func (m *Manager) readRecord() (record, bool, error) {
+	if m.StateFile == "" {
+		return record{}, false, nil
+	}
+	data, err := os.ReadFile(m.StateFile)
+	if errors.Is(err, os.ErrNotExist) {
+		return record{}, false, nil
+	}
+	if err != nil {
+		return record{}, false, err
+	}
+	var rec record
+	if err := json.Unmarshal(data, &rec); err != nil || rec.Version != 1 || rec.Session == "" {
+		// A damaged record names nothing Atlas could safely act on.
+		_ = os.Remove(m.StateFile)
+		return record{}, false, nil
+	}
+	return rec, true, nil
+}
+
+func (m *Manager) writeRecord(rec record) error {
+	if m.StateFile == "" {
+		return nil
+	}
+	data, err := json.MarshalIndent(rec, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(m.StateFile), 0o700); err != nil {
+		return err
+	}
+	tmp := m.StateFile + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, m.StateFile)
+}
+
 func (m *Manager) removeRecord() error {
 	if m.StateFile == "" {
 		return nil

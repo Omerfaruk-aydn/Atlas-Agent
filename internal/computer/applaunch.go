@@ -1,3 +1,74 @@
+)
+
+// AppWindowObservation is the part of a native window listing launch
+// verification compares.
+type AppWindowObservation struct {
+	ID          string `json:"window_id"`
+	Name        string `json:"name"`
+	ProcessID   uint32 `json:"process_id"`
+	ProcessName string `json:"process_name"`
+	Foreground  bool   `json:"foreground"`
+	Minimized   bool   `json:"minimized"`
+}
+
+// AppLauncherBackend is a backend that owns an application catalog and can
+// start and verify catalog launches.
+type AppLauncherBackend interface {
+	Apps() *AppCatalog
+	LaunchApp(ctx context.Context, plan LaunchPlan) (int, error)
+	VisibleWindows(ctx context.Context) ([]AppWindowObservation, error)
+}
+
+// LaunchResult separates "the process was started" from "a window was
+// observed". A process id alone is not proof: Chrome hands a new launch to
+// its running browser process and the started process exits.
+type LaunchResult struct {
+	App          AppEntry        `json:"app"`
+	Argv         []string        `json:"argv"`
+	Profile      *BrowserProfile `json:"profile,omitempty"`
+	ProcessID    int             `json:"process_id,omitempty"`
+	Started      bool            `json:"started"`
+	Verification string          `json:"verification"`
+	Window       *AppWindow      `json:"window,omitempty"`
+	WaitedMS     int64           `json:"waited_ms"`
+}
+
+// Launch verification states.
+const (
+	LaunchWindowObserved = "window_observed"
+	LaunchNoWindowYet    = "started_no_window_observed"
+)
+
+// LaunchAndVerify starts plan and waits up to timeout for a new visible
+// window of the launched program. An unrelated newly opened window is
+// never verification. It never relaunches.
+func LaunchAndVerify(ctx context.Context, b AppLauncherBackend, plan LaunchPlan, timeout time.Duration) (LaunchResult, error) {
+	res := LaunchResult{App: plan.Entry, Argv: plan.Argv, Profile: plan.Profile, Verification: LaunchNoWindowYet}
+	if err := ctx.Err(); err != nil {
+		return res, err
+	}
+	if timeout <= 0 {
+		timeout = CatalogLaunchWait
+	}
+	beforeCtx, cancelBefore := context.WithTimeout(ctx, timeout)
+	defer cancelBefore()
+	before := map[string]bool{}
+	beforeForeground := ""
+	if ws, err := b.VisibleWindows(beforeCtx); err == nil {
+		for _, w := range ws {
+			before[w.ID] = true
+			if w.Foreground {
+				beforeForeground = w.ID
+			}
+		}
+	}
+	start := time.Now()
+	if err := beforeCtx.Err(); err != nil {
+		return res, err
+	}
+	pid, err := b.LaunchApp(ctx, plan)
+	if err != nil {
+		return res, err
 	}
 	res.Started, res.ProcessID = true, pid
 	verifyCtx, cancelVerify := context.WithTimeout(ctx, timeout)

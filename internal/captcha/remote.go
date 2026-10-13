@@ -1,3 +1,65 @@
+package captcha
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+)
+
+// RemoteProvider names a supported token-farm backend.
+type RemoteProvider string
+
+const (
+	// Remote2Captcha speaks the 2captcha in.php / res.php protocol.
+	Remote2Captcha RemoteProvider = "2captcha"
+	// RemoteCapSolver speaks the CapSolver createTask / getTaskResult API.
+	RemoteCapSolver RemoteProvider = "capsolver"
+	// RemoteAntiCaptcha speaks the Anti-Captcha createTask / getTaskResult API.
+	RemoteAntiCaptcha RemoteProvider = "anticaptcha"
+)
+
+// RemoteSolver asks a commercial solving service for answer tokens. It
+// handles reCAPTCHA v2/v3, hCaptcha, Turnstile and image-text tasks.
+// The API key is supplied by the caller and is never persisted or logged
+// by this package.
+type RemoteSolver struct {
+	Provider RemoteProvider
+	APIKey   string
+	Client   *http.Client
+	// PollInterval is the getTaskResult cadence. Defaults to 3s.
+	PollInterval time.Duration
+	// Timeout bounds the whole submit/poll loop. Defaults to 120s.
+	Timeout time.Duration
+	// SoftID is an optional 2captcha referral/soft id.
+	SoftID string
+}
+
+func (r *RemoteSolver) Name() string {
+	return "remote:" + string(r.Provider)
+}
+
+func (r *RemoteSolver) Supports(kind Kind) bool {
+	switch kind {
+	case KindRecaptchaV2, KindRecaptchaV3, KindHCaptcha, KindTurnstile, KindImageText:
+		return r.Provider != "" && r.APIKey != ""
+	default:
+		return false
+	}
+}
+
+func (r *RemoteSolver) Solve(ctx context.Context, ch Challenge, image []byte) (Solution, error) {
+	if r.APIKey == "" {
+		return Solution{}, fmt.Errorf("captcha: remote solver %s has no API key", r.Provider)
+	}
+	if r.Client == nil {
+		r.Client = &http.Client{Timeout: 30 * time.Second}
 	}
 	if r.PollInterval <= 0 {
 		r.PollInterval = 3 * time.Second

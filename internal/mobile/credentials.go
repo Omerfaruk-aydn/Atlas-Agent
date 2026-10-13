@@ -1,3 +1,73 @@
+				return http.StatusConflict, map[string]any{"error": map[string]string{"code": "stale_request", "message": "this credential card is no longer open"}}
+			}
+			g.ring.add("credential_resolved", view.SessionID, map[string]any{"id": id, "state": string(view.State), "by": d.Name})
+			return http.StatusOK, map[string]any{"ok": true, "state": string(view.State)}
+		}
+		view, err := vault.Ephemeral.Provide(id, req.SessionID, d.ID, secret, req.Persist)
+		switch {
+		case errors.Is(err, vault.ErrCredentialExpired):
+			return http.StatusGone, map[string]any{"error": map[string]string{"code": "expired", "message": "this credential card expired; Atlas will ask again if it still needs it"}}
+		case errors.Is(err, vault.ErrCredentialUsed):
+			return http.StatusConflict, map[string]any{"error": map[string]string{"code": "already_provided", "message": "this card was already answered"}}
+		case err != nil && strings.Contains(err.Error(), "bytes"):
+			return http.StatusBadRequest, map[string]any{"error": map[string]string{"code": "invalid_secret", "message": "enter the password (at most 4096 bytes)"}}
+		case err != nil:
+			return http.StatusConflict, map[string]any{"error": map[string]string{"code": "stale_request", "message": "this credential card is no longer open"}}
+		}
+		g.ring.add("credential_resolved", view.SessionID, map[string]any{"id": id, "state": string(view.State), "by": d.Name})
+		return http.StatusOK, map[string]any{"ok": true, "state": string(view.State)}
+	})
+}
+
+// resumeInteraction returns handed-off control through the same
+// revision-checked workflow control the desktop uses, then continues the
+// task from a fresh observation unless the user canceled it meanwhile.
+// expected is the revision the phone saw; "" uses the current one, which
+// only the /resume-use message path does, for the session in the URL.
+func (g *Gateway) resumeInteraction(ctx context.Context, id, expected, by string) (int, any) {
+	if s, err := g.opts.Backend.GetSession(ctx, id); err != nil || s.ParentSessionID != "" {
+		return http.StatusNotFound, map[string]any{"error": map[string]string{"code": "not_found", "message": "no such task"}}
+	}
+	snap, err := g.opts.Backend.WorkflowSnapshot(ctx, id)
+	if err != nil {
+		return http.StatusConflict, map[string]any{"error": map[string]string{"code": "unavailable", "message": err.Error()}}
+	}
+	if !snap.Interactions.Paused {
+		return http.StatusConflict, map[string]any{"error": map[string]string{"code": "not_paused", "message": "Atlas already has browser and desktop control in this chat"}, "revision": snap.Revision}
+	}
+	if expected == "" {
+		expected = snap.Revision
+	}
+	if expected != snap.Revision {
+		return http.StatusConflict, map[string]any{"error": map[string]string{"code": "stale_revision", "message": "the task changed since you loaded it; review the new state and try again"}, "revision": snap.Revision}
+	}
+	if err := g.opts.Backend.WorkflowControl(ctx, id, engineering.WorkflowControl{Action: "interaction_resume", ExpectedRevision: expected}); err != nil {
+		code := "control_failed"
+		if strings.Contains(err.Error(), "revision") {
+			code = "stale_revision"
+		}
+		return http.StatusConflict, map[string]any{"error": map[string]string{"code": code, "message": err.Error()}}
+	}
+	g.ring.add("control", id, map[string]any{"action": "interaction_resume", "device": by})
+	if snap.Interactions.Canceled {
+		// Returning control never revives a task the user canceled.
+		return http.StatusOK, map[string]any{"ok": true, "action": "interaction_resume", "continued": false, "canceled": true}
+	}
+	prompt := interaction.ResumePrompt(nil, snap.Interactions.Reason)
+	go func() {
+		if err := g.opts.Backend.AgentRun(context.Background(), id, prompt); err != nil {
+			g.ring.add("run_error", id, map[string]string{"message": err.Error()})
+		}
+	}()
+	return http.StatusOK, map[string]any{"ok": true, "action": "interaction_resume", "continued": true}
+}
+
+// handleTransferCreate issues a code that moves this phone's access into
+// its Home Screen app, whose cookie store is separate on iOS.
+func (g *Gateway) handleTransferCreate(w http.ResponseWriter, r *http.Request) {
+	d := device(r)
+	if g.rateLimited("transfer:"+d.ID, 5) {
+		apiError(w, http.StatusTooManyRequests, "rate_limited", "too many codes; wait a moment")
 		return
 	}
 	code, expires, err := g.Auth.NewTransfer(d.ID)

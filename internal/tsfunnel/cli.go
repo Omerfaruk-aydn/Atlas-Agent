@@ -1,3 +1,64 @@
+// Package tsfunnel connects the phone gateway to the internet with the
+// user's own Tailscale Funnel. Atlas only drives the installed Tailscale
+// CLI: it never embeds credentials, never runs "reset" and never edits
+// Serve or Funnel entries it did not create.
+//
+// The Funnel runs in the CLI's foreground mode. tailscaled stores such an
+// entry under ServeConfig.Foreground, keyed by the CLI's IPN bus session,
+// and deletes it when that session ends. The CLI process is owned by Atlas
+// (a Windows job object kills it with Atlas), so a crash cannot leave a
+// public route to a loopback port another program may reuse later.
+package tsfunnel
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/procown"
+)
+
+// CommandTimeout bounds every short CLI call.
+const CommandTimeout = 15 * time.Second
+
+// maxOutput bounds what Atlas reads from one short CLI call.
+const maxOutput = 4 << 20
+
+var (
+	// ErrNotInstalled means no Tailscale CLI was found.
+	ErrNotInstalled = errors.New("tailscale is not installed")
+	// ErrServiceUnavailable means the CLI could not reach tailscaled.
+	ErrServiceUnavailable = errors.New("the Tailscale service is not running")
+	// ErrMalformed means the CLI printed JSON Atlas cannot use.
+	ErrMalformed = errors.New("tailscale returned unexpected output")
+	// ErrTimeout means a CLI call did not finish in time.
+	ErrTimeout = errors.New("tailscale did not answer in time")
+)
+
+// Exec runs the Tailscale CLI. The real implementation runs the installed
+// binary; tests substitute a fake daemon.
+type Exec interface {
+	// Path returns the CLI path, or ErrNotInstalled.
+	Path() (string, error)
+	// Output runs a short command and returns its standard output.
+	Output(ctx context.Context, args ...string) ([]byte, error)
+	// Start runs a long-lived command owned by Atlas. Each output line is
+	// passed to onLine from another goroutine.
+	Start(args []string, onLine func(string)) (Process, error)
+}
+
+// Process is a long-lived CLI command.
+type Process interface {
 	Identity() procown.Identity
 	Done() <-chan struct{}
 	Result() (int, error)

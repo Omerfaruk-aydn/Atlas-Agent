@@ -1,3 +1,74 @@
+func savedCredentialsFor(ctx context.Context, store *vault.Store, origin string) []vault.Item {
+	if store == nil || store.State == nil {
+		return nil
+	}
+	items, err := store.List(ctx)
+	if err != nil {
+		return nil
+	}
+	var out []vault.Item
+	for _, item := range items {
+		if item.Origin == origin {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// passwordFieldGuidance turns a password_field refusal into a usable next
+// step for the current page.
+func passwordFieldGuidance(ctx context.Context, sess browser.Session, store *vault.Store, resp fantasy.ToolResponse) fantasy.ToolResponse {
+	sessionID, _ := ctx.Value(SessionIDContextKey).(string)
+	origin, err := pageOrigin(sess)
+	meta := credentialMeta{Status: "not_sent", Origin: origin}
+	var hint string
+	switch saved := savedCredentialsFor(ctx, store, origin); {
+	case err != nil:
+		meta.NextStep = NextScopeMismatch
+		hint = " Credentials are bound to an exact HTTPS origin; this page has none."
+	case len(saved) > 0 && !vault.Ephemeral.ChatHasCredential(sessionID):
+		meta.NextStep = NextSavedCredential
+		ids := make([]string, 0, len(saved))
+		for _, item := range saved {
+			ids = append(ids, item.ID+" ("+item.Username+")")
+		}
+		hint = " next_step=saved_credential_available: call vault_fill with credential_id one of " + strings.Join(ids, ", ") + " and the password field's ref."
+	case vault.Ephemeral.ChatHasCredential(sessionID):
+		meta.NextStep = NextCredentialRequired
+		hint = " The user already supplied a temporary credential in this task. Call credential_request with the password field's ref and the user's account; it returns a target-bound handle without asking again."
+	case vault.Ephemeral.HasInputChannel():
+		meta.NextStep = NextCredentialRequired
+		hint = " next_step=credential_required: call credential_request with the password field's ref (and service/account). The user types the password on their paired phone; you receive only a handle. Never ask for the password in chat or questions."
+	default:
+		if instruction, _ := ctx.Value(userInstructionKey{}).(string); hasSourceCredentialInstruction(instruction) {
+			meta.NextStep = NextCredentialRequired
+			hint = " next_step=read_source_credential: the user named a source (email/document) that holds this credential. Open it and read it with the browser text action (ref or selector, not eval); the labeled password is imported internally and a handle is returned automatically. Then vault_fill with the password field's ref. No phone or vault entry is needed."
+			resp.Content += hint
+			return withMergedMetadata(resp, meta)
+		}
+		meta.NextStep = NextSecureInputMissing
+		hint = " next_step=secure_input_unavailable: no paired phone is connected for a secure credential card. Hand off only the password step (handoff text without the password), or ask the user to open Atlas Remote."
+	}
+	resp.Content += hint
+	return withMergedMetadata(resp, meta)
+}
+
+// runCredentialRequest opens a secure credential card on the paired phone
+// for the visible password field and waits for the user's answer. The model
+// never sees the value: it receives only an opaque, target-bound handle.
+func runCredentialRequest(ctx context.Context, sess browser.Session, store *vault.Store, params BrowserParams, sessionID, callID, controlID, resource string) (fantasy.ToolResponse, error) {
+	filler, ok := sess.(browser.SecretFiller)
+	if !ok {
+		return credentialError("This browser driver cannot bind a credential to a password field.", credentialMeta{NextStep: NextSecureInputMissing}), nil
+	}
+	selector := ""
+	if params.Ref != "" || params.Selector != "" {
+		var err error
+		if selector, err = resolveTargetSelector("credential_request", params); err != nil {
+			return credentialError(err.Error(), credentialMeta{}), nil
+		}
+	}
+	// Observe under the interaction lock, then release it while waiting:
 	// the user may take minutes and other observers must not stall.
 	release, err := interaction.Default.Acquire(ctx, controlID, resource, true)
 	if err != nil {

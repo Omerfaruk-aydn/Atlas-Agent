@@ -77,42 +77,16 @@
     }
   }
 
-  function el(tag, cls, text) {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (text !== undefined) e.textContent = text;
-    return e;
+    flushPara();
+    return root;
   }
 
-  function show(view) {
-    ["pair", "list", "task", "settings"].forEach((v) => $("view-" + v).classList.toggle("hidden", v !== view));
-    $("back").classList.toggle("hidden", view === "list" || view === "pair");
-    $("settings-btn").classList.toggle("hidden", view === "pair");
-    if (view === "list") $("title").textContent = "Atlas";
-    if (view === "settings") $("title").textContent = t("settings");
-    $("main").focus({ preventScroll: true });
-  }
-
-  function banner(text, bad) {
-    const b = $("banner");
-    if (!text) { b.classList.add("hidden"); return; }
-    b.textContent = text;
-    b.classList.toggle("bad", !!bad);
-    b.classList.remove("hidden");
-  }
-
-  function setConn(kind) {
-    const c = $("conn");
-    c.className = "conn " + ({ connected: "ok", reconnecting: "warn", offline: "bad" }[kind] || "");
-    c.textContent = t(kind);
-  }
-
+  // ---------- Network ----------
   function uuid() {
     if (crypto.randomUUID) return crypto.randomUUID();
     const b = crypto.getRandomValues(new Uint8Array(16));
     return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
   }
-
   async function api(path, opts = {}) {
     const headers = Object.assign({}, opts.headers || {});
     if (opts.body && !(opts.body instanceof FormData)) headers["Content-Type"] = "application/json";
@@ -120,30 +94,49 @@
       headers["X-CSRF-Token"] = state.csrf;
       headers["Idempotency-Key"] = opts.key || uuid();
     }
-    const resp = await fetch(path, { method: opts.method || "GET", headers, credentials: "same-origin", body: opts.body instanceof FormData ? opts.body : opts.body ? JSON.stringify(opts.body) : undefined });
+    const resp = await fetch(path, { method: opts.method || "GET", headers, credentials: "same-origin", cache: "no-store", body: opts.body instanceof FormData ? opts.body : opts.body ? JSON.stringify(opts.body) : undefined });
     let data = null;
     try { data = await resp.json(); } catch (_) { data = null; }
     if (!resp.ok) {
-      const err = new Error((data && data.error && data.error.message) || resp.statusText);
+      const err = new Error((data && data.error && data.error.message) || resp.statusText || String(resp.status));
       err.status = resp.status;
       err.code = data && data.error && data.error.code;
       throw err;
     }
     return data;
   }
-
   // Actions retry once on a network failure with the same idempotency key,
   // so a dropped connection never runs the effect twice.
-  async function act(path, body, button) {
+  async function act(path, body) {
     const key = uuid();
-    if (button) button.disabled = true;
     try {
-      try {
-        return await api(path, { method: "POST", body, key });
-      } catch (e) {
-        if (e.status) throw e;
-        return await api(path, { method: "POST", body, key });
+      return await api(path, { method: "POST", body, key });
+    } catch (e) {
+      if (e.status) {
+        if (e.status === 401) startPairing("expired");
+        throw e;
       }
+      return await api(path, { method: "POST", body, key });
+    }
+  }
+  const isStale = (e) => e && (e.code === "stale_request" || e.code === "stale_revision" || e.code === "not_found");
+
+  // ---------- Connection state ----------
+  function setConn(kind, reason) {
+    const prev = state.conn;
+    state.conn = kind;
+    if (kind === "offline") state.offlineReason = reason || (navigator.onLine ? state.offlineReason || "computer" : "network");
+    clearTimeout(staleTimer);
+    // A short reconnect is normal after the phone wakes; only a lasting
+    // one is presented as a lost connection.
+    if (kind === "reconnecting") staleTimer = setTimeout(() => { if (state.conn === "reconnecting") setConn("offline", navigator.onLine ? "computer" : "network"); }, 6000);
+    if (kind === "connected") { state.lastSync = Date.now(); state.retryStopped = false; }
+    if (prev !== kind && prev && (kind === "offline" || (kind === "connected" && prev === "offline"))) announce(t(kind === "offline" ? "announce_offline" : "announce_online"));
+    renderConn();
+  }
+  function renderConn() {
+    const kind = state.conn;
+    const cls = { connected: "ok", reconnecting: "warn", offline: "bad" }[kind] || "";
     for (const id of ["list-conn", "set-conn"]) {
       const c = $(id);
       c.className = "conn " + cls;

@@ -49,3 +49,15 @@ For a remote browser workflow:
 ```
 The generation above is illustrative; always use the live value. Screen results include an actual image part alongside the device/operation envelope, not a base64 blob to interpret as text. Native question, permission, hook and stop metadata survives the transport. A stopped or unknown operation is not success. Resume a durable desktop flow by its host `run_id` and a new outer call after reconciling the old operation; never replay uncertain input. Raw eval/CDP, credential access and local shell steps are excluded from native remote workflows; authorized system commands use remote `exec` instead.
 </remote_workflow>
+deadline also bounds the remote query; cancellation sends no extra input.
+
+Human viewing: /support → o opens a private loopback live viewer. Start/stop
+there controls a separate read-only screen stream (one current frame, no
+model messages, no temporary screenshot files). It does not take ownership
+of the cursor or consume the agent's observation-bound input grant. Frame
+and timeline records are bound to session and connection generation.
+
+A retry of a local tool is not permission to switch computers. While a
+remote session is active, target it through remote_support. A user request
+explicitly naming this/local computer is required to act locally; generated
+continuation text and tool arguments cannot grant that exception.

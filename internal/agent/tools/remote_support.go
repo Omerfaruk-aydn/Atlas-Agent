@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/nodes"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/outcome"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
@@ -28,13 +29,17 @@ var remoteSupportDescription string
 
 // RemoteSupportParams is flat so every provider sees the same schema.
 type RemoteSupportParams struct {
-	Action string `json:"action" enum:"status,system_info,list,exec,verify_install,push,pull,observe,automation,input,launch,tool,operation_status,cancel,request_permission,permission_status" description:"status: the connected computer and its grants. system_info: read-only diagnostics. list: a folder. exec: literal argv. verify_install: independently probe a recorded installation. push/pull: send or fetch one file (SHA-256 verified). observe/automation: read the remote screen. input/launch/tool: control the remote desktop or built-ins. operation_status/cancel: reconcile or stop an operation. request_permission/permission_status: ask the computer owner for more."`
+	Action string `json:"action" enum:"status,system_info,list,exec,verify_install,push,pull,observe,wait,automation,input,launch,tool,operation_status,cancel,request_permission,permission_status" description:"status: the connected computer and its grants. system_info: read-only diagnostics. list: a folder. exec: literal argv. verify_install: independently probe a recorded installation. push/pull: send or fetch one file (SHA-256 verified). observe/automation: read the remote screen. wait: poll the remote screen until wait_for holds, instead of sleeping. input/launch/tool: control the remote desktop or built-ins. operation_status/cancel: reconcile or stop an operation. request_permission/permission_status: ask the computer owner for more."`
 	// DeviceID must name the connected computer for every action except
 	// status, so a call can never land on another computer.
 	DeviceID       string         `json:"device_id,omitempty" description:"remote_device_id from status. Required for every action except status; a different id is refused."`
 	Argv           []string       `json:"argv,omitempty" description:"exec/launch: literal program and arguments (no shell)."`
+	App            string         `json:"app,omitempty" description:"launch: app_id or name from automation query apps, resolved by the remote computer's own application catalog (Turkish and localized names work). Use instead of argv when the program is not on PATH, e.g. Chrome."`
+	Args           []string       `json:"args,omitempty" description:"launch with app: literal arguments as a list, e.g. a URL. Never shell text."`
+	Profile        string         `json:"profile,omitempty" description:"launch with app: Chromium browser profile display name or directory from apps. An ambiguous name is refused; ask the user."`
 	Cwd            string         `json:"cwd,omitempty" description:"exec: allowed folder label and path, e.g. \"Work/logs\"."`
-	TimeoutMS      int64          `json:"timeout_ms,omitempty" description:"exec: limit in milliseconds (default 600000)."`
+	TimeoutMS      int64          `json:"timeout_ms,omitempty" description:"exec: limit in milliseconds (default 600000). wait: how long to wait (default 60000, max 600000)."`
+	WaitFor        string         `json:"wait_for,omitempty" enum:"change,stable,text,text_gone" description:"wait: change (the screen changes), stable (it stops changing, e.g. generation finished), text / text_gone (a control named name appears / disappears)."`
 	RemotePath     string         `json:"remote_path,omitempty" description:"list/push/pull: path starting with an allowed folder label, e.g. \"Desktop/report.pdf\". Empty for list shows the folders."`
 	LocalPath      string         `json:"local_path,omitempty" description:"push source / pull destination on this computer, relative to this workspace."`
 	Conflict       string         `json:"conflict,omitempty" enum:"error,rename,overwrite" description:"push/pull when the destination exists: error (default), rename, or overwrite (push needs the owner's file_modify grant)."`
@@ -58,7 +63,7 @@ type RemoteSupportParams struct {
 	Key           string `json:"key,omitempty" description:"input key/hotkey: key name."`
 	Modifiers     string `json:"modifiers,omitempty" description:"input hotkey: modifiers such as \"ctrl+shift\"."`
 	ScrollY       int    `json:"scroll_y,omitempty" description:"input scroll: vertical notches, positive up."`
-	Query         string `json:"query,omitempty" enum:"windows,inspect,tree,find,monitors" description:"automation: read-only accessibility query. inspect reads the tree; tree is a compatibility alias."`
+	Query         string `json:"query,omitempty" enum:"windows,inspect,tree,find,monitors,apps" description:"automation: read-only accessibility query. inspect reads the tree; tree is a compatibility alias. apps lists installed applications (name filters)."`
 	Name          string `json:"name,omitempty" description:"automation find: element name."`
 	Role          string `json:"role,omitempty" description:"automation find: element role."`
 	// Permission fields.
@@ -80,6 +85,8 @@ type remoteSupportTool struct {
 	// reconcileWait bounds how long an unknown outcome waits for the
 	// connection to come back before it is reported unreconciled.
 	reconcileWait time.Duration
+	// power remembers shutdown and restart requests per device.
+	power powerLedger
 }
 
 // NewRemoteSupportTool builds the tool over the /support controller. It
@@ -95,11 +102,21 @@ func (t *remoteSupportTool) handle(ctx context.Context, _ RemoteSupportParams, c
 	if err := strictDecode(call.Input, &p, remoteSupportExample); err != nil {
 		return withToolOutcome(deviceErrorResponse(err), ToolOutcome{Dispatch: "none", Kind: outcome.KindObservation, Claim: "invalid_request"}), nil
 	}
+	started := time.Now().UnixMilli()
+	if t.controller != nil && p.Action != "status" {
+		if ctl := t.controller(); ctl != nil {
+			st := ctl.Status()
+			if st.Remote != nil {
+				scope := engineering.GetScope(ctx, GetSessionFromContext(ctx))
+				ctl.Record(support.Event{Kind: "operation_started", SessionID: st.Remote.SessionID, Generation: st.Remote.Generation, CallID: call.ID, AgentSession: GetSessionFromContext(ctx), TaskID: scope.TaskID, StartedAt: started, State: "planned", Detail: p.Action})
+			}
+		}
+	}
 	resp := t.run(ctx, p, call)
 	if t.controller != nil {
 		var res supportResult
 		if json.Unmarshal([]byte(resp.Content), &res) == nil {
-			record(t.controller(), p, res)
+			record(ctx, t.controller(), p, res, call.ID, started)
 		}
 	}
 	return resp, nil
@@ -169,7 +186,7 @@ func remoteSupportCallMutates(p RemoteSupportParams) bool {
 
 // record keeps the supporter's side of the session history: what was asked
 // of which device, its operation id and outcome, never arguments or data.
-func record(ctl *support.Controller, p RemoteSupportParams, res supportResult) {
+func record(ctx context.Context, ctl *support.Controller, p RemoteSupportParams, res supportResult, callID string, started int64) {
 	if ctl == nil || p.Action == "status" {
 		return
 	}
@@ -193,7 +210,30 @@ func record(ctl *support.Controller, p RemoteSupportParams, res supportResult) {
 			fields["sha256"] = sum
 		}
 	}
-	ctl.Record(support.Event{Kind: "operation", OperationID: res.OperationID, State: state, Effect: string(res.Effect), Detail: detail, Fields: fields})
+	dispatch := "none"
+	if res.InputSent {
+		dispatch = "sent"
+	}
+	if res.Effect == support.EffectUnknown {
+		dispatch = "unknown"
+	}
+	scope := engineering.GetScope(ctx, GetSessionFromContext(ctx))
+	ctl.Record(support.Event{Kind: "operation", SessionID: res.Device.SessionID, Generation: res.Device.Generation, OperationID: res.OperationID, CallID: callID, State: state, Effect: string(res.Effect), Detail: detail, Fields: fields, AgentSession: GetSessionFromContext(ctx), TaskID: scope.TaskID, StartedAt: started, EndedAt: time.Now().UnixMilli(), Dispatch: dispatch, Verification: res.Verified})
+	var meta struct {
+		Flow struct {
+			RunID string `json:"run_id"`
+			Nodes []struct {
+				ID    string `json:"id"`
+				Kind  string `json:"kind"`
+				State string `json:"state"`
+			} `json:"nodes"`
+		} `json:"flow"`
+	}
+	if json.Unmarshal([]byte(res.NativeMetadata), &meta) == nil && meta.Flow.RunID != "" {
+		for _, node := range meta.Flow.Nodes {
+			ctl.Record(support.Event{Kind: "workflow_step", SessionID: res.Device.SessionID, Generation: res.Device.Generation, OperationID: callID, TaskID: scope.TaskID, AgentSession: GetSessionFromContext(ctx), WorkflowID: meta.Flow.RunID, StepID: node.ID, State: node.State, Detail: node.Kind})
+		}
+	}
 }
 
 func (t *remoteSupportTool) respond(res supportResult, mutation bool) fantasy.ToolResponse {
@@ -255,6 +295,9 @@ func (t *remoteSupportTool) run(ctx context.Context, p RemoteSupportParams, call
 		return t.status(ctx, ctl, remote, terr)
 	}
 	if terr != nil {
+		if r, ok := t.power.get(remote.RemoteDeviceID, remote.SessionID); ok {
+			return t.respond(t.powerOffline(p.Action, dev, r), remoteSupportMutates(p.Action))
+		}
 		e := support.AsError(terr)
 		if e == nil {
 			e = support.Errorf(support.CodeRemoteOffline, "%v", terr)
@@ -280,6 +323,10 @@ func (t *remoteSupportTool) run(ctx context.Context, p RemoteSupportParams, call
 	opID := nodes.OperationID(GetSessionFromContext(ctx), call.ID, "remote_support", remote.SessionID)
 	if p.OperationID != "" && (p.Action == "operation_status" || p.Action == "cancel") {
 		opID = p.OperationID
+	}
+	powerKind, isPower := "", false
+	if p.Action == "exec" {
+		powerKind, isPower = classifyPowerCommand(p.Argv)
 	}
 	if isPower {
 		if r, ok := t.power.get(remote.RemoteDeviceID, remote.SessionID); ok && r.Kind == powerKind {

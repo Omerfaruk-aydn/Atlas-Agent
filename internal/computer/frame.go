@@ -1,3 +1,21 @@
+package computer
+
+import (
+	"errors"
+	"image"
+	"time"
+)
+
+// Frame is one downscaled capture of the whole virtual desktop for live
+// viewing. It is never handed to the model or written to disk.
+type Frame struct {
+	Image    *image.RGBA
+	Screen   Size
+	Captured time.Time
+}
+
+// ErrFrameCaptureUnsupported reports that this platform has no direct
+// frame capture; callers fall back to Backend.Screenshot.
 var ErrFrameCaptureUnsupported = errors.New("computer-use: direct frame capture is not available on this platform")
 
 // FrameScale returns the output size for a desktop of w×h limited to

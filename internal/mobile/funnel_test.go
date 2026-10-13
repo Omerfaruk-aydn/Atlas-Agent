@@ -1,3 +1,74 @@
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/tls"
+	"errors"
+	"mime/multipart"
+	"net"
+	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
+	"strconv"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/question"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
+)
+
+const funnelHost = "atlas-pc.tail1234.ts.net"
+
+// funnelIngress stands in for tailscaled's Funnel proxy: it terminates TLS
+// and forwards to the gateway's loopback target the way serve does, keeping
+// the Host header and adding the forwarding and Funnel headers. It is a
+// local fixture, not a Tailscale connection.
+func funnelIngress(t *testing.T, port int, clientIP string) *httptest.Server {
+	t.Helper()
+	target, _ := url.Parse("http://127.0.0.1:" + strconv.Itoa(port))
+	rp := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(target)
+			r.Out.Host = r.In.Host
+			r.Out.Header.Set("X-Forwarded-Host", r.In.Host)
+			r.Out.Header.Set("X-Forwarded-Proto", "https")
+			r.Out.Header.Set("X-Forwarded-For", clientIP)
+			r.Out.Header.Del("Tailscale-User-Login")
+			r.Out.Header.Set(funnelRequestHeader, "?1")
+		},
+		FlushInterval: -1,
+	}
+	srv := httptest.NewTLSServer(rp)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// phoneThroughFunnel addresses https://<funnelHost> but dials the ingress.
+func phoneThroughFunnel(t *testing.T, g *Gateway, ingress *httptest.Server) *phone {
+	t.Helper()
+	addr := ingress.Listener.Addr().String()
+	jar, _ := cookiejar.New(nil)
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // The fixture ingress uses a test certificate.
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, network, addr)
+		},
+	}
+	return &phone{t: t, g: g, base: "https://" + funnelHost, client: &http.Client{Jar: jar, Transport: tr}}
+}
+
+type funnelFixture struct {
+	g       *Gateway
+	b       *fakeBackend
 	ingress *httptest.Server
 	closed  *atomic.Int32
 }

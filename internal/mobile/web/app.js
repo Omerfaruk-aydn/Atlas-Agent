@@ -274,21 +274,64 @@
 
   function questionCard(q) {
     const c = el("form", "pending-card");
-    c.dataset.request = JSON.stringify({ id: q.id, session: q.session_id, questions: q.questions });
-    c.append(el("h3", "", t("q_title")));
-    const inputs = [];
-    for (const item of q.questions) {
-      c.append(el("p", "", item.question));
-      if (item.description) c.append(el("p", "muted small", item.description));
-      if (item.type === "yes_no") {
-        const row = el("div", "actions");
-        for (const [v, label] of [[true, t("yes")], [false, t("no")]]) {
-          const lab = el("label", "choice");
-          const r = el("input");
-          r.type = "radio"; r.name = q.id + item.id; r.value = String(v);
-          lab.append(r, el("span", "", label));
-          row.append(lab);
         }
+      } else {
+        const id = "q-" + n + "-text";
+        const lab = el("label", "sr-only", item.question);
+        lab.htmlFor = id;
+        const ta = el("textarea", "input");
+        ta.id = id;
+        ta.rows = 3;
+        ta.maxLength = 4000;
+        ta.placeholder = t("free_placeholder");
+        ta.value = dr.text;
+        ta.setAttribute("aria-describedby", lg.id);
+        ta.addEventListener("input", () => { dr.text = ta.value; clearQError(fs); });
+        fs.append(lab, ta);
+      }
+      // The note reaches the model with the answer (question.Answer.Notes).
+      const nid = "q-" + n + "-note";
+      const nl = el("label", "field", t("note_label"));
+      nl.htmlFor = nid;
+      const note = el("textarea", "input");
+      note.id = nid;
+      note.rows = 2;
+      note.maxLength = 2000;
+      note.placeholder = t("note_placeholder");
+      note.value = dr.note;
+      note.addEventListener("input", () => { dr.note = note.value; });
+      fs.append(nl, note);
+      const err = el("p", "q-error hidden");
+      err.id = "q-" + n + "-error";
+      fs.append(err);
+      form.append(fs);
+      readers.push(() => {
+        let a = null;
+        if (item.type === "yes_no") a = dr.sel.length ? { question_id: item.id, yes: dr.sel[0] === "true" } : null;
+        else if (item.type === "single_choice" || item.type === "multi_choice") a = dr.sel.length ? { question_id: item.id, selected_ids: dr.sel.slice() } : null;
+        else a = dr.text.trim() ? { question_id: item.id, fill_in_text: dr.text.trim() } : null;
+        if (a && dr.note.trim()) a.notes = { _question: dr.note.trim() };
+        return { fs, err, a };
+      });
+    });
+    const actions = el("div", "actions");
+    const submit = button("btn primary block", t("submit_answer"), "submit");
+    const cancel = button("btn secondary block", t("cancel_question"));
+    submit.disabled = cancel.disabled = !online;
+    actions.append(submit, cancel);
+    const result = el("p", "form-error result hidden");
+    result.setAttribute("role", "alert");
+    form.append(actions, result, el("p", "pending-foot", online ? t("pending_foot") : t("answer_offline")));
+    const send = async (body, b, done) => {
+      if (state.answering || state.conn !== "connected") return;
+      state.answering = true;
+      submit.disabled = cancel.disabled = true;
+      b.classList.add("busy");
+      result.classList.add("hidden");
+      try {
+        await act("/api/questions/" + encodeURIComponent(q.id), body);
+        state.qDrafts.delete(key);
+        dropPending("q", q.id);
         toast(done);
       } catch (e) {
         if (isStale(e)) { state.qDrafts.delete(key); dropPending("q", q.id); toast(t("stale")); }

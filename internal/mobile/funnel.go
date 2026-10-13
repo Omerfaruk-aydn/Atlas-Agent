@@ -1,3 +1,37 @@
+package mobile
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+// funnelRequestHeader is set by tailscaled on requests that reached this
+// computer through Tailscale Funnel, that is from the public internet.
+const funnelRequestHeader = "Tailscale-Funnel-Request"
+
+// funnelTarget is the loopback listener that Tailscale Funnel forwards to.
+//
+// Funnel terminates TLS with a publicly trusted certificate for the
+// device's ts.net name and proxies to this listener over loopback. The
+// listener speaks plain HTTP so that tailscaled verifies nothing it cannot
+// verify: an https+insecure:// target would disable certificate checks.
+// The connection never leaves this computer.
+//
+// Every request still passes the same Host, cookie, Origin, CSRF, rate
+// limit and idempotency checks as the local listener. Only the exact public
+// Host is accepted, so a local program that connects directly gains
+// nothing it could not already try against the local TLS listener.
+type funnelTarget struct {
+	host string
+	ln   net.Listener
 	srv  *http.Server
 	// onClose removes the public Funnel entry; it runs before the
 	// listener closes so phones never reach a closed port.

@@ -77,6 +77,77 @@
     }
   }
 
+    const a = el("a", "", label);
+    try {
+      const u = new URL(href);
+      if (u.protocol !== "https:" && u.protocol !== "http:") return el("span", "", label);
+      a.href = u.href;
+    } catch (_) { return el("span", "", label); }
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    return a;
+  }
+  function inline(text, parent) {
+    let last = 0;
+    for (const m of text.matchAll(INLINE)) {
+      if (m.index > last) parent.append(document.createTextNode(text.slice(last, m.index)));
+      if (m[1]) parent.append(el("code", "", m[1].slice(1, -1)));
+      else if (m[2]) parent.append(el("strong", "", m[2].slice(2, -2)));
+      else if (m[3]) parent.append(safeLink(m[4], m[3].slice(1, m[3].indexOf("]"))));
+      else if (m[5]) parent.append(safeLink(m[5], m[5]));
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) parent.append(document.createTextNode(text.slice(last)));
+  }
+  function markdown(text) {
+    const root = el("div", "md");
+    const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
+    let para = [];
+    let list = null;
+    const flushPara = () => {
+      if (!para.length) return;
+      const p = el("p");
+      inline(para.join("\n"), p);
+      root.append(p);
+      para = [];
+    };
+    const flushList = () => { list = null; };
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const fence = line.match(/^\s*```(.*)$/);
+      if (fence) {
+        flushPara(); flushList();
+        const code = [];
+        i++;
+        while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) code.push(lines[i++]);
+        const pre = el("pre");
+        pre.tabIndex = 0;
+        pre.append(el("code", "", code.join("\n")));
+        root.append(pre);
+        continue;
+      }
+      const heading = line.match(/^(#{1,6})\s+(.*)$/);
+      if (heading) {
+        flushPara(); flushList();
+        const h = el(heading[1].length <= 2 ? "h3" : "h4");
+        inline(heading[2], h);
+        root.append(h);
+        continue;
+      }
+      const item = line.match(/^\s*(?:([-*+])|(\d+)[.)])\s+(.*)$/);
+      if (item) {
+        flushPara();
+        const tag = item[1] ? "ul" : "ol";
+        if (!list || list.tagName.toLowerCase() !== tag) { list = el(tag); root.append(list); }
+        const li = el("li");
+        inline(item[3], li);
+        list.append(li);
+        continue;
+      }
+      if (!line.trim()) { flushPara(); flushList(); continue; }
+      flushList();
+      para.push(line);
+    }
     flushPara();
     return root;
   }

@@ -319,6 +319,45 @@ func (a *Auth) revoke(match func(Device) bool, notFound error) error {
 		cb()
 	}
 	return nil
+	return code, t.expires, nil
+}
+
+// RedeemTransfer turns a transfer code into a new device session for the
+// Home Screen app. The code works once; the new device keeps the source
+// device's preview setting because it is the same phone.
+func (a *Auth) RedeemTransfer(code, userAgent string) (Device, string, error) {
+	code = strings.ToUpper(strings.ReplaceAll(strings.ReplaceAll(strings.TrimSpace(code), " ", ""), "-", ""))
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	t, ok := a.transfers[hash(code)]
+	if !ok || len(code) != 8 {
+		return Device{}, "", ErrNonceInvalid
+	}
+	delete(a.transfers, t.hash)
+	if a.now().After(t.expires) {
+		return Device{}, "", ErrNonceInvalid
+	}
+	var src *Device
+	for i := range a.devices {
+		if a.devices[i].ID == t.deviceID {
+			src = &a.devices[i]
+		}
+	}
+	if src == nil {
+		return Device{}, "", ErrNonceInvalid
+	}
+	name := src.Name
+	if !strings.HasSuffix(name, " (Home Screen)") {
+		name = truncate(name, 34) + " (Home Screen)"
+	}
+	session := random(32)
+	d := Device{ID: "phone-" + random(6), Name: name, CreatedAt: a.now().UnixMilli(), LastSeen: a.now().UnixMilli(), SessionHash: hash(session), CSRF: random(24), UserAgent: truncate(userAgent, 160), Previews: src.Previews}
+	a.devices = append(a.devices, d)
+	if err := a.saveLocked(); err != nil {
+		a.devices = a.devices[:len(a.devices)-1]
+		return Device{}, "", err
+	}
+	return d, session, nil
 }
 
 // SetPreviews toggles screen previews for a device (desktop side only).

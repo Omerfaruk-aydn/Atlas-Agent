@@ -20,6 +20,16 @@ import (
 // file contents: commands are reduced to their program name and argument
 // count, transfers to path, size and hash.
 type Event struct {
+	At           int64             `json:"at"`
+	SessionID    string            `json:"session_id"`
+	Role         string            `json:"role"`
+	Kind         string            `json:"kind"`
+	Device       string            `json:"device,omitempty"`
+	Peer         string            `json:"peer,omitempty"`
+	PeerDevice   string            `json:"peer_device,omitempty"`
+	Generation   uint64            `json:"generation,omitempty"`
+	OperationID  string            `json:"operation_id,omitempty"`
+	CallID       string            `json:"call_id,omitempty"`
 	State        string            `json:"state,omitempty"`
 	Effect       string            `json:"effect,omitempty"`
 	Detail       string            `json:"detail,omitempty"`

@@ -1,3 +1,74 @@
+	_, out = p.do("POST", "/api/credentials/"+card.ID, map[string]any{"session_id": "s1", "cancel": true}, map[string]string{"Idempotency-Key": "e"})
+	require.Equal(t, "canceled", out["state"])
+	resp, out = p.do("POST", "/api/credentials/"+card.ID, body, map[string]string{"Idempotency-Key": "f"})
+	require.Equal(t, 409, resp.StatusCode, out)
+}
+
+func TestRevokingThePhoneWithdrawsItsSecret(t *testing.T) {
+	g, _ := newGateway(t)
+	p := newPhone(t, g)
+	p.pair(true)
+	card := openCard(t, "s1")
+	resp, _ := p.do("POST", "/api/credentials/"+card.ID, map[string]any{"session_id": "s1", "secret": phoneSecret}, map[string]string{"Idempotency-Key": "k"})
+	require.Equal(t, 200, resp.StatusCode)
+	resp, _ = p.do("POST", "/api/logout", map[string]any{}, map[string]string{"Idempotency-Key": "out"})
+	require.Equal(t, 200, resp.StatusCode)
+	view, _ := vault.Ephemeral.Get(card.ID)
+	require.Equal(t, vault.CredentialCanceled, view.State)
+	_, err := vault.Ephemeral.Use(card.ID, "s1", "https://login.example.test", "", func(string) (bool, error) { t.Fatal("revoked secret used"); return true, nil })
+	require.Error(t, err)
+}
+
+func TestResumeUseFromPhoneUsesRealControlPath(t *testing.T) {
+	g, b := newGateway(t)
+	p := newPhone(t, g)
+	p.pair(true)
+	b.mu.Lock()
+	b.interPaused, b.interReason = true, "Approve the sign-in on your phone"
+	b.mu.Unlock()
+
+	resp, detail := p.do("GET", "/api/sessions/s1", nil, nil)
+	require.Equal(t, 200, resp.StatusCode)
+	inter := detail["interaction"].(map[string]any)
+	require.Equal(t, true, inter["paused"])
+
+	resp, out := p.do("POST", "/api/sessions/s1/prompt", map[string]string{"text": " /resume-use "}, map[string]string{"Idempotency-Key": "r1"})
+	require.Equal(t, 200, resp.StatusCode, out)
+	require.Equal(t, "interaction_resume", out["action"])
+	require.Eventually(t, func() bool { return b.runs.Load() == 1 }, 2*time.Second, 10*time.Millisecond)
+	b.mu.Lock()
+	require.Equal(t, []string{"interaction_resume"}, b.controls)
+	require.Len(t, b.prompts, 1)
+	require.NotContains(t, b.prompts[0], "/resume-use", "the command never reaches the model as text")
+	require.Contains(t, b.prompts[0], "fresh observation")
+	require.Contains(t, b.prompts[0], "Approve the sign-in on your phone")
+	b.mu.Unlock()
+
+	// A duplicate resume finds control already returned: no second run.
+	resp, out = p.do("POST", "/api/sessions/s1/prompt", map[string]string{"text": "/resume-use"}, map[string]string{"Idempotency-Key": "r2"})
+	require.Equal(t, 409, resp.StatusCode)
+	require.Equal(t, "not_paused", code(out))
+	time.Sleep(50 * time.Millisecond)
+	require.EqualValues(t, 1, b.runs.Load())
+
+	// Other slash text stays an ordinary message; there is no remote
+	// command gate.
+	resp, _ = p.do("POST", "/api/sessions/s1/prompt", map[string]string{"text": "/help"}, map[string]string{"Idempotency-Key": "r3"})
+	require.Equal(t, 202, resp.StatusCode)
+}
+
+func TestReturnControlButtonChecksRevisionAndCancellation(t *testing.T) {
+	g, b := newGateway(t)
+	p := newPhone(t, g)
+	p.pair(true)
+	b.mu.Lock()
+	b.interPaused = true
+	rev := b.revision
+	b.mu.Unlock()
+
+	_, out := p.do("POST", "/api/sessions/s1/control", map[string]string{"action": "interaction_resume", "revision": "old-tab"}, map[string]string{"Idempotency-Key": "c1"})
+	require.Equal(t, "stale_revision", code(out), "an old tab cannot resume")
+	_, out = p.do("POST", "/api/sessions/nope/control", map[string]string{"action": "interaction_resume", "revision": rev}, map[string]string{"Idempotency-Key": "c2"})
 	require.NotEqual(t, "", code(out))
 
 	b.mu.Lock()

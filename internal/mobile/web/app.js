@@ -37,28 +37,73 @@
       st_running: "Çalışıyor", st_idle: "Boşta", st_permission: "İzin bekliyor", st_question: "Soru var", st_paused: "Duraklatıldı",
       perm_title: "İzin isteği", allow: "Bir kez izin ver", allow_session: "Görev için izin ver", deny: "Reddet",
       q_title: "Soru", yes: "Evet", no: "Hayır", submit: "Gönder", cancel: "İptal",
-      stop_confirm: "Bu görev şimdi durdurulsun mu? Çalışan adımlar iptal edilir.", stale: "Başka yerde yanıtlanmış veya değişmiş. Güncel durum gösteriliyor.",
-      failed: "İstek başarısız", sent: "Gönderildi", queued: "Mevcut çalışmadan sonra sıraya alındı", run_error: "Çalışma başarısız",
-      previews_on: "Açık (bilgisayardan etkinleştirildi)", previews_off: "Kapalı — bilgisayardaki Atlas'tan bu telefon için aç",
-      updated: "Güncellendi", todos: "adım", you: "Sen", atlas: "Atlas", resynced: "Yeniden bağlandı; durum yenilendi.",
-      notify_denied: "Tarayıcı bu sayfa için bildirimleri engelledi.", revoked: "Bu telefonun eşleşmesi kaldırıldı.",
-      notify_unsupported: "Atlas bu cihazda arka plan bildirimi gönderemiyor. Soruları ve izin isteklerini görmek için paneli aç.",
-      iphone_install_title: "iPhone’unda Atlas",
-      iphone_install_steps: "Safari’de Paylaş → Ana Ekrana Ekle’ye dokun. Görünüyorsa Web Uygulaması Olarak Aç seçeneğini açık bırak ve Ekle’ye dokun.",
-      iphone_install_note: "Atlas’ı yeni simgesinden aç. Yeniden eşleştirme istenirse bilgisayarda /mobile komutuyla yeni bir QR kodu aç ve tara. Bilgisayar açık ve bağlantıda kalmalı.",
     },
   };
   let lang = (navigator.language || "en").toLowerCase().startsWith("tr") ? "tr" : "en";
-  const t = (k) => (T[lang] && T[lang][k]) || T.en[k] || k;
+  const t = (k, ...args) => {
+    let s = (T[lang] && T[lang][k]) || T.en[k] || k;
+    for (const a of args) s = s.replace(/%[sd]/, String(a));
+    return s;
+  };
   const $ = (id) => document.getElementById(id);
-  const state = { me: null, csrf: "", seq: 0, sessions: new Map(), current: null, detail: null, es: null, upload: null };
-  const appleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) || navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  const MAX_RETRIES = 6;
+  const state = {
+    me: null, csrf: "", seq: 0, sessions: new Map(), current: null, detail: null, es: null,
+    conn: "offline", offlineReason: "", lastSync: 0, retries: 0, retryStopped: false,
+    listStatus: "loading", query: "", errors: new Map(), upload: null, sending: false,
+    qDrafts: new Map(), seenPending: new Set(), pendingOpen: false, paneKey: "", answering: false,
+    activityOpen: new Map(), drafts: new Map(), unseen: false, pair: null,
+    credBusy: new Set(), view: "chat", installPrompt: null,
+  };
+  const appleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const android = /Android/i.test(navigator.userAgent);
   const standalone = () => navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  // Apps that embed a web view usually cannot add to the Home Screen.
+  const inAppBrowser = appleMobile && (/FBAN|FBAV|Instagram|Line\/|GSA\/|Twitter|LinkedInApp|Snapchat|MicroMessenger|; wv\)/.test(navigator.userAgent) || !/Safari\//.test(navigator.userAgent) && !navigator.standalone);
+  // The one-time pairing nonce is read once and removed from the address at
+  // once, so a bookmark or Home Screen icon never captures an expired link.
+  let pairNonce = new URLSearchParams(location.hash.slice(1)).get("pair");
+  if (location.hash) history.replaceState(history.state, "", location.pathname);
   let refreshing = null;
   let resumeTimer = null;
+  let staleTimer = null;
+  let reloadTimer = null;
+  let tickTimer = null;
+  let toastTimer = null;
   // Reconnect delays grow from 1 s to 30 s with jitter, so a phone does not
-  // hammer a relay whose computer is asleep; any success resets them.
+  // hammer a relay whose computer is asleep. After MAX_RETRIES attempts the
+  // phone stops and offers a manual retry; any success resets the count.
   let retryDelay = 1000;
+
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (_) { return null; } },
+    set(k, v) { try { if (v === null || v === "") localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (_) {} },
+  };
+
+  // ---------- DOM helpers ----------
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = text;
+    return e;
+  }
+  function icon(name, cls) {
+    const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    s.setAttribute("aria-hidden", "true");
+    if (cls) s.setAttribute("class", cls);
+    const u = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    u.setAttribute("href", "#i-" + name);
+    s.append(u);
+    return s;
+  }
+  function button(cls, text, type) {
+    const b = el("button", cls, text);
+    b.type = type || "button";
+    return b;
+  }
+  function toast(text, bad) {
+    const n = $("toast");
     n.textContent = text;
     n.classList.toggle("bad", !!bad);
     n.classList.remove("hidden");

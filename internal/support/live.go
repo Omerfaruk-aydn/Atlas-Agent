@@ -1,3 +1,67 @@
+package support
+
+import (
+	"slices"
+	"sync"
+	"time"
+)
+
+// The supporter keeps a small in-memory view of the current session for
+// the /support panel: the latest remote screen frame and a bounded
+// timeline of recent operations. Nothing here is persisted; the history
+// file remains the durable record.
+
+const (
+	// timelineCap bounds the in-memory timeline.
+	timelineCap = 50
+	// maxFrameBytes bounds the one kept frame.
+	maxFrameBytes = 8 << 20
+	// FrameStaleAfter is when the panel marks the last frame as stale.
+	FrameStaleAfter = 30 * time.Second
+)
+
+// Frame is the latest remote screen the supporter saw.
+type Frame struct {
+	PNG           []byte
+	MediaType     string
+	ObservationID string
+	SessionID     string
+	Generation    uint64
+	Width, Height int
+	CapturedAt    int64
+	Cached        bool
+}
+
+// Stale reports whether the frame is too old to describe the screen now.
+func (f Frame) Stale(now time.Time) bool {
+	return f.Cached || f.CapturedAt <= 0 || now.Sub(time.UnixMilli(f.CapturedAt)) > FrameStaleAfter
+}
+
+type liveView struct {
+	mu       sync.Mutex
+	timeline []Event
+	frame    *Frame
+}
+
+func (l *liveView) record(e Event) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if e.At == 0 {
+		e.At = time.Now().UnixMilli()
+	}
+	l.timeline = append(l.timeline, e)
+	if n := len(l.timeline) - timelineCap; n > 0 {
+		l.timeline = slices.Delete(l.timeline, 0, n)
+	}
+}
+
+// SetFrame keeps f as the latest screen of the current session. Frames of
+// another session or above the size bound are ignored.
+func (c *Controller) SetFrame(f Frame) {
+	if c == nil || len(f.PNG) == 0 || len(f.PNG) > maxFrameBytes {
+		return
+	}
+	c.mu.Lock()
 	defer c.mu.Unlock()
 	remote := c.remote
 	if remote == nil || remote.SessionID != f.SessionID || remote.Generation != f.Generation {

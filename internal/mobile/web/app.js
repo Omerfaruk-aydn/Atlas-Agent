@@ -207,61 +207,26 @@
     state.seq = Math.max(state.seq, data.seq || 0);
     renderList();
   }
-
-  function renderMessages(msgs) {
-    const ol = $("messages");
-    ol.replaceChildren();
-    for (const m of msgs) ol.append(messageNode(m));
+    if (tickTimer) return;
+    tickTimer = setInterval(() => {
+      const n = $("activity-time");
+      if (!n || !n.dataset.since || document.hidden || state.conn !== "connected") { stopTick(); return; }
+      n.textContent = fmtElapsed(Date.now() / 1000 - Number(n.dataset.since));
+    }, 1000);
   }
+  function stopTick() { clearInterval(tickTimer); tickTimer = null; }
 
-  function messageNode(m) {
-    const li = el("li", "msg " + (m.role === "user" ? "user" : ""));
-    li.dataset.id = m.id;
-    li.append(el("div", "who", m.role === "user" ? t("you") : t("atlas")));
-    if (m.text) li.append(el("div", "text", m.text));
-    if (m.tools && m.tools.length) li.append(el("div", "tools", "⚙ " + m.tools.join(", ")));
-    return li;
-  }
-
-  function upsertMessage(m) {
-    const ol = $("messages");
-    const prev = ol.querySelector('[data-id="' + CSS.escape(m.id) + '"]');
-    const node = messageNode(m);
-    if (prev) prev.replaceWith(node); else ol.append(node);
-  }
-
-  function renderPending(d) {
-    const box = $("pending");
-    const drafts = new Map(Array.from(box.querySelectorAll("form[data-request]"), (form) => [form.dataset.request,
-      Array.from(form.querySelectorAll("input, textarea"), (input) => ({ type: input.type, value: input.value, checked: input.checked }))]));
+  function renderRunErrors() {
+    const box = $("run-errors");
     box.replaceChildren();
-    for (const p of d.permissions || []) {
-      const c = el("div", "pending-card");
-      c.append(el("h3", "", t("perm_title") + ": " + p.tool + (p.action ? " · " + p.action : "")));
-      if (p.description) c.append(el("p", "", p.description));
-      if (p.path) c.append(el("p", "muted small mono", p.path));
-      const actions = el("div", "actions");
-      for (const [decision, label, cls] of [["allow", t("allow"), "primary"], ["allow_session", t("allow_session"), ""], ["deny", t("deny"), "danger"]]) {
-        const b = el("button", "btn " + cls, label);
-        b.type = "button";
-        b.addEventListener("click", async () => {
-          try { await act("/api/permissions/" + encodeURIComponent(p.id), { decision, session_id: p.session_id, tool_call_id: p.tool_call_id }, b); c.remove(); } catch (_) {}
-        });
-        actions.append(b);
-      }
-      c.append(actions);
-      box.append(c);
-    }
-    for (const q of d.questions || []) {
-      const card = questionCard(q);
-      const draft = drafts.get(card.dataset.request);
-      if (draft) Array.from(card.querySelectorAll("input, textarea")).forEach((input, index) => {
-        const saved = draft[index];
-        if (saved && input.type === saved.type) {
-          if (input.type === "checkbox" || input.type === "radio") input.checked = saved.checked && input.value === saved.value;
-          else input.value = saved.value;
-        }
-      });
+    for (const message of state.errors.get(state.current) || []) {
+      const n = el("div", "notice bad run-error");
+      n.setAttribute("role", "alert");
+      n.append(icon("alert"));
+      const d = el("div");
+      d.append(el("strong", "", t("run_error")), el("p", "", message));
+      n.append(d);
+      box.append(n);
     }
   }
 

@@ -1,3 +1,74 @@
+		return Solution{}, err
+	}
+	var created struct {
+		ErrorID          int    `json:"errorId"`
+		ErrorCode        string `json:"errorCode"`
+		ErrorDescription string `json:"errorDescription"`
+		TaskID           string `json:"taskId"`
+	}
+	if err := json.Unmarshal(raw, &created); err != nil {
+		return Solution{}, fmt.Errorf("captcha: createTask decode: %w", err)
+	}
+	if created.ErrorID != 0 || created.TaskID == "" {
+		return Solution{}, fmt.Errorf("captcha: createTask failed: %s %s", created.ErrorCode, created.ErrorDescription)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return Solution{}, ctx.Err()
+		case <-time.After(r.PollInterval):
+		}
+		raw, err := r.postJSON(ctx, base+"/getTaskResult", map[string]any{
+			"clientKey": r.APIKey,
+			"taskId":    created.TaskID,
+		})
+		if err != nil {
+			return Solution{}, err
+		}
+		var res struct {
+			ErrorID          int    `json:"errorId"`
+			ErrorCode        string `json:"errorCode"`
+			ErrorDescription string `json:"errorDescription"`
+			Status           string `json:"status"`
+			Solution         struct {
+				Token              string `json:"token"`
+				Text               string `json:"text"`
+				GRecaptchaResponse string `json:"gRecaptchaResponse"`
+				UserAgent          string `json:"userAgent"`
+				Cookies            string `json:"cookies"`
+			} `json:"solution"`
+		}
+		if err := json.Unmarshal(raw, &res); err != nil {
+			return Solution{}, fmt.Errorf("captcha: getTaskResult decode: %w", err)
+		}
+		if res.ErrorID != 0 {
+			return Solution{}, fmt.Errorf("captcha: getTaskResult failed: %s %s", res.ErrorCode, res.ErrorDescription)
+		}
+		if strings.EqualFold(res.Status, "ready") {
+			tok := firstNonEmpty(res.Solution.Token, res.Solution.GRecaptchaResponse, res.Solution.Text)
+			if tok == "" {
+				return Solution{}, fmt.Errorf("captcha: remote solution empty")
+			}
+			return Solution{Token: tok, Text: tok, Confidence: 0.92}, nil
+		}
+	}
+}
+
+func (r *RemoteSolver) taskPayload(ch Challenge, image []byte) (map[string]any, error) {
+	switch ch.Kind {
+	case KindImageText, KindMath:
+		if len(image) == 0 {
+			return nil, fmt.Errorf("captcha: remote image task needs an image")
+		}
+		if r.Provider == RemoteCapSolver {
+			return map[string]any{
+				"type":             "ImageToTextTask",
+				"module":           "common",
+				"body":             base64.StdEncoding.EncodeToString(image),
+				"CapMonsterModule": "TextRecognition",
+			}, nil
+		}
+		return map[string]any{
 			"type": "ImageToTextTask",
 			"body": base64.StdEncoding.EncodeToString(image),
 		}, nil

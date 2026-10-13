@@ -1,3 +1,39 @@
+package tools
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"html/template"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+)
+
+var designFontSafe = regexp.MustCompile(`^[A-Za-z0-9 '\",._-]{1,120}$`)
+
+const directionHTML = `<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>{{.CSS}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);line-height:1.5}main{max-width:580px;margin:auto;padding:var(--space)}header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:16px}header strong{color:var(--accent);font-size:20px}h1{font-size:var(--title);line-height:1.2;margin:32px 0 12px}.brief{white-space:pre-wrap;margin-bottom:28px}.request{background:var(--panel);border:1px solid var(--line);padding:20px;border-radius:var(--radius)}.request h2{font-size:18px;margin:0 0 8px}.request p{margin:0 0 20px}button{font:inherit;min-height:48px;border-radius:var(--radius);padding:12px 16px;width:100%;border:1px solid var(--line);background:var(--bg);color:var(--text);margin-top:10px}.primary{background:var(--accent);border-color:var(--accent);color:var(--onaccent)}footer{margin-top:32px;font-size:14px}textarea{display:block;width:100%;min-height:96px;border:1px solid var(--line);border-radius:var(--radius);padding:14px;background:var(--bg);color:var(--text);font:inherit}</style></head><body><main><header><strong>Atlas</strong><span>Remote</span></header><h1>{{.Product}}</h1><p class="brief">{{.Brief}}</p><section class="request"><h2>Nasıl devam edelim?</h2><p>Göreve devam etmek için bir seçim yap.</p><button class="primary">Göreve devam et</button><button>Değişiklikleri incele</button></section><footer><label for="message">Atlas'a bir şey söyle</label><textarea id="message" placeholder="Mesajını yaz…"></textarea></footer></main></body></html>`
+
+type renderedDirection struct {
+	Name      string       `json:"name"`
+	Rationale string       `json:"rationale"`
+	System    DesignSystem `json:"system"`
+	Source    string       `json:"source"`
+	Preview   string       `json:"preview"`
+	SHA256    string       `json:"sha256"`
+	Width     int          `json:"width"`
+	Height    int          `json:"height"`
+}
+
+func directionPage(s DesignSystem, brief string) (string, error) {
+	color := func(keys []string, fallback string) string {
+		for _, key := range keys {
 			if v, ok := s.Colors[key]; ok {
 				return v
 			}

@@ -1,3 +1,74 @@
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	_ "embed"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"image"
+	_ "image/gif"  // Delivered screens may be GIF.
+	_ "image/jpeg" // Delivered screens may be JPEG.
+	_ "image/png"
+	"math"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/lock"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/outcome"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/taskstate"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/transfer"
+)
+
+const DesignSystemToolName = "design_system"
+
+//go:embed design_system.md
+var designSystemDescription string
+
+// designSystemPath is the project's design memory, relative to the
+// working directory. Later screens and sessions reuse it, so a product
+// keeps one platform, direction and token set.
+const designSystemPath = ".atlas/design/system.json"
+
+// Platforms a design targets. Phones and tablets need safe areas.
+var designPlatforms = []string{"ios", "android", "mobile", "tablet", "web", "desktop", "tui"}
+
+func designIsMobile(p string) bool {
+	return slices.Contains([]string{"ios", "android", "mobile", "tablet"}, p)
+}
+
+// DesignDirection is the visual direction the user chose and the ones they
+// were shown, so a later session does not silently switch direction.
+type DesignDirection struct {
+	Name         string   `json:"name" description:"Chosen direction, e.g. \"calm professional, dark, dense\"."`
+	Rationale    string   `json:"rationale,omitempty" description:"Why it fits the product and audience."`
+	Alternatives []string `json:"alternatives,omitempty" description:"The other directions the user was shown."`
+	ChosenBy     string   `json:"chosen_by" enum:"user,default" description:"user when the user picked it; default only when they asked you to decide."`
+}
+
+// DesignColorPair is a foreground token used on a background token.
+type DesignColorPair struct {
+	Foreground string `json:"foreground" description:"Color token name."`
+	Background string `json:"background" description:"Color token name."`
+	Usage      string `json:"usage" enum:"text,large_text,ui" description:"text needs 4.5:1, large_text and ui (icons, borders) 3:1 (WCAG 2.x AA)."`
+}
+
+// DesignSafeArea is the inset content must keep clear on a device.
+type DesignSafeArea struct {
+	Top    int `json:"top"`
+	Bottom int `json:"bottom"`
+	Left   int `json:"left,omitempty"`
+	Right  int `json:"right,omitempty"`
+}
 
 // DesignViewport is a frame size screens are designed for.
 type DesignViewport struct {

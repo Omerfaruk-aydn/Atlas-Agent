@@ -1,3 +1,71 @@
+package captcha
+
+// GapDetectScript finds the puzzle gap in a GeeTest slider.
+// Key insight: the piece's own shadow at x=0-N must be EXCLUDED.
+// The gap is a dark region to the RIGHT of the piece.
+const GapDetectScript = `(() => {
+const out = {found: false, method: "", reason: "", gapX: -1, gapRatio: 0, gapCSSX: -1, dragDistance: -1, sliderCSSX: -1, canvasWidth: 0, canvasHeight: 0, profile: [], pieceRange: null};
+
+const bgEl = document.querySelector('.geetest_canvas_bg, .geetest_canvas_bg canvas, [class*="canvas_bg"]');
+const sliceEl = document.querySelector('.geetest_canvas_slice, .geetest_canvas_slice canvas, [class*="canvas_slice"]');
+const sliderEl = document.querySelector('.geetest_slider_button, [class*="geetest_slider_button"]');
+
+const readPixels = (el) => {
+  if (!el) return null;
+  let c = el;
+  if (c.tagName !== 'CANVAS') c = c.querySelector('canvas');
+  if (!c || c.tagName !== 'CANVAS') return null;
+  try {
+    return {d: c.getContext('2d').getImageData(0, 0, c.width, c.height).data, w: c.width, h: c.height, el: c};
+  } catch (e) {
+    try {
+      const t = document.createElement('canvas');
+      t.width = c.width; t.height = c.height;
+      t.getContext('2d').drawImage(c, 0, 0);
+      return {d: t.getContext('2d').getImageData(0, 0, t.width, t.height).data, w: t.width, h: t.height, el: c};
+    } catch (e2) { return null; }
+  }
+};
+
+const bg = readPixels(bgEl);
+if (!bg) { out.reason = "no readable canvas"; return out; }
+
+const {d: px, w: W, h: H} = bg;
+out.canvasWidth = W;
+out.canvasHeight = H;
+
+// ── Step 1: Find piece position from slice canvas ──────────────────
+let pieceMinX = -1, pieceMaxX = -1;
+if (sliceEl) {
+  const sl = readPixels(sliceEl);
+  if (sl) {
+    for (let x = 0; x < sl.w; x++) {
+      let hasPiece = false;
+      for (let y = 0; y < sl.h; y += 3) {
+        if (sl.d[(y * sl.w + x) * 4 + 3] > 50) { hasPiece = true; break; }
+      }
+      if (hasPiece) {
+        if (pieceMinX < 0) pieceMinX = x;
+        pieceMaxX = x;
+      }
+    }
+  }
+}
+const pieceW = pieceMaxX >= 0 ? (pieceMaxX - pieceMinX + 1) : Math.floor(W * 0.25);
+out.pieceRange = pieceMinX >= 0 ? {min: pieceMinX, max: pieceMaxX, width: pieceW} : null;
+
+// ── Step 2: Luminance profile ──────────────────────────────────────
+const y0 = Math.floor(H * 0.25), y1 = Math.floor(H * 0.75);
+const yStep = Math.max(1, Math.floor((y1 - y0) / 30));
+const profile = [];
+for (let x = 0; x < W; x++) {
+  let sum = 0, n = 0;
+  for (let y = y0; y < y1; y += yStep) {
+    const i = (y * W + x) * 4;
+    sum += px[i] * 0.299 + px[i+1] * 0.587 + px[i+2] * 0.114;
+    n++;
+  }
+  profile.push(Math.round(n > 0 ? sum / n : 255));
 }
 out.profile = profile;
 

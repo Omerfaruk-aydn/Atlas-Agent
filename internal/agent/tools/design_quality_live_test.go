@@ -1,3 +1,74 @@
+	t.Parallel()
+	child := fantasy.NewTextErrorResponse("Waiting for the user's response")
+	child.StopTurn = true
+	child.Metadata = `{"question":{"id":"question-1"},"waiting_for_user":true,"hook":{"decision":"ask"}}`
+	tool := NewDesignSystemTool(t.TempDir(), DesignServices{Invoke: func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) { return child, nil }})
+	r := runDesignTest(t, tool, t.Context(), "stopped-preview", DesignSystemParams{Action: "directions", Directions: []DesignSystem{validTestDesign(), func() DesignSystem { s := validTestDesign(); s.Direction.Name = "Alternative"; return s }()}, Brief: "A representative permission screen"})
+	require.True(t, r.StopTurn)
+	require.True(t, r.IsError)
+	require.JSONEq(t, child.Metadata, r.Metadata)
+}
+
+func TestDesignPackageRejectsSecretsAndUnboundEvidence(t *testing.T) {
+	t.Parallel()
+	_, err := validateDesignURLs([]string{"https://example.com/design?token=private"})
+	require.Error(t, err)
+	_, err = validateDesignURLs([]string{"https://example.com/design?node-id=1-2"})
+	require.NoError(t, err)
+	m := designManifest{SystemStatus: "approved", QualityGate: designReport{Passed: true}, RequiredScreens: []string{"screen.png"}, Screens: []deliveredScreen{{Source: "screen.png", SHA256: "screenhash"}}, Sources: []designSource{{Source: "screen.html", SHA256: "sourcehash"}}, Audits: []designAudit{{Passed: true, ScreenshotSHA256: "screenhash", PrototypeSteps: 1, AssertionCount: 1}}}
+	require.Equal(t, "partial", designPackageCompletion(m), "unbound source is not proof of the inspected design")
+	m.Audits[0].SourceHashes = map[string]string{"screen.html": "sourcehash"}
+	require.Equal(t, "complete", designPackageCompletion(m))
+	m.Audits[0].SourceHashes["screen.html"] = "different"
+	require.Equal(t, "partial", designPackageCompletion(m))
+}
+
+func TestDesignMemoryConcurrentRevisionsHaveDistinctVersions(t *testing.T) {
+	root := t.TempDir()
+	var wg sync.WaitGroup
+	versions := make(chan int, 8)
+	errors := make(chan error, 8)
+	for range 8 {
+		wg.Go(func() {
+			sys := validTestDesign()
+			out, err := runDesignSystem(t.Context(), root, DesignSystemParams{Action: "set", System: &sys}, time.Now)
+			if err != nil {
+				errors <- err
+				return
+			}
+			versions <- out.(map[string]any)["version"].(int)
+		})
+	}
+	wg.Wait()
+	close(versions)
+	close(errors)
+	for err := range errors {
+		require.NoError(t, err)
+	}
+	seen := map[int]bool{}
+	for version := range versions {
+		require.False(t, seen[version])
+		seen[version] = true
+	}
+	require.Len(t, seen, 8)
+}
+
+func TestDesignAuditCannotBeCertifiedByWritingItsJSON(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	audit := designAudit{ID: "1234567890abcdef12345678", Passed: true, CapturedAt: time.Now().UnixMilli(), ScreenshotSHA256: "screenshot-hash"}
+	require.NoError(t, storeDesignRuntime(root, ".atlas/design/audits/"+audit.ID+".json", audit))
+	_, err := loadPackageAudits(root, []string{audit.ID}, []deliveredScreen{{SHA256: audit.ScreenshotSHA256}}, nil, time.Now())
+	require.ErrorContains(t, err, "not current adapter evidence")
+	registerDesignAudit(root, audit)
+	_, err = loadPackageAudits(root, []string{audit.ID}, []deliveredScreen{{SHA256: audit.ScreenshotSHA256}}, nil, time.Now())
+	require.NoError(t, err)
+	audit.SmallTargets = 1
+	require.NoError(t, storeDesignRuntime(root, ".atlas/design/audits/"+audit.ID+".json", audit))
+	_, err = loadPackageAudits(root, []string{audit.ID}, []deliveredScreen{{SHA256: audit.ScreenshotSHA256}}, nil, time.Now())
+	require.ErrorContains(t, err, "not current adapter evidence", "changing an adapter-owned observation invalidates it")
+}
+
 func TestDesignCorruptBackupsDoNotOverwriteWithinTheSameSecond(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

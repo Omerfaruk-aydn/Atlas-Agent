@@ -49,14 +49,46 @@ func TestPhoneShellServesIOSMetadataAndRasterIcons(t *testing.T) {
 	var manifest struct {
 		ID       string `json:"id"`
 		StartURL string `json:"start_url"`
+		Scope    string `json:"scope"`
 		Display  string `json:"display"`
+		Theme    string `json:"theme_color"`
+		Name     string `json:"name"`
+		Short    string `json:"short_name"`
 		Icons    []struct {
-			Src string `json:"src"`
+			Src     string `json:"src"`
+			Sizes   string `json:"sizes"`
+			Purpose string `json:"purpose"`
 		} `json:"icons"`
 	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&manifest))
 	require.Equal(t, "/", manifest.ID)
 	require.Equal(t, "/", manifest.StartURL, "the install URL must never contain a pairing nonce or credential")
+	require.Equal(t, "/", manifest.Scope)
 	require.Equal(t, "standalone", manifest.Display)
-	require.Len(t, manifest.Icons, 3)
+	require.NotEmpty(t, manifest.Name)
+	require.NotEmpty(t, manifest.Short)
+	require.Equal(t, "#ffffff", manifest.Theme)
+	purposes := map[string]bool{}
+	for _, icon := range manifest.Icons {
+		purposes[icon.Sizes+" "+icon.Purpose] = true
+	}
+	for _, want := range []string{"192x192 any", "512x512 any", "192x192 maskable", "512x512 maskable"} {
+		require.True(t, purposes[want], "manifest icon %s missing", want)
+	}
+
+	// The offline shell never caches API answers, and the page loads no
+	// third-party code.
+	resp, err = get("/sw.js")
+	require.NoError(t, err)
+	sw, err := io.ReadAll(resp.Body)
+	require.NoError(t, resp.Body.Close())
+	require.NoError(t, err)
+	require.Contains(t, string(sw), `"/api/"`)
+	resp, err = get("/")
+	require.NoError(t, err)
+	page, err := io.ReadAll(resp.Body)
+	require.NoError(t, resp.Body.Close())
+	require.NoError(t, err)
+	require.NotContains(t, string(page), "https://")
+	require.NotContains(t, string(page), "http://")
 }

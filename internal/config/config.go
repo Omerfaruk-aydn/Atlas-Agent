@@ -1100,6 +1100,10 @@ type Tools struct {
 	Quality   ToolQuality   `json:"quality,omitzero"`
 	Git       ToolGit       `json:"git,omitzero"`
 	Docs      ToolDocs      `json:"docs,omitzero"`
+// IsEnabled reports whether CAPTCHA solving should be registered. On by
+// default: the local math/OCR solvers are free and offline.
+func (t ToolCaptcha) IsEnabled() bool {
+	return ptrValOr(t.Enabled, true)
 }
 
 // ToolGit configures the read-only git tools -- status, log, blame and
@@ -1619,6 +1623,7 @@ func allToolNames() []string {
 		"sourcegraph",
 		"todos",
 		"design_search",
+		"design_system",
 		"workflow",
 		"verify",
 		"project_map",

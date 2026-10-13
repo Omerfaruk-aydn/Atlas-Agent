@@ -1,3 +1,74 @@
+	var b strings.Builder
+	space := true
+	for _, r := range s {
+		switch r {
+		case 'İ', 'I', 'ı':
+			r = 'i'
+		case 'Ş', 'ş':
+			r = 's'
+		case 'Ğ', 'ğ':
+			r = 'g'
+		case 'Ü', 'ü':
+			r = 'u'
+		case 'Ö', 'ö':
+			r = 'o'
+		case 'Ç', 'ç':
+			r = 'c'
+		default:
+			r = unicode.ToLower(r)
+		}
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			space = false
+		} else if !space {
+			b.WriteByte(' ')
+			space = true
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// mergeEntries joins entries that launch the same executable (for example
+// App Paths and a known install folder), assigns stable ids and sorts by
+// name. Executables sharing a base name at different paths keep separate
+// ids with a path suffix.
+func mergeEntries(found []AppEntry) []AppEntry {
+	byKey := map[string]int{}
+	var out []AppEntry
+	for _, e := range found {
+		key := launchKey(e.Launch)
+		if key == "" {
+			continue
+		}
+		if i, ok := byKey[key]; ok {
+			m := &out[i]
+			for _, s := range e.Sources {
+				if !slices.Contains(m.Sources, s) {
+					m.Sources = append(m.Sources, s)
+				}
+			}
+			for _, a := range append([]string{e.Name}, e.Aliases...) {
+				if a != "" && a != m.Name && !slices.Contains(m.Aliases, a) {
+					m.Aliases = append(m.Aliases, a)
+				}
+			}
+			for _, w := range e.Running {
+				if !slices.ContainsFunc(m.Running, func(r AppWindow) bool { return r.WindowID == w.WindowID }) {
+					m.Running = append(m.Running, w)
+				}
+			}
+			if len(m.Profiles) == 0 {
+				m.Profiles = e.Profiles
+			}
+			m.Verified = m.Verified || e.Verified
+			continue
+		}
+		byKey[key] = len(out)
+		out = append(out, e)
+	}
+	// Stable ids. Executables are named by base name; a base name used by
+	// several paths gets a short path hash.
+	bases := map[string]int{}
 	for _, e := range out {
 		if e.Launch.Method == LaunchExecutable {
 			bases[exeBase(e.Launch.Path)]++

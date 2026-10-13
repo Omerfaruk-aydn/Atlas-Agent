@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ui/v2"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/util"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workspace"
 )
@@ -61,12 +62,7 @@ func (m *UI) handleInteractionResumed(msg interactionResumedMsg) tea.Cmd {
 }
 
 // resumeContinuationPrompt returns control without asserting that the
-// manual step succeeded: the user only said control is back, so the agent
-// must verify the step from a fresh observation.
+// manual step succeeded; the phone gateway sends the same prompt.
 func resumeContinuationPrompt(text func(string) string, reason string) string {
-	prompt := text("I returned browser and desktop control to Atlas. Continue the previous task from a fresh observation of the current page or window.")
-	if reason != "" {
-		prompt += " " + text("The step that was left to me:") + " " + reason
-	}
-	return prompt + " " + text("Check whether that step is actually complete before relying on it; if it is not, tell me exactly what is still needed instead of assuming it succeeded.")
+	return interaction.ResumePrompt(text, reason)
 }

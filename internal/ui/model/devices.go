@@ -24,6 +24,8 @@ type devicesState struct {
 	gateway *mobile.Gateway
 	remote  remoteState
 	homeLAN bool
+	// funnel is the /rc Tailscale Funnel mode.
+	funnel funnelState
 	// supportChanges delivers /support changes so a connection request or
 	// a permission request reaches the owner even with /support closed.
 	supportChanges <-chan struct{}
@@ -89,6 +91,11 @@ func (m *UI) openMobile() tea.Cmd {
 	if m.devices.homeLAN {
 		return m.discoverHomeNetwork()
 	}
+	if m.devices.funnel.on {
+		// Tailscale mode publishes only its own gateway; a plain local one
+		// would not be reachable and would hide the real state.
+		return util.ReportInfo(m.com.Text("The Tailscale connection is not ready yet; see /rc"))
+	}
 	generation := r.generation.Add(1)
 	r.starting, r.startErr = true, nil
 	ws := m.com.Workspace
@@ -127,6 +134,9 @@ func startGateway(ws workspace.Workspace, opts mobile.Options) (*mobile.Gateway,
 		return nil, err
 	}
 	opts.Backend, opts.Events, opts.Preview = backend, events, preview
+	if preview != nil {
+		opts.Screen = mobile.DesktopScreen()
+	}
 	return mobile.Start(context.Background(), opts)
 }
 
@@ -155,6 +165,9 @@ func (m *UI) handleMobileReady(msg mobileReadyMsg) tea.Cmd {
 }
 
 func (m *UI) stopMobile() tea.Cmd {
+	if m.devices.funnel.on {
+		return m.stopFunnel()
+	}
 	gw := m.devices.gateway
 	r := &m.devices.remote
 	generation := r.generation.Add(1)

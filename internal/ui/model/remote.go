@@ -363,6 +363,12 @@ func (m *UI) enableRemote(id string) tea.Cmd {
 	r.starting, r.startErr, r.retry = true, nil, 0
 	base := m.gatewayOptions()
 	return r.startCommand(generation, false, old, func() (*mobile.Gateway, error) {
+			// already removed Atlas' Funnel entry, so the choice goes even
+			// if the relay cannot start.
+			if err := ws.RemoveConfigField(config.ScopeGlobal, funnelConfigKey); err != nil {
+				return nil, err
+			}
+		}
 		keyPath, err := mgr.EnsureKey(p.ID)
 		if err != nil {
 			return nil, err
@@ -386,6 +392,9 @@ func (m *UI) enableRemote(id string) tea.Cmd {
 func (m *UI) disableRemote() tea.Cmd {
 	if m.devices.homeLAN {
 		return m.stopMobile()
+	}
+	if m.devices.funnel.on {
+		return m.stopFunnel()
 	}
 	ws := m.com.Workspace
 	gw := m.devices.gateway
@@ -454,6 +463,12 @@ func (m *UI) autoStartRemote() tea.Cmd {
 	cfg := m.com.Config()
 	if cfg == nil || m.devices.homeLAN || m.devices.gateway != nil || m.devices.remote.starting {
 		return nil
+	}
+	if cfg.Tools.Devices.MobileFunnel {
+		if _, ok := m.com.Workspace.(*workspace.AppWorkspace); !ok && m.devices.funnel.env == nil {
+			return nil
+		}
+		return m.startFunnel(true)
 	}
 	p, idx := findProfile(cfg.Tools.Devices.RemoteProfiles, cfg.Tools.Devices.RemoteActive)
 	if idx < 0 || !m.remoteEnabledFor(p) || cfg.Tools.Devices.MobileRelayTokenFile == "" {
@@ -564,6 +579,12 @@ func ParseRemoteDraft(text string) (remotecontrol.Draft, bool) {
 		d.Name = "vps"
 	}
 	return d, true
+}
+
+// funnelSaved reports the saved Tailscale choice.
+func (m *UI) funnelSaved() bool {
+	cfg := m.com.Config()
+	return cfg != nil && cfg.Tools.Devices.MobileFunnel
 }
 
 func (m *UI) handleRemoteMsg(msg tea.Msg) tea.Cmd {

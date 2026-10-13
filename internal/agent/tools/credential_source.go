@@ -1,3 +1,67 @@
+package tools
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"net/url"
+	"regexp"
+	"strings"
+	"sync"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
+)
+
+type sourceCredentialGrant struct {
+	mu   sync.Mutex
+	used map[string]bool
+}
+
+type sourceCredentialGrantKey struct{}
+
+var (
+	sourcePasswordLine = regexp.MustCompile(`(?im)^[\t ]*(?:parola|şifre|sifre|password)[\t ]*:[\t ]*([^\r\n]+)`)
+	sourceAccountLine  = regexp.MustCompile(`(?im)^[\t ]*(?:kullanıcı adı|kullanici adi|username|user name|account|login)[\t ]*:[\t ]*([^\r\n]+)`)
+	sourceLinks        = regexp.MustCompile(`https?://[^\s<>"']+`)
+	sourceSender       = regexp.MustCompile(`(?i)([\pL\pN._-]+)\s*['’]?\s*(?:un|ün|ın|in|nin|nın|nun|nün)\s+(?:gönder|gonder)`)
+	sourceFrom         = regexp.MustCompile(`(?i)\bfrom\s+([\pL\pN._-]+)`)
+)
+
+func credentialSourceRead(ctx context.Context, action string) bool {
+	if action != "text" {
+		return false
+	}
+	instruction, _ := ctx.Value(userInstructionKey{}).(string)
+	p := normalizedSourceName(instruction)
+	return strings.Contains(p, "sifre") || strings.Contains(p, "parola") || strings.Contains(p, "password") || strings.Contains(p, "credential")
+}
+
+// hasSourceCredentialInstruction reports whether the user named a source
+// (email/document/file) that holds a credential to use. It is the
+// telefonsuz/yol gösterici sinyal: credential_request başarısız olduğunda
+// agent'ı kaynağı text ile okumaya yönlendirir.
+func hasSourceCredentialInstruction(instruction string) bool {
+	if strings.TrimSpace(instruction) == "" {
+		return false
+	}
+	p := normalizedSourceName(instruction)
+	hasCred := strings.Contains(p, "sifre") || strings.Contains(p, "parola") || strings.Contains(p, "password") || strings.Contains(p, "credential")
+	hasSource := strings.Contains(p, "mail") || strings.Contains(p, "mesaj") || strings.Contains(p, "e-posta") || strings.Contains(p, "email") || strings.Contains(p, "document") || strings.Contains(p, "dosya") || strings.Contains(p, "gonder") || strings.Contains(p, "gönder")
+	hasAction := strings.Contains(p, "gir") || strings.Contains(p, "doldur") || strings.Contains(p, "login") || strings.Contains(p, "sign in") || strings.Contains(p, "fill") || strings.Contains(p, "use") || strings.Contains(p, "kullan") || strings.Contains(p, "al")
+	return hasCred && hasSource && hasAction
+}
+
+func normalizedSourceName(text string) string {
+	return strings.NewReplacer("ı", "i", "ş", "s", "ğ", "g", "ü", "u", "ö", "o", "ç", "c").Replace(strings.ToLower(text))
+}
+
+func uniqueSourceValue(re *regexp.Regexp, text string) string {
+	value := ""
+	for _, match := range re.FindAllStringSubmatch(text, -1) {
+		v := strings.TrimSpace(match[1])
+		if v == "" || v == "[REDACTED]" || value != "" && value != v {
+			return ""
 		}
 		value = v
 	}

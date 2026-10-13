@@ -25,3 +25,13 @@ the production gateway continues to require HTTPS.
 Install Chromium with `npx playwright install chromium`, or set
 `ATLAS_CHROMIUM_CHANNEL=chrome` to use an installed Chrome build. These are
 developer browser checks, not dependencies for phone users.
+
+`gateway.test.cjs` drives the real gateway instead of fixtures: it starts
+`TestBrowserAcceptanceServer` (TLS, cookies, CSRF, pairing approved by a
+simulated computer, a synthetic screen source) and checks the credential
+card, returning control, the live screen stream and revocation. It needs Go
+on `PATH` and takes about a minute; set `ATLAS_ENGINE=webkit` for WebKit:
+
+```powershell
+node --test internal/mobile/web_tests/gateway.test.cjs
+```

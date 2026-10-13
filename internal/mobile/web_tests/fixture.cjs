@@ -14,24 +14,8 @@ async function fixture(browser, t, options = {}) {
       const session = { id: "s1", title: "iPhone test", created_at: 1, updated_at: 2, busy: true };
       if (req.url === "/api/me") {
         state.meReads++;
-        res.end(JSON.stringify({ device: { name: "My iPhone", previews: false }, language: "tr", csrf: state.csrf, seq: 1, fingerprint: "fixture" }));
-      } else if (req.url === "/api/sessions") {
-        res.end(JSON.stringify({ sessions: [session], seq: 1 }));
-      } else if (req.url === "/api/sessions/s1") {
-        res.end(JSON.stringify({ session, workflow: { available: true, revision: "r1" }, messages: [], permissions: [],
-          questions: state.question ? [{ id: state.questionID, session_id: "s1", questions: [{ id: "item1", type: "yes_no", question: "Devam edelim mi?" }] }] : [], seq: 1 }));
-      } else if (req.method === "POST") {
-        assert.equal(req.headers["x-csrf-token"], state.csrf);
-        assert.ok(req.headers["idempotency-key"]);
-        let body = "";
-        for await (const chunk of req) body += chunk;
-        state.posts.push({ path: req.url, body: JSON.parse(body) });
-        state.question = false;
-        res.end('{"ok":true}');
-      } else { res.writeHead(404); res.end("{}"); }
-      return;
     }
-    const name = req.url === "/" ? "index.html" : req.url.slice(1);
+    const name = p === "/" ? "index.html" : p.slice(1);
     if (!["index.html", "app.js", "app.css", "icon.svg", "manifest.webmanifest", "sw.js", "apple-touch-icon.png", "icon-192.png", "icon-512.png"].includes(name)) {
       res.writeHead(404); res.end(); return;
     }
@@ -40,18 +24,22 @@ async function fixture(browser, t, options = {}) {
     res.end(await fs.readFile(path.join(__dirname, "../web", name)));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const context = await browser.newContext({ ...devices[options.device || "iPhone 13"], locale: "tr-TR", serviceWorkers: "block" });
-  await context.addInitScript(({ standalone, deniedStorage }) => {
+  const profile = options.device ? devices[options.device] : options.viewport ? { ...devices["iPhone 13"], viewport: options.viewport } : devices["iPhone 13"];
+  const context = await browser.newContext({ ...profile, locale: options.locale || "tr-TR", timezoneId: options.timezoneId || "Europe/Istanbul", colorScheme: options.colorScheme || "light", serviceWorkers: "block", reducedMotion: "reduce" });
+  await context.addInitScript(({ standalone, deniedStorage, theme }) => {
     Object.defineProperty(navigator, "standalone", { value: standalone });
     if (deniedStorage) Object.defineProperty(window, "localStorage", { get() { throw new DOMException("Unavailable", "SecurityError"); } });
+    else if (theme) localStorage.setItem("atlas.theme", theme);
     window.testStreams = [];
     window.EventSource = class extends EventTarget {
-      constructor(url) { super(); this.url = url; this.closed = false; this.readyState = 0; window.testStreams.push(this); setTimeout(() => { this.readyState = 1; this.dispatchEvent(new Event("open")); }, 0); }
+      constructor(url) { super(); this.url = url; this.closed = false; this.readyState = 0; window.testStreams.push(this); setTimeout(() => { if (!this.closed) { this.readyState = 1; this.dispatchEvent(new Event("open")); } }, 0); }
       close() { this.closed = true; this.readyState = 2; }
       // fail simulates a stream the browser will not retry, such as a 503.
       fail() { this.readyState = 2; this.dispatchEvent(new Event("error")); }
+      emit(type, data) { const e = new MessageEvent(type, { data: JSON.stringify(data) }); this.dispatchEvent(e); }
     };
-  }, { standalone: !!options.standalone, deniedStorage: !!options.deniedStorage });
+    window.emit = (type, data) => { const s = window.testStreams[window.testStreams.length - 1]; s.emit(type, data); };
+  }, { standalone: !!options.standalone, deniedStorage: !!options.deniedStorage, theme: options.theme || "" });
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (err) => errors.push(err.message));
@@ -60,4 +48,4 @@ async function fixture(browser, t, options = {}) {
   return { page, state, url };
 }
 
-module.exports = { fixture };
+module.exports = { fixture, themeQuestion, sampleData };

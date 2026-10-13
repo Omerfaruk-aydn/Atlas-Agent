@@ -2,7 +2,7 @@
 const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const { chromium } = require("playwright");
-const { fixture: makeFixture } = require("./fixture.cjs");
+const { fixture: makeFixture, themeQuestion } = require("./fixture.cjs");
 
 let browser;
 before(async () => { browser = await chromium.launch({ channel: process.env.ATLAS_CHROMIUM_CHANNEL || undefined }); });
@@ -12,21 +12,24 @@ const fixture = (t, options = {}) => makeFixture(browser, t, { ...options, devic
 test("Android Chrome runs the phone panel without installation and fits narrow screens", async (t) => {
   const { page, url } = await fixture(t);
   await page.goto(url);
-  await page.locator("#task-list .card").waitFor();
+  await page.locator(".task-row").first().waitFor();
   await page.locator("#settings-btn").click();
   assert.ok(await page.locator("#iphone-install").isHidden());
+  await page.locator("#install-details summary").click();
+  assert.match(await page.locator("#android-install").innerText(), /Chrome/);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await page.setViewportSize({ width: 320, height: 640 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
 });
 
 test("Android network return refreshes CSRF and keeps drafts without replaying commands", async (t) => {
-  const { page, state, url } = await fixture(t);
+  const { page, state, url } = await fixture(t, { setup: (s) => { s.details.s1.questions = [themeQuestion()]; } });
   await page.goto(url);
-  await page.locator("#task-list .card").click();
-  await page.locator("#pending form").waitFor();
+  await page.locator('.task-row[data-id="s1"]').click();
+  await page.locator("#pending-pane form").waitFor();
+  await page.locator('#pending-pane input[value="light"]').check();
+  await page.locator("#pending-pane .back-to-chat button").click();
   await page.locator("#prompt").fill("Mobil internetten gönderilecek taslak");
-  await page.locator('#pending input[value="true"]').check();
   const reads = state.meReads;
   state.csrf = "android-new-csrf";
   await page.evaluate(() => {
@@ -38,9 +41,10 @@ test("Android network return refreshes CSRF and keeps drafts without replaying c
   assert.equal(state.meReads, reads + 1);
   assert.equal(state.posts.length, 0);
   assert.equal(await page.locator("#prompt").inputValue(), "Mobil internetten gönderilecek taslak");
-  assert.ok(await page.locator('#pending input[value="true"]').isChecked());
-  await page.locator("#pending button[type=submit]").click();
-  await page.locator("#pending form").waitFor({ state: "detached" });
+  await page.locator("#waiting-banner").click();
+  assert.ok(await page.locator('#pending-pane input[value="light"]').isChecked());
+  await page.locator("#pending-pane button[type=submit]").click();
+  await page.locator("#pending-pane").waitFor({ state: "hidden" });
   assert.equal(state.posts.length, 1);
   assert.equal(state.posts[0].path, "/api/questions/q1");
 });
@@ -48,7 +52,7 @@ test("Android network return refreshes CSRF and keeps drafts without replaying c
 test("Android session expiry closes the stream and requires pairing again", async (t) => {
   const { page, state, url } = await fixture(t);
   await page.goto(url);
-  await page.locator("#task-list .card").waitFor();
+  await page.locator(".task-row").first().waitFor();
   state.authenticated = false;
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await page.locator("#view-pair").waitFor();
@@ -67,7 +71,7 @@ test("Android with unavailable storage still opens the pairing form", async (t) 
 test("Android retries an unavailable relay with growing delays, then reconnects", async (t) => {
   const { page, state, url } = await fixture(t);
   await page.goto(url);
-  await page.locator("#task-list .card").waitFor();
+  await page.locator(".task-row").first().waitFor();
   await page.waitForFunction(() => window.testStreams.length === 1);
   state.unavailable = true;
   await page.evaluate(() => window.testStreams[0].fail());

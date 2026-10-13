@@ -46,6 +46,9 @@ func TestPhoneShellServesIOSMetadataAndRasterIcons(t *testing.T) {
 	resp, err = get("/manifest.webmanifest")
 	require.NoError(t, err)
 	defer resp.Body.Close()
+	// Go has no MIME entry for .webmanifest; under nosniff a text/plain
+	// manifest is what kept the panel from being installable.
+	require.Equal(t, "application/manifest+json", resp.Header.Get("Content-Type"))
 	var manifest struct {
 		ID       string `json:"id"`
 		StartURL string `json:"start_url"`

@@ -272,8 +272,74 @@
     }
   }
 
-  function questionCard(q) {
-    const c = el("form", "pending-card");
+      if (isStale(e)) {
+        dropPending("p", p.id);
+        toast(t("stale"));
+      } else {
+        result.textContent = t("failed") + ": " + e.message;
+        result.classList.remove("hidden");
+        buttons.forEach((x) => { x.disabled = state.conn !== "connected"; });
+        if (!e.status) setConn("offline");
+      }
+    } finally {
+      b.classList.remove("busy");
+      state.answering = false;
+      if (state.current) loadTask(state.current).catch(() => {});
+    }
+  }
+  function dropPending(kind, id) {
+    const d = state.detail;
+    if (!d) return;
+    if (kind === "p") d.permissions = (d.permissions || []).filter((x) => x.id !== id);
+    else if (kind === "c") d.credentials = (d.credentials || []).filter((x) => x.id !== id);
+    else d.questions = (d.questions || []).filter((x) => x.id !== id);
+    if (!(d.permissions || []).length && !(d.questions || []).length && !(d.credentials || []).length) state.pendingOpen = false;
+    state.paneKey = "";
+    renderTaskChrome();
+  }
+
+  function questionView(q) {
+    const key = questionKey(q);
+    const draft = state.qDrafts.get(key) || {};
+    state.qDrafts.set(key, draft);
+    const single = q.questions.length === 1;
+    const form = el("form");
+    form.noValidate = true;
+    form.dataset.request = key;
+    const h = el("h2", "display", t("q_title"));
+    h.id = "pending-h";
+    h.tabIndex = -1;
+    form.append(h);
+    form.append(el("p", "lead", single ? q.questions[0].question : q.confirm_description || t("q_multi_lead", q.questions.length)));
+    const online = state.conn === "connected";
+    const readers = [];
+    q.questions.forEach((item, n) => {
+      const dr = draft[item.id] || (draft[item.id] = { sel: [], text: "", note: "" });
+      const fs = el("fieldset", "q");
+      fs.dataset.question = item.id;
+      const lg = el("legend", single ? "" : "big", single ? item.label || t("your_answer") : item.question);
+      lg.id = "q-" + n + "-legend";
+      fs.append(lg);
+      if (item.description) fs.append(el("p", "q-desc", item.description));
+      const name = "q-" + n;
+      const opts = item.type === "yes_no" ? [{ id: "true", label: t("yes") }, { id: "false", label: t("no") }] : item.choices || [];
+      if (item.type === "yes_no" || item.type === "single_choice" || item.type === "multi_choice") {
+        for (const ch of opts) {
+          const lab = el("label", "option");
+          const input = el("input");
+          input.type = item.type === "multi_choice" ? "checkbox" : "radio";
+          input.name = name;
+          input.value = ch.id;
+          input.checked = dr.sel.includes(ch.id);
+          input.addEventListener("change", () => {
+            dr.sel = Array.from(fs.querySelectorAll('input[name="' + name + '"]:checked'), (x) => x.value);
+            clearQError(fs);
+          });
+          const txt = el("span");
+          txt.append(el("span", "opt-label", ch.label));
+          if (ch.description) txt.append(el("span", "opt-desc", ch.description));
+          lab.append(input, txt);
+          fs.append(lab);
         }
       } else {
         const id = "q-" + n + "-text";

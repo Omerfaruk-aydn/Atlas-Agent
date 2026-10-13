@@ -1,3 +1,73 @@
+		Action: "captcha_fill",
+		Value:  "a7k2m",
+	}, "sess1")
+	require.NoError(t, err)
+	require.False(t, resp.IsError, resp.Content)
+	var out CaptchaResult
+	require.NoError(t, json.Unmarshal([]byte(resp.Content), &out))
+	require.Equal(t, "filled", out.Status)
+	require.Equal(t, "a7k2m", out.Answer)
+	require.Equal(t, "#code", sess.typedSel)
+	require.Equal(t, "a7k2m", sess.typedText)
+}
+
+func TestCaptchaFillRequiresAnswer(t *testing.T) {
+	t.Parallel()
+	sess := newCaptchaSession("https://example.com", nil)
+	resp, err := runBrowserCaptcha(context.Background(), sess, "captcha_fill", BrowserParams{Action: "captcha_fill"}, "s")
+	require.NoError(t, err)
+	require.True(t, resp.IsError)
+	require.Contains(t, resp.Content, "required")
+}
+
+func TestCaptchaMediaGateAllowsChallengeCrops(t *testing.T) {
+	t.Parallel()
+	// The media gate must let captcha challenge images through even in
+	// credential-bearing sessions. This is the whole point of the
+	// redesign: the model reads the CAPTCHA itself.
+	require.True(t, isCaptchaChallengeMedia(fantasy.ToolResponse{
+		Type:     "image",
+		Metadata: `{"captcha_challenge":true,"kind":"image_text"}`,
+		Data:     []byte{1},
+	}))
+	require.False(t, isCaptchaChallengeMedia(fantasy.ToolResponse{
+		Type:     "image",
+		Metadata: `{"viewport_id":"x"}`,
+		Data:     []byte{1},
+	}), "ordinary screenshots must stay blocked")
+	require.False(t, isCaptchaChallengeMedia(fantasy.ToolResponse{
+		Type: "text",
+		Data: []byte{1},
+	}), "non-image payloads are not captcha crops")
+}
+
+func TestCaptchaActionsRegistered(t *testing.T) {
+	t.Parallel()
+	require.True(t, captchaActions["captcha_detect"])
+	require.True(t, captchaActions["captcha_solve"])
+	require.True(t, captchaActions["captcha_fill"])
+	require.Contains(t, browserActions, "captcha_detect")
+	require.Contains(t, browserActions, "captcha_solve")
+	require.Contains(t, browserActions, "captcha_fill")
+}
+
+func TestCaptchaDetectInteractiveTypes(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		detect   string
+		wantKind string
+	}{
+		{"click", `{"kind":"click","image_selector":"img.click-captcha","confidence":0.85,"question":"click the icons in order"}`, "click"},
+		{"rotate", `{"kind":"rotate","image_selector":"img.rotate","confidence":0.9,"question":"rotate to correct orientation"}`, "rotate"},
+		{"slider", `{"kind":"slider","slider_selector":".geetest_slider_button","confidence":0.9,"question":"drag slider to gap"}`, "slider"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			sess := newCaptchaSession("https://demo.test", map[string]string{
+				captcha.DetectScript: c.detect,
+			})
+			resp, err := runCaptchaDetect(context.Background(), sess)
 			require.NoError(t, err)
 			require.False(t, resp.IsError)
 			var out CaptchaResult

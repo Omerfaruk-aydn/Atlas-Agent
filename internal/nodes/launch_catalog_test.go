@@ -1,3 +1,20 @@
+package nodes
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
+	"github.com/stretchr/testify/require"
+)
+
+// catalogDesktop is a node desktop with an application catalog whose
+// Chrome lives outside PATH.
+type catalogDesktop struct {
+	*fakeDesktop
 	catalog *computer.AppCatalog
 }
 

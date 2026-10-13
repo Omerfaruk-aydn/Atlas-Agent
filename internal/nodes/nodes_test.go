@@ -495,3 +495,37 @@ func TestRegistrySealsTokens(t *testing.T) {
 	_, _, err = r.Get("wsl")
 	require.Error(t, err)
 }
+
+// Reported session: click into a prompt box with observation O (consuming
+// it), then type with the same O. Keyboard input aims at the focused
+// window, not at a point, so the observation the click consumed in this
+// session still authorizes it; an unknown or foreign observation does not.
+func TestKeyboardInputAfterPointerKeepsTheConsumedObservation(t *testing.T) {
+	desk := &fakeDesktop{size: computer.Size{Width: 800, Height: 600}}
+	h := newHarness(t, []Capability{CapDesktop}, desk)
+	c := h.pair(t)
+
+	obs, err := c.Observe(t.Context(), false)
+	require.NoError(t, err)
+	_, err = c.Input(t.Context(), DesktopInput{OperationID: "op-kb-click", ObservationID: obs.ObservationID, Action: "click", X: 10, Y: 10})
+	require.NoError(t, err)
+	_, err = c.Input(t.Context(), DesktopInput{OperationID: "op-kb-type", ObservationID: obs.ObservationID, Action: "type", Text: "merhaba"})
+	require.NoError(t, err)
+	_, err = c.Input(t.Context(), DesktopInput{OperationID: "op-kb-enter", ObservationID: obs.ObservationID, Action: "key", Key: "enter"})
+	require.NoError(t, err)
+	desk.mu.Lock()
+	require.Equal(t, []string{"merhaba"}, desk.typed)
+	desk.mu.Unlock()
+
+	// Pointer input still needs a fresh observation.
+	_, err = c.Input(t.Context(), DesktopInput{OperationID: "op-kb-click2", ObservationID: obs.ObservationID, Action: "click", X: 10, Y: 10})
+	require.Equal(t, "stale_observation", apiCode(err))
+	// A made-up observation never authorizes keyboard input.
+	_, err = c.Input(t.Context(), DesktopInput{OperationID: "op-kb-type2", ObservationID: "obs-guess", Action: "type", Text: "x"})
+	require.Equal(t, "stale_observation", apiCode(err))
+	// A newer observation replaces the consumed one.
+	_, err = c.Observe(t.Context(), false)
+	require.NoError(t, err)
+	_, err = c.Input(t.Context(), DesktopInput{OperationID: "op-kb-type3", ObservationID: obs.ObservationID, Action: "type", Text: "y"})
+	require.Equal(t, "stale_observation", apiCode(err))
+}

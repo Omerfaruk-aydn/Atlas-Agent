@@ -1,3 +1,74 @@
+	d.Caps = nil
+	r = ready(t, d)
+	require.True(t, r.NeedsApproval(), "missing https/funnel capabilities need the browser approval")
+	require.Equal(t, tsfunnel.FunnelPorts, r.FunnelPorts)
+}
+
+func TestInspectTimeoutAndCancel(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	d.Delay = time.Minute
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	r := tsfunnel.Inspect(ctx, d, nil)
+	require.Equal(t, tsfunnel.ProblemTimeout, r.Problem)
+	require.Less(t, time.Since(start), 5*time.Second)
+
+	ctx, cancel = context.WithCancel(t.Context())
+	cancel()
+	r = tsfunnel.Inspect(ctx, d, nil)
+	require.Equal(t, tsfunnel.ProblemFailed, r.Problem)
+}
+
+func TestPreparePicksFreePortAndLeavesOthersAlone(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	d.AddForeign("other-app", 443, "http://127.0.0.1:3000")
+	m := manager(t, d)
+	plan, err := m.Prepare(t.Context(), ready(t, d))
+	require.NoError(t, err)
+	require.Equal(t, uint16(8443), plan.Port)
+	require.Equal(t, "https://atlas-pc.tail1234.ts.net:8443", plan.URL())
+	require.Equal(t, "atlas-pc.tail1234.ts.net:8443", plan.HostHeader())
+
+	d.SetBackground(map[string]any{"TCP": map[string]any{"8443": map[string]any{"HTTPS": true}, "10000": map[string]any{"TCPForward": "127.0.0.1:22"}}})
+	_, err = m.Prepare(t.Context(), ready(t, d))
+	var conflict *tsfunnel.PortConflictError
+	require.ErrorAs(t, err, &conflict)
+	require.Len(t, conflict.Occupants, 3)
+	require.Equal(t, []string{"other-app"}, d.Sessions())
+	for _, call := range d.Calls() {
+		require.NotContains(t, call, "reset")
+		require.NotEqual(t, "funnel", call[0]+strings.Join(call[1:2], ""), "prepare must not start a funnel")
+	}
+}
+
+func TestPrepareRejectsUnready(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	d.Backend = "NeedsLogin"
+	_, err := manager(t, d).Prepare(t.Context(), tsfunnel.Inspect(t.Context(), d, nil))
+	require.Error(t, err)
+}
+
+func TestStartAndCloseOwnEntryOnly(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	background := map[string]any{"TCP": map[string]any{"10000": map[string]any{"TCPForward": "127.0.0.1:22"}}}
+	d.SetBackground(background)
+	d.AddForeign("other-app", 443, "http://127.0.0.1:3000")
+	before := d.Background()
+	m := manager(t, d)
+	plan, err := m.Prepare(t.Context(), ready(t, d))
+	require.NoError(t, err)
+	progress := tsfunnel.NewProgress()
+	link, err := m.Start(t.Context(), plan, 41234, progress)
+	require.NoError(t, err)
+	require.Equal(t, "https://atlas-pc.tail1234.ts.net:8443", link.URL())
+	require.Equal(t, "http://127.0.0.1:41234", link.Target())
+	phase, _, _ := progress.Snapshot()
+	require.Equal(t, tsfunnel.PhaseReady, phase)
 	require.FileExists(t, m.StateFile)
 	data, err := os.ReadFile(m.StateFile)
 	require.NoError(t, err)

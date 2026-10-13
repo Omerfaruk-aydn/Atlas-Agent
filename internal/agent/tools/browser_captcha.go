@@ -1,3 +1,74 @@
+		return nil, err
+	}
+	dpr, _ := strconv.ParseFloat(strings.TrimSpace(strings.Trim(dprRaw, `"`)), 64)
+	if dpr <= 0 {
+		dpr = 1
+	}
+	// Use at least 2x for clarity; if the display is already 2x+, keep it.
+	captureScale := dpr
+	if captureScale < 2.0 {
+		captureScale = 2.0
+	}
+	const pad = 2.0
+	result, err := raw.RawCDP("Page.captureScreenshot", map[string]any{
+		"format": "png",
+		"clip": map[string]any{
+			"x":      (box.X - pad) * dpr,
+			"y":      (box.Y - pad) * dpr,
+			"width":  (box.W + 2*pad) * dpr,
+			"height": (box.H + 2*pad) * dpr,
+			"scale":  captureScale,
+		},
+		"captureBeyondViewport": true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	data, _ := result["data"].(string)
+	if data == "" {
+		return nil, fmt.Errorf("clipped capture returned no data")
+	}
+	return base64.StdEncoding.DecodeString(data)
+}
+
+// fillCaptchaAnswer types the solved text into the answer box and commits
+// it. The answer is a challenge response, not a user secret.
+func fillCaptchaAnswer(ctx context.Context, sess browser.Session, selector, answer string) (bool, error) {
+	if selector == "" || answer == "" {
+		return false, fmt.Errorf("answer selector and answer are required")
+	}
+	clear := fmt.Sprintf(`(() => {
+const e = document.querySelector(%q);
+if (!e) return false;
+e.focus();
+if ("value" in e) e.value = "";
+e.dispatchEvent(new Event("input", {bubbles: true}));
+return true;
+})()`, selector)
+	if _, err := sess.Eval(clear); err != nil {
+		return false, err
+	}
+	if err := sess.Type(selector, answer); err != nil {
+		set := fmt.Sprintf(`(() => {
+const e = document.querySelector(%q);
+if (!e) return false;
+e.focus();
+if ("value" in e) e.value = %q;
+e.dispatchEvent(new Event("input", {bubbles: true}));
+e.dispatchEvent(new Event("change", {bubbles: true}));
+e.dispatchEvent(new Event("blur", {bubbles: true}));
+return true;
+})()`, selector, answer)
+		okRaw, evalErr := sess.Eval(set)
+		if evalErr != nil {
+			return false, err
+		}
+		return strings.Contains(okRaw, "true"), nil
+	}
+	return true, nil
+}
+
+// injectCaptchaToken places a provider token into the standard response
 // fields and fires the widget callback when one is present.
 func injectCaptchaToken(ctx context.Context, sess browser.Session, ch captcha.Challenge, token string) (bool, error) {
 	if token == "" {

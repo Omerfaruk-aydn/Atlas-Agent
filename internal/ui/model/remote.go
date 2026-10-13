@@ -164,6 +164,7 @@ func (m *UI) remoteEnv() dialog.RemoteEnv {
 		Starting: func() bool { return m.devices.remote.starting },
 		StartErr: func() error { return m.devices.remote.startErr },
 		HomeLAN:  func() bool { return m.devices.homeLAN },
+		Funnel:   m.funnelStatus,
 	}
 }
 
@@ -353,6 +354,8 @@ func (m *UI) enableRemote(id string) tea.Cmd {
 		return nil
 	}
 	m.devices.homeLAN = false
+	funnelOn := m.devices.funnel.on || m.funnelSaved()
+	m.devices.funnel.on, m.devices.funnel.err = false, nil
 	mgr := m.remoteManager()
 	ws := m.com.Workspace
 	old := m.devices.gateway
@@ -363,6 +366,8 @@ func (m *UI) enableRemote(id string) tea.Cmd {
 	r.starting, r.startErr, r.retry = true, nil, 0
 	base := m.gatewayOptions()
 	return r.startCommand(generation, false, old, func() (*mobile.Gateway, error) {
+		if funnelOn {
+			// The relay replaces Tailscale; closing the old gateway above
 			// already removed Atlas' Funnel entry, so the choice goes even
 			// if the relay cannot start.
 			if err := ws.RemoveConfigField(config.ScopeGlobal, funnelConfigKey); err != nil {

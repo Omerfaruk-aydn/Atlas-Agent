@@ -1,3 +1,32 @@
+package mobile
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
+	"github.com/stretchr/testify/require"
+)
+
+// Synthetic values only; no real account or password appears in tests.
+const phoneSecret = "Synth-Phone-Pass-7310!"
+
+func openCard(t *testing.T, session string) vault.CredentialRequest {
+	t.Helper()
+	req, _, err := vault.Ephemeral.Request(vault.CredentialSpec{SessionID: session, Service: "Example", Origin: "https://login.example.test", Account: "user@example.test", Target: vault.CredentialTarget{TabID: "t", Document: "d", Selector: "#pw"}})
+	require.NoError(t, err)
+	t.Cleanup(func() { vault.Ephemeral.PurgeSession(session) })
+	return req
+}
+
+func ringText(g *Gateway) string {
+	events, _, _ := g.ring.since(0)
+	data, _ := json.Marshal(events)
 	return string(data)
 }
 

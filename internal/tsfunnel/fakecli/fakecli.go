@@ -1,3 +1,63 @@
+// Package fakecli is a scripted stand-in for the Tailscale CLI and
+// tailscaled, for tests only. It models what Atlas relies on: status
+// JSON, the Serve configuration with foreground sessions that disappear
+// when their CLI process ends, port conflicts, and the browser approval
+// and login flows. It never contacts a real tailnet.
+package fakecli
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"maps"
+	"net"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/procown"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/tsfunnel"
+)
+
+// FunnelMode scripts how "tailscale funnel" behaves.
+type FunnelMode int
+
+// Funnel behaviours.
+const (
+	// FunnelOK configures the entry at once.
+	FunnelOK FunnelMode = iota
+	// FunnelApproval prints an approval URL and waits for Approve.
+	FunnelApproval
+	// FunnelApprovalExit prints an approval URL and exits 0, like a CLI
+	// that does not wait for enablement.
+	FunnelApprovalExit
+	// FunnelHang never configures anything.
+	FunnelHang
+	// FunnelFail exits 1 with an error.
+	FunnelFail
+)
+
+// ApprovalURL is the URL the fake prints for enablement.
+const ApprovalURL = "https://login.tailscale.com/f/funnel?node=nFAKE"
+
+// LoginURL is the URL the fake prints for sign-in.
+const LoginURL = "https://login.tailscale.com/a/fake123"
+
+// Daemon is the fake CLI and daemon. Exported fields may be changed
+// between calls while holding no lock; methods lock.
+type Daemon struct {
+	mu sync.Mutex
+
+	Installed   bool
+	ServiceDown bool
+	Backend     string
+	Version     string
+	Host        string
+	MagicDNS    bool
+	Caps        []string
 	// StatusRaw and ServeRaw replace the generated JSON when set.
 	StatusRaw []byte
 	ServeRaw  []byte

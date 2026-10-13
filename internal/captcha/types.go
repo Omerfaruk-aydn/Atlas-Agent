@@ -1,3 +1,74 @@
+	// KindUnknown is a detected widget the classifier could not name.
+	KindUnknown Kind = "unknown"
+)
+
+// TextAnswer reports whether the solution is typed into a field rather
+// than injected as a token.
+func (k Kind) TextAnswer() bool {
+	return k == KindImageText || k == KindMath
+}
+
+// TokenAnswer reports whether the solution is a provider response token.
+func (k Kind) TokenAnswer() bool {
+	return k == KindRecaptchaV2 || k == KindRecaptchaV3 || k == KindHCaptcha || k == KindTurnstile
+}
+
+// InteractionAnswer reports whether the solution requires pointer or
+// keyboard interaction (click sequence, rotation, slider drag).
+func (k Kind) InteractionAnswer() bool {
+	return k == KindClick || k == KindRotate || k == KindSlider || k == KindKeyCaptcha
+}
+
+// Challenge is one detected widget on a page. It never carries pixels or
+// secrets: only the metadata a solver needs and the DOM handles the
+// browser layer uses to capture and fill.
+type Challenge struct {
+	Kind Kind `json:"kind"`
+	// SiteKey is the widget public key for token providers.
+	SiteKey string `json:"site_key,omitempty"`
+	// Action is the reCAPTCHA v3 action label when the page supplies one.
+	Action string `json:"action,omitempty"`
+	// PageURL is the document URL the challenge sits on. Token farms
+	// validate it; it is not a secret.
+	PageURL string `json:"page_url"`
+	// Question is the visible instruction text ("Güvenlik Resmi",
+	// "Which images contain a bus", "5 + 3"). Not a secret.
+	Question string `json:"question,omitempty"`
+	// ImageSelector / AnswerSelector locate the challenge picture and the
+	// answer box in the DOM. Token widgets leave both empty.
+	ImageSelector  string `json:"image_selector,omitempty"`
+	AnswerSelector string `json:"answer_selector,omitempty"`
+	// VerifySelector is the button that submits the challenge, when one
+	// is identifiable. Empty means the outer form is submitted instead.
+	VerifySelector string `json:"verify_selector,omitempty"`
+	// FrameID scopes capture and fill to the widget iframe when the
+	// challenge lives inside one.
+	FrameID string `json:"frame_id,omitempty"`
+	// RotationHint is the current rotation in degrees for rotate
+	// challenges (0 = original).
+	RotationHint int `json:"rotation_hint,omitempty"`
+	// ClickTargetSelector is the container holding the clickable icons
+	// for click-sequence challenges.
+	ClickTargetSelector string `json:"click_target_selector,omitempty"`
+	// SliderSelector is the draggable handle for slider puzzles.
+	SliderSelector string `json:"slider_selector,omitempty"`
+	// Confidence is the detector's 0..1 belief in the classification.
+	Confidence float64 `json:"confidence,omitempty"`
+}
+
+// Solution is one solver's answer. Text and Token are mutually
+// exclusive and must match the challenge kind.
+type Solution struct {
+	// Text is the typed answer for image_text and math challenges.
+	Text string `json:"text,omitempty"`
+	// Token is the provider response token for widget challenges.
+	Token string `json:"token,omitempty"`
+	// Solver names the backend that produced the answer, for audit.
+	Solver string `json:"solver"`
+	// Duration is wall time spent solving.
+	Duration time.Duration `json:"duration_ms"`
+	// RawConfidence is the solver's 0..1 belief in the answer.
+	Confidence float64 `json:"confidence,omitempty"`
 }
 
 // Attempt records one solver's try. The audit trail is kept for

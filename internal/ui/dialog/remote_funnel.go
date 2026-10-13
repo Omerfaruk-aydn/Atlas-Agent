@@ -1,3 +1,42 @@
+package dialog
+
+import (
+	"errors"
+	"fmt"
+	"runtime"
+	"strings"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-style/v2"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/remotecontrol"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/tsfunnel"
+)
+
+// Tailscale actions of the main menu.
+const (
+	rcFunnel         = "funnel"
+	rcFunnelStop     = "funnel-stop"
+	rcFunnelPair     = "funnel-pair"
+	rcFunnelCheck    = "funnel-check"
+	rcFunnelInstall  = "funnel-install"
+	rcFunnelDownload = "funnel-download"
+	rcFunnelLogin    = "funnel-login"
+	rcFunnelApp      = "funnel-app"
+	rcFunnelDNS      = "funnel-dns"
+	rcFunnelApprove  = "funnel-approve"
+)
+
+func (d *Remote) funnel() FunnelStatus {
+	if d.env.Funnel == nil {
+		return FunnelStatus{}
+	}
+	return d.env.Funnel()
+}
+
+func (d *Remote) funnelOn() bool { return d.funnel().On }
+
+// approvalURL is the Tailscale page that turns on HTTPS or Funnel, from
+// the running start or from a start that exited to ask for it.
+func (f FunnelStatus) approvalURL() string {
 	var approval *tsfunnel.ApprovalRequiredError
 	if errors.As(f.Err, &approval) {
 		return approval.URL

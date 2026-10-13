@@ -1,3 +1,73 @@
+	var view CredentialRequest
+	if ok {
+		view = e.req
+	}
+	c.mu.Unlock()
+	c.emit(events)
+	return view, ok
+}
+
+// Pending lists open requests of a session ("" lists every session).
+func (c *Credentials) Pending(sessionID string) []CredentialRequest {
+	c.mu.Lock()
+	events := c.sweepLocked()
+	var out []CredentialRequest
+	for _, e := range c.entries {
+		if e.req.State == CredentialPending && (sessionID == "" || e.req.SessionID == sessionID) {
+			out = append(out, e.req)
+		}
+	}
+	c.mu.Unlock()
+	c.emit(events)
+	return out
+}
+
+// Provide stores the user's secret for one fill. The caller must have
+// authenticated the device; deviceID is recorded so revoking that device
+// also withdraws the secret. The store copies secret; callers clear theirs.
+func (c *Credentials) Provide(id, sessionID, deviceID string, secret []byte, persist bool) (CredentialRequest, error) {
+	if len(secret) == 0 || len(secret) > maxCredentialSecret {
+		return CredentialRequest{}, errors.New("credential must be 1-4096 bytes")
+	}
+	c.mu.Lock()
+	events := c.sweepLocked()
+	e, ok := c.entries[id]
+	switch {
+	case !ok || e.req.SessionID != sessionID:
+		c.mu.Unlock()
+		c.emit(events)
+		return CredentialRequest{}, ErrCredentialUnknown
+	case e.req.State == CredentialExpired:
+		c.mu.Unlock()
+		c.emit(events)
+		return CredentialRequest{}, ErrCredentialExpired
+	case e.req.State == CredentialCanceled:
+		c.mu.Unlock()
+		c.emit(events)
+		return CredentialRequest{}, ErrCredentialCanceled
+	case e.req.State != CredentialPending:
+		c.mu.Unlock()
+		c.emit(events)
+		return CredentialRequest{}, ErrCredentialUsed
+	}
+	if err := registerTemporary(sessionID, string(secret)); err != nil {
+		c.mu.Unlock()
+		c.emit(events)
+		return CredentialRequest{}, err
+	}
+	e.secret = append([]byte(nil), secret...)
+	e.req.ProvidedBy = deviceID
+	e.req.Persist = persist
+	e.req.ExpiresAt = c.now().Add(CredentialSecretTTL)
+	c.scheduleExpiryLocked(e, CredentialSecretTTL)
+	events = append(events, c.transitionLocked(e, CredentialProvided))
+	view := e.req
+	c.mu.Unlock()
+	// Later observations of this task never echo the value back.
+	c.emit(events)
+	return view, nil
+}
+
 // Cancel withdraws a request that has not been used.
 func (c *Credentials) Cancel(id, sessionID string) (CredentialRequest, error) {
 	c.mu.Lock()

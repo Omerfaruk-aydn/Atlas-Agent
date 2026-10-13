@@ -1,3 +1,11 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"

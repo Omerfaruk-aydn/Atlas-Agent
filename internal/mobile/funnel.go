@@ -1,3 +1,74 @@
+	srv  *http.Server
+	// onClose removes the public Funnel entry; it runs before the
+	// listener closes so phones never reach a closed port.
+	onClose func() error
+	once    sync.Once
+	err     error
+	// seen is the last request from the internet; verified is the last one
+	// from a paired, signed-in phone, with its device name.
+	seen     atomic.Int64
+	verified atomic.Int64
+	device   atomic.Pointer[string]
+}
+
+type funnelKey struct{}
+
+// ServeFunnel opens the loopback listener for Tailscale Funnel and returns
+// its port. host is the exact Host header phones send: the ts.net name,
+// with the port when it is not 443. onClose runs when the gateway closes,
+// before the listener stops; it should remove the Funnel entry.
+func (g *Gateway) ServeFunnel(ctx context.Context, host string, onClose func() error) (int, error) {
+	host, err := checkFunnelHost(host)
+	if err != nil {
+		return 0, err
+	}
+	if g.opts.RelayURL != "" {
+		return 0, errors.New("phone gateway already uses a relay")
+	}
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	ft := &funnelTarget{host: host, ln: ln}
+	inner := g.handlerForHost(host)
+	ft.srv = &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// tailscaled forwards the phone's address; it keys rate limits
+			// and is shown with a pairing request.
+			if ip := forwardedClient(r); ip != "" {
+				r.RemoteAddr = net.JoinHostPort(ip, "0")
+			}
+			if r.Header.Get(funnelRequestHeader) != "" && r.Host == host {
+				ft.seen.Store(time.Now().UnixMilli())
+				r = r.WithContext(context.WithValue(r.Context(), funnelKey{}, ft))
+			}
+			inner.ServeHTTP(w, r)
+		}),
+		ReadHeaderTimeout: 10 * time.Second,
+		MaxHeaderBytes:    32 << 10,
+	}
+	if !g.funnel.CompareAndSwap(nil, ft) {
+		_ = ln.Close()
+		return 0, errors.New("phone gateway already serves a Funnel")
+	}
+	ft.onClose = onClose
+	go func() {
+		if err := ft.srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
+			g.opts.Logger.Error("Phone Funnel listener stopped", "error", err)
+		}
+	}()
+	return ln.Addr().(*net.TCPAddr).Port, nil
+}
+
+func (ft *funnelTarget) close() error {
+	ft.once.Do(func() {
+		if ft.onClose != nil {
+			ft.err = ft.onClose()
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = ft.srv.Shutdown(ctx)
 		_ = ft.ln.Close()
 	})
 	return ft.err

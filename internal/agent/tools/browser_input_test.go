@@ -22,6 +22,8 @@ type fakeInputSession struct {
 
 func (f *fakeInputSession) ViewportScreenshot(context.Context) ([]byte, browser.Viewport, error) {
 	return []byte("png-bytes"), f.viewport, nil
+	data, vp, err := f.ViewportScreenshot(ctx)
+	return data, vp, 0, err
 }
 
 func (f *fakeInputSession) Input(_ context.Context, p browser.Request) (browser.InputResult, error) {

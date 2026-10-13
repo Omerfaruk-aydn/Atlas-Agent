@@ -282,7 +282,8 @@ func browserMutating(action string) bool {
 
 // browserVerifyingActions return page text that can serve as evidence.
 var browserVerifyingActions = map[string]bool{
-	"observe": true, "snapshot": true, "find": true, "assert": true, "wait_for": true, "read_field": true,
+	"layout_audit": true,
+	"observe":      true, "snapshot": true, "find": true, "assert": true, "wait_for": true, "read_field": true,
 	"set_field": true, "select_option": true, "fill_form": true, "text": true, "html": true,
 	"research": true, "collect": true,
 }
@@ -435,7 +436,7 @@ func browserErrorCode(text string) (code, recovery string) {
 	case strings.Contains(lower, "eval_timeout"):
 		return "eval_timeout", "The script awaited something that never settled; observe the page instead of re-running it."
 	case strings.Contains(lower, "password_field"):
-		return "password_field", "Use vault_fill for saved credentials."
+		return "password_field", "Passwords never go through field, type or eval actions. Follow next_step: vault_fill with a saved handle, or credential_request so the user types it on their paired phone. Never ask for a password in chat."
 	case strings.Contains(lower, "within_not") || strings.Contains(lower, "target_resolution_failed"):
 		return "target_resolution_failed", "Refine within/scope/role/name from a fresh observation."
 	case strings.Contains(lower, "undo_unsafe"):
@@ -677,7 +678,8 @@ func withBrowserFailure(response fantasy.ToolResponse) fantasy.ToolResponse {
 		return response
 	}
 	code, recovery := browserErrorCode(response.Content)
-	return fantasy.WithResponseMetadata(response, struct {
+	// Merge, never replace: outcome and credential metadata must survive.
+	return withMergedMetadata(response, struct {
 		Code              string `json:"error_code"`
 		Recovery          string `json:"recovery"`
 		VerifyBeforeRetry bool   `json:"verify_before_retry"`

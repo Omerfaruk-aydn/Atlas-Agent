@@ -24,10 +24,14 @@ func viewportScreenshotResponse(ctx context.Context, input browser.InputSession)
 	if err != nil {
 		return fantasy.NewTextErrorResponse("screenshot failed: " + err.Error()), nil
 	}
+	return viewportImageResponse(data, vp), nil
+}
+
+func viewportImageResponse(data []byte, vp browser.Viewport) fantasy.ToolResponse {
 	resp := fantasy.NewImageResponse(data, "image/png")
 	if vp.ID == "" {
 		resp.Content = browserScreenshotGuide + " No viewport_id was issued because the page moved or is pinch-zoomed during capture; take another screenshot before pointer input."
-		return resp, nil
+		return resp
 	}
 	grant, _ := json.Marshal(struct {
 		ViewportID  string  `json:"viewport_id"`
@@ -36,7 +40,7 @@ func viewportScreenshotResponse(ctx context.Context, input browser.InputSession)
 		ImageScale  float64 `json:"image_scale"`
 	}{vp.ID, vp.ImageWidth, vp.ImageHeight, vp.Scale})
 	resp.Content = browserScreenshotGuide + "\nViewport: " + string(grant)
-	return resp, nil
+	return resp
 }
 
 // runBrowserInput dispatches one typed pointer or keyboard action. The

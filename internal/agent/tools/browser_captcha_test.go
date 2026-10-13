@@ -1,3 +1,56 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/browser"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/captcha"
+	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/stretchr/testify/require"
+)
+
+// captchaSession overrides Eval so captcha detection and fill scripts can
+// be stubbed without a real page. evalFn, when set, wins over evalOut.
+type captchaSession struct {
+	*fakeBrowserSession
+	evalOut map[string]string
+	evalFn  func(script string) (string, error)
+	types   []string
+	clicks  []string
+}
+
+func (c *captchaSession) Eval(script string) (string, error) {
+	if c.evalErr != nil {
+		return "", c.evalErr
+	}
+	if c.evalFn != nil {
+		if out, err := c.evalFn(script); err == nil && out != "" {
+			return out, nil
+		}
+	}
+	if out, ok := c.evalOut[script]; ok {
+		return out, nil
+	}
+	for key, out := range c.evalOut {
+		if strings.Contains(script, key) {
+			return out, nil
+		}
+	}
+	return "null", nil
+}
+
+func (c *captchaSession) Type(sel, text string) error {
+	c.types = append(c.types, sel+"="+text)
+	c.typedSel, c.typedText = sel, text
+	return nil
+}
+
+func (c *captchaSession) Click(sel string) error {
+	c.clicks = append(c.clicks, sel)
 	c.clicked = sel
 	return nil
 }

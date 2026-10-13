@@ -1,3 +1,74 @@
+			matches := 0
+			unmatched := false
+			for _, label := range strings.Split(strings.ToLower(u.Hostname()), ".") {
+				if len(label) < 3 || label == "www" || label == "com" || label == "edu" || label == "net" || label == "org" {
+					continue
+				}
+				if regexp.MustCompile(`(?:^|[^a-z0-9])` + regexp.QuoteMeta(label) + `(?:$|[^a-z0-9])`).MatchString(p) {
+					matches++
+				} else {
+					unmatched = true
+				}
+			}
+			if matches >= 2 && !unmatched {
+				if origin := sourceLinkOrigin(u); origin != "" {
+					origins[origin] = true
+				}
+			}
+		}
+	}
+	// The text may be truncated before the service link (common in short
+	// tool reads). When the instruction names a service whose labels match
+	// the sender's mail domain, accept that destination.
+	if len(origins) == 0 {
+		if fallback := destinationFromSenderDomain(instruction, text, source); fallback != "" {
+			return fallback
+		}
+	}
+	if len(origins) != 1 {
+		return ""
+	}
+	for origin := range origins {
+		return origin
+	}
+	return ""
+}
+
+// destinationFromSenderDomain derives the destination from the sender's
+// mail domain when the tool read truncated the message before its link.
+// "ois@topkapi.edu.tr" + instruction "OİS Topkapı" -> https://ois.topkapi.edu.tr.
+func destinationFromSenderDomain(instruction, text string, source *url.URL) string {
+	p := " " + normalizedSourceName(instruction) + " "
+	// Take the first email-looking token in the header area as the sender.
+	header := strings.SplitN(strings.TrimSpace(text), "\n", 3)
+	sender := ""
+	for _, line := range header {
+		if strings.Contains(line, "@") {
+			sender = strings.TrimSpace(line)
+			break
+		}
+	}
+	if sender == "" {
+		return ""
+	}
+	at := strings.LastIndex(sender, "@")
+	if at < 0 || at+1 >= len(sender) {
+		return ""
+	}
+	domain := strings.TrimRight(sender[at+1:], " .,;)>\"'")
+	if domain == "" || strings.Contains(domain, "/") {
+		return ""
+	}
+	labels := strings.Split(strings.ToLower(domain), ".")
+	if len(labels) < 2 {
+		return ""
+	}
+	matches := 0
+	for _, label := range labels {
+		if len(label) < 3 || label == "www" || label == "com" || label == "edu" || label == "net" || label == "org" {
+			continue
+		}
+		if regexp.MustCompile(`(?:^|[^a-z0-9])` + regexp.QuoteMeta(label) + `(?:$|[^a-z0-9])`).MatchString(p) {
 			matches++
 		}
 	}

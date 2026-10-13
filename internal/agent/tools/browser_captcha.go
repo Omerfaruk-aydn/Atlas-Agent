@@ -1,3 +1,73 @@
+		// paste a selector back from the report.
+		pageURL, _ := sess.URL()
+		if raw, err := sess.Eval(captcha.DetectScript); err == nil {
+			if _, ch, perr := captcha.ParseDetect(raw, pageURL); perr == nil {
+				selector = ch.AnswerSelector
+			}
+		}
+	}
+	if selector == "" {
+		return fantasy.NewTextErrorResponse("answer selector is required for captcha_fill; call captcha_detect first"), nil
+	}
+	if ok, err := fillCaptchaAnswer(ctx, sess, selector, answer); err != nil {
+		return fantasy.NewTextErrorResponse("captcha fill failed: " + err.Error()), nil
+	} else if !ok {
+		return fantasy.NewTextErrorResponse("captcha fill could not reach the answer field " + selector), nil
+	}
+	next := "Answer typed into " + selector + "; submit the form then call login_check."
+	if params.Advanced.Verify {
+		verifySel := params.Advanced.VerifySelector
+		verifyName := ""
+		// Extract a human-readable name from jQuery-style selectors like
+		// "button:contains('Giriş Yap')" so semantic_click can find the
+		// button even when the selector is not valid CSS.
+		if m := regexp.MustCompile(`:contains\(['"]?([^'")\]]+)['"]?\)`).FindStringSubmatch(verifySel); len(m) > 1 {
+			verifyName = strings.TrimSpace(m[1])
+		}
+		if verifyName == "" && verifySel != "" && !strings.ContainsAny(verifySel, ":.#[]>()") {
+			verifyName = verifySel // plain text like "Giriş Yap"
+		}
+		clicked := false
+		if verifyName != "" {
+			if driver, ok := sess.(interface {
+				Input(ctx context.Context, p browser.Request) (browser.InputResult, error)
+			}); ok {
+				if _, err := driver.Input(ctx, browser.Request{Action: "semantic_click", Role: "button", Name: verifyName}); err == nil {
+					clicked = true
+				}
+			}
+		}
+		if !clicked && verifySel != "" && !strings.Contains(verifySel, ":contains") {
+			_ = sess.Click(verifySel)
+			clicked = true
+		}
+		if !clicked {
+			// Last resort: find the form's submit button by role.
+			if driver, ok := sess.(interface {
+				Input(ctx context.Context, p browser.Request) (browser.InputResult, error)
+			}); ok {
+				if _, err := driver.Input(ctx, browser.Request{Action: "semantic_click", Role: "button", Name: "Giriş Yap"}); err == nil {
+					clicked = true
+				}
+			}
+		}
+		if clicked {
+			next = "Answer typed and verify clicked; call login_check. If login_check still reports captcha, the answer was wrong: call captcha_solve again for a fresh image and retry."
+		} else {
+			next = "Answer typed but verify click failed. Click the submit button yourself (browser click with the button's ref), then call login_check."
+		}
+	}
+	return browserJSONResponse(CaptchaResult{
+		Status:         "filled",
+		Kind:           string(captcha.KindImageText),
+		Answer:         answer,
+		AnswerSelector: selector,
+		PageURL:        pageURLOf(sess),
+		Next:           next,
+	}), nil
+}
+
+func pageURLOf(sess browser.Session) string {
 	u, _ := sess.URL()
 	return u
 }

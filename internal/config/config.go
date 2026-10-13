@@ -1100,6 +1100,32 @@ type Tools struct {
 	Quality   ToolQuality   `json:"quality,omitzero"`
 	Git       ToolGit       `json:"git,omitzero"`
 	Docs      ToolDocs      `json:"docs,omitzero"`
+
+	Captcha ToolCaptcha `json:"captcha,omitzero"`
+}
+
+// ToolCaptcha configures the CAPTCHA solver chain the browser tool uses
+// with captcha_solve. Image-text and math challenges are solved offline
+// or by the model's own vision -- no external API is required. A remote
+// token farm is only needed for reCAPTCHA / hCaptcha / Turnstile response
+// tokens.
+//
+// API keys live in this block. A raw key works; "$ENV_VAR" or "${ENV_VAR}"
+// expands from the environment at load time, and an OS-level
+// ATLAS_CAPTCHA_API_KEY is used when the field is left empty.
+type ToolCaptcha struct {
+	Enabled *bool `json:"enabled,omitempty" jsonschema:"description=Turn on CAPTCHA solving for the browser tool (captcha_detect / captcha_solve / captcha_fill).,default=true"`
+	// Solvers is the preference order. Recognized names: math, remote.
+	// Empty selects math plus remote when a key is configured.
+	Solvers []string `json:"solvers,omitempty" jsonschema:"description=Solver order. Recognized names: math, remote. Empty selects the default chain."`
+	// RemoteProvider is "2captcha", "capsolver" or "anticaptcha".
+	RemoteProvider string `json:"remote_provider,omitempty" jsonschema:"description=Commercial token-farm backend for reCAPTCHA / hCaptcha / Turnstile response tokens: 2captcha, capsolver or anticaptcha. Only needed for those widgets.,example=2captcha"`
+	// RemoteAPIKey is the token-farm key. Accepts a raw key or $ENV_VAR.
+	RemoteAPIKey string `json:"remote_api_key,omitempty" jsonschema:"description=API key for remote_provider. Write the key directly or reference an environment variable as \\$MY_CAPTCHA_KEY. Only needed for token widgets.,example=$CAPTCHA_API_KEY"`
+	// AttemptTimeout bounds a single solver try.
+	AttemptTimeout *time.Duration `json:"attempt_timeout,omitempty" jsonschema:"description=How long one solver may run before falling back to showing the challenge image to the model,default=30s,example=45s"`
+}
+
 // IsEnabled reports whether CAPTCHA solving should be registered. On by
 // default: the local math/OCR solvers are free and offline.
 func (t ToolCaptcha) IsEnabled() bool {

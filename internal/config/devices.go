@@ -22,6 +22,9 @@ type ToolDevices struct {
 	// Relay mode needs no phone app, LAN binding or inbound home firewall rule.
 	MobileRelayURL       string `json:"mobile_relay_url,omitempty" jsonschema:"description=Optional dedicated HTTPS origin of your own Atlas mobile-relay server. Atlas connects outbound; Safari reaches this origin from anywhere. Requires mobile_relay_token_file. The relay is trusted with phone traffic and must be yours."`
 	MobileRelayTokenFile string `json:"mobile_relay_token_file,omitempty" jsonschema:"description=Absolute path to the private connector key shared with your own mobile-relay server. Generate with mobile-relay keygen and keep outside the workspace. Never put this key in a URL or phone browser."`
+	// MobileFunnel is the /rc Tailscale mode. It stores no credential: the
+	// Tailscale sign-in stays in the Tailscale app.
+	MobileFunnel bool `json:"mobile_funnel,omitempty" jsonschema:"description=Let /rc publish the phone gateway with your own Tailscale Funnel (https://<device>.<tailnet>.ts.net). Set and cleared by /rc; Atlas reconnects it at launch only while this is on. Needs Tailscale signed in with MagicDNS and HTTPS certificates and Funnel allowed for this device.,default=false"`
 	// Support settings belong to /support (computer-to-computer IT support),
 	// which is separate from the phone relay above.
 	SupportName string `json:"support_name,omitempty" jsonschema:"description=Name this computer shows in /support sessions. Defaults to the computer name. The other side sees it as a name sent by the device; the verified identity is the certificate fingerprint."`

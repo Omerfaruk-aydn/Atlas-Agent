@@ -16,6 +16,76 @@
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
+    </svg>
+    <h1 tabindex="-1" class="display" id="pair-h" data-i18n="pair_title"></h1>
+
+    <div id="pair-none" class="pair-stage hidden">
+      <p class="lead" data-i18n="pair_need_qr"></p>
+      <ol class="steps">
+        <li data-i18n="pair_step_open"></li>
+        <li data-i18n="pair_step_scan"></li>
+        <li data-i18n="pair_step_compare"></li>
+      </ol>
+    </div>
+
+    <form id="pair-transfer" class="pair-stage hidden" novalidate>
+      <p class="lead" data-i18n="transfer_intro"></p>
+      <ol class="steps">
+        <li data-i18n="transfer_step1"></li>
+        <li data-i18n="transfer_step2"></li>
+      </ol>
+      <label class="field" for="transfer-code"><span data-i18n="transfer_code"></span></label>
+      <input id="transfer-code" class="input code-input" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="9" inputmode="text" enterkeyhint="go">
+      <p class="form-error hidden" id="transfer-error" role="alert"></p>
+      <button class="btn primary block" id="transfer-go" type="submit" data-i18n="transfer_button"></button>
+      <p class="hint" data-i18n="transfer_qr_hint"></p>
+    </form>
+
+    <div id="pair-invalid" class="pair-stage hidden">
+      <div class="notice warn" role="alert">
+        <svg aria-hidden="true"><use href="#i-alert"/></svg>
+        <div><strong data-i18n="pair_invalid_title"></strong><p id="pair-invalid-text" data-i18n="pair_invalid"></p></div>
+      </div>
+    </div>
+
+    <form id="pair-start" class="pair-stage hidden" novalidate>
+      <p class="lead" data-i18n="pair_intro"></p>
+      <label class="field" for="pair-name"><span data-i18n="device_name"></span></label>
+      <input id="pair-name" class="input" autocomplete="off" autocapitalize="words" maxlength="48" enterkeyhint="send">
+      <p class="hint" data-i18n="pair_name_hint"></p>
+      <p class="form-error hidden" id="pair-error" role="alert"></p>
+      <button class="btn primary block" id="pair-go" type="submit" data-i18n="pair_button"></button>
+    </form>
+
+    <div id="pair-wait" class="pair-stage hidden">
+      <p class="lead" data-i18n="pair_compare"></p>
+      <div class="code-card">
+        <div class="code-host">
+          <svg class="row-icon" aria-hidden="true"><use href="#i-laptop"/></svg>
+          <div><div class="strong" data-i18n="your_computer"></div><div class="muted small" id="pair-os"></div></div>
+        </div>
+        <p class="code" id="pair-code" aria-describedby="pair-status"></p>
+        <p class="muted center" id="pair-status" role="status" aria-live="polite"></p>
+      </div>
+      <label class="field" for="pair-sent-name"><span data-i18n="device_name"></span></label>
+      <input id="pair-sent-name" class="input" readonly>
+      <p class="hint" data-i18n="pair_after"></p>
+      <button class="btn quiet block" id="pair-cancel" type="button" data-i18n="cancel"></button>
+    </div>
+
+    <div id="pair-done" class="pair-stage hidden">
+      <div class="notice" id="pair-done-box" role="alert">
+        <svg aria-hidden="true"><use href="#i-alert"/></svg>
+        <div><strong id="pair-done-title"></strong><p id="pair-done-text"></p></div>
+      </div>
+      <button class="btn secondary block hidden" id="pair-again" type="button" data-i18n="pair_again"></button>
+    </div>
+  </div>
+</section>
+
+<!-- Conversation list -->
+<section id="view-list" class="view page hidden" aria-labelledby="list-h">
+  <header class="topbar">
     <div class="brand"><svg class="mark" aria-hidden="true"><use href="#i-mark"/></svg><span>Atlas</span></div>
     <button class="icon-btn" id="settings-btn" type="button" data-i18n-label="settings"><svg aria-hidden="true"><use href="#i-gear"/></svg></button>
   </header>

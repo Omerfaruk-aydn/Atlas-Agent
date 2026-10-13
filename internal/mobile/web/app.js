@@ -319,34 +319,57 @@
       const answers = inputs.map((f) => f()).filter(Boolean);
       try { await act("/api/questions/" + encodeURIComponent(q.id), { session_id: q.session_id, answers }, submit); c.remove(); } catch (_) {}
     });
-    cancel.addEventListener("click", async () => {
-      try { await act("/api/questions/" + encodeURIComponent(q.id), { session_id: q.session_id, cancel: true }, cancel); c.remove(); } catch (_) {}
-    });
+    h.append(icon("hand"));
+    const tx = el("div");
+    tx.append(el("strong", "", t("ctl_title")));
+    h.append(tx);
+    c.append(h);
+    if (d.interaction.reason) {
+      const r = el("p", "reason");
+      r.append(el("span", "muted", t("ctl_reason") + " "), document.createTextNode(d.interaction.reason));
+      c.append(r);
+    }
+    const b = button("btn primary block", t("ctl_return"));
+    b.id = "return-control";
+    b.disabled = state.conn !== "connected";
+    b.addEventListener("click", () => returnControl(b));
+    c.append(b, el("p", "fine", d.interaction.canceled ? t("ctl_canceled_note") : t("ctl_note")));
     return c;
   }
-
-  function renderTaskHead(d) {
-    const s = d.session;
-    $("task-h").textContent = s.title || s.id;
-    $("title").textContent = s.title || "Atlas";
-    const [, label] = statusOf(Object.assign({}, s, { pending_permissions: (d.permissions || []).length, pending_questions: (d.questions || []).length, paused: d.workflow && d.workflow.paused }));
-    let meta = label + " · " + duration(s.created_at, s.updated_at);
-    if (s.todos_total) meta += " · " + s.todos_done + "/" + s.todos_total + " " + t("todos");
-    $("task-meta").textContent = meta;
-    const wf = d.workflow || {};
-    $("ctl-pause").classList.toggle("hidden", !wf.available || wf.paused);
-    $("ctl-resume").classList.toggle("hidden", !wf.available || !wf.paused);
-    $("ctl-stop").classList.toggle("hidden", !wf.available || !s.busy);
-    $("ctl-preview").classList.toggle("hidden", !(state.me && state.me.preview_available && state.me.device.previews));
+  async function returnControl(b) {
+    const d = state.detail;
+    if (!d || !d.workflow || !d.workflow.available || state.conn !== "connected") return;
+    b.disabled = true;
+    b.classList.add("busy");
+    try {
+      const r = await act("/api/sessions/" + encodeURIComponent(state.current) + "/control", { action: "interaction_resume", revision: d.workflow.revision });
+      toast(r && r.canceled ? t("ctl_canceled") : t("ctl_returned"));
+    } catch (e) {
+      toast(e.code === "not_paused" ? t("ctl_already") : isStale(e) ? t("stale") : t("failed") + ": " + e.message, !(isStale(e) || e.code === "not_paused"));
+    } finally {
+      b.classList.remove("busy");
+      if (state.current) await loadTask(state.current).catch(() => {});
+    }
   }
 
-  async function loadTask(id) {
-    const d = await api("/api/sessions/" + encodeURIComponent(id));
-    d.errors = (state.detail && state.detail.session.id === id && state.detail.errors) || [];
-    state.detail = d;
-    state.seq = Math.max(state.seq, d.seq || 0);
-    renderTaskHead(d);
-    renderPending(d);
+  // ---------- Chat / live screen view ----------
+  function applyView(pendingOpen) {
+    const screenView = !pendingOpen && state.view === "screen" && screen.open;
+    $("scroll").classList.toggle("hidden", pendingOpen || screenView);
+    $("composer").classList.toggle("hidden", pendingOpen || screenView);
+    $("screen-pane").classList.toggle("hidden", !screenView);
+    $("view-switch").classList.toggle("hidden", pendingOpen || !screen.open);
+    $("tab-chat").setAttribute("aria-selected", String(!screenView));
+    $("tab-screen").setAttribute("aria-selected", String(screenView));
+    $("screen-btn").setAttribute("aria-pressed", String(screen.open));
+    // The stream runs only while the screen is actually visible.
+    if (screenView && !document.hidden) screenConnect();
+    else if (screen.ctrl) screenDisconnect(screen.open ? "paused" : "stopped");
+  }
+  function setView(view) {
+    state.view = view;
+    applyView(state.pendingOpen && !!state.detail && pendingKeys(state.detail).length > 0);
+    if (view === "chat" && nearBottom()) toBottom();
   }
 
   // ---------- Live screen ----------

@@ -1,3 +1,73 @@
+		case <-ctx.Done():
+			return Solution{}, ctx.Err()
+		case <-time.After(r.PollInterval):
+		}
+		q := url.Values{}
+		q.Set("key", r.APIKey)
+		q.Set("json", "1")
+		q.Set("action", "get")
+		q.Set("id", submit.Request)
+		poll, err := r.postForm(ctx, "https://2captcha.com/res.php", q)
+		if err != nil {
+			return Solution{}, err
+		}
+		if poll.Request != "" {
+			return Solution{Text: poll.Request, Token: poll.Request, Confidence: 0.9}, nil
+		}
+		if strings.EqualFold(poll.ErrorText, "CAPCHA_NOT_READY") || strings.EqualFold(poll.ErrorText, "CAPTCHA_NOT_READY") {
+			continue
+		}
+		if poll.ErrorText != "" {
+			return Solution{}, fmt.Errorf("captcha: 2captcha: %s", poll.ErrorText)
+		}
+	}
+}
+
+type twocaptchaResp struct {
+	Status    int    `json:"status"`
+	Request   string `json:"request"`
+	ErrorText string `json:"error_text"`
+}
+
+func (r *RemoteSolver) postForm(ctx context.Context, endpoint string, form url.Values) (twocaptchaResp, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return twocaptchaResp{}, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := r.Client.Do(req)
+	if err != nil {
+		return twocaptchaResp{}, fmt.Errorf("captcha: 2captcha request: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return twocaptchaResp{}, err
+	}
+	var out twocaptchaResp
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return twocaptchaResp{}, fmt.Errorf("captcha: 2captcha response: %w", err)
+	}
+	return out, nil
+}
+
+// --- CapSolver / Anti-Captcha task API ---------------------------------
+
+func (r *RemoteSolver) solveTaskAPI(ctx context.Context, ch Challenge, image []byte) (Solution, error) {
+	base := "https://api.capsolver.com"
+	if r.Provider == RemoteAntiCaptcha {
+		base = "https://api.anti-captcha.com"
+	}
+	task, err := r.taskPayload(ch, image)
+	if err != nil {
+		return Solution{}, err
+	}
+	create := map[string]any{
+		"clientKey": r.APIKey,
+		"task":      task,
+	}
+	raw, err := r.postJSON(ctx, base+"/createTask", create)
+	if err != nil {
 		return Solution{}, err
 	}
 	var created struct {

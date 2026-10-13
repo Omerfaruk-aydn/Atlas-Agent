@@ -1,3 +1,73 @@
+  await page.goto(url + "/#pair=used-or-expired");
+  await page.reload();
+  await page.locator("#pair-go").click();
+  await page.locator("#pair-invalid").waitFor();
+  assert.match(await page.locator("#pair-invalid").innerText(), /yeni bir QR kodu/);
+  assert.ok(await page.locator("#pair-none").isVisible(), "steps to get a new QR are shown");
+});
+
+test("a pending pairing expires on time, and Cancel really withdraws it", async (t) => {
+  const { page, state, url } = await fixture(t, { setup: (s) => { s.authenticated = false; s.pairTTL = 1500; } });
+  await page.goto(url + "/#pair=fixture-only");
+  await page.locator("#pair-go").click();
+  await page.locator("#pair-done").waitFor({ timeout: 5000 });
+  assert.match(await page.locator("#pair-done").innerText(), /süresi doldu/);
+
+  state.pairTTL = 300000;
+  state.pairState = "pending";
+  await page.goto(url + "/#pair=fixture-only");
+  await page.reload();
+  await page.locator("#pair-go").click();
+  await page.locator("#pair-wait").waitFor();
+  await page.locator("#pair-cancel").click();
+  await page.locator("#pair-done").waitFor();
+  assert.ok(state.pairCancelled, "the computer-side request was withdrawn");
+  assert.match(await page.locator("#pair-done").innerText(), /geri çekildi/);
+});
+
+// ---------- List ----------
+test("list groups by local day, searches Turkish titles and opens the right chat", async (t) => {
+  const { page, url } = await fixture(t, { setup: (s) => {
+    s.sessions.push({ id: "s6", title: "IŞIK ayarları", busy: false, created_at: s.sessions[0].created_at, updated_at: s.sessions[0].updated_at - 30, todos_done: 0, todos_total: 0, goal: "" });
+    s.details.s6 = { session: s.sessions[5], workflow: { available: false }, todos: [], messages: [], permissions: [], questions: [] };
+  } });
+  await page.goto(url);
+  await page.locator(".task-row").first().waitFor();
+  assert.deepEqual(await page.locator("#task-list h2").allInnerTexts(), ["Bugün", "Dün"]);
+  assert.match(await page.locator('.task-row[data-id="s1"]').innerText(), /Çalışıyor/);
+  assert.match(await page.locator('.task-row[data-id="s2"]').innerText(), /İzin bekliyor/);
+  assert.match(await page.locator('.task-row[data-id="s3"]').innerText(), /Tamamlandı/);
+  assert.doesNotMatch(await page.locator('.task-row[data-id="s5"]').innerText(), /Tamamlandı/, "idle is not reported as done");
+  await page.locator("#search").fill("ışık");
+  assert.deepEqual(await page.locator(".task-row").evaluateAll((n) => n.map((x) => x.dataset.id)), ["s6"]);
+  await page.locator("#search").fill("zzz");
+  assert.match(await page.locator("#list-state").innerText(), /eşleşen sohbet yok/);
+  await page.locator("#search").fill("remote");
+  await page.locator('.task-row[data-id="s1"]').click();
+  await page.locator("#messages .msg").first().waitFor();
+  assert.equal(await page.locator("#task-h").innerText(), "Remote arayüzü");
+  await page.locator("#back").click();
+  await page.locator("#view-list").waitFor();
+  assert.equal(await page.locator("#search").inputValue(), "remote", "search survives a round trip");
+});
+
+test("empty list and failed load each show a clear state", async (t) => {
+  const { page, state, url } = await fixture(t, { setup: (s) => { s.sessions = []; } });
+  await page.goto(url);
+  await page.locator("#list-state").waitFor();
+  assert.match(await page.locator("#list-state").innerText(), /Henüz sohbet yok/);
+  state.unavailable = true;
+  await page.reload();
+  await page.locator("#list-state button").waitFor();
+  assert.match(await page.locator("#list-state").innerText(), /yüklenemedi/);
+});
+
+// ---------- Chat ----------
+test("message with attachment uses one idempotent request and clears the draft", async (t) => {
+  const { page, state, url } = await fixture(t);
+  await page.goto(url);
+  await page.locator('.task-row[data-id="s1"]').click();
+  await page.locator("#messages .msg").first().waitFor();
   assert.equal(await page.locator("#model-name").innerText(), "claude-haiku-4-5");
   assert.ok(await page.locator("#send").isDisabled(), "nothing to send yet");
   await page.locator("#attach").setInputFiles({ name: "notlar.txt", mimeType: "text/plain", buffer: Buffer.from("merhaba") });

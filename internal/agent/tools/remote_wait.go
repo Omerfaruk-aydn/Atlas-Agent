@@ -1,3 +1,37 @@
+package tools
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"image"
+	_ "image/jpeg" // Observations may be JPEG.
+	_ "image/png"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/nodes"
+)
+
+// Remote waits replace fixed sleeps (the reported session slept 11 min
+// 36 s in bash while Stitch generated screens): they poll the remote
+// screen or its accessibility tree and return as soon as the condition
+// holds, with the evidence, or at the timeout with what was last seen.
+
+const (
+	remoteWaitDefault  = 60 * time.Second
+	remoteWaitMax      = 10 * time.Minute
+	remoteWaitInterval = 2 * time.Second
+	// changeThreshold is the mean per-cell brightness difference (0-1)
+	// that counts as a visible change; stableThreshold the difference
+	// below which two samples count as the same screen.
+	changeThreshold = 0.02
+	stableThreshold = 0.004
+	// stableSamples consecutive same-looking samples mean "stable".
+	stableSamples = 3
+)
+
+// remoteWaiter is the part of the node client a wait needs.
 type remoteWaiter interface {
 	Observe(ctx context.Context, image bool) (nodes.DesktopObservation, error)
 	Automation(ctx context.Context, req nodes.AutomationRequest) (json.RawMessage, error)

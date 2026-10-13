@@ -66,3 +66,8 @@ func handoffResponse(step, where string) fantasy.ToolResponse {
 	response.StopTurn = true
 	return response
 }
+	if !asksForSecret(step) || !vault.Ephemeral.HasInputChannel() {
+		return nil
+	}
+	return computer.NewContractError("use_credential_request", "text", "This handoff only asks the user to type a password, which their paired phone can do securely without returning to the computer. Nothing was paused", "Call browser credential_request with the password field's ref instead. Hand off only device approvals, passkeys, CAPTCHAs that stay unsolved, or code entry the phone cannot do.", `{"action":"credential_request","ref":"e12","service":"Google"}`)
+}

@@ -1,3 +1,69 @@
+package tools
+
+import (
+	"bytes"
+	"context"
+	"encoding/binary"
+	"hash/crc32"
+	"image"
+	"image/color"
+	"image/draw"
+	"image/png"
+	"math/rand/v2"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
+)
+
+func TestPreviewTransparencyIsNotPremultipliedTwice(t *testing.T) {
+	t.Parallel()
+	src := image.NewNRGBA(image.Rect(0, 0, 2, 2))
+	for y := range 2 {
+		for x := range 2 {
+			src.SetNRGBA(x, y, color.NRGBA{R: 255, A: 128})
+		}
+	}
+	scaled := boxScale(src, 1, 1)
+	dst := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	draw.Draw(dst, dst.Bounds(), &image.Uniform{C: color.White}, image.Point{}, draw.Src)
+	draw.Draw(dst, dst.Bounds(), scaled, image.Point{}, draw.Over)
+	require.Equal(t, color.RGBA{R: 255, G: 127, B: 127, A: 255}, dst.RGBAAt(0, 0))
+}
+
+// noisePNG encodes a w×h image of random pixels, which PNG cannot
+// compress, so its size grows with its area.
+func noisePNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	r := rand.New(rand.NewPCG(1, 2))
+	for i := range img.Pix {
+		img.Pix[i] = uint8(r.IntN(256))
+	}
+	for i := 3; i < len(img.Pix); i += 4 {
+		img.Pix[i] = 255
+	}
+	var buf bytes.Buffer
+	require.NoError(t, png.Encode(&buf, img))
+	return buf.Bytes()
+}
+
+// paddedPNG returns a valid PNG of exactly size bytes: a w×h image with an
+// ancillary chunk inserted before IEND. Decoders skip ancillary chunks, so
+// the file is a real image of a precise length.
+func paddedPNG(t *testing.T, w, h, size int) []byte {
+	t.Helper()
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		for x := range w {
+			img.Set(x, y, color.NRGBA{uint8(x), uint8(y), 128, 255})
+		}
+	}
+	var buf bytes.Buffer
+	require.NoError(t, png.Encode(&buf, img))
 	base := buf.Bytes()
 	iend := base[len(base)-12:]
 	head := base[:len(base)-12]

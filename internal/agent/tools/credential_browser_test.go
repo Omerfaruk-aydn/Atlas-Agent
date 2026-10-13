@@ -1,3 +1,74 @@
+func (s *secretSession) FillSecret(_ context.Context, target browser.SecretTarget, secret string) (browser.SecretFillResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if target.TabID != s.tab || target.Document != s.doc {
+		return browser.SecretFillResult{Status: browser.SecretTargetStale}, errors.New("target_stale: the page navigated; nothing was sent")
+	}
+	s.fills = append(s.fills, secret)
+	if s.fillResult.Status != "" {
+		return s.fillResult, s.fillErr
+	}
+	return browser.SecretFillResult{Status: browser.SecretFillDispatched, Dispatched: true}, nil
+}
+
+func (s *secretSession) LoginState(context.Context, string) (browser.LoginState, error) {
+	return s.login, nil
+}
+
+type secretSessions struct {
+	sess *secretSession
+}
+
+func (f *secretSessions) Session(string) (browser.Session, error) { return f.sess, nil }
+func (f *secretSessions) Close(string)                            {}
+
+// modePermissions records the Safe flag of each request and answers
+// like the real service in the given mode.
+type modePermissions struct {
+	mockPermissionService
+	mu    sync.Mutex
+	mode  permission.PermissionMode
+	asked []permission.CreatePermissionRequest
+}
+
+func (r *modePermissions) Request(_ context.Context, req permission.CreatePermissionRequest) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.asked = append(r.asked, req)
+	switch r.mode {
+	case permission.ModeBypass:
+		return true, nil
+	case permission.ModePlan:
+		return false, nil
+	}
+	return req.Safe, nil // Manual mode: anything not safe would prompt; deny here.
+}
+
+func (r *modePermissions) Mode() permission.PermissionMode { return r.mode }
+
+func newSecretPage() *secretSession {
+	return &secretSession{fakeBrowserSession: fakeBrowserSession{url: credOrigin + "/signin/challenge/pwd?flow=1"}, tab: "tab-1", doc: "doc-1", fieldFound: true}
+}
+
+func runCredTool(t *testing.T, ctx context.Context, sess *secretSession, perms permission.Service, session string, params BrowserParams) fantasy.ToolResponse {
+	t.Helper()
+	input, err := json.Marshal(params)
+	require.NoError(t, err)
+	ctx = context.WithValue(ctx, SessionIDContextKey, session)
+	resp, err := newBrowserTool(perms, t.TempDir(), &secretSessions{sess: sess}, browserDescription(false)).Run(ctx, fantasy.ToolCall{ID: "call-" + params.Action, Name: BrowserToolName, Input: string(input)})
+	require.NoError(t, err)
+	return resp
+}
+
+func metaOf(t *testing.T, resp fantasy.ToolResponse) map[string]any {
+	t.Helper()
+	m := map[string]any{}
+	if resp.Metadata != "" {
+		require.NoError(t, json.Unmarshal([]byte(resp.Metadata), &m))
+	}
+	return m
+}
+
 // phone answers the next credential card of session like the gateway does.
 func phone(t *testing.T, session string, answer func(vault.CredentialRequest)) func() {
 	t.Helper()

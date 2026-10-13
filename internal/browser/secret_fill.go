@@ -1,3 +1,74 @@
+}
+
+// Secret fill statuses. Filling a field and completing a sign-in are
+// separate outcomes; none of these claims the login succeeded.
+const (
+	SecretNotSent         = "not_sent"
+	SecretFillDispatched  = "fill_dispatched"
+	SecretFillUncertain   = "fill_uncertain"
+	SecretTargetStale     = "target_stale"
+	SecretTargetMissing   = "target_missing"
+	SecretOriginMismatch  = "origin_mismatch"
+	SecretTargetAmbiguous = "ambiguous_target"
+)
+
+// SecretFillResult reports what reached the page. Dispatched is true once
+// text input was sent, even when the follow-up check is inconclusive.
+type SecretFillResult struct {
+	Status     string `json:"status"`
+	Dispatched bool   `json:"dispatched"`
+	Reason     string `json:"reason,omitempty"`
+}
+
+// PasswordTarget is a visible password field found for a credential card.
+type PasswordTarget struct {
+	Found     bool   `json:"found"`
+	Count     int    `json:"count"`
+	Origin    string `json:"origin"`
+	TabID     string `json:"tab_id"`
+	Document  string `json:"document"`
+	FrameID   string `json:"frame_id,omitempty"`
+	Selector  string `json:"selector,omitempty"`
+	NodeToken string `json:"node_token,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+}
+
+// SecretFiller is implemented by drivers that can place a secret into one
+// password field without exposing it to page scripts' return values.
+type SecretFiller interface {
+	PasswordTarget(ctx context.Context, frameID, selector string) (PasswordTarget, error)
+	FillSecret(ctx context.Context, target SecretTarget, secret string) (SecretFillResult, error)
+}
+
+// LoginState is a structural observation of a sign-in page. It never
+// contains field values.
+type LoginState struct {
+	URL              string `json:"url"`
+	Origin           string `json:"origin"`
+	PasswordVisible  bool   `json:"password_visible"`
+	PasswordInvalid  bool   `json:"password_invalid"`
+	PasswordFilled   bool   `json:"password_filled"`
+	AlertVisible     bool   `json:"alert_visible"`
+	OneTimeCode      bool   `json:"one_time_code"`
+	Captcha          bool   `json:"captcha"`
+	Passkey          bool   `json:"passkey"`
+	DeviceApproval   bool   `json:"device_approval"`
+	CredentialChange bool   `json:"credential_change"`
+	ExpectedText     bool   `json:"expected_text"`
+	AuthenticatedUI  bool   `json:"authenticated_ui"`
+	PostLoginUI      bool   `json:"post_login_ui"`
+}
+
+// LoginProber observes sign-in state without dispatching input.
+type LoginProber interface {
+	LoginState(ctx context.Context, expectedText string) (LoginState, error)
+}
+
+var (
+	_ SecretFiller = (*chromedpSession)(nil)
+	_ LoginProber  = (*chromedpSession)(nil)
+)
+
 // passwordTargetScript finds exactly one visible, enabled password input.
 // It runs in an isolated world: page scripts cannot read its globals.
 const passwordTargetScript = `function(selector){

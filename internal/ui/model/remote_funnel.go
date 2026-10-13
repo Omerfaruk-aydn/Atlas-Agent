@@ -1,3 +1,74 @@
+
+func (m *UI) funnelEnv() funnelEnv {
+	if e := m.devices.funnel.env; e != nil {
+		return *e
+	}
+	ws := m.com.Workspace
+	return funnelEnv{
+		CLI:     tsfunnel.CLI{},
+		Service: tsfunnel.SystemServiceState,
+		Install: func(ctx context.Context, step func(tsfunnel.InstallStep)) error {
+			return tsfunnel.DefaultInstaller(step).Install(ctx)
+		},
+		OpenURL:   browser.OpenURL,
+		OpenApp:   tsfunnel.OpenApp,
+		StateFile: filepath.Join(config.GlobalDevicesDir(), "tailscale-funnel.json"),
+		Gateway:   func(opts mobile.Options) (*mobile.Gateway, error) { return startGateway(ws, opts) },
+	}
+}
+
+func (e funnelEnv) manager() *tsfunnel.Manager {
+	mgr := &tsfunnel.Manager{CLI: e.CLI, StateFile: e.StateFile}
+	if e.Tune != nil {
+		e.Tune(mgr)
+	}
+	return mgr
+}
+
+// funnelOptions keeps the Tailscale gateway on loopback with its own
+// identity and phone list; saved LAN, relay and TLS settings do not apply.
+func (m *UI) funnelOptions() mobile.Options {
+	return mobile.Options{
+		StateDir: filepath.Join(config.GlobalDevicesDir(), "mobile-funnel"),
+		Listen:   "127.0.0.1:0",
+		Language: m.Language(), Version: version.Version,
+	}
+}
+
+// generationContext is cancelled as soon as the user changes the
+// connection, so a start waiting for a browser approval releases the
+// lifecycle lock at once.
+func (r *remoteState) generationContext(generation uint64) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		t := time.NewTicker(100 * time.Millisecond)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if r.generation.Load() != generation {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	return ctx, cancel
+}
+
+// startFunnel checks Tailscale and, when it is ready, starts a loopback
+// gateway and Atlas' own Funnel entry for it. auto is the reconnect at
+// launch: it never writes configuration.
+func (m *UI) startFunnel(auto bool) tea.Cmd {
+	r := &m.devices.remote
+	f := &m.devices.funnel
+	env := m.funnelEnv()
+	generation := r.generation.Add(1)
+	old := m.devices.gateway
+	m.setGateway(nil)
+	m.dialog.CloseDialog(dialog.MobileID)
 	m.devices.homeLAN = false
 	r.profileID, r.starting, r.startErr = "", true, nil
 	if !auto {

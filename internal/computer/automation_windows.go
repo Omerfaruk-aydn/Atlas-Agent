@@ -157,12 +157,39 @@ func (b *windowsBackend) focusWindow(ctx context.Context, id string) (json.RawMe
 		if b.ForegroundWindow() == id {
 			return json.Marshal(map[string]any{"focused": true, "window_id": id, "foreground_window_id": id})
 		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-deadline.C:
-			return nil, fmt.Errorf("focus_denied: Windows did not activate window %s (foreground=%s); activate the intended window and inspect again before input", id, b.ForegroundWindow())
-		case <-tick.C:
-		}
+					return setForeground()
+				}
+				if user("AttachThreadInput", self, fgThread, 1) == 0 {
+					return fmt.Errorf("AttachThreadInput refused")
+				}
+				defer user("AttachThreadInput", self, fgThread, 0)
+				user("BringWindowToTop", hwnd)
+				return setForeground()
+			}},
+			{Method: "alt_unlock", Run: func() error {
+				const vkMenu, keyUp = 0x12, 0x0002
+				user("keybd_event", vkMenu, 0, 0, 0)
+				user("keybd_event", vkMenu, 0, keyUp, 0)
+				return setForeground()
+			}},
+		},
+		Settle: func(ctx context.Context, d time.Duration) bool {
+			deadline := time.NewTimer(d)
+			defer deadline.Stop()
+			tick := time.NewTicker(20 * time.Millisecond)
+			defer tick.Stop()
+			for {
+				if b.ForegroundWindow() == id {
+					return true
+				}
+				select {
+				case <-ctx.Done():
+					return false
+				case <-deadline.C:
+					return false
+				case <-tick.C:
+				}
+			}
+		},
 	}
 }

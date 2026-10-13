@@ -1,5 +1,10 @@
 $ErrorActionPreference = 'Stop'
 try {
+# UI Automation virtualizes coordinates for DPI-unaware callers. Make this
+# thread per-monitor DPI aware (-4) so element bounds are physical pixels,
+# the same space as screenshots and input.
+if (-not ('AtlasDpi.T' -as [type])) { Add-Type -Namespace AtlasDpi -Name T -MemberDefinition '[DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr c);' }
+[void][AtlasDpi.T]::SetThreadDpiAwarenessContext([IntPtr](-4))
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
 # The persistent worker sets $AtlasRequest; the one-shot path reads stdin.
@@ -29,6 +34,11 @@ if ($p.action -eq 'launch_app') {
     if ($appId -cnotmatch '^[A-Za-z0-9_.!{}\\:-]+$') { throw 'Unsupported application identifier; use an explicit approved launcher' }
     Start-Process -FilePath (Join-Path $env:WINDIR 'explorer.exe') -ArgumentList @('shell:AppsFolder\' + $appId)
     Out-Result @{launch_requested=$true;application=$apps[0].Name;application_id=$appId;verify_required=$true}; return
+}
+if ($p.action -eq 'start_apps') {
+    # Names and AppUserModelIDs only; the catalog decides what is launchable.
+    Out-Result @( Get-StartApps | ForEach-Object { @{name=[string]$_.Name;app_id=[string]$_.AppID} } )
+    return
 }
 if ($p.action -eq 'monitors') {
     Add-Type -AssemblyName System.Windows.Forms

@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/png"
 	"os"
+	"reflect"
 	"strings"
 )
 
@@ -25,6 +26,16 @@ type AutomationRequest struct {
 	ImagePath   string `json:"image_path,omitempty"`
 	MaxElements int    `json:"max_elements,omitempty" description:"Observation limit, 1-500; default inspect limit is 150."`
 	WaitMS      int    `json:"wait_ms,omitempty" description:"Assertion wait in milliseconds, maximum 15000; default 5000."`
+	// Application catalog fields (apps, launch_app).
+	AppID   string   `json:"app_id,omitempty" description:"For launch_app: app_id from apps (preferred over name)."`
+	Args    []string `json:"args,omitempty" description:"For launch_app: literal program arguments as a list, e.g. a URL. Never shell text."`
+	Profile string   `json:"profile,omitempty" description:"For launch_app of a Chromium browser: profile display name or directory from apps."`
+	Refresh bool     `json:"refresh,omitempty" description:"For apps: rediscover instead of using the cached catalog."`
+}
+
+// IsZero reports whether no field of the request is set.
+func (p AutomationRequest) IsZero() bool {
+	return reflect.DeepEqual(p, AutomationRequest{})
 }
 
 // ValidateAutomationRequest rejects unbounded provider work before dispatch.

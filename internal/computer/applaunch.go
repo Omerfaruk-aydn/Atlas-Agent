@@ -1,3 +1,11 @@
+package computer
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
 )
 
 // AppWindowObservation is the part of a native window listing launch

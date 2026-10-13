@@ -1,3 +1,21 @@
+package tsfunnel_test
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/tsfunnel"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/tsfunnel/fakecli"
 )

@@ -36,6 +36,28 @@ type ActionRemotePair struct{}
 // It never changes the saved relay or mobile configuration.
 type ActionRemoteLAN struct{ Address string }
 
+	On       bool
+	Starting bool
+	Checking bool
+	// Task is a running helper and InstallStep its installer step.
+	Task        string
+	InstallStep string
+	Ready       tsfunnel.Readiness
+	Checked     bool
+	Err         error
+	Phase       tsfunnel.Phase
+	ApprovalURL string
+	Detail      string
+	// URL and LocalPort are set while the gateway serves the Funnel.
+	URL       string
+	LocalPort int
+	// Seen is the last request from the internet; Verified the last one
+	// from a paired phone, named Device.
+	Seen     time.Time
+	Verified time.Time
+	Device   string
+}
+
 // ActionRemoteBrowserHelp asks the agent to help in the provider's web
 // panel with the browser tool.
 type ActionRemoteBrowserHelp struct{}
@@ -55,4 +77,6 @@ type RemoteEnv struct {
 	StartErr func() error
 	// HomeLAN reports the temporary home-network mode, including startup.
 	HomeLAN func() bool
+	// Funnel reports the Tailscale mode; nil when unavailable.
+	Funnel func() FunnelStatus
 }

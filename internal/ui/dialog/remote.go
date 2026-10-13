@@ -226,6 +226,7 @@ func (d *Remote) actions() []remoteAction {
 		}
 	}
 	if !has {
+		d.addFunnelActions(add)
 		add(rcAdd, "Connect my existing server", "Enter SSH and HTTPS details")
 		add(rcHelp, "Help me set up a server", "The assistant helps in your provider's web panel")
 		add(rcDraft, "Use details found by the assistant", "")
@@ -259,6 +260,7 @@ func (d *Remote) actions() []remoteAction {
 	}
 	add(rcRemove, "Remove the service from the server", "Asks for approval first")
 	add(rcDelete, "Delete this profile from this computer", "The server is not changed")
+	d.addFunnelActions(add)
 	addHomeNetwork()
 	return out
 }
@@ -341,6 +343,9 @@ func (d *Remote) run(id string) Action {
 	d.notice = remotecontrol.Message{}
 	p, has := d.active()
 	mgr := d.env.Manager
+	if strings.HasPrefix(id, rcFunnel) {
+		return d.runFunnel(id)
+	}
 	switch id {
 	case rcLAN:
 		if d.homeLAN() && d.gateway() != nil {
@@ -384,6 +389,10 @@ func (d *Remote) run(id string) Action {
 		}
 		return ActionRemotePair{}
 	case rcToggle:
+		if !d.enabled(p) && d.funnelOn() {
+			d.ask(d.com.Text("Switch from Tailscale to your server's relay? Atlas removes its Funnel entry first; phones paired over Tailscale pair again."), func() Action { return ActionRemoteEnable{ID: p.ID} })
+			return nil
+		}
 		if d.enabled(p) {
 			d.ask(fmt.Sprintf(d.com.Text("Turn remote access off? Phones lose access until it is turned on again. The server at %s keeps running and billing."), p.SSHHost), func() Action { return ActionRemoteDisable{} })
 			return nil

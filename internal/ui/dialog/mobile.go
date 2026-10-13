@@ -206,6 +206,9 @@ func (d *Mobile) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	if d.gw.UsesRelay() {
 		reserve++
 	}
+	if d.gw.UsesFunnel() {
+		reserve += 2
+	}
 	qrFits := len(d.qr) > 0 && ansi.StringWidth(d.qr[0]) <= innerWidth && len(d.qr)+reserve <= area.Dy()
 	if qrFits {
 		var b strings.Builder
@@ -219,10 +222,23 @@ func (d *Mobile) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	} else {
 		rc.AddPart(t.Dialog.Sessions.InfoBlurred.Render(d.com.Text("Enlarge the terminal to show the QR code, or open this address on the phone:")))
 	}
+	validity := fmt.Sprintf(d.com.Text("Code valid until %s, single use. Certificate %s"), d.expires.Format("15:04:05"), shortFingerprint(d.gw.Fingerprint()))
+	if d.gw.UsesFunnel() {
+		// Funnel serves a publicly trusted certificate; the local one is
+		// never shown to the phone.
+		validity = fmt.Sprintf(d.com.Text("Code valid until %s, single use."), d.expires.Format("15:04:05"))
+	}
 	info := []string{
 		ansi.Truncate(d.url, innerWidth, "…"),
-		fmt.Sprintf(d.com.Text("Code valid until %s, single use. Certificate %s"), d.expires.Format("15:04:05"), shortFingerprint(d.gw.Fingerprint())),
+		validity,
 		d.com.Text("The QR holds no password: you will compare a 6-digit code and accept here."),
+	}
+	if d.gw.UsesFunnel() {
+		status := d.com.Text("Internet access: not verified yet; open the QR with Wi-Fi turned off")
+		if at, name := d.gw.FunnelVerified(); !at.IsZero() {
+			status = fmt.Sprintf(d.com.Text("Internet access: verified by %s at %s"), name, at.Format("15:04:05"))
+		}
+		info = append(info, d.com.Text("Tailscale Funnel: trusted HTTPS, no certificate warning on the phone."), status)
 	}
 	if d.homeNetwork {
 		info = append(info,
@@ -236,7 +252,7 @@ func (d *Mobile) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		}
 		info = append(info, d.com.Text(status))
 	}
-	if renewed != "" {
+	if renewed != "" && !d.gw.UsesFunnel() {
 		// Paired phones keep their pairing but see a certificate warning
 		// again; they must accept only the new fingerprint.
 		info = append(info,

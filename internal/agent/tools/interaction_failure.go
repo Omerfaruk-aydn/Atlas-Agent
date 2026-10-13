@@ -9,6 +9,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
 )
 
 // interactionAcquireResponse stops the turn on a real user handoff. It
@@ -61,11 +62,20 @@ func handoffStep(text string) (string, *computer.ContractError) {
 }
 
 // handoffResponse stops the turn and tells the user precisely what to do.
+// The result is waiting_for_user: neither a success nor a delivery.
 func handoffResponse(step, where string) fantasy.ToolResponse {
-	response := fantasy.NewTextResponse(fmt.Sprintf("Automation paused. Left to the user %s: %s. After that step, the user runs /resume-use in this conversation to return control and continue (or opens /interactions and presses r, then asks Atlas to continue). Until then, do not retry browser/computer actions or resume yourself.", where, step))
+	response := fantasy.NewTextResponse(fmt.Sprintf("Automation paused. Left to the user %s: %s. After that step, the user returns control with /resume-use here or the \"Return control to Atlas\" button in Atlas Remote on their phone; the task then continues from a fresh observation. Until then, do not retry browser/computer actions or resume yourself.", where, step))
 	response.StopTurn = true
-	return response
+	response = withToolOutcome(response, ToolOutcome{Dispatch: "none", Claim: "waiting_for_user"})
+	return withMergedMetadata(response, struct {
+		Status string `json:"status"`
+		Reason string `json:"reason"`
+	}{"waiting_for_user", step})
 }
+
+// handoffRedirect refuses a handoff that only asks the user to type a
+// password when a secure phone card can collect it instead.
+func handoffRedirect(step string) *computer.ContractError {
 	if !asksForSecret(step) || !vault.Ephemeral.HasInputChannel() {
 		return nil
 	}

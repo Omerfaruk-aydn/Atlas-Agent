@@ -89,6 +89,8 @@ func CallMutates(name, input string) bool {
 		}
 		remote.Action = p.Action
 		return remoteSupportCallMutates(remote)
+	case DesignSystemToolName:
+		return !slices.Contains([]string{"get", "history", "check"}, p.Action)
 	case CLIBridgeToolName:
 		// Even help capture starts a host executable; a profile cannot prove
 		// that its program is read-only. Preview/status do not start it.

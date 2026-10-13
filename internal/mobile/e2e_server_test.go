@@ -1,3 +1,47 @@
+package mobile
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
+	"github.com/stretchr/testify/require"
+)
+
+// TestBrowserAcceptanceServer runs the real gateway (TLS, cookies, CSRF,
+// pairing, credential store, live screen hub) for web_tests/gateway.test.cjs.
+// The computer side is simulated: pairing requests are accepted as the user
+// would on the computer, and a loopback control API lets the browser test
+// open credential cards, hand off control and read back what the gateway
+// did. It is skipped unless the browser suite starts it.
+func TestBrowserAcceptanceServer(t *testing.T) {
+	info := os.Getenv("ATLAS_MOBILE_E2E_INFO")
+	if info == "" {
+		t.Skip("started by internal/mobile/web_tests/gateway.test.cjs")
+	}
+	synthetic := &syntheticScreen{width: 1920, height: 1080}
+	var src ScreenSource = synthetic
+	if os.Getenv("ATLAS_MOBILE_E2E_REAL_SCREEN") == "1" {
+		// Real desktop capture, for measurement only; frames are never
+		// stored.
+		src = DesktopScreen()
+		require.NotNil(t, src, "no desktop capture on this computer")
+	}
+	b := &fakeBackend{pending: map[string]bool{}, questions: map[string]bool{}, revision: "r1"}
+	g, err := Start(t.Context(), Options{StateDir: t.TempDir(), Listen: "127.0.0.1:0", Backend: b, Language: "tr", Screen: src, Preview: func() ([]byte, error) { return nil, errors.New("unused") }})
+	require.NoError(t, err)
+	defer g.Close()
+	g.Auth.OnPending = func(p Pending) {
+		go func() {
+			time.Sleep(300 * time.Millisecond)
 			_, _ = g.Auth.Decide(p.ID, true)
 		}()
 	}

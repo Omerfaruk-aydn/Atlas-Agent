@@ -1,3 +1,73 @@
+	MaxImageDeliveryPixels = 60_000_000
+	// previewMaxWidth is the first preview width tried for an oversized
+	// image; it matches the screenshot width models aim at.
+	previewMaxWidth = 1600
+	previewMinWidth = 320
+	previewQuality  = 85
+)
+
+// ImageBase64Len is the exact standard (padded) base64 length of n bytes.
+func ImageBase64Len(n int) int { return 4 * ((n + 2) / 3) }
+
+// ImageDelivery describes what was actually handed to the model.
+type ImageDelivery struct {
+	Data      []byte `json:"-"`
+	MediaType string `json:"media_type"`
+	// RawBytes and Base64Bytes are the delivered image's sizes.
+	RawBytes    int `json:"raw_bytes"`
+	Base64Bytes int `json:"base64_bytes"`
+	Width       int `json:"width"`
+	Height      int `json:"height"`
+	// Preview is true when the original exceeded the limit and a smaller
+	// re-encoded copy was delivered instead. The original is never
+	// modified.
+	Preview        bool   `json:"preview"`
+	OriginalBytes  int    `json:"original_bytes"`
+	OriginalWidth  int    `json:"original_width"`
+	OriginalHeight int    `json:"original_height"`
+	OriginalType   string `json:"original_media_type"`
+	// CoordinateScale maps preview pixels back to original pixels
+	// (original = preview * CoordinateScale); 1 when nothing was resized.
+	CoordinateScale  float64 `json:"coordinate_scale"`
+	CoordinateScaleX float64 `json:"coordinate_scale_x"`
+	CoordinateScaleY float64 `json:"coordinate_scale_y"`
+	SHA256           string  `json:"sha256"`
+	// Recipient is always "model": a tool result image is shown to the
+	// model, not to the person, unless a UI separately displays it.
+	Recipient string `json:"recipient"`
+}
+
+// ErrImageInvalid is returned for bytes that do not decode as a supported
+// image.
+var ErrImageInvalid = errors.New("image is corrupt or not a supported format (PNG, JPEG, GIF, WebP)")
+
+// PrepareImageForDelivery validates an image and returns what may be sent to
+// the model. Images up to and including MaxImageDeliveryBytes pass through
+// byte for byte. Larger images are replaced by a JPEG preview that fits, and
+// the result says so; an image that cannot be decoded or previewed fails
+// with an explicit error instead of being sent.
+func PrepareImageForDelivery(data []byte, declared string) (ImageDelivery, error) {
+	if len(data) == 0 {
+		return ImageDelivery{}, fmt.Errorf("%w: empty data", ErrImageInvalid)
+	}
+	mediaType := sniffImageMimeType(data, declared)
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return ImageDelivery{}, fmt.Errorf("%w: %v", ErrImageInvalid, err)
+	}
+	if cfg.Width <= 0 || cfg.Height <= 0 || int64(cfg.Width)*int64(cfg.Height) > MaxImageDeliveryPixels {
+		return ImageDelivery{}, fmt.Errorf("%w: unsupported dimensions %dx%d", ErrImageInvalid, cfg.Width, cfg.Height)
+	}
+	if t := formatMediaType(format); t != "" {
+		mediaType = t
+	}
+	out := ImageDelivery{
+		Data: data, MediaType: mediaType, RawBytes: len(data), Base64Bytes: ImageBase64Len(len(data)),
+		Width: cfg.Width, Height: cfg.Height, OriginalBytes: len(data), OriginalWidth: cfg.Width,
+		OriginalHeight: cfg.Height, OriginalType: mediaType, Recipient: "model", CoordinateScale: 1, CoordinateScaleX: 1, CoordinateScaleY: 1,
+	}
+	// Decode fully: a truncated file has a valid header but providers
+	// reject it with a 400 that would break the conversation.
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return ImageDelivery{}, fmt.Errorf("%w: %v", ErrImageInvalid, err)

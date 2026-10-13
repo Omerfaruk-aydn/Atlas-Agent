@@ -1,3 +1,12 @@
+package nodes
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/transfer"
+)
+
 // matchRoot selects the allowed root a request path belongs to and returns
 // the remainder relative to it. A path is either label-relative
 // ("C/Users/x", "Work/report.pdf") or absolute on the remote computer

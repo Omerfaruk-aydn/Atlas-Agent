@@ -1536,6 +1536,42 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "ToolCaptcha": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Turn on CAPTCHA solving for the browser tool (captcha_detect / captcha_solve / captcha_fill).",
+          "default": true
+        },
+        "solvers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Solver order. Recognized names: math"
+        },
+        "remote_provider": {
+          "type": "string",
+          "description": "Commercial token-farm backend for reCAPTCHA / hCaptcha / Turnstile response tokens: 2captcha",
+          "examples": [
+            "2captcha"
+          ]
+        },
+        "remote_api_key": {
+          "type": "string",
+          "description": "API key for remote_provider. Write the key directly or reference an environment variable as \\$MY_CAPTCHA_KEY. Only needed for token widgets.",
+          "examples": [
+            "$CAPTCHA_API_KEY"
+          ]
+        },
+        "attempt_timeout": {
+          "type": "integer",
+          "description": "How long one solver may run before falling back to showing the challenge image to the model"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "ToolCodeIntel": {
       "properties": {
         "enabled": {
@@ -1645,7 +1681,7 @@
         },
         "mobile_funnel": {
           "type": "boolean",
-          "description": "Let /rc publish the phone gateway with your own Tailscale Funnel (https://<device>.<tailnet>.ts.net). Set and cleared by /rc; Atlas reconnects it at launch only while this is on. Needs Tailscale signed in with MagicDNS and HTTPS certificates and Funnel allowed for this device.",
+          "description": "Let /rc publish the phone gateway with your own Tailscale Funnel (https://\u003cdevice\u003e.\u003ctailnet\u003e.ts.net). Set and cleared by /rc; Atlas reconnects it at launch only while this is on. Needs Tailscale signed in with MagicDNS and HTTPS certificates and Funnel allowed for this device.",
           "default": false
         },
         "support_name": {
@@ -1839,6 +1875,9 @@
         },
         "docs": {
           "$ref": "#/$defs/ToolDocs"
+        },
+        "captcha": {
+          "$ref": "#/$defs/ToolCaptcha"
         }
       },
       "additionalProperties": false,

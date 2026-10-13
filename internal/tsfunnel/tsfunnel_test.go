@@ -1,3 +1,74 @@
+	require.FileExists(t, m.StateFile)
+	data, err := os.ReadFile(m.StateFile)
+	require.NoError(t, err)
+	require.Contains(t, string(data), link.Session())
+	require.Len(t, d.Sessions(), 2)
+
+	require.NoError(t, link.Close())
+	require.NoError(t, link.Close(), "close is idempotent")
+	require.Equal(t, []string{"other-app"}, d.Sessions())
+	require.JSONEq(t, string(before), string(d.Background()))
+	require.NoFileExists(t, m.StateFile)
+	phase, _, _ = progress.Snapshot()
+	require.Equal(t, tsfunnel.PhaseStopped, phase)
+
+	var funnels int
+	for _, call := range d.Calls() {
+		require.NotContains(t, call, "reset")
+		require.NotContains(t, call, "--bg")
+		require.NotContains(t, call, "off")
+		if call[0] == "funnel" && call[1] != "status" {
+			funnels++
+			require.Equal(t, []string{"funnel", "--https=8443", "http://127.0.0.1:41234"}, call)
+		}
+	}
+	require.Equal(t, 1, funnels)
+}
+
+func TestStartRejectsBadPlans(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	m := manager(t, d)
+	for _, plan := range []tsfunnel.Plan{
+		{Host: "atlas-pc.tail1234.ts.net", Port: 80},
+		{Host: "evil.example.com", Port: 443},
+		{Host: "", Port: 443},
+	} {
+		_, err := m.Start(t.Context(), plan, 41234, nil)
+		require.Error(t, err)
+	}
+	_, err := m.Start(t.Context(), tsfunnel.Plan{Host: "atlas-pc.tail1234.ts.net", Port: 443}, 0, nil)
+	require.Error(t, err)
+	require.Empty(t, d.Procs())
+}
+
+func TestStartWaitsForBrowserApproval(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	d.Funnel = fakecli.FunnelApproval
+	m := manager(t, d)
+	progress := tsfunnel.NewProgress()
+	type result struct {
+		link *tsfunnel.Link
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		l, err := m.Start(t.Context(), tsfunnel.Plan{Host: "atlas-pc.tail1234.ts.net", Port: 443}, 5000, progress)
+		done <- result{l, err}
+	}()
+	require.Eventually(t, func() bool {
+		phase, u, _ := progress.Snapshot()
+		return phase == tsfunnel.PhaseApproval && u == fakecli.ApprovalURL
+	}, 2*time.Second, 5*time.Millisecond)
+	d.Approve()
+	res := <-done
+	require.NoError(t, res.err)
+	require.NoError(t, res.link.Close())
+	require.Empty(t, d.Sessions())
+}
+
+func TestStartApprovalExitAndFailures(t *testing.T) {
 	t.Parallel()
 	plan := tsfunnel.Plan{Host: "atlas-pc.tail1234.ts.net", Port: 443}
 

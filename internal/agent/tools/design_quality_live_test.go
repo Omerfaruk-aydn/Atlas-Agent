@@ -1,3 +1,61 @@
+package tools
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/stretchr/testify/require"
+)
+
+func runDesignTest(t *testing.T, tool fantasy.AgentTool, ctx context.Context, id string, p DesignSystemParams) fantasy.ToolResponse {
+	t.Helper()
+	data, err := json.Marshal(p)
+	require.NoError(t, err)
+	r, err := tool.Run(ctx, fantasy.ToolCall{Name: DesignSystemToolName, ID: id, Input: string(data)})
+	require.NoError(t, err)
+	return r
+}
+
+func validTestDesign() DesignSystem {
+	s := mobileSystem()
+	s.Colors["muted"] = "#A0A4AE"
+	s.Colors["on_accent"] = "#0F1115"
+	s.Viewports = []DesignViewport{{Name: "phone", Width: 390, Height: 844}}
+	return s
+}
+
+func TestDesignApprovalRequiresActualUserAndCurrentCandidate(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	tool := NewDesignSystemTool(root)
+	sys := validTestDesign()
+	require.False(t, runDesignTest(t, tool, t.Context(), "set", DesignSystemParams{Action: "set", System: &sys}).IsError)
+	for _, ctx := range []context.Context{t.Context(), WithUserInstruction(t.Context(), "tasarımı incele")} {
+		r := runDesignTest(t, tool, ctx, "approve-false", DesignSystemParams{Action: "approve", ExpectedVersion: 1, Note: "User approved"})
+		require.True(t, r.IsError)
+		require.Contains(t, r.Content, "design_approval_required")
+	}
+	ctx := WithUserInstruction(t.Context(), "Bu tasarımı onaylıyorum")
+	r := runDesignTest(t, tool, ctx, "approve-stale", DesignSystemParams{Action: "approve", ExpectedVersion: 2})
+	require.True(t, r.IsError)
+	r = runDesignTest(t, tool, ctx, "approve-real", DesignSystemParams{Action: "approve", ExpectedVersion: 1})
+	require.False(t, r.IsError, r.Content)
+	store, err := loadDesignStore(root)
+	require.NoError(t, err)
+	require.Equal(t, 1, store.Approved.Version)
+}
+
+func TestDesignRendererPreservesChildStopTurnAndPromptMetadata(t *testing.T) {
 	t.Parallel()
 	child := fantasy.NewTextErrorResponse("Waiting for the user's response")
 	child.StopTurn = true

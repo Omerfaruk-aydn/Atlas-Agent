@@ -511,6 +511,8 @@ func browserActionDescription(action string, params BrowserParams) string {
 		return "Read browser field: " + firstNonEmpty(describeTarget(params), params.Advanced.Label, params.Advanced.Name, params.Advanced.Selector)
 	case "select_option":
 		return "Select option " + params.Advanced.Value + " in: " + firstNonEmpty(describeTarget(params), params.Advanced.Label, params.Advanced.Name, params.Advanced.Selector)
+	case "login_check":
+		return "Observe the sign-in state of the page"
 	case "fill_form":
 		return fmt.Sprintf("Fill %d browser form field(s)", len(params.Advanced.Fields))
 	case "submit":
@@ -525,6 +527,12 @@ func browserActionDescription(action string, params BrowserParams) string {
 		return "Take browser screenshot"
 	case "url":
 		return "Read current browser URL"
+	case "captcha_detect":
+		return "Detect any CAPTCHA/verification widget on the page"
+	case "captcha_solve":
+		return "Solve the visible CAPTCHA or return its challenge image for you to read"
+	case "captcha_fill":
+		return "Type the CAPTCHA answer into its answer field"
 	case "close":
 		return "Close browser session"
 	default:
@@ -640,10 +648,40 @@ func withFreshState(ctx context.Context, sess browser.Session, metadata BrowserR
 	return fantasy.WithResponseMetadata(fantasy.NewTextResponse(b.String()), metadata), nil
 }
 
+// dialogBlockAppends surfaces a pending native dialog in a failed
+// action's error. A beforeunload/confirm dialog silently blocks every
+// subsequent navigation and click, so the model must see it immediately
+// rather than discovering it on the next observe.
+func dialogBlockAppends(sess browser.Session, msg string) string {
+	dialogs := sess.PendingDialogs()
+	if len(dialogs) == 0 {
+		return msg
+	}
+	var b strings.Builder
+	b.WriteString(msg)
+	fmt.Fprintf(&b, "\n\n>>> %d pending dialog(s) block the page. Resolve with {\"action\":\"dialog\",\"accept\":true} (or dialog_handle) before any other action.", len(dialogs))
+	for i, d := range dialogs {
+		if i >= 3 {
+			break
+		}
+		if d.Message != "" {
+			fmt.Fprintf(&b, "\n  [%s] %q", d.Type, d.Message)
+		} else {
+			fmt.Fprintf(&b, "\n  [%s]", d.Type)
+		}
+	}
+	return b.String()
+}
+
 func runBrowserAction(ctx context.Context, sess browser.Session, action string, params BrowserParams) (fantasy.ToolResponse, error) {
 	metadata := BrowserResponseMetadata{Action: action}
 
 	switch action {
+	case "layout_audit":
+		if params.Script != "" {
+			return fantasy.NewTextErrorResponse("layout_audit accepts no arbitrary script"), nil
+		}
+		return guardedEval(ctx, sess, BrowserParams{Script: designAuditScript})
 	case "navigate":
 		if params.URL == "" {
 			return fantasy.NewTextErrorResponse("url is required for the navigate action"), nil
@@ -652,20 +690,20 @@ func runBrowserAction(ctx context.Context, sess browser.Session, action string, 
 			return fantasy.NewTextErrorResponse("url must start with http:// or https://"), nil
 		}
 		if err := sess.Navigate(params.URL); err != nil {
-			return fantasy.NewTextErrorResponse("navigate failed: " + err.Error()), nil
+			return fantasy.NewTextErrorResponse(dialogBlockAppends(sess, "navigate failed: "+err.Error())), nil
 		}
 		metadata.URL = params.URL
 		return withFreshState(ctx, sess, metadata, "Navigated to "+params.URL)
 
 	case "back":
 		if err := sess.Back(); err != nil {
-			return fantasy.NewTextErrorResponse("back failed: " + err.Error()), nil
+			return fantasy.NewTextErrorResponse(dialogBlockAppends(sess, "back failed: "+err.Error())), nil
 		}
 		return withFreshState(ctx, sess, metadata, "Navigated back.")
 
 	case "forward":
 		if err := sess.Forward(); err != nil {
-			return fantasy.NewTextErrorResponse("forward failed: " + err.Error()), nil
+			return fantasy.NewTextErrorResponse(dialogBlockAppends(sess, "forward failed: "+err.Error())), nil
 		}
 		return withFreshState(ctx, sess, metadata, "Navigated forward.")
 
@@ -685,7 +723,7 @@ func runBrowserAction(ctx context.Context, sess browser.Session, action string, 
 			return fantasy.NewTextErrorResponse(err.Error()), nil
 		}
 		if err := sess.Type(selector, params.Text); err != nil {
-			return fantasy.NewTextErrorResponse("type failed: " + err.Error()), nil
+			return fantasy.NewTextErrorResponse(dialogBlockAppends(sess, "type failed: "+err.Error())), nil
 		}
 		return withFreshState(ctx, sess, metadata, "Typed into "+describeTarget(params))
 
@@ -726,6 +764,8 @@ func runBrowserAction(ctx context.Context, sess browser.Session, action string, 
 		if err != nil {
 			return fantasy.NewTextErrorResponse("text failed: " + err.Error()), nil
 		}
+		currentURL, _ := sess.URL()
+		result = importSourceCredential(ctx, currentURL, result)
 		return fantasy.WithResponseMetadata(fantasy.NewTextResponse(result), metadata), nil
 
 	case "html":
@@ -785,6 +825,29 @@ func runBrowserAction(ctx context.Context, sess browser.Session, action string, 
 		return fantasy.WithResponseMetadata(fantasy.NewTextResponse(string(resultJSON)), metadata), nil
 
 	case "screenshot":
+		if vault.Sensitive("") {
+			redact := func(text string) string { return vault.Redact(GetSessionFromContext(ctx), text) }
+			if viewport, ok := sess.(browser.ProtectedViewportSession); ok && !params.FullPage && (params.Annotate == nil || *params.Annotate) {
+				data, vp, masks, err := viewport.ProtectedViewportScreenshot(ctx, redact)
+				if err != nil {
+					return fantasy.NewTextErrorResponse("Protected screenshot failed: " + err.Error()), nil
+				}
+				grantScreenshotRefs(ctx, browserStateID(ctx), sess)
+				response := viewportImageResponse(data, vp)
+				response.Content += " Editable fields, known plaintext credentials and opaque media are masked."
+				return withCredentialImageProof(response, masks), nil
+			}
+			protected, ok := sess.(browser.ProtectedScreenshotSession)
+			if !ok {
+				return fantasy.NewTextErrorResponse("credential_redaction_unavailable: this driver cannot produce a protected screenshot"), nil
+			}
+			annotated := params.Annotate == nil || *params.Annotate
+			data, masks, err := protected.ProtectedScreenshot(ctx, params.FullPage, annotated, redact)
+			if err != nil {
+				return fantasy.NewTextErrorResponse("Protected screenshot failed: " + err.Error()), nil
+			}
+			if annotated {
+				grantScreenshotRefs(ctx, browserStateID(ctx), sess)
 			}
 			resp := fantasy.NewImageResponse(data, "image/png")
 			resp.Content = "Numbered boxes mark interactive elements. Protected screenshot: editable fields, known plaintext credentials and opaque media are masked. Use observed refs for input; no new pixel-coordinate viewport grant was issued."

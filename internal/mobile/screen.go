@@ -1,3 +1,74 @@
+		r.quality -= 10
+		buf.Reset()
+		_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: r.quality})
+		r.changed = "jpeg quality lowered to fit the frame size limit"
+	}
+	r.size = buf.Len()
+	if buf.Len() > screenMaxFrame {
+		r.tooBig = true
+	} else {
+		h.mu.Lock()
+		h.seq++
+		seq := h.seq
+		h.mu.Unlock()
+		b := img.Bounds()
+		h.publish(&screenPacket{kind: screenKindFrame, seq: seq, captured: captured, width: b.Dx(), height: b.Dy(), payload: buf.Bytes()}, viewers)
+	}
+	r.dur = time.Since(start)
+	out <- r
+}
+
+func sleepUntil(h *screenHub, t time.Time) bool {
+	d := time.Until(t)
+	if d > 0 {
+		time.Sleep(d)
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed {
+		h.running = false
+		return false
+	}
+	return true
+}
+
+func ewma(prev, v float64) float64 {
+	if prev == 0 {
+		return v
+	}
+	return prev*0.85 + v*0.15
+}
+
+func round1(v float64) float64 { return float64(int(v*10+0.5)) / 10 }
+
+// uniformBlack detects a flat, nearly black frame on a sample grid.
+func uniformBlack(img *image.RGBA) bool {
+	if img == nil || img.Rect.Empty() {
+		return true
+	}
+	b := img.Rect
+	for gy := range 17 {
+		for gx := range 17 {
+			c := img.RGBAAt(b.Min.X+(b.Dx()-1)*gx/16, b.Min.Y+(b.Dy()-1)*gy/16)
+			if c.R > 6 || c.G > 6 || c.B > 6 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// handleScreenStream streams the live screen to a phone that has screen
+// viewing enabled on the computer. The request must carry the device's
+// CSRF token in a header, which only same-origin script can add, so a
+// cross-site page cannot start a stream with the phone's cookie.
+func (g *Gateway) handleScreenStream(w http.ResponseWriter, r *http.Request) {
+	d := device(r)
+	if g.opts.Screen == nil || !d.Previews {
+		apiError(w, http.StatusForbidden, "previews_off", "live screen is off for this phone; enable screen viewing for this device in Atlas (/mobile)")
+		return
+	}
+	if r.Header.Get("X-CSRF-Token") == "" || r.Header.Get("X-CSRF-Token") != d.CSRF {
 		apiError(w, http.StatusForbidden, "bad_csrf", "missing or wrong CSRF token; reload the page")
 		return
 	}

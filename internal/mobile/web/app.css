@@ -89,6 +89,77 @@ textarea { resize: vertical; }
   display: block; width: 100%; text-align: left; padding: 14px 16px; border-radius: var(--radius);
   background: var(--surface); border: 1px solid var(--border); color: inherit; font: inherit; cursor: pointer;
 }
+.search { position: relative; margin: var(--s3) 0 var(--s2); }
+.search svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-2); width: 22px; height: 22px; }
+.search .input { padding-left: 46px; background: var(--bg-2); border-color: transparent; -webkit-appearance: none; appearance: none; }
+.search .input::placeholder { color: var(--text-2); }
+.groups h2 { font-size: 15px; font-weight: 400; color: var(--text-2); margin: var(--s5) 0 0; padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
+.groups ul { list-style: none; margin: 0; padding: 0; }
+.task-row {
+  width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto auto 20px; align-items: center; gap: var(--s1) var(--s3); padding: 14px 2px; min-height: 64px; border: 0;
+  border-bottom: 1px solid var(--line); background: transparent; text-align: left; cursor: pointer;
+}
+.task-row:active { background: var(--bg-2); }
+.task-main { flex: 1; min-width: 0; }
+.task-title { font-size: 17px; font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.task-sub { color: var(--text-2); font-size: 15px; margin-top: 2px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.task-row .pill { grid-column: 2; }
+.task-row .task-time { grid-column: 3; }
+.task-row .chev { grid-column: 4; }
+/* On narrow phones the status moves under the title so titles stay readable. */
+@media (max-width: 380px) {
+  .task-row { grid-template-columns: minmax(0, 1fr) auto 20px; }
+  .task-row .task-main { grid-column: 1; grid-row: 1; }
+  .task-row .task-time { grid-column: 2; grid-row: 1; }
+  .task-row .chev { grid-column: 3; grid-row: 1; }
+  .task-row .pill { grid-column: 1; grid-row: 2; justify-self: start; }
+}
+.task-time { color: var(--text-2); font-size: 15px; font-variant-numeric: tabular-nums; }
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 6px; border-radius: var(--r-pill); font-size: 13px; font-weight: 500; background: var(--bg-2); color: var(--text-2); white-space: nowrap; }
+.pill svg { width: 16px; height: 16px; stroke-width: 2.25; }
+.pill.running { background: var(--select); color: var(--brand-text); }
+.pill.waiting { background: var(--warn-bg); color: var(--warn); }
+.pill.waiting svg { color: var(--warn-dot); }
+.pill.error { background: var(--danger-bg); color: var(--danger); }
+.list-state { text-align: center; color: var(--text-2); padding: var(--s8) var(--s4); }
+.list-state .btn { margin-top: var(--s3); }
+.skeleton { height: 64px; border-bottom: 1px solid var(--line); position: relative; }
+.skeleton::before, .skeleton::after { content: ""; position: absolute; left: 2px; height: 12px; border-radius: 6px; background: var(--bg-3); }
+.skeleton::before { top: 16px; width: 55%; }
+.skeleton::after { top: 38px; width: 35%; }
+
+/* Conversation. */
+.chat { height: var(--app-h); display: flex; flex-direction: column; position: relative; overflow: hidden; }
+.chat-bar { border-bottom: 1px solid var(--line); min-height: 60px; padding-bottom: var(--s1); }
+.chat-title { flex: 1; min-width: 0; text-align: center; }
+.chat-title h1 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conn-line { margin: 1px 0 0; line-height: 1.2; display: flex; justify-content: center; min-width: 0; }
+.conn-line .conn { overflow: hidden; text-overflow: ellipsis; max-width: 100%; display: inline-flex; }
+.conn-line .conn span { overflow: hidden; text-overflow: ellipsis; }
+.menu-wrap { position: relative; }
+.menu {
+  position: absolute; right: 0; top: 46px; z-index: 20; min-width: 220px; padding: 6px; border-radius: var(--r-card);
+  background: var(--bg); border: 1px solid var(--line); box-shadow: var(--shadow);
+}
+.menu button { width: 100%; display: flex; align-items: center; gap: var(--s3); min-height: 44px; padding: 0 var(--s3); border: 0; background: none; border-radius: 10px; text-align: left; cursor: pointer; font-size: 16px; }
+.menu button:active { background: var(--bg-2); }
+.menu svg { width: 22px; height: 22px; color: var(--text-2); }
+
+.offline-banner, .waiting-banner {
+  display: flex; align-items: flex-start; gap: var(--s3); margin: var(--s3) var(--gutter) var(--s2); padding: var(--s3) 14px;
+  border-radius: var(--r-card); background: var(--warn-bg); color: var(--text); border: 0; text-align: left; flex: none;
+}
+.offline-banner svg { color: var(--warn); margin-top: 2px; }
+.offline-banner strong { font-weight: 600; }
+.offline-banner p { margin: 2px 0 0; color: var(--text-2); font-size: 14px; }
+.waiting-banner { align-items: center; min-height: 44px; cursor: pointer; font-size: 16px; }
+.waiting-banner #waiting-text { flex: 1; }
+.waiting-banner .link { color: var(--brand-text); font-weight: 500; }
+
+.scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.thread { padding: var(--s2) var(--gutter) var(--s4); }
+.messages { list-style: none; margin: 0; padding: 0; }
+.day { text-align: center; color: var(--text-2); font-size: 14px; margin: var(--s4) 0 var(--s3); }
 .msg { margin: 0 0 var(--s4); min-width: 0; }
 .msg.user { display: flex; justify-content: flex-end; padding-left: 15%; }
 .msg.user .bubble { background: var(--user-bubble); border-radius: var(--r-bubble) var(--r-bubble) 6px var(--r-bubble); padding: 10px 14px; max-width: 100%; min-width: 0; }

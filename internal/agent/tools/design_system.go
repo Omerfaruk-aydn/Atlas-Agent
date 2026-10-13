@@ -1,3 +1,73 @@
+	return (la + 0.05) / (lb + 0.05)
+}
+
+type deliveredScreen struct {
+	Order  int    `json:"order"`
+	File   string `json:"file"`
+	Source string `json:"source"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+	SHA256 string `json:"sha256"`
+	Bytes  int64  `json:"bytes"`
+}
+
+type designManifest struct {
+	Name            string            `json:"name"`
+	CreatedAt       string            `json:"created_at"`
+	SystemVersion   int               `json:"system_version"`
+	SystemStatus    string            `json:"system_status"`
+	System          DesignSystem      `json:"system"`
+	QualityGate     designReport      `json:"quality_gate"`
+	Screens         []deliveredScreen `json:"screens"`
+	OpenQuestions   []string          `json:"open_questions,omitempty"`
+	Sources         []designSource    `json:"sources,omitempty"`
+	SourceURLs      []string          `json:"source_urls,omitempty"`
+	Audits          []designAudit     `json:"audits,omitempty"`
+	RequiredScreens []string          `json:"required_screens,omitempty"`
+	Completion      string            `json:"completion"`
+}
+
+type designSource struct {
+	File   string `json:"file"`
+	Source string `json:"source"`
+	SHA256 string `json:"sha256"`
+	Bytes  int    `json:"bytes"`
+}
+
+var deliveryName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+
+// packageDesign assembles design-delivery/<name>: the screens (verified
+// images, hashed), the design system, the measured quality gate and a
+// README. Failures are reported in the package, never hidden.
+func packageDesign(ctx context.Context, dir string, p DesignSystemParams, now func() time.Time) (any, error) {
+	if !deliveryName.MatchString(p.Name) {
+		return nil, errors.New("package needs name: letters, digits, dot, dash or underscore, at most 64")
+	}
+	if len(p.Screens) == 0 || len(p.Screens) > 100 {
+		return nil, errors.New("package needs 1-100 screens")
+	}
+	st, err := loadDesignStore(dir)
+	if err == nil && st.Approved == nil && st.Candidate == nil {
+		err = os.ErrNotExist
+	}
+	if err != nil {
+		return nil, fmt.Errorf("package needs a stored design system (design_system set): %w", err)
+	}
+	rec, status := st.effective()
+	sys := rec.System
+	root, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	out, err := transfer.Resolve(root, "design-delivery/"+p.Name)
+	if err != nil {
+		return nil, err
+	}
+	type staged struct {
+		data []byte
+		scr  deliveredScreen
+	}
+	var screens []staged
 	totalBytes := 0
 	for i, rel := range p.Screens {
 		if err := ctx.Err(); err != nil {

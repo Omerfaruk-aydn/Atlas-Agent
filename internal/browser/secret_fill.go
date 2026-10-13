@@ -1,3 +1,73 @@
+// passwordTargetScript finds exactly one visible, enabled password input.
+// It runs in an isolated world: page scripts cannot read its globals.
+const passwordTargetScript = `function(selector){
+const roots=[document];const all=[];
+for(let i=0;i<roots.length&&i<100;i++){for(const e of roots[i].querySelectorAll('*'))if(e.shadowRoot)roots.push(e.shadowRoot);
+all.push(...roots[i].querySelectorAll(selector||'input[type="password"]'))}
+const usable=e=>e instanceof HTMLInputElement&&e.type==="password"&&!e.disabled&&!e.readOnly&&e.getClientRects().length>0&&getComputedStyle(e).visibility==="visible"&&Number(getComputedStyle(e).opacity)>0;
+const hits=all.filter(usable);
+if(selector&&all.length&&!hits.length){return {count:0,reason:all.some(e=>!(e instanceof HTMLInputElement)||e.type!=="password")?"not_password_field":"target_hidden",origin:location.origin}}
+let path="";
+if(hits.length===1){const e=hits[0];if(e.id&&document.querySelectorAll('#'+CSS.escape(e.id)).length===1)path='#'+CSS.escape(e.id);else if(e.name&&document.querySelectorAll('input[type="password"][name="'+CSS.escape(e.name)+'"]').length===1)path='input[type="password"][name="'+CSS.escape(e.name)+'"]';else path=selector||'input[type="password"]';}
+let token="";
+if(hits.length===1){const targets=globalThis.__atlasSecretTargets||=(new Map());
+for(const [key,node] of targets){if(!node.isConnected)targets.delete(key);else if(node===hits[0])token=key;}
+if(!token){token=crypto.randomUUID();if(targets.size>=64)targets.delete(targets.keys().next().value);targets.set(token,hits[0]);}}
+return {count:hits.length,origin:location.origin,selector:path,node_token:token}}`
+
+// secretFocusScript validates the target again and focuses it, clearing a
+// previous value. The secret is not an argument of this function.
+const secretFocusScript = `function(origin,selector,token){
+if(location.origin!==origin)return "origin_mismatch";
+const roots=[document];const all=[];
+for(let i=0;i<roots.length&&i<100;i++){for(const e of roots[i].querySelectorAll('*'))if(e.shadowRoot)roots.push(e.shadowRoot);all.push(...roots[i].querySelectorAll(selector))}
+const usable=e=>e instanceof HTMLInputElement&&e.type==="password"&&!e.disabled&&!e.readOnly&&e.getClientRects().length>0&&getComputedStyle(e).visibility==="visible"&&Number(getComputedStyle(e).opacity)>0;
+const hits=all.filter(usable);
+if(hits.length===0)return all.length?"not_password_field":"target_missing";
+if(hits.length>1)return "ambiguous_target";
+const e=hits[0];
+if(!token||globalThis.__atlasSecretTargets?.get(token)!==e||!e.isConnected)return "target_stale";
+e.focus();
+if(!e.isConnected||globalThis.__atlasSecretTargets?.get(token)!==e)return "target_stale";
+const root=e.getRootNode();
+if(document.activeElement!==e&&root.activeElement!==e)return "focus_failed";
+globalThis.__atlasSecretTarget=new WeakRef(e);return "focused"}`
+
+// Secret insertion resolves the pinned element again inside one script task.
+// It never sends keystrokes to whichever unrelated element holds focus.
+const secretInsertScript = `function(origin,token,secret){
+const e=globalThis.__atlasSecretTargets?.get(token);
+if(location.origin!==origin||!e||!e.isConnected||e.type!=="password"||e.disabled||e.readOnly||!e.getClientRects().length||getComputedStyle(e).visibility!=="visible"||Number(getComputedStyle(e).opacity)<=0)return "target_stale";
+const set=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set;
+globalThis.__atlasSecretTargets.delete(token);
+set.call(e,secret);e.dispatchEvent(new Event("input",{bubbles:true}));e.dispatchEvent(new Event("change",{bubbles:true}));
+return "sent"}`
+
+// secretVerifyScript confirms the focused field received the expected
+// number of characters. It returns a boolean, never the value.
+const secretVerifyScript = `function(n){const e=globalThis.__atlasSecretTarget?.deref();globalThis.__atlasSecretTarget=null;return !!e&&e.isConnected&&e.type==="password"&&e.value.length===n}`
+
+// loginStateScript classifies the page structure. Text checks are generic
+// signals for verification steps, not site-specific selectors.
+const loginStateScript = `function(expected){
+const vis=e=>e.getClientRects().length>0&&getComputedStyle(e).visibility==="visible";
+const pw=[...document.querySelectorAll('input[type="password"]')].filter(vis);
+const text=(document.body&&document.body.innerText||"").slice(0,20000).toLowerCase();
+const has=(...w)=>w.some(x=>text.includes(x));
+const otp=[...document.querySelectorAll('input[autocomplete="one-time-code"],input[name*="otp" i],input[name*="totp" i],input[id*="otp" i],input[name*="code" i][inputmode="numeric"],input[type="tel"][maxlength="6"],input[inputmode="numeric"][maxlength="6"]')].some(vis);
+const captcha=[...document.querySelectorAll('iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="turnstile"],iframe[src*="captcha"],.g-recaptcha,.h-captcha,#captcha,img[src*="captcha" i]')].some(vis);
+const alerts=[...document.querySelectorAll('[role="alert"],[aria-live="assertive"]')].filter(e=>vis(e)&&e.innerText.trim().length>0);
+const signedIn=[...document.querySelectorAll('a,button,[role="button"]')].filter(vis).some(e=>/^(sign out|log out|logout|çıkış yap|oturumu kapat|abmelden|déconnexion|cerrar sesión)$/i.test((e.innerText||e.getAttribute('aria-label')||'').trim()));
+const continueBtn=[...document.querySelectorAll('a,button,[role="button"],input[type="submit"],input[type="button"]')].filter(vis).some(e=>/^(devam et|devam|continue|proceed|next|ileri|tamam|ok|onayla|onayla ve devam et|start|başla|dashboard|panel|ana sayfa)$/i.test((e.innerText||e.value||e.getAttribute('aria-label')||'').trim()));
+const postLoginText=has("hoş geldiniz","hos geldiniz","welcome","adres doğrulama","adres dogrulama","address verification","mezun takip","öğrenci bilgi","ogrenci bilgi","dashboard","panel","profil","my account","hesabım","hesabim");
+return {url:location.href.split(/[?#]/)[0],origin:location.origin,
+password_visible:pw.length>0,
+password_invalid:pw.some(e=>e.getAttribute("aria-invalid")==="true"||e.matches(":invalid")&&e.value!==""),
+password_filled:pw.some(e=>e.value.length>0),
+alert_visible:alerts.length>0,
+one_time_code:otp||has("verification code","2-step verification","two-factor","doğrulama kodu","2 adımlı doğrulama","authenticator app"),
+captcha:captcha||has("i'm not a robot","ben robot değilim","captcha"),
+passkey:has("passkey","geçiş anahtarı","security key","güvenlik anahtarı"),
 device_approval:has("check your phone","tap yes on","approve sign-in","telefonunuzu kontrol edin","telefonunu kontrol et","oturum açmayı onayla"),
 credential_change:[...document.querySelectorAll('input[autocomplete="new-password"]')].some(vis),
 authenticated_ui:signedIn,

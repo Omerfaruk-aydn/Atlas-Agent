@@ -1,3 +1,74 @@
+	if _, err := transfer.Resolve(key, designSystemPath); err != nil {
+		return nil, fmt.Errorf("design memory path: %w", err)
+	}
+	sum := sha256.Sum256([]byte(strings.ToLower(key)))
+	mu := &designStoreLocks[int(sum[0])%len(designStoreLocks)]
+	mu.Lock()
+	defer mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	lockPath, err := transfer.Resolve(key, designSystemPath+".lock")
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o700); err != nil {
+		return nil, err
+	}
+	lockCtx, cancelLock := context.WithTimeout(ctx, 5*time.Second)
+	defer cancelLock()
+	release, err := lock.File(lockCtx, lockPath)
+	if err != nil {
+		return nil, fmt.Errorf("design memory lock: %w", err)
+	}
+	defer release()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	stamp := func() string { return now().UTC().Format(time.RFC3339) }
+	switch p.Action {
+	case "get":
+		st, err := loadDesignStore(dir)
+		if errors.Is(err, os.ErrNotExist) || (err == nil && st.Approved == nil && st.Candidate == nil) {
+			return map[string]any{"exists": false, "history_versions": st.versions(), "note": "No design system yet. Ask the user for the platform (phone, tablet, web...) and offer 2-3 visual directions before generating anything; then store the choice with set."}, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		out := map[string]any{"exists": true, "path": designSystemPath, "history_versions": st.versions()}
+		if st.MigratedFrom != 0 {
+			out["migrated_from_schema"] = st.MigratedFrom
+		}
+		if st.Approved != nil {
+			out["approved"] = st.Approved
+		}
+		if st.Candidate != nil {
+			out["candidate"] = st.Candidate
+			out["note"] = "The candidate is not approved yet: show it to the user and call approve only after they explicitly approve it."
+		}
+		eff, status := st.effective()
+		out["status"] = status
+		out["system"] = eff.System
+		out["check"] = checkDesignSystem(eff.System)
+		return out, nil
+	case "set":
+		if p.System == nil {
+			return nil, errors.New("set needs system")
+		}
+		sys := *p.System
+		if err := validateDesignSystem(sys); err != nil {
+			return nil, err
+		}
+		st, backup, err := loadDesignStoreForWrite(dir, now)
+		if err != nil {
+			return nil, err
+		}
+		sys.UpdatedAt = stamp()
+		st.Candidate = &designRecord{Version: st.nextVersion(), System: sys, At: sys.UpdatedAt}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if err := saveDesignStore(dir, st); err != nil {
 			return nil, err
 		}
 		out := map[string]any{"saved": designSystemPath, "status": "candidate", "version": st.Candidate.Version, "check": checkDesignSystem(sys)}

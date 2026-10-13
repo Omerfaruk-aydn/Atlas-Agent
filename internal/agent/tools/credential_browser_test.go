@@ -1,3 +1,74 @@
+// phone answers the next credential card of session like the gateway does.
+func phone(t *testing.T, session string, answer func(vault.CredentialRequest)) func() {
+	t.Helper()
+	seen := make(chan vault.CredentialRequest, 4)
+	unsub := vault.Ephemeral.Subscribe(func(e vault.CredentialEvent) {
+		if e.Request.SessionID == session && e.Request.State == vault.CredentialPending {
+			seen <- e.Request
+		}
+	})
+	go func() {
+		select {
+		case r := <-seen:
+			answer(r)
+		case <-time.After(5 * time.Second):
+		}
+	}()
+	return unsub
+}
+
+// These tests share the process-wide credential store and its input
+// channels, so they run sequentially rather than with t.Parallel.
+
+func TestCredentialRequestWithoutPhoneRequestsNothing(t *testing.T) {
+	sess := newSecretPage()
+	resp := runCredTool(t, t.Context(), sess, &mockPermissionService{}, "cred-none", BrowserParams{Action: "credential_request", Service: "Example"})
+	// Without a phone the agent is sent to the source (email/document),
+	// not to a handoff. Nothing is requested on the phone channel.
+	require.False(t, resp.IsError, "no-phone must guide to the source, not fail")
+	require.Equal(t, NextCredentialRequired, metaOf(t, resp)["next_step"])
+	require.Empty(t, vault.Ephemeral.Pending("cred-none"))
+	require.Contains(t, resp.Content, "text action")
+}
+
+func TestChatCredentialRequestAndFillDoesNotAskAgain(t *testing.T) {
+	session := "chat-credential-tool"
+	t.Cleanup(func() { vault.Ephemeral.PurgeSession(session) })
+	_, err := vault.Ephemeral.CaptureUserPrompt(session, credOrigin+"/signin user@example.test password: "+credSecret)
+	require.NoError(t, err)
+	sess := newSecretPage()
+	perms := &modePermissions{mode: permission.ModeBypass}
+	resp := runCredTool(t, t.Context(), sess, perms, session, BrowserParams{Action: "credential_request", Account: "user@example.test"})
+	require.False(t, resp.IsError, resp.Content)
+	require.False(t, resp.StopTurn)
+	require.NotContains(t, resp.Content, credSecret)
+	handle := metaOf(t, resp)["credential_id"].(string)
+	resp = runCredTool(t, t.Context(), sess, perms, session, BrowserParams{Action: "vault_fill", CredentialID: handle, Account: "user@example.test"})
+	require.False(t, resp.IsError, resp.Content)
+	require.Equal(t, []string{credSecret}, sess.fills)
+	require.NotContains(t, resp.Content+resp.Metadata, credSecret)
+	resp = runCredTool(t, t.Context(), sess, perms, session, BrowserParams{Action: "vault_fill", CredentialID: handle, Account: "user@example.test"})
+	require.True(t, resp.IsError)
+	require.Len(t, sess.fills, 1)
+}
+
+func TestTemporaryCredentialEndToEndNeverReachesModel(t *testing.T) {
+	session := "cred-e2e"
+	sess := newSecretPage()
+	perms := &modePermissions{mode: permission.ModeManual}
+	unsub := phone(t, session, func(r vault.CredentialRequest) {
+		_, err := vault.Ephemeral.Provide(r.ID, session, "phone-test", []byte(credSecret), false)
+		require.NoError(t, err)
+	})
+	defer unsub()
+
+	resp := runCredTool(t, t.Context(), sess, perms, session, BrowserParams{Action: "credential_request", Ref: "", Service: "Example", Account: "user@example.test"})
+	require.False(t, resp.IsError, resp.Content)
+	meta := metaOf(t, resp)
+	handle, _ := meta["credential_id"].(string)
+	require.True(t, vault.IsCredentialHandle(handle))
+	require.Equal(t, NextCredentialFill, meta["next_step"])
+
 	fill := runCredTool(t, t.Context(), sess, perms, session, BrowserParams{Action: "vault_fill", CredentialID: handle})
 	require.False(t, fill.IsError, fill.Content)
 	require.Equal(t, []string{credSecret}, sess.fills, "exactly one dispatch")

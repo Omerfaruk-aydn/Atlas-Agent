@@ -1,3 +1,24 @@
+package vault
+
+import (
+	"errors"
+	"net/url"
+	"regexp"
+	"strings"
+	"time"
+)
+
+// Chat credentials come only from a new human instruction, never page text,
+// attachments, history, hooks, or model-generated tool arguments.
+type chatCredential struct {
+	session, origin, account string
+	secret                   []byte
+	timer                    *time.Timer
+	expires                  time.Time
+}
+
+var (
+	chatPassword = regexp.MustCompile(`(?i)(?:^|[[:space:]])(?:(?:şifre|parola|password)(?:\s*[:=]\s*|\s+(?:(?:de|da)\s+)?(?:bu|is)\s+)|(?:şifrem|şifresi|parolam|parolası)\s*[:=]?\s+)("[^"\r\n]+"|'[^'\r\n]+'|[^\s]+)`)
 	chatEmail    = regexp.MustCompile(`[A-Za-z0-9.!#$%&'*+/=?^_` + "`" + `{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
 	chatURL      = regexp.MustCompile(`https://[^\s<>"']+`)
 )

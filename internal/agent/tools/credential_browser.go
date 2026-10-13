@@ -1,3 +1,34 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/browser"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
+)
+
+// Credential next steps. They tell the model and the phone what can
+// actually happen next instead of a dead end such as "use the vault".
+const (
+	NextCredentialRequired   = "credential_required"
+	NextSavedCredential      = "saved_credential_available"
+	NextUserVerification     = "user_verification_required"
+	NextCaptchaSolve         = "captcha_solve"
+	NextScopeMismatch        = "scope_mismatch"
+	NextTargetStale          = "target_stale"
+	NextHandleExpired        = "handle_expired"
+	NextSecureInputMissing   = "secure_input_unavailable"
+	NextCredentialFill       = "vault_fill"
+	NextLoginCheck           = "login_check"
+	credentialWaitCeiling    = vault.CredentialRequestTTL + 5*time.Second
 	credentialServiceMaxRune = 80
 )
 

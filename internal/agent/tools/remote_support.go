@@ -281,6 +281,16 @@ func (t *remoteSupportTool) run(ctx context.Context, p RemoteSupportParams, call
 	if p.OperationID != "" && (p.Action == "operation_status" || p.Action == "cancel") {
 		opID = p.OperationID
 	}
+	if isPower {
+		if r, ok := t.power.get(remote.RemoteDeviceID, remote.SessionID); ok && r.Kind == powerKind {
+			// Never repeated on its own: a second request could restart a
+			// computer that already came back.
+			e := support.Errorf(support.CodeProtocol, "a request to %s was already sent to this computer at %s (%s); it was not sent again", r.Kind, r.SentAt, r.State)
+			e.RemoteDeviceID = remote.RemoteDeviceID
+			e.NextStep = "Wait for the computer to go offline, or ask the user before any new attempt."
+			return t.fail(p.Action, dev, e)
+		}
+	}
 	if remoteSupportCallMutates(p) {
 		if e := t.approve(ctx, call, p, remote); e != nil {
 			e.RemoteDeviceID = remote.RemoteDeviceID
@@ -298,6 +308,7 @@ func (t *remoteSupportTool) run(ctx context.Context, p RemoteSupportParams, call
 		var obs nodes.DesktopObservation
 		obs, err = client.Observe(ctx, p.Image)
 		if err == nil {
+			showFrame(ctl, remote, obs)
 			res.Result = observationView(obs)
 			res.Image = obs.PNG
 			if obs.Blank {
@@ -305,6 +316,24 @@ func (t *remoteSupportTool) run(ctx context.Context, p RemoteSupportParams, call
 				// desktop, which captures as blank; Atlas cannot see or
 				// answer it.
 				res.Note = "The remote capture is blank: the screen may be locked or showing a secure-desktop prompt such as UAC (secure_desktop). Only the person at that computer can answer it; do not send input."
+			}
+		}
+	case "wait":
+		var wr remoteWaitResult
+		var obs nodes.DesktopObservation
+		wr, obs, err = remoteWait(ctx, client, orStr(p.WaitFor, "stable"), p.Name, p.WindowID, time.Duration(p.TimeoutMS)*time.Millisecond, remoteWaitInterval)
+		if err == nil {
+			view := map[string]any{"wait": wr}
+			showFrame(ctl, remote, obs)
+			if obs.ObservationID != "" {
+				view["observation"] = observationView(obs)
+				if p.Image {
+					res.Image = obs.PNG
+				}
+			}
+			res.Result = view
+			if !wr.Met {
+				res.Note = "The condition did not hold before the timeout. Look at the screen before deciding; wait again only if work is visibly still in progress."
 			}
 		}
 	case "automation":
@@ -350,6 +379,14 @@ func (t *remoteSupportTool) run(ctx context.Context, p RemoteSupportParams, call
 	return t.respond(res, false)
 }
 
+// showFrame hands a captured remote screen to the /support panel.
+func showFrame(ctl *support.Controller, remote support.Remote, obs nodes.DesktopObservation) {
+	if len(obs.PNG) == 0 {
+		return
+	}
+	ctl.SetFrame(support.Frame{PNG: obs.PNG, MediaType: "image/png", ObservationID: obs.ObservationID, SessionID: remote.SessionID, Generation: remote.Generation, Width: obs.Width, Height: obs.Height, CapturedAt: obs.CapturedAt})
+}
+
 func observationView(obs nodes.DesktopObservation) map[string]any {
 	out := map[string]any{
 		"observation_id": obs.ObservationID, "node_id": obs.NodeID, "session_id": obs.SessionID, "generation": obs.Generation,
@@ -391,6 +428,12 @@ func (t *remoteSupportTool) status(ctx context.Context, ctl *support.Controller,
 	}
 	res.Result = view
 	if terr != nil {
+		if r, ok := t.power.get(remote.RemoteDeviceID, remote.SessionID); ok {
+			out := t.powerOffline("status", res.Device, r)
+			view["state"], view["stale"], view["power_request"] = "offline_after_"+r.Kind, true, r
+			out.Result = view
+			return t.respond(out, false)
+		}
 		res.Error = support.Classify(terr, remote.RemoteDeviceID, "")
 		view["stale"] = true
 		view["state"] = "unavailable"
@@ -414,6 +457,15 @@ func (t *remoteSupportTool) approve(ctx context.Context, call fantasy.ToolCall, 
 		what = "Run on " + where + ": " + strings.Join(p.Argv, " ")
 	case "launch":
 		what = "Open on " + where + ": " + strings.Join(p.Argv, " ")
+		if p.App != "" {
+			what = "Open " + p.App + " on " + where
+			if p.Profile != "" {
+				what += " (profile " + p.Profile + ")"
+			}
+			if len(p.Args) > 0 {
+				what += ": " + strings.Join(p.Args, " ")
+			}
+		}
 	case "push":
 		what = fmt.Sprintf("Send %s from this workspace to %s:%s", p.LocalPath, where, p.RemotePath)
 	case "pull":
@@ -438,6 +490,10 @@ func (t *remoteSupportTool) approve(ctx context.Context, call fantasy.ToolCall, 
 // for the session to reconnect and reads the operation's journal entry
 // instead of sending again.
 func (t *remoteSupportTool) mutate(ctx context.Context, ctl *support.Controller, client *nodes.Client, remote support.Remote, p RemoteSupportParams, opID string) fantasy.ToolResponse {
+	powerKind, isPower := "", false
+	if p.Action == "exec" {
+		powerKind, isPower = classifyPowerCommand(p.Argv)
+	}
 	mutation := remoteSupportCallMutates(p)
 	dev := deviceOf(remote)
 	res := supportResult{OK: true, Action: p.Action, Device: dev, OperationID: opID, InputSent: true, Effect: support.EffectApplied, Verified: "not_verified"}
@@ -514,15 +570,15 @@ func (t *remoteSupportTool) mutate(ctx context.Context, ctl *support.Controller,
 			res = execResult(res, op, p.Argv)
 		}
 	case "launch":
-		if len(p.Argv) == 0 {
-			return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "launch needs argv"))
+		if (len(p.Argv) == 0) == (p.App == "") {
+			return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "launch needs either argv or app"))
 		}
 		var op nodes.Operation
-		op, err = client.Launch(ctx, opID, p.Argv)
+		op, err = client.LaunchApp(ctx, nodes.LaunchRequest{OperationID: opID, Argv: p.Argv, App: p.App, Args: p.Args, Profile: p.Profile})
 		if err == nil {
 			res = supportOperationResult(res, op)
 			if res.OK {
-				res.Note = "Started on the remote desktop. Observe the remote screen to verify the window."
+				res.Note = "Started on the remote desktop. Observe the remote screen to verify the window; do not launch again before observing."
 			}
 		}
 	case "input":
@@ -588,9 +644,15 @@ func (t *remoteSupportTool) mutate(ctx context.Context, ctl *support.Controller,
 		return t.fail(p.Action, dev, support.Errorf(support.CodeProtocol, "unknown action %q", p.Action))
 	}
 	if err == nil {
+		if isPower {
+			if out, ok := t.powerOutcome(powerKind, res, nil, opID); ok {
+				res = out
+			}
+		}
 		return t.respond(res, mutation)
 	}
 	e := support.Classify(err, remote.RemoteDeviceID, opID)
+	if isPower {
 		// A dropped connection is what a shutdown does; reconciling would
 		// wait for a computer that is switching off.
 		res.OperationID = opID

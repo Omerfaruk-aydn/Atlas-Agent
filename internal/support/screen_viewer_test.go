@@ -1,3 +1,53 @@
+package support
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
+	"github.com/stretchr/testify/require"
+)
+
+func viewerController(t *testing.T) *Controller {
+	t.Helper()
+	return &Controller{machine: &Machine{state: StateConnected, generation: 1}, remote: &Remote{SessionInfo: SessionInfo{SessionID: "session-123", Generation: 1}}, history: OpenHistory(t.TempDir())}
+}
+
+func TestScreenViewerPrivateRoutesAndSessionIsolation(t *testing.T) {
+	c := viewerController(t)
+	v, err := newScreenViewer(t.Context(), c, "session-123")
+	require.NoError(t, err)
+	t.Cleanup(v.Close)
+	c.SetFrame(Frame{PNG: []byte("image"), MediaType: "image/png", SessionID: "session-123", Generation: 1})
+	c.Record(Event{Kind: "operation", Detail: "token=private-secret", OperationID: "operation-1"})
+	get := func(path string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+		require.NoError(t, err)
+		r, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		return r
+	}
+	r := get("http://" + v.host + "/state")
+	require.Equal(t, http.StatusNotFound, r.StatusCode)
+	r.Body.Close()
+	r = get(v.URL() + "state")
+	require.Equal(t, http.StatusOK, r.StatusCode)
+	require.Equal(t, "no-store", r.Header.Get("Cache-Control"))
+	body, err := io.ReadAll(r.Body)
+	r.Body.Close()
+	require.NoError(t, err)
+	require.NotContains(t, string(body), "private-secret")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, v.URL()+"start", nil)
+	require.NoError(t, err)
+	req.Header.Set("Origin", "https://unrelated.example")
+	res, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	res.Body.Close()
 	require.Equal(t, http.StatusForbidden, res.StatusCode)

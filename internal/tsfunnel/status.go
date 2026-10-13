@@ -1,3 +1,74 @@
+		r.Problem = ProblemNotInstalled
+		return r
+	}
+	r.CLIPath = path
+	if service != nil {
+		switch service() {
+		case ServiceMissing:
+			r.Problem, r.Detail = ProblemNotInstalled, "the Tailscale service is not registered"
+			return r
+		case ServiceStopped:
+			r.Problem = ProblemServiceStopped
+			return r
+		}
+	}
+	out, err := cli.Output(ctx, "status", "--json", "--peers=false")
+	if err != nil {
+		r.Problem, r.Detail = problemFor(err), Sanitize(err.Error())
+		return r
+	}
+	return parseStatus(out, r)
+}
+
+func problemFor(err error) Problem {
+	switch {
+	case errors.Is(err, ErrNotInstalled):
+		return ProblemNotInstalled
+	case errors.Is(err, ErrServiceUnavailable):
+		return ProblemServiceStopped
+	case errors.Is(err, ErrTimeout):
+		return ProblemTimeout
+	case errors.Is(err, ErrMalformed):
+		return ProblemMalformed
+	}
+	return ProblemFailed
+}
+
+func parseStatus(out []byte, r Readiness) Readiness {
+	var st statusJSON
+	if err := json.Unmarshal(out, &st); err != nil || st.BackendState == "" {
+		r.Problem, r.Detail = ProblemMalformed, "status JSON has no BackendState"
+		return r
+	}
+	r.Version, r.Backend = st.Version, st.BackendState
+	if !versionAtLeast(st.Version, MinVersion) {
+		r.Problem, r.Detail = ProblemOldVersion, fmt.Sprintf("tailscaled %q; Atlas needs %s or newer", Sanitize(st.Version), MinVersion)
+		return r
+	}
+	r.AuthURL = loginURL(st.AuthURL)
+	switch st.BackendState {
+	case "NeedsLogin":
+		r.Problem = ProblemNeedsLogin
+		return r
+	case "NeedsMachineAuth":
+		r.Problem = ProblemMachineAuth
+		return r
+	case "Stopped":
+		r.Problem = ProblemDisconnected
+		return r
+	case "Running":
+	case "NoState", "Starting":
+		r.Problem = ProblemStarting
+		return r
+	default:
+		r.Problem, r.Detail = ProblemMalformed, "unknown BackendState "+Sanitize(st.BackendState)
+		return r
+	}
+	if st.Self == nil {
+		r.Problem, r.Detail = ProblemMalformed, "status JSON has no Self"
+		return r
+	}
+	if st.CurrentTailnet != nil {
 		r.Tailnet = st.CurrentTailnet.Name
 		r.MagicDNS = st.CurrentTailnet.MagicDNSEnabled
 	}

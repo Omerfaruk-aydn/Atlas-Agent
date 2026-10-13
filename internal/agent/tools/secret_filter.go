@@ -39,6 +39,9 @@ func (t *secretFilteredTool) Run(ctx context.Context, call fantasy.ToolCall) (fa
 		r.StopTurn = stop
 	}
 	return r, err
+// vision without any external solver API.
+func isCaptchaChallengeMedia(r fantasy.ToolResponse) bool {
+	return r.Type == "image" && strings.Contains(r.Metadata, `"captcha_challenge":true`)
 }
 
 // redactToolPayload preserves JSON booleans, numbers, and structural keys.

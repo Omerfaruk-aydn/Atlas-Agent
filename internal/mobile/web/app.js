@@ -163,50 +163,45 @@
     return d.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
   }
 
-  function duration(a, b) {
-    const s = Math.max(0, (b || Date.now() / 1000) - a);
-    if (s < 60) return Math.round(s) + "s";
-    if (s < 3600) return Math.round(s / 60) + "m";
-    return Math.floor(s / 3600) + "h " + Math.round((s % 3600) / 60) + "m";
+    const body = el("div", "msg-body");
+    if (m.text && m.text.trim()) body.append(markdown(m.text));
+    appendImages(body, m);
+    if (m.error) {
+      const n = el("p", "msg-note bad");
+      n.append(icon("alert"), document.createTextNode(t("reply_error")));
+      body.append(n);
+    }
+    li.append(body);
+    return li;
   }
 
-  function statusOf(s) {
-    if (s.pending_permissions > 0) return ["waiting", t("st_permission")];
-    if (s.pending_questions > 0) return ["waiting", t("st_question")];
-    if (s.paused) return ["paused", t("st_paused")];
-    if (s.busy) return ["running", t("st_running")];
-    return ["", t("st_idle")];
-  }
-
-  function renderList() {
-    const list = $("task-list");
-    list.replaceChildren();
-    const items = Array.from(state.sessions.values()).sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
-    $("list-empty").classList.toggle("hidden", items.length > 0);
-    for (const s of items) {
-      const li = el("li");
-      const card = el("button", "card");
-      card.type = "button";
-      const row = el("div", "row");
-      row.append(el("span", "name", s.title || s.id));
-      const [cls, label] = statusOf(s);
-      row.append(el("span", "badge " + cls, label));
-      card.append(row);
-      let sub = t("updated") + " " + fmtTime(s.updated_at) + " · " + duration(s.created_at, s.updated_at);
-      if (s.todos_total) sub += " · " + s.todos_done + "/" + s.todos_total + " " + t("todos");
-      card.append(el("div", "sub", sub));
-      card.addEventListener("click", () => openTask(s.id));
-      li.append(card);
-      list.append(li);
+  function appendImages(body, m) {
+    for (const media of m.images || []) {
+      // Only authenticated gateway media is loaded, never model-supplied URLs.
+      if (typeof media.url !== "string" || !/^\/api\/sessions\/[^/]+\/messages\/[^/]+\/images\/\d+$/.test(media.url)) continue;
+      const link = el("a", "chat-image");
+      link.href = media.url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      const img = el("img");
+      img.src = media.url;
+      img.alt = t("view");
+      img.loading = "lazy";
+      img.addEventListener("load", () => { if (nearBottom()) toBottom(); });
+      img.addEventListener("error", () => { img.remove(); link.textContent = t("failed"); });
+      link.append(img);
+      body.append(link);
     }
   }
 
-  async function loadList() {
-    const data = await api("/api/sessions");
-    state.sessions = new Map((data.sessions || []).map((s) => [s.id, s]));
-    state.seq = Math.max(state.seq, data.seq || 0);
-    renderList();
+  function currentRun(d) {
+    const msgs = d.messages || [];
+    let i = msgs.length - 1;
+    while (i >= 0 && msgs[i].role !== "user") i--;
+    return { lastUser: i >= 0 ? msgs[i] : null, after: msgs.slice(i + 1) };
   }
+  function renderActivity() {
+    const box = $("activity");
     const d = state.detail;
     box.replaceChildren();
     if (!d) return;

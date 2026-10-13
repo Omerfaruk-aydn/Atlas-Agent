@@ -591,6 +591,16 @@ func (t *remoteSupportTool) mutate(ctx context.Context, ctl *support.Controller,
 		return t.respond(res, mutation)
 	}
 	e := support.Classify(err, remote.RemoteDeviceID, opID)
+		// A dropped connection is what a shutdown does; reconciling would
+		// wait for a computer that is switching off.
+		res.OperationID = opID
+		if out, ok := t.powerOutcome(powerKind, res, e, opID); ok {
+			return t.respond(out, mutation)
+		}
+	}
+	if r, ok := t.power.get(remote.RemoteDeviceID, remote.SessionID); ok && !e.InputSent && (e.Code == support.CodeRemoteOffline || e.Code == support.CodeConnectionLost) {
+		return t.respond(t.powerOffline(p.Action, dev, r), mutation)
+	}
 	if e.Code == support.CodeOutcomeUnknown && p.Action != "pull" {
 		return t.respond(t.reconcile(ctx, ctl, res, e, opID), mutation)
 	}

@@ -1,3 +1,64 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"path/filepath"
+	"testing"
+	"time"
+
+	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/nodes"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/support"
+	"github.com/stretchr/testify/require"
+)
+
+func TestRemoteQualityRemoteGuardNeverTreatsRetryAsUserConsent(t *testing.T) {
+	b := &countingTool{name: BrowserToolName}
+	g := WithRemoteLocalGuard(b, func() (string, string) { return "Remote PC", "ss-review" }, NewRemoteGuardAcks())
+	call := fantasy.ToolCall{Name: BrowserToolName, Input: `{"action":"navigate","url":"https://example.com"}`}
+	for range 2 {
+		_, err := g.Run(t.Context(), call)
+		require.NoError(t, err)
+	}
+	require.Zero(t, b.runs, "a model retry is not an explicit request to act locally")
+}
+
+type reviewWaiter struct {
+	raw      json.RawMessage
+	deadline bool
+}
+
+func (w *reviewWaiter) Observe(context.Context, bool) (nodes.DesktopObservation, error) {
+	return nodes.DesktopObservation{}, nil
+}
+
+func (w *reviewWaiter) Automation(ctx context.Context, _ nodes.AutomationRequest) (json.RawMessage, error) {
+	_, w.deadline = ctx.Deadline()
+	return w.raw, nil
+}
+
+func TestRemoteQualityTruncatedTreeDoesNotProveTextGone(t *testing.T) {
+	w := &reviewWaiter{raw: json.RawMessage(`{"count":0,"matches":[],"truncated":true}`)}
+	r, _, err := remoteWait(t.Context(), w, "text_gone", "Generating", "wnd", time.Millisecond, time.Millisecond)
+	require.False(t, r.Met, "an incomplete UIA scan is not absence evidence")
+	_ = err
+}
+
+func TestRemoteQualityInvalidTreeDoesNotProveTextGone(t *testing.T) {
+	w := &reviewWaiter{raw: json.RawMessage(`{"error":"accessibility_unavailable"}`)}
+	r, _, err := remoteWait(t.Context(), w, "text_gone", "Generating", "wnd", time.Millisecond, time.Millisecond)
+	require.False(t, r.Met, "provider failure must not be read as absent text")
+	_ = err
+}
+
+func TestRemoteQualityWaitPropagatesOwnTimeoutToBackend(t *testing.T) {
+	w := &reviewWaiter{raw: json.RawMessage(`{"count":1,"matches":[{}]}`)}
+	_, _, err := remoteWait(t.Context(), w, "text", "Generating", "wnd", time.Millisecond, time.Millisecond)
+	require.NoError(t, err)
+	require.True(t, w.deadline, "timeout must also bound the awaited remote request")
+}
+
 func TestRemoteQualityRevisedCandidateDoesNotReuseOldPackage(t *testing.T) {
 	dir := t.TempDir()
 	s := mobileSystem()

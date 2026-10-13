@@ -1,3 +1,70 @@
+package tools
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/browser"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/captcha"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+)
+
+// captchaActions are routed through runBrowserCaptcha. They share the
+// browser tool's permission, hook, ownership and trace path.
+var captchaActions = map[string]bool{
+	"captcha_detect": true,
+	"captcha_solve":  true,
+	"captcha_fill":   true,
+}
+
+// captchaChain is the process-wide solver chain (offline math + optional
+// remote token farm). Image-text challenges are not solved here: the
+// challenge crop is shown to the model, which reads it with its own
+// vision. Tests replace the chain directly.
+var captchaChain = captcha.Build(captcha.Options{Enabled: true})
+
+// SetCaptchaChain replaces the process chain (tests and runtime config).
+func SetCaptchaChain(c *captcha.Chain) {
+	if c != nil {
+		captchaChain = c
+	}
+}
+
+// InitCaptchaChain builds the solver chain from tool configuration. Call
+// it once when wiring tools so atlas.json's captcha block takes effect.
+//
+// API keys may be written as raw values or as "$ENV_VAR" / "${ENV_VAR}"
+// references that expand from the process environment at load time. When
+// a key field is empty the well-known environment variables
+// (ATLAS_CAPTCHA_API_KEY) are used as a fallback.
+func InitCaptchaChain(cfg config.ToolCaptcha) {
+	opts := captcha.Options{
+		Enabled:        cfg.IsEnabled(),
+		Solvers:        cfg.Solvers,
+		RemoteProvider: cfg.RemoteProvider,
+		RemoteAPIKey:   expandCaptchaSecret(cfg.RemoteAPIKey),
+	}
+	if cfg.AttemptTimeout != nil && *cfg.AttemptTimeout > 0 {
+		opts.AttemptTimeout = *cfg.AttemptTimeout
+	}
+	SetCaptchaChain(captcha.Build(opts))
+}
+
+// expandCaptchaSecret resolves "$VAR" / "${VAR}" references against the
+// process environment. A value with no $ is returned unchanged.
+func expandCaptchaSecret(v string) string {
+	if v == "" || !strings.Contains(v, "$") {
+		return v
+	}
+	return os.Expand(v, os.Getenv)
 }
 
 // CaptchaResult is the model-facing report. For image-text challenges

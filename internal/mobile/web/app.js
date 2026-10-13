@@ -207,6 +207,76 @@
     state.seq = Math.max(state.seq, data.seq || 0);
     renderList();
   }
+    const d = state.detail;
+    box.replaceChildren();
+    if (!d) return;
+    const { lastUser, after } = currentRun(d);
+    const files = new Map();
+    for (const m of after) for (const tc of m.tool_calls || []) if (tc.path) files.set(tc.path, tc);
+    const todos = d.todos || [];
+    const busy = !!d.session.busy;
+    if (!todos.length && !files.size && !busy) { stopTick(); return; }
+    const sid = d.session.id;
+    const open = state.activityOpen.has(sid) ? state.activityOpen.get(sid) : true;
+    const card = el("div", "activity");
+    const head = button("activity-head");
+    head.setAttribute("aria-expanded", String(open));
+    head.setAttribute("aria-controls", "activity-body");
+    const live = busy && state.conn === "connected";
+    head.append(icon(live ? "refresh" : todos.length && todos.every((x) => x.status === "completed") ? "check-circle" : "ring", "spin" + (live && !reduceMotion.matches ? " live" : "")));
+    const active = todos.find((x) => x.status === "in_progress");
+    const title = busy ? (active && (active.active_form || active.content)) || t("working") : t("activity");
+    head.append(el("span", "activity-title", title));
+    const time = el("span", "activity-time");
+    time.id = "activity-time";
+    // A running timer is a liveness claim; it is shown only while connected.
+    if (live && lastUser && lastUser.created_at) {
+      time.dataset.since = String(lastUser.created_at);
+      time.title = t("elapsed");
+      time.setAttribute("aria-label", t("elapsed"));
+      time.textContent = fmtElapsed(Date.now() / 1000 - lastUser.created_at);
+    } else if (todos.length) {
+      time.textContent = todos.filter((x) => x.status === "completed").length + "/" + todos.length;
+    }
+    head.append(time, icon("down", "chev-up"));
+    head.addEventListener("click", () => {
+      const now = head.getAttribute("aria-expanded") !== "true";
+      state.activityOpen.set(sid, now);
+      head.setAttribute("aria-expanded", String(now));
+      body.classList.toggle("hidden", !now);
+    });
+    const body = el("div", "activity-body" + (open ? "" : " hidden"));
+    body.id = "activity-body";
+    if (todos.length) {
+      const ul = el("ul", "steps-list");
+      for (const td of todos) {
+        const done = td.status === "completed", act = td.status === "in_progress";
+        const li = el("li", "step" + (done ? " done" : act ? " active" : ""));
+        li.append(icon(done ? "check-circle" : "ring"));
+        li.append(el("span", "", act ? td.active_form || td.content : td.content));
+        ul.append(li);
+      }
+      body.append(ul);
+    }
+    if (files.size) {
+      const ul = el("ul", "files");
+      for (const [path, tc] of files) {
+        const li = el("li", "file");
+        li.append(icon("file"));
+        const n = el("span", "fname", basename(path));
+        n.title = path;
+        li.append(n);
+        const edit = /edit|write|patch/i.test(tc.name);
+        li.append(el("span", "fstate", edit ? t(tc.finished ? "edited" : "editing") : /view|read/i.test(tc.name) ? t("read") : tc.name));
+        ul.append(li);
+      }
+      body.append(ul);
+    }
+    card.append(head, body);
+    box.append(card);
+    if (live && time.dataset.since) startTick(); else stopTick();
+  }
+  function startTick() {
     if (tickTimer) return;
     tickTimer = setInterval(() => {
       const n = $("activity-time");

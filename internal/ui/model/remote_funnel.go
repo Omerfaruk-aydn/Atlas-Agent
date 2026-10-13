@@ -1,3 +1,74 @@
+	m.devices.homeLAN = false
+	r.profileID, r.starting, r.startErr = "", true, nil
+	if !auto {
+		r.retry = 0
+	}
+	f.on, f.err, f.checking = true, nil, false
+	progress := tsfunnel.NewProgress()
+	f.progress = progress
+	ws := m.com.Workspace
+	relayOn := false
+	if cfg := m.com.Config(); cfg != nil {
+		relayOn = cfg.Tools.Devices.MobileRelayURL != "" || cfg.Tools.Devices.MobileRelayTokenFile != ""
+	}
+	opts := m.funnelOptions()
+	return func() tea.Msg {
+		r.lifecycle.Lock()
+		defer r.lifecycle.Unlock()
+		if old != nil {
+			_ = old.Close()
+		}
+		if generation != r.generation.Load() {
+			return nil
+		}
+		fail := func(ready tsfunnel.Readiness, err error) tea.Msg {
+			progress.Set(tsfunnel.PhaseFailed)
+			return funnelStartedMsg{generation: generation, ready: ready, err: err, auto: auto}
+		}
+		if !auto {
+			// Only one public route at a time: the VPS relay is turned off
+			// on this computer; its profile and server stay as they are.
+			if err := ws.SetConfigField(config.ScopeGlobal, funnelConfigKey, true); err != nil {
+				return fail(tsfunnel.Readiness{}, err)
+			}
+			if relayOn {
+				if err := errors.Join(
+					ws.RemoveConfigField(config.ScopeGlobal, "tools.devices.mobile_relay_url"),
+					ws.RemoveConfigField(config.ScopeGlobal, "tools.devices.mobile_relay_token_file"),
+				); err != nil {
+					return fail(tsfunnel.Readiness{}, err)
+				}
+			}
+		}
+		ctx, cancel := r.generationContext(generation)
+		defer cancel()
+		ready := tsfunnel.Inspect(ctx, env.CLI, env.Service)
+		if !ready.Ready() {
+			return fail(ready, errFunnelNotReady)
+		}
+		mgr := env.manager()
+		plan, err := mgr.Prepare(ctx, ready)
+		if err != nil {
+			return fail(ready, err)
+		}
+		progress.Set(tsfunnel.PhasePanel)
+		gw, err := env.Gateway(opts)
+		if err != nil {
+			return fail(ready, err)
+		}
+		var mu sync.Mutex
+		var link *tsfunnel.Link
+		port, err := gw.ServeFunnel(ctx, plan.HostHeader(), func() error {
+			mu.Lock()
+			l := link
+			mu.Unlock()
+			if l == nil {
+				return nil
+			}
+			return l.Close()
+		})
+		if err != nil {
+			_ = gw.Close()
 			return fail(ready, err)
 		}
 		progress.Set(tsfunnel.PhasePanelReady)

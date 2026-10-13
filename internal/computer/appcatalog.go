@@ -1,3 +1,74 @@
+
+func (c *AppCatalog) load(ctx context.Context, refresh bool) ([]AppEntry, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !refresh && !c.at.IsZero() && c.now().Sub(c.at) < c.ttl {
+		return c.entries, nil
+	}
+	found, err := c.discover(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.generation++
+	stamp := c.now().UnixMilli()
+	entries := mergeEntries(found)
+	for i := range entries {
+		entries[i].DiscoveredAt, entries[i].Generation = stamp, c.generation
+	}
+	c.entries, c.at = entries, c.now()
+	return entries, nil
+}
+
+// List returns entries matching query (all entries when query is empty),
+// best matches first.
+func (c *AppCatalog) List(ctx context.Context, query string, refresh bool) ([]AppEntry, error) {
+	entries, err := c.load(ctx, refresh)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(query) == "" {
+		return slices.Clone(entries), nil
+	}
+	exact, partial := matchEntries(entries, query)
+	return append(exact, partial...), nil
+}
+
+// Resolve finds exactly one entry by app_id or name and verifies that it
+// is still installed. A missing launcher invalidates the cache and is
+// looked up once more before the application is reported as removed.
+func (c *AppCatalog) Resolve(ctx context.Context, idOrName string) (AppEntry, error) {
+	for attempt := range 2 {
+		entries, err := c.load(ctx, attempt == 1)
+		if err != nil {
+			return AppEntry{}, err
+		}
+		entry, err := pickEntry(entries, idOrName)
+		if err != nil {
+			if attempt == 0 && errors.Is(err, ErrAppNotFound) {
+				continue
+			}
+			return AppEntry{}, err
+		}
+		if entry.Launch.Method != LaunchExecutable || c.exists(entry.Launch.Path) {
+			return entry, nil
+		}
+		if attempt == 1 {
+			return AppEntry{}, fmt.Errorf("%w: %s (%s) is no longer at %s", ErrAppNotInstalled, entry.Name, entry.ID, entry.Launch.Path)
+		}
+	}
+	return AppEntry{}, fmt.Errorf("%w: %q", ErrAppNotFound, idOrName)
+}
+
+func pickEntry(entries []AppEntry, idOrName string) (AppEntry, error) {
+	for _, e := range entries {
+		if e.ID == idOrName {
+			return e, nil
+		}
+	}
+	exact, partial := matchEntries(entries, idOrName)
+	switch {
+	case len(exact) == 1:
+		return exact[0], nil
 	case len(exact) > 1:
 		return AppEntry{}, ambiguous(idOrName, exact)
 	case len(partial) == 1:

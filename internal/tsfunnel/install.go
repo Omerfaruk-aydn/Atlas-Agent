@@ -1,3 +1,74 @@
+		}
+		return nil
+	}
+	client = &c
+	arch := msiArch(orString(in.Arch, runtime.GOARCH))
+	if arch == "" {
+		return fmt.Errorf("no Tailscale MSI for %s", runtime.GOARCH)
+	}
+	step(StepMetadata)
+	name, err := in.pickMSI(ctx, client, base, arch)
+	if err != nil {
+		return err
+	}
+	sumURL := base.ResolveReference(&url.URL{Path: name + ".sha256"})
+	sumText, err := fetch(ctx, client, sumURL.String(), 1024)
+	if err != nil {
+		return fmt.Errorf("read the published SHA-256: %w", err)
+	}
+	var want string
+	if f := strings.Fields(string(sumText)); len(f) > 0 {
+		want = strings.ToLower(f[0])
+	}
+	if !hexSHA256.MatchString(want) {
+		return errors.New("the published SHA-256 is not a SHA-256 value")
+	}
+	dir, err := os.MkdirTemp(in.TempRoot, "atlas-tailscale-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, name)
+	step(StepDownload)
+	got, err := download(ctx, client, base.ResolveReference(&url.URL{Path: name}).String(), path, orInt(in.MaxBytes, 300<<20))
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return fmt.Errorf("the download does not match the published SHA-256 (got %s, want %s); nothing was installed", got[:12], want[:12])
+	}
+	step(StepVerify)
+	sig, err := in.Verify(ctx, path)
+	if err != nil {
+		return fmt.Errorf("check the installer signature: %w", err)
+	}
+	if sig.Status != "Valid" {
+		return fmt.Errorf("the installer signature is %q, not Valid; nothing was installed", Sanitize(sig.Status))
+	}
+	if !SignedByTailscale(sig.Subject) {
+		return fmt.Errorf("the installer is signed by %q, not Tailscale Inc.; nothing was installed", Sanitize(sig.Subject))
+	}
+	step(StepInstall)
+	return in.Run(ctx, path)
+}
+
+func (in Installer) pickMSI(ctx context.Context, client *http.Client, base *url.URL, arch string) (string, error) {
+	index := *base
+	index.RawQuery = "mode=json"
+	data, err := fetch(ctx, client, index.String(), 1<<20)
+	if err != nil {
+		return "", fmt.Errorf("read the package index: %w", err)
+	}
+	var meta struct {
+		MSIs        map[string]string
+		MSIsVersion string
+	}
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return "", fmt.Errorf("%w: package index", ErrMalformed)
+	}
+	name := meta.MSIs[arch]
+	// The name becomes a path and a URL; accept only the expected shape.
+	pattern := regexp.MustCompile(`^tailscale-setup-` + regexp.QuoteMeta(meta.MSIsVersion) + `-` + regexp.QuoteMeta(arch) + `\.msi$`)
 	if _, ok := parseVersion(meta.MSIsVersion); !ok || !pattern.MatchString(name) {
 		return "", fmt.Errorf("%w: package index lists %q", ErrMalformed, Sanitize(name))
 	}

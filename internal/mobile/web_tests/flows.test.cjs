@@ -1,3 +1,47 @@
+"use strict";
+// Acceptance flows for the seven phone screens, driven against fixture
+// data in a real browser engine. Set ATLAS_ENGINE=webkit to run them in
+// WebKit instead of Chromium.
+const { test, before, after } = require("node:test");
+const assert = require("node:assert/strict");
+const pw = require("playwright");
+const { fixture: makeFixture, themeQuestion } = require("./fixture.cjs");
+
+let browser;
+before(async () => {
+  browser = process.env.ATLAS_ENGINE === "webkit" ? await pw.webkit.launch() : await pw.chromium.launch({ channel: process.env.ATLAS_CHROMIUM_CHANNEL || undefined });
+});
+after(async () => { if (browser) await browser.close(); });
+const fixture = (t, options = {}) => makeFixture(browser, t, options);
+const noOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+const stream = (page, fn, arg) => page.evaluate(fn, arg);
+
+// ---------- Pairing ----------
+test("name → pairing request → computer code → owner approval → chat list", async (t) => {
+  const { page, state, url } = await fixture(t, { setup: (s) => { s.authenticated = false; s.pairCode = "914027"; } });
+  await page.goto(url + "/#pair=fixture-only");
+  await page.locator("#pair-name").fill("Ayşe'nin telefonu");
+  await page.locator("#pair-go").click();
+  await page.locator("#pair-wait").waitFor();
+  assert.equal(await page.locator("#pair-code").innerText(), "914 027", "the code comes from the API");
+  assert.equal(await page.locator("#pair-sent-name").inputValue(), "Ayşe'nin telefonu");
+  assert.ok(await page.locator("#pair-sent-name").getAttribute("readonly") !== null, "the sent name cannot change while waiting");
+  assert.equal(state.pairName, "Ayşe'nin telefonu");
+  assert.equal(await page.evaluate(() => location.hash), "", "the nonce leaves the URL once used");
+  assert.match(await page.locator("#pair-status").innerText(), /onay bekleniyor/);
+  state.pairState = "accepted";
+  await page.locator(".task-row").first().waitFor();
+  assert.ok(await page.locator("#view-list").isVisible());
+});
+
+test("pairing declined on the computer, and an invalid QR, each explain what to do", async (t) => {
+  const { page, state, url } = await fixture(t, { setup: (s) => { s.authenticated = false; } });
+  await page.goto(url + "/#pair=fixture-only");
+  await page.locator("#pair-go").click();
+  await page.locator("#pair-wait").waitFor();
+  state.pairState = "rejected";
+  await page.locator("#pair-done").waitFor();
+  assert.match(await page.locator("#pair-done").innerText(), /reddedildi/);
   await page.goto(url + "/#pair=used-or-expired");
   await page.reload();
   await page.locator("#pair-go").click();

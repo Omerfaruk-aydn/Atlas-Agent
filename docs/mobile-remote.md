@@ -4,6 +4,10 @@
 > shows an installation plan for approval, installs and verifies the relay
 > and pairs your phone. See [remote-control.md](remote-control.md). The
 > manual steps below remain valid.
+>
+> **No VPS or domain:** `/rc` → **Connect with Tailscale** publishes the
+> panel through your own Tailscale account's Funnel at a `ts.net` address.
+> See [Tailscale Funnel](remote-control.md#tailscale-funnel-no-vps-or-domain).
 
 Atlas can serve the same phone panel in iPhone Safari and Android Chrome.
 Neither phone needs Tailscale, an APK or an App Store application. Home Screen
@@ -156,8 +160,19 @@ server's TLS fingerprint.
    desktop. A trusted person operating that desktop can perform this step;
    there is no unauthenticated remote approval endpoint. Pair once before
    leaving home, or coordinate the initial approval through a trusted channel.
+   While waiting, the phone can withdraw its own request (`POST
+   /api/pair/cancel` with the pending ID and poll secret). It disappears
+   from `/mobile` and can no longer be accepted; a decided or expired
+   request cannot be withdrawn.
 3. Use the panel to read tasks/messages, send prompts and attachments,
    answer questions/permissions and pause/resume/stop supported workflows.
+   A permission request shows the file it changes and a capped unified diff
+   when the tool supplies the old and new content, or the redacted command
+   for shell calls; nothing is shown when the tool supplies neither. The
+   activity panel lists the task's real steps and the files its tool calls
+   touched. After pairing, settings show this computer's hostname and
+   operating system. Before acceptance, the phone learns only the
+   operating system name, never the hostname.
 4. Keep the desktop awake, connected and Atlas running. A sleeping or shut
    down computer is offline; the relay cannot start it remotely.
 
@@ -166,6 +181,26 @@ background refreshes authentication and snapshots. Unsent prompt text and
 answers to an unchanged question remain drafts. Resolved/replaced questions
 do not inherit old answers. Safari Home Screen installation remains optional.
 There is no background push service; open the panel to see pending requests.
+
+### Chat images, alerts and screen preview
+
+Stored raster images from assistant replies, user attachments and tool results
+appear in the phone conversation. Tap an image to open its original size in a
+new tab. Images require the same authenticated phone session as the chat and
+are not cached. External image URLs and arbitrary filesystem paths are not
+loaded; stored media is limited to 8 MiB and 40 million pixels per image.
+
+The Questions and permission requests switch enables in-app alerts on iPhone
+and Android even when browser notification permission is unavailable or denied.
+Questions and permission cards remain answerable with the switch off. Allowed
+browser notifications supplement these alerts; background push is not provided.
+
+To enable desktop previews, open `/mobile` on the computer, select the paired
+phone and press `p`. On the phone, open a chat, tap `⋯`, then Screen preview
+for a fresh still image, or Live screen for a view-only stream (no remote
+input). Sign-in cards, returning control, the live screen's measured limits
+and Home Screen installation are described in
+[phone-sign-in-and-live-screen.md](phone-sign-in-and-live-screen.md).
 
 ## Failure and trust boundaries
 

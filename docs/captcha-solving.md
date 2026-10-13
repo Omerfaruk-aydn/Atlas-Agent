@@ -1,3 +1,39 @@
+# CAPTCHA Solving
+
+Atlas detects and answers page verification widgets so browser
+automation can finish sign-in and form flows without a human handoff.
+
+**No external API is required.** The model reads image-text CAPTCHAs
+with its own vision; math challenges are computed offline. A remote
+token farm is only needed for reCAPTCHA / hCaptcha / Turnstile response
+tokens.
+
+## Browser actions
+
+| Action | What it does |
+|---|---|
+| `captcha_detect` | Reports the visible verification widget: kind, site key, question, answer field, verify button. |
+| `captcha_solve` | Answers math offline. For image-text it returns the challenge **crop** so you can read it. For token widgets it reports what is needed. |
+| `captcha_fill` | Types the answer into the challenge's answer box. `advanced.verify` clicks the submit button too. |
+
+Supported kinds: `image_text`, `math`, `checkbox`, `recaptcha_v2`,
+`recaptcha_v3`, `hcaptcha`, `turnstile`.
+
+`checkbox` widgets are reported as `needs_click` -- a single `click`
+clears them.
+
+## How image-text CAPTCHAs are solved
+
+1. `captcha_solve` captures **only the challenge element** (never the
+   full page) and returns it as an image with the
+   `"captcha_challenge":true` metadata mark.
+2. The credential media gate lets that crop through: a CAPTCHA picture
+   is a public widget, not a user secret. Ordinary screenshots stay
+   blocked in credential-bearing sessions.
+3. The model reads the characters from the image and calls
+   `captcha_fill` with the answer.
+
+No OCR engine, no vision API, no token farm. The model already knows
 how to read a CAPTCHA.
 
 ## Typical flow (OİS-style login)

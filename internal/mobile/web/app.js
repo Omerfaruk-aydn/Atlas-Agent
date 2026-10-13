@@ -550,26 +550,79 @@
   $("ctl-stop").addEventListener("click", (e) => control("stop", e.currentTarget));
   $("ctl-preview").addEventListener("click", async () => {
     try {
-      const resp = await fetch("/api/preview", { credentials: "same-origin" });
-      if (!resp.ok) throw new Error((await resp.json()).error.message);
+  $("screen-stop").addEventListener("click", closeScreen);
+  $("screen-retry").addEventListener("click", () => { screen.gaveUp = false; screen.retries = 0; screen.message = ""; screenDisconnect("idle"); applyView(false); });
+  $("screen-zoom-in").addEventListener("click", () => setZoom(screen.zoom * 1.5));
+  $("screen-zoom-out").addEventListener("click", () => setZoom(screen.zoom / 1.5));
+  $("screen-fit").addEventListener("click", () => setZoom(1));
+  $("screen-full").addEventListener("click", toggleFull);
+  $("screen-viewport").addEventListener("dblclick", (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    setZoom(screen.zoom > 1 ? 1 : 2, e.clientX - r.left, e.clientY - r.top);
+  });
+  document.addEventListener("fullscreenchange", renderScreenChrome);
+  if (window.ResizeObserver) {
+    const observer = new ResizeObserver(fitScreen);
+    observer.observe($("screen-pane"));
+    observer.observe($("screen-pane").querySelector(".screen-tools"));
+  }
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("screen-pane").classList.contains("expanded")) { exitExpanded(); renderScreenChrome(); } });
+  startScreenClock();
+  $("stop-btn").addEventListener("click", (e) => control("stop", e.currentTarget));
+  $("m-preview").addEventListener("click", async () => {
+    closeMenu();
+    try {
+      const resp = await fetch("/api/preview", { credentials: "same-origin", cache: "no-store" });
+      if (!resp.ok) { let m = resp.statusText; try { m = (await resp.json()).error.message; } catch (_) {} throw new Error(m); }
       const img = $("preview-img");
       if (img.src) URL.revokeObjectURL(img.src);
       img.src = URL.createObjectURL(await resp.blob());
+      img.alt = t("preview_alt", fmtClock(Date.now() / 1000));
       img.classList.remove("hidden");
-    } catch (e) { banner(t("failed") + ": " + e.message, true); }
+      scroller().scrollTop = 0;
+    } catch (e) { toast(t("failed") + ": " + e.message, true); }
   });
+
+  $("prompt").addEventListener("input", () => { autoGrow(); saveDraft(); updateComposer(); });
+  $("prompt").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendPrompt(); } });
+  $("prompt").addEventListener("focus", () => { if (nearBottom()) setTimeout(toBottom, 250); });
+  $("composer").addEventListener("submit", (e) => { e.preventDefault(); sendPrompt(); });
   $("attach").addEventListener("change", async (e) => {
     const f = e.target.files[0];
-    if (!f || !state.current) return;
+    e.target.value = "";
+    if (!f || !state.current || state.conn !== "connected") return;
+    const up = { name: f.name, size: f.size, state: "uploading" };
+    state.upload = up;
+    renderAttachment();
+    updateComposer();
     const fd = new FormData();
     fd.append("file", f);
-    $("attach-info").textContent = f.name + "…";
     try {
       const data = await act("/api/sessions/" + encodeURIComponent(state.current) + "/attachments", fd);
-      state.upload = data.attachment_id;
-      $("attach-info").textContent = data.name + " (" + Math.round(data.size / 1024) + " KB)";
-    } catch (_) { $("attach-info").textContent = ""; }
-    e.target.value = "";
+      if (state.upload !== up) return;
+      Object.assign(up, { id: data.attachment_id, name: data.name, size: data.size, state: "ready" });
+    } catch (err) {
+      if (state.upload !== up) return;
+      Object.assign(up, { state: "failed", error: err.message });
+    }
+    renderAttachment();
+    updateComposer();
+  });
+  // Removing an unsent attachment drops it from this message; the computer
+  // discards unused uploads after 30 minutes.
+  $("attach-remove").addEventListener("click", () => { state.upload = null; renderAttachment(); updateComposer(); });
+
+  document.querySelectorAll('input[name="theme"]').forEach((r) => r.addEventListener("change", () => {
+    store.set("atlas.theme", r.value === "system" ? null : r.value);
+    applyTheme();
+  }));
+  $("notify").addEventListener("change", async (e) => {
+    const box = e.target;
+    store.set("atlas.notify", box.checked ? "1" : "0");
+    if (box.checked && !appleMobile && "Notification" in window && Notification.permission === "default") {
+      try { await Notification.requestPermission(); } catch (_) {}
+    }
+    renderSettings();
   });
   $("logout").addEventListener("click", () => {
     const open = $("logout-confirm").classList.toggle("hidden") === false;

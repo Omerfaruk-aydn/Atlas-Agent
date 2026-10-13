@@ -341,6 +341,22 @@ func (c *coordinator) RunAccepted(ctx context.Context, accept *AcceptedRun, sess
 // dispatchMu; when nil (the in-process/local path) no accept tracking
 // applies.
 func (c *coordinator) run(ctx context.Context, accept *AcceptedRun, sessionID string, prompt string, attachments ...message.Attachment) (*fantasy.AgentResult, error) {
+	if err := ctx.Err(); err != nil {
+		if accept != nil {
+			accept.Close()
+		}
+		return nil, err
+	}
+	if ctx.Value(tools.ScheduledTurnKey{}) != true {
+		var err error
+		prompt, err = vault.Ephemeral.CaptureUserPrompt(sessionID, prompt)
+		if err != nil {
+			if accept != nil {
+				accept.Close()
+			}
+			return nil, fmt.Errorf("prepare supplied credential: %w", err)
+		}
+	}
 	if err := c.readyWg.Wait(); err != nil {
 		return nil, err
 	}
@@ -864,6 +880,7 @@ func (c *coordinator) buildAgent(ctx context.Context, prompt *prompt.Prompt, age
 		SmallModelFallbacks:    smallFallbacks,
 		SystemPromptPrefix:     largeProviderCfg.SystemPromptPrefix,
 		SystemPrompt:           "",
+		RemoteContext:          func() string { return c.support.ActiveController().RemoteContext() },
 		IsSubAgent:             isSubAgent,
 		DisableAutoSummarize:   c.cfg.Config().Options.DisableAutoSummarize,
 		CompactModel:           compactModel,
@@ -1102,6 +1119,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 	// Browser tool is opt-in: it launches an external Chrome/Chromium
 	// process and can reach any URL the permission prompt allows.
 	if c.cfg.Config().Tools.Browser.IsEnabled() {
+		tools.InitCaptchaChain(c.cfg.Config().Tools.Captcha)
 		allTools = append(allTools, tools.NewBrowserTool(c.permissions, c.cfg.WorkingDir(), c.cfg.Config().Tools.Browser, &vault.Store{State: c.stateStore(), Namespace: c.platformScope() + "/vault"}))
 	}
 
@@ -1260,6 +1278,9 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		)
 	}
 	// Journal recovery does not require an enabled or running language server.
+	if c.engineering == nil {
+		allTools = append(allTools, tools.NewDesignSystemTool(c.cfg.WorkingDir()))
+	}
 	if c.engineering != nil {
 		allTools = append(allTools, tools.NewLSPEditPlanTool(tools.SemanticEditServices{Root: c.cfg.WorkingDir(), Store: c.engineering, Permissions: c.permissions, History: c.history, Tracker: c.filetracker, Manager: c.lspManager}))
 	}
@@ -1294,6 +1315,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 			graphProviders = append(graphProviders, tools.NewLSPGraphProvider(c.cfg.WorkingDir(), c.lspManager))
 		}
 		allTools = append(allTools, tools.NewProjectMapTool(c.cfg.WorkingDir(), c.engineering, graphProviders...),
+			tools.NewDesignSystemTool(c.cfg.WorkingDir(), tools.DesignServices{Invoke: invoke, Permissions: c.permissions}),
 			tools.NewStressJourneyTool(c.cfg.WorkingDir(), c.engineering, invoke),
 			tools.NewTimeLabTool(c.cfg.WorkingDir(), c.engineering, invoke),
 			tools.NewDatasetForgeTool(c.cfg.WorkingDir(), c.engineering, invoke),
@@ -1382,8 +1404,11 @@ func (c *coordinator) filterTools(allTools []fantasy.AgentTool, agent config.Age
 	// without hook interception to avoid firing the user's hook N times
 	// per delegated turn. The top-level invocation of the sub-agent tool
 	// itself is still wrapped from the coder's side.
+	remoteAcks := tools.NewRemoteGuardAcks()
+	remoteTarget := func() (string, string) { return c.support.ActiveController().ActiveRemote() }
 	for i, tool := range filteredTools {
-		filteredTools[i] = tools.WithSecretFilter(tool)
+		tool = tools.WithRemoteLocalGuard(tool, remoteTarget, remoteAcks)
+		filteredTools[i] = tools.WithSecretFilter(tools.WithImageDelivery(tool))
 	}
 	filteredTools = wrapToolsWithHooks(filteredTools, preRunner, postRunner, isSubAgent)
 	for i, tool := range filteredTools {
@@ -2238,6 +2263,8 @@ func (c *coordinator) BeginAccepted(sessionID string) *AcceptedRun {
 func (c *coordinator) Cancel(sessionID string) {
 	c.currentAgent.Cancel(sessionID)
 	c.recordInteractionCancel(sessionID)
+	// A canceled task must not keep a password the user supplied for it.
+	vault.Ephemeral.PurgeSession(sessionID)
 }
 
 // recordInteractionCancel remembers, across restarts, that the user

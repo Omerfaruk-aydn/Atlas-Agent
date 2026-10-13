@@ -50,6 +50,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/stringext"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/version"
 )
 
@@ -84,6 +85,8 @@ type SessionAgentCall struct {
 	DesktopOnly       bool
 	IdleOnly          bool
 	QueueContinuation bool
+	// internalContinuation preserves trusted user intent across automatic turns.
+	internalContinuation bool
 	SessionID            string
 	// RunID, when non-empty, is the caller-supplied correlator that
 	// gets echoed back on the notify.RunComplete event emitted for

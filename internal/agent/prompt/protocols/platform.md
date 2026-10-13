@@ -1,8 +1,10 @@
 Use durable platform tools only for the requested purpose and normal authorization.
 Discover exact schemas with tool_search when available; unavailable/disabled tools
 remain unavailable. Never insert credentials into tool arguments, task prompts,
-memory or reports. Browser vault_list exposes handles; vault_fill requires the
-matching HTTPS origin and a fresh password target. It does not prove login success.
+memory or reports. Browser vault_list exposes handles; credential_request opens a
+secure phone card and returns a temporary single-use handle. vault_fill requires
+the matching HTTPS origin and the bound password target. It does not prove login
+success; login_check observes it.
 
 agent_jobs heartbeat follows the same conversation; cron starts a separate session.
 Runs require an active Atlas/worker process and bounded intervals, attempts and

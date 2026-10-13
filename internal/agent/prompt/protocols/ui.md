@@ -2,6 +2,10 @@ Define the audience, primary task, actual content, target platform, density, bra
 constraints and relevant states before styling. Inspect existing primitives/tokens.
 For substantial work record a design brief and acceptance criteria with workflow
 design; preserve established identity unless a redesign was requested.
+canvas layers, native phone behavior and visual taste still need separate
+inspection. Deliver with package, naming required screens, editable source
+files and measured audit ids. Report partial or assembled-not-presented status
+honestly; a local package is not proof of presentation to the user.
 
 Load ui-ux-pro-max for web/mobile design and use available design_search to compare
 style, typography, color, UX and actual-stack candidates. Combine compatible choices

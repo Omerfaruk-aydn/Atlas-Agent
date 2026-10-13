@@ -1,3 +1,34 @@
+package nodes
+
+import (
+	"context"
+	"net/http/httptest"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
+	"github.com/stretchr/testify/require"
+)
+
+type previewEntryContext struct {
+	context.Context
+	entered chan struct{}
+	once    sync.Once
+}
+
+func (c *previewEntryContext) Err() error {
+	c.once.Do(func() { close(c.entered) })
+	return c.Context.Err()
+}
+
+func TestPreviewCancellationDoesNotQueueBehindDesktopInput(t *testing.T) {
+	h := newHarness(t, []Capability{CapDesktop}, &fakeDesktop{size: computer.Size{Width: 8, Height: 8}})
+	s := h.server
+	s.desktopMu.Lock()
+	defer s.desktopMu.Unlock()
+	parent, cancel := context.WithCancel(t.Context())
+	defer cancel()
 	ctx := &previewEntryContext{Context: parent, entered: make(chan struct{})}
 	done := make(chan struct{})
 	go func() {

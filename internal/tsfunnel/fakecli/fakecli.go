@@ -1,3 +1,74 @@
+
+// Calls returns every command run so far.
+func (d *Daemon) Calls() [][]string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return slices.Clone(d.calls)
+}
+
+// Approve completes a pending Funnel approval.
+func (d *Daemon) Approve() { close(d.approve) }
+
+// CompleteLogin finishes a pending "tailscale up".
+func (d *Daemon) CompleteLogin() { close(d.login) }
+
+// Path implements tsfunnel.Exec.
+func (d *Daemon) Path() (string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.Installed {
+		return "", tsfunnel.ErrNotInstalled
+	}
+	return `C:\Program Files\Tailscale\tailscale.exe`, nil
+}
+
+// Output implements tsfunnel.Exec.
+func (d *Daemon) Output(ctx context.Context, args ...string) ([]byte, error) {
+	d.mu.Lock()
+	d.calls = append(d.calls, slices.Clone(args))
+	delay := d.Delay
+	d.mu.Unlock()
+	if delay > 0 {
+		select {
+		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return nil, tsfunnel.ErrTimeout
+			}
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.Installed {
+		return nil, tsfunnel.ErrNotInstalled
+	}
+	if d.ServiceDown {
+		return nil, fmt.Errorf("%w: failed to connect to local Tailscale daemon", tsfunnel.ErrServiceUnavailable)
+	}
+	switch strings.Join(args, " ") {
+	case "status --json --peers=false":
+		if d.StatusRaw != nil {
+			return d.StatusRaw, nil
+		}
+		return d.statusJSONLocked(), nil
+	case "funnel status --json":
+		return d.serveJSONLocked(), nil
+	}
+	return nil, fmt.Errorf("fake tailscale: unexpected command %q", args)
+}
+
+func (d *Daemon) statusJSONLocked() []byte {
+	caps := map[string]any{}
+	for _, c := range d.Caps {
+		caps[c] = nil
+	}
+	st := map[string]any{
+		"Version": d.Version, "BackendState": d.Backend, "AuthURL": "",
+		"Self":           map[string]any{"DNSName": d.Host, "Online": true, "CapMap": caps},
+		"CurrentTailnet": map[string]any{"Name": "user@example.com", "MagicDNSSuffix": "tail1234.ts.net", "MagicDNSEnabled": d.MagicDNS},
+	}
+	if d.Backend == "NeedsLogin" {
 		st["Self"] = map[string]any{"DNSName": ""}
 		st["CurrentTailnet"] = nil
 	}

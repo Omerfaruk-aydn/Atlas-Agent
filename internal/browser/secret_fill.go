@@ -1,3 +1,21 @@
+package browser
+
+import (
+	"context"
+	"errors"
+	"time"
+	"unicode/utf16"
+)
+
+// SecretTarget pins a password fill to the exact page target observed when
+// the user authorized it.
+type SecretTarget struct {
+	Origin    string
+	TabID     string
+	Document  string
+	FrameID   string
+	Selector  string
+	NodeToken string
 }
 
 // Secret fill statuses. Filling a field and completing a sign-in are

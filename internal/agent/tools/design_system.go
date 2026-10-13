@@ -1,4 +1,75 @@
 	}
+	if s.Candidate != nil {
+		n = max(n, s.Candidate.Version)
+	}
+	return n + 1
+}
+
+func (s *designStore) pushHistory(r designRecord) {
+	s.History = append(s.History, r)
+	if over := len(s.History) - designHistoryCap; over > 0 {
+		s.History = slices.Delete(s.History, 0, over)
+	}
+}
+
+func (s designStore) versions() []int {
+	out := []int{}
+	for _, r := range s.History {
+		out = append(out, r.Version)
+	}
+	if s.Approved != nil {
+		out = append(out, s.Approved.Version)
+	}
+	return out
+}
+
+func designStoreFile(dir string) string {
+	return filepath.Join(dir, filepath.FromSlash(designSystemPath))
+}
+
+// loadDesignStore reads the project's design memory. A missing file is
+// os.ErrNotExist; an unreadable or invalid one is errDesignCorrupt and is
+// never treated as an empty memory.
+func loadDesignStore(dir string) (designStore, error) {
+	data, err := readDesignArtifact(designStoreFile(dir), 4<<20)
+	if err != nil {
+		return designStore{}, err
+	}
+	var probe struct {
+		SchemaVersion *int `json:"schema_version"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return designStore{}, fmt.Errorf("%w: %s is not valid JSON (%v); it was left untouched. Do not assume a platform or direction: ask the user, then store a new candidate with set (the damaged file is kept as a backup)", errDesignCorrupt, designSystemPath, err)
+	}
+	if probe.SchemaVersion == nil {
+		var legacy DesignSystem
+		if err := json.Unmarshal(data, &legacy); err != nil {
+			return designStore{}, fmt.Errorf("%w: %s: %v", errDesignCorrupt, designSystemPath, err)
+		}
+		if err := validateDesignSystem(legacy); err != nil {
+			return designStore{}, fmt.Errorf("%w: %s: %v", errDesignCorrupt, designSystemPath, err)
+		}
+		// Schema 1 was written only after the user chose the platform
+		// and direction, so it is migrated as approved version 1.
+		return designStore{
+			SchemaVersion: designStoreSchema,
+			Approved:      &designRecord{Version: 1, System: legacy, At: legacy.UpdatedAt, Note: "migrated from schema 1"},
+			MigratedFrom:  1,
+		}, nil
+	}
+	if *probe.SchemaVersion > designStoreSchema {
+		return designStore{}, fmt.Errorf("%s has schema %d from a newer Atlas; it was left untouched", designSystemPath, *probe.SchemaVersion)
+	}
+	if *probe.SchemaVersion != designStoreSchema {
+		return designStore{}, fmt.Errorf("%w: unsupported design schema %d", errDesignCorrupt, *probe.SchemaVersion)
+	}
+	var st designStore
+	if err := json.Unmarshal(data, &st); err != nil {
+		return designStore{}, fmt.Errorf("%w: %s: %v", errDesignCorrupt, designSystemPath, err)
+	}
+	if len(st.History) > designHistoryCap {
+		return designStore{}, fmt.Errorf("%w: design history exceeds %d versions", errDesignCorrupt, designHistoryCap)
+	}
 	records := []*designRecord{st.Approved, st.Candidate}
 	for i := range st.History {
 		records = append(records, &st.History[i])

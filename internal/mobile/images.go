@@ -1,3 +1,42 @@
+package mobile
+
+import (
+	"bytes"
+	"encoding/base64"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
+	_ "golang.org/x/image/webp"
+)
+
+const maxChatImageBytes = 8 << 20
+
+// chatImage accepts stored raster media only, never paths or external URLs.
+func chatImage(part message.ContentPart) ([]byte, string) {
+	var data []byte
+	var mime, encoded string
+	switch p := part.(type) {
+	case message.BinaryContent:
+		data, mime = p.Data, p.MIMEType
+	case message.ToolResult:
+		if p.IsError {
+			return nil, ""
+		}
+		encoded, mime = p.Data, p.MIMEType
+	case message.ImageURLContent:
+		prefix, body, ok := strings.Cut(p.URL, ";base64,")
+		if !ok || !strings.HasPrefix(prefix, "data:") {
+			return nil, ""
+		}
+		mime, encoded = strings.TrimPrefix(prefix, "data:"), body
+	default:
 		return nil, ""
 	}
 	if mime != "image/png" && mime != "image/jpeg" && mime != "image/gif" && mime != "image/webp" {

@@ -1,3 +1,5 @@
+package captcha
+
 import (
 	"strings"
 	"unicode"

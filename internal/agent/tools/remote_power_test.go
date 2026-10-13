@@ -1,3 +1,74 @@
+	"sync/atomic"
+	"testing"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/nodes"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/support"
+	"github.com/stretchr/testify/require"
+)
+
+func TestClassifyPowerCommand(t *testing.T) {
+	t.Parallel()
+	for argv, want := range map[string]string{
+		"shutdown /s /t 0":                    powerShutdown,
+		`C:\Windows\System32\shutdown.exe /p`: powerShutdown,
+		"shutdown /r /t 0":                    powerRestart,
+		"shutdown -h now":                     powerShutdown,
+		"shutdown -r now":                     powerRestart,
+		"poweroff":                            powerShutdown,
+		"reboot":                              powerRestart,
+		"systemctl poweroff":                  powerShutdown,
+		"powershell -NoProfile -Command Stop-Computer -Force": powerShutdown,
+		"pwsh -c Restart-Computer":                            powerRestart,
+		"cmd /c shutdown /s /t 0":                             powerShutdown,
+		"powershell -Command shutdown /r":                     powerRestart,
+		"shutdown /a":                                         "",
+		"shutdown /l":                                         "",
+		"shutdown -c":                                         "",
+		"notepad shutdown.txt":                                "",
+		"git log --grep=shutdown":                             "",
+		"powershell -Command Get-Process | Where-Object Name -eq x": "",
+	} {
+		got, ok := classifyPowerCommand(splitArgv(argv))
+		require.Equal(t, want, got, argv)
+		require.Equal(t, want != "", ok, argv)
+	}
+}
+
+func splitArgv(s string) []string {
+	var out []string
+	cur := ""
+	for _, r := range s {
+		if r == ' ' {
+			if cur != "" {
+				out = append(out, cur)
+			}
+			cur = ""
+			continue
+		}
+		cur += string(r)
+	}
+	if cur != "" {
+		out = append(out, cur)
+	}
+	return out
+}
+
+// Reported session: shutdown /s /t 0 was confirmed by the user and sent;
+// the connection dropped as the computer turned off, and Atlas reported an
+// unknown outcome and then a connection being restored. Now the drop is
+// the expected result, later calls say why the computer is offline, and
+// the request is never sent twice.
+func TestRemoteShutdownDisconnectIsTheExpectedResult(t *testing.T) {
+	t.Parallel()
+	// The real host never gets the restart grant: if a request bypassed the
+	// fake node it would be refused, never run.
+	f := newSupportFixture(t, []support.Capability{support.CapCommand, support.CapInput})
+	_, client, err := f.ctl.Target()
+	require.NoError(t, err)
+	var execs, others atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/node/exec" {
+			execs.Add(1)
 			// The computer switches off mid-request.
 			conn, _, err := w.(http.Hijacker).Hijack()
 			if err == nil {

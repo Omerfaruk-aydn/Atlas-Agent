@@ -24,6 +24,9 @@ const (
 // gateway and the last checks; nothing here is assumed.
 func (d *Remote) overallState() (string, lipgloss.Style, remotecontrol.Message) {
 	t := d.com.Styles
+	if d.funnelOn() && !d.homeLAN() {
+		return d.funnelState()
+	}
 	if d.homeLAN() {
 		switch {
 		case d.env.Starting != nil && d.env.Starting():
@@ -62,6 +65,22 @@ func (d *Remote) overallState() (string, lipgloss.Style, remotecontrol.Message) 
 	return rcStateDisconnected, t.Dialog.OAuth.ErrorText, remotecontrol.Msg("Atlas is not connected to the relay on this computer yet.")
 }
 
+// phoneCountLine summarizes the running gateway's phones.
+func (d *Remote) phoneCountLine() string {
+	gw := d.gateway()
+	if gw == nil {
+		return ""
+	}
+	paired, active := 0, 0
+	for _, dev := range gw.Auth.Devices() {
+		paired++
+		if time.Since(time.UnixMilli(dev.LastSeen)) < 2*time.Minute {
+			active++
+		}
+	}
+	return d.com.Styles.Dialog.SecondaryText.Padding(0).Render(fmt.Sprintf(d.com.Text("Phones: %d paired · %d active in the last 2 minutes · %d waiting for approval"), paired, active, len(gw.Auth.PendingList())))
+}
+
 func (d *Remote) checkLine(label string, c remotecontrol.Check) string {
 	t := d.com.Styles
 	icon, style := "·", t.Dialog.SecondaryText.Padding(0)
@@ -90,6 +109,9 @@ func (d *Remote) statusLines(width int) []string {
 	}
 	if d.homeLAN() {
 		return lines
+	}
+	if d.funnelOn() {
+		return append(lines, d.funnelLines(width)...)
 	}
 	p, has := d.active()
 	if !has {

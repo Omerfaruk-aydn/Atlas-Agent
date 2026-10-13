@@ -97,13 +97,18 @@ type Support struct {
 	hasHost bool
 	ctl     support.ControllerStatus
 	hasCtl  bool
+	// frame and timeline are the supported computer's latest screen and
+	// recent operations, snapshotted on every refresh.
+	frame    support.Frame
+	hasFrame bool
+	timeline []support.Event
 
 	confirm   string
 	notice    string
 	noticeErr bool
 	busy      bool
 	keyMap    struct {
-		Up, Down, Enter, Back, Toggle, Accept, Reject, Copy, CopyLink, QR, PauseAgent, PauseInput, Files, Disconnect, Grant, Deny, Duration, Network, Preset, Next key.Binding
+		Up, Down, Enter, Back, Toggle, Accept, Reject, Copy, CopyLink, QR, PauseAgent, PauseInput, Files, Disconnect, Grant, Deny, Duration, Network, Preset, Next, OpenFrame key.Binding
 	}
 }
 
@@ -159,6 +164,7 @@ func NewSupport(com *common.Common, svc *support.Service) *Support {
 	d.keyMap.Network = k([]string{"w"}, "w", "network")
 	d.keyMap.Preset = k([]string{"1", "2", "3"}, "1-3", "preset")
 	d.keyMap.Next = k([]string{"tab"}, "tab", "next field")
+	d.keyMap.OpenFrame = k([]string{"o"}, "o", "open screen")
 	d.refresh()
 	return d
 }
@@ -195,6 +201,8 @@ func (d *Support) refresh() {
 	}
 	if c := d.svc.ActiveController(); c != nil {
 		d.ctl, d.hasCtl = c.Status(), true
+		d.frame, d.hasFrame = c.LatestFrame()
+		d.timeline = c.Timeline(supportTimelineRows)
 	}
 }
 
@@ -595,6 +603,8 @@ func (d *Support) connectKey(msg tea.KeyPressMsg) Action {
 	case connected && key.Matches(msg, d.keyMap.Disconnect):
 		d.confirm = "ctl-disconnect"
 		return nil
+	case connected && key.Matches(msg, d.keyMap.OpenFrame):
+		return d.openFrame(d.frame)
 	case connected || d.joining:
 		return nil
 	case key.Matches(msg, d.keyMap.Enter):
@@ -1032,6 +1042,10 @@ func (d *Support) connectLines(text int) []string {
 		if r.AgentPaused {
 			lines = append(lines, d.strong(d.com.Text("The owner paused the support task.")))
 		}
+		lines = append(lines, "")
+		lines = append(lines, d.liveScreenLines(time.Now())...)
+		lines = append(lines, "")
+		lines = append(lines, d.timelineLines(text)...)
 		lines = append(lines, "", d.muted(d.com.Text("Give tasks in the chat; the agent works only on this computer through remote_support. x disconnects.")))
 		return lines
 	}
@@ -1183,6 +1197,9 @@ func (d *Support) ShortHelp() []key.Binding {
 		}
 		return []key.Binding{d.keyMap.Copy, d.keyMap.CopyLink, d.keyMap.QR, d.keyMap.Disconnect, d.keyMap.Back}
 	case supportConnect:
+		if d.ctl.State == support.StateConnected || d.ctl.State == support.StatePaused {
+			return []key.Binding{d.keyMap.OpenFrame, d.keyMap.Disconnect, d.keyMap.Back}
+		}
 		return []key.Binding{d.keyMap.Enter, d.keyMap.Disconnect, d.keyMap.Back}
 	case supportHistory:
 		return []key.Binding{d.keyMap.Up, d.keyMap.Down, d.keyMap.Enter, d.keyMap.Back}

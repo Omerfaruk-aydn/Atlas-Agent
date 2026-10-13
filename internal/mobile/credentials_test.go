@@ -1,3 +1,74 @@
+	return string(data)
+}
+
+func TestCredentialCardDeliversSecretOnlyToTheStore(t *testing.T) {
+	g, b := newGateway(t)
+	p := newPhone(t, g)
+	p.pair(true)
+	card := openCard(t, "s1")
+
+	resp, detail := p.do("GET", "/api/sessions/s1", nil, nil)
+	require.Equal(t, 200, resp.StatusCode)
+	creds, _ := detail["credentials"].([]any)
+	require.Len(t, creds, 1)
+	view := creds[0].(map[string]any)
+	require.Equal(t, card.ID, view["id"])
+	require.Equal(t, "https://login.example.test", view["origin"])
+	require.Equal(t, true, view["can_persist"])
+	_, list := p.do("GET", "/api/sessions", nil, nil)
+	require.Contains(t, mustString(list), `"pending_credentials":1`)
+
+	key := map[string]string{"Idempotency-Key": "cred-k1"}
+	body := map[string]any{"session_id": "s1", "secret": phoneSecret, "persist": false}
+	resp, out := p.do("POST", "/api/credentials/"+card.ID, body, key)
+	require.Equal(t, 200, resp.StatusCode, out)
+	require.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
+	require.Equal(t, "provided", out["state"])
+	// A retry with the same key replays the answer; it does not resubmit.
+	resp, out = p.do("POST", "/api/credentials/"+card.ID, body, key)
+	require.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, "true", resp.Header.Get("Idempotent-Replay"))
+	require.Equal(t, "provided", out["state"], "the replay is the first answer")
+	// A second tap with a new key cannot replace the secret.
+	resp, out = p.do("POST", "/api/credentials/"+card.ID, map[string]any{"session_id": "s1", "secret": "Synth-Other"}, map[string]string{"Idempotency-Key": "cred-k2"})
+	require.Equal(t, 409, resp.StatusCode)
+	require.Equal(t, "already_provided", code(out))
+
+	got := ""
+	_, err := vault.Ephemeral.Use(card.ID, "s1", "https://login.example.test", "", func(s string) (bool, error) { got = s; return true, nil })
+	require.NoError(t, err)
+	require.Equal(t, phoneSecret, got)
+
+	require.NotContains(t, ringText(g), phoneSecret, "events never carry the secret")
+	_, detail = p.do("GET", "/api/sessions/s1", nil, nil)
+	require.NotContains(t, mustString(detail), phoneSecret)
+	require.Zero(t, b.runs.Load(), "a credential answer is not a chat message")
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, pr := range b.prompts {
+		require.NotContains(t, pr, phoneSecret)
+	}
+}
+
+func TestCredentialCardChecksOriginCSRFSessionAndExpiry(t *testing.T) {
+	g, _ := newGateway(t)
+	p := newPhone(t, g)
+	p.pair(true)
+	card := openCard(t, "s1")
+	body := map[string]any{"session_id": "s1", "secret": phoneSecret}
+
+	_, out := p.do("POST", "/api/credentials/"+card.ID, body, map[string]string{"Idempotency-Key": "a", "Origin": "https://evil.example"})
+	require.Equal(t, "bad_origin", code(out))
+	_, out = p.do("POST", "/api/credentials/"+card.ID, body, map[string]string{"Idempotency-Key": "b", "X-CSRF-Token": "wrong"})
+	require.Equal(t, "bad_csrf", code(out))
+	_, out = p.do("POST", "/api/credentials/"+card.ID, map[string]any{"session_id": "other", "secret": phoneSecret}, map[string]string{"Idempotency-Key": "c"})
+	require.Equal(t, "stale_request", code(out), "a card answers only its own task")
+	stranger := newPhone(t, g)
+	resp, _ := stranger.do("POST", "/api/credentials/"+card.ID, body, map[string]string{"Idempotency-Key": "d"})
+	require.Equal(t, 401, resp.StatusCode, "an unpaired browser cannot answer")
+	view, _ := vault.Ephemeral.Get(card.ID)
+	require.Equal(t, vault.CredentialPending, view.State)
+
 	_, out = p.do("POST", "/api/credentials/"+card.ID, map[string]any{"session_id": "s1", "cancel": true}, map[string]string{"Idempotency-Key": "e"})
 	require.Equal(t, "canceled", out["state"])
 	resp, out = p.do("POST", "/api/credentials/"+card.ID, body, map[string]string{"Idempotency-Key": "f"})

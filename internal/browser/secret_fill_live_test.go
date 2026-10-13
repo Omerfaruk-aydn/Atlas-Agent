@@ -1,3 +1,74 @@
+package browser
+
+import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+// The login fixture is synthetic: a two-step form like many identity
+// providers (identifier, then password in the same document), a wrong
+// password error, and a one-time-code step after the right password.
+const loginFixture = `<!doctype html><title>Sign in</title>
+<form id="f" onsubmit="return submitLogin(event)">
+ <div id="step1"><label>Email <input id="email" type="email" autocomplete="username"></label><button id="next" type="button" onclick="next1()">Next</button></div>
+ <div id="step2" hidden><p id="who"></p><label>Password <input id="pw" type="password" autocomplete="current-password"></label><p id="err" role="alert" hidden>Wrong password. Try again.</p><button id="go">Sign in</button></div>
+ <div id="step3" hidden><p>2-Step Verification</p><label>Code <input id="otp" autocomplete="one-time-code" inputmode="numeric" maxlength="6"></label></div>
+</form>
+<script>
+window.inputEvents=0;
+document.addEventListener('input',e=>{if(e.target.id==='pw')window.inputEvents++});
+function next1(){document.getElementById('step1').hidden=true;document.getElementById('step2').hidden=false;document.getElementById('who').textContent=document.getElementById('email').value;history.pushState({},'', '/challenge/pwd')}
+function submitLogin(e){e.preventDefault();const pw=document.getElementById('pw');
+ if(pw.value==='Synth-Right-Pass-1'){document.getElementById('step2').hidden=true;document.getElementById('step3').hidden=false}
+ else{pw.value='';pw.setAttribute('aria-invalid','true');document.getElementById('err').hidden=false}
+ return false}
+</script>`
+
+func TestSecretFillRealBrowserLoginFlow(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Real browser excluded in short mode")
+	}
+	exe := findChrome()
+	if exe == "" {
+		t.Skip("No installed browser")
+	}
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, `<!doctype html><input id="pw" type="password">`)
+	}))
+	defer other.Close()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		switch r.URL.Path {
+		case "/framed":
+			fmt.Fprintf(w, `<!doctype html><p>outer</p><iframe id="same" src="/inner"></iframe><iframe id="cross" src="%s/"></iframe>`, other.URL)
+		case "/inner":
+			fmt.Fprint(w, `<!doctype html><input id="pw" type="password">`)
+		case "/hidden":
+			fmt.Fprint(w, `<!doctype html><input id="pw" type="password" style="display:none">`)
+		default:
+			fmt.Fprint(w, loginFixture)
+		}
+	}))
+	defer server.Close()
+	origin := server.URL
+
+	sess, err := newChromedpSession(Options{ExecutablePath: exe, Headless: true, UserDataDir: t.TempDir(), OverlayDisabled: true, ActionTimeout: 15 * time.Second})
+	require.NoError(t, err)
+	defer sess.Close()
+	s := sess.(*chromedpSession)
+	require.NoError(t, s.Navigate(origin+"/"))
+
+	// Before the password step there is no visible password field.
+	target, err := s.PasswordTarget(t.Context(), "", "")
+	require.NoError(t, err)
+	require.False(t, target.Found)
 	require.NoError(t, s.Type("#email", "user@example.test"))
 	require.NoError(t, s.Click("#next"))
 

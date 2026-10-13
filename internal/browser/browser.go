@@ -544,6 +544,18 @@ func (s *chromedpSession) handleTargetEvent(ev any) {
 		s.appendConsole(ConsoleEntry{Type: "exception", Text: text, Time: time.Now()})
 	case *page.EventJavascriptDialogOpening:
 		s.appendDialog(DialogInfo{Type: string(ev.Type), Message: ev.Message, DefaultPrompt: ev.DefaultPrompt})
+		s.mu.Lock()
+		if len(s.dialogs) > 0 {
+			s.dialogs = s.dialogs[1:]
+		}
+		s.mu.Unlock()
+	case *page.EventFrameNavigated:
+		if ev.Frame != nil && ev.Frame.ParentID == "" {
+			// A committed top-level document cannot retain an old modal.
+			s.mu.Lock()
+			s.dialogs = nil
+			s.mu.Unlock()
+		}
 	}
 }
 
@@ -811,6 +823,10 @@ func (s *chromedpSession) Screenshot(fullPage bool) ([]byte, error) {
 		return nil, hideErr
 	}
 	defer restore()
+	return s.captureScreenshot(fullPage)
+}
+
+func (s *chromedpSession) captureScreenshot(fullPage bool) ([]byte, error) {
 	var buf []byte
 	if fullPage {
 		if err := s.run(chromedp.FullScreenshot(&buf, 90)); err != nil {
@@ -964,7 +980,6 @@ func (s *chromedpSession) HandleDialog(accept bool, promptText string) error {
 		s.mu.Unlock()
 		return errors.New("no pending dialog to handle")
 	}
-	first := s.dialogs[0]
 	s.mu.Unlock()
 
 	err := s.run(chromedp.ActionFunc(func(ctx context.Context) error {
@@ -973,13 +988,9 @@ func (s *chromedpSession) HandleDialog(accept bool, promptText string) error {
 	if err != nil {
 		return err
 	}
-	// Failed dispatch leaves the dialog observable. A newly opened dialog
-	// cannot be accidentally removed in place of the one just handled.
-	s.mu.Lock()
-	if len(s.dialogs) > 0 && s.dialogs[0] == first {
-		s.dialogs = s.dialogs[1:]
-	}
-	s.mu.Unlock()
+	// The closed event removes the actual dialog, including closures from
+	// browser UI or another CDP client. Do not remove a newly opened dialog
+	// with identical text after the acknowledgement returns.
 	return nil
 }
 

@@ -78,6 +78,12 @@ type Request struct {
 	MaxScrolls    int         `json:"max_scrolls,omitempty" description:"For collect: bound on scroll steps (1-200, default 40)."`
 	Cursor        int         `json:"cursor,omitempty" description:"For observe: element offset to continue a truncated list. For collect: scroll offset to resume from."`
 	AllowResubmit bool        `json:"allow_resubmit,omitempty" description:"For submit: permit repeating an identical submission. Only after verifying the first one was not accepted."`
+	// Verify asks captcha_solve to click the challenge's submit button
+	// after filling the answer.
+	Verify bool `json:"verify,omitempty" description:"For captcha_solve/captcha_fill: click the challenge verify/submit button after filling the answer."`
+	// VerifySelector names the challenge submit button for captcha_fill
+	// when verify is set. Empty reuses selector.
+	VerifySelector string `json:"verify_selector,omitempty" description:"For captcha_fill: CSS selector of the challenge verify button, used when verify is true."`
 }
 
 // FormField is one entry of a fill_form request.

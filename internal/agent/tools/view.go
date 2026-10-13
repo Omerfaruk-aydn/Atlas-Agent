@@ -75,10 +75,13 @@ type ViewResponseMetadata struct {
 }
 
 const (
-	ViewToolName     = "view"
-	MaxViewSize      = 200 * 1024 // 200KB
-	DefaultReadLimit = 200
-	MaxLineLength    = 2000
+	ViewToolName = "view"
+	MaxViewSize  = 200 * 1024 // 200KB of text; images use MaxImageDeliveryBytes.
+	// MaxViewImageFileSize bounds the image files view will read to build a
+	// preview; it is not what is delivered.
+	MaxViewImageFileSize = 64 * 1024 * 1024
+	DefaultReadLimit     = 200
+	MaxLineLength        = 2000
 )
 
 type contentTooLargeError struct {
@@ -228,9 +231,12 @@ func NewViewTool(
 
 			isSupportedImage, mimeType := getImageMimeType(filePath)
 			if isSupportedImage {
-				if fileInfo.Size() > MaxViewSize {
-					return fantasy.NewTextErrorResponse(fmt.Sprintf("Image file is too large (%d bytes). Maximum size is %d bytes",
-						fileInfo.Size(), MaxViewSize)), nil
+				// Images have their own raw-byte limit; MaxViewSize is
+				// for text. Larger files get a preview, but reading one
+				// far beyond what any preview needs is refused outright.
+				if fileInfo.Size() > MaxViewImageFileSize {
+					return fantasy.NewTextErrorResponse(fmt.Sprintf("Image file is too large (%d bytes). Images up to %d bytes are delivered as-is and files up to %d bytes get an automatic preview",
+						fileInfo.Size(), MaxImageDeliveryBytes, MaxViewImageFileSize)), nil
 				}
 				if !GetSupportsImagesFromContext(ctx) {
 					modelName := GetModelNameFromContext(ctx)
@@ -250,7 +256,14 @@ func NewViewTool(
 				// it identifies a supported image format.
 				mimeType = sniffImageMimeType(imageData, mimeType)
 
-				return fantasy.NewImageResponse(imageData, mimeType), nil
+				delivery, prepErr := PrepareImageForDelivery(imageData, mimeType)
+				if prepErr != nil {
+					return fantasy.NewTextErrorResponse(fmt.Sprintf("Cannot show %s: %v", filePath, prepErr)), nil
+				}
+				resp := fantasy.NewImageResponse(delivery.Data, delivery.MediaType)
+				resp.Content = delivery.Note()
+				filetracker.RecordRead(ctx, sessionID, filePath)
+				return fantasy.WithResponseMetadata(resp, map[string]any{"file_path": filePath, "image_delivery": delivery}), nil
 			}
 
 			// Read the file content

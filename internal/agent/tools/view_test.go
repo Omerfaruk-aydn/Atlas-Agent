@@ -159,7 +159,10 @@ func TestViewToolBlocksOversizedImages(t *testing.T) {
 
 	workingDir := t.TempDir()
 	filePath := filepath.Join(workingDir, "large.png")
-	require.NoError(t, os.WriteFile(filePath, []byte(strings.Repeat("a", MaxViewSize+1)), 0o644))
+	f, err := os.Create(filePath)
+	require.NoError(t, err)
+	require.NoError(t, f.Truncate(MaxViewImageFileSize+1))
+	require.NoError(t, f.Close())
 
 	tool := newViewToolForTest(workingDir)
 	ctx := context.WithValue(context.Background(), SessionIDContextKey, "test-session")

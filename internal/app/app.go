@@ -51,6 +51,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/anim"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/styles"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/update"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/version"
 )
 
@@ -846,6 +847,8 @@ func (app *App) Subscribe(program *tea.Program) {
 // Shutdown performs a graceful shutdown of the application.
 func (app *App) Shutdown() {
 	defer activity.Default.Close()
+	// Temporary credentials live only in memory; end them on exit.
+	defer vault.Ephemeral.PurgeAll()
 	start := time.Now()
 	defer func() { slog.Debug("Shutdown took " + time.Since(start).String()) }()
 

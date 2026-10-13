@@ -829,6 +829,8 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.handleHomeNetwork(msg))
 	case remoteSavedMsg, remoteConfigMsg, remoteGatewayMsg, remoteDisabledMsg, remoteDraftMsg, remoteRetryMsg:
 		cmds = append(cmds, m.handleRemoteMsg(msg))
+	case funnelStartedMsg, funnelCheckedMsg, funnelTaskMsg, funnelStoppedMsg:
+		cmds = append(cmds, m.handleFunnelMsg(msg))
 	case mobileStoppedMsg:
 		if msg.generation == m.devices.remote.generation.Load() {
 			m.setGateway(nil)
@@ -2450,6 +2452,16 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 		} else {
 			cmds = append(cmds, m.startHomeNetwork(msg.Address))
 		}
+	case dialog.ActionRemoteFunnel:
+		cmds = append(cmds, m.startFunnel(false))
+	case dialog.ActionRemoteFunnelStop:
+		cmds = append(cmds, m.stopFunnel())
+	case dialog.ActionRemoteFunnelCheck:
+		cmds = append(cmds, m.checkFunnel())
+	case dialog.ActionRemoteFunnelTask:
+		cmds = append(cmds, m.runFunnelTask(msg.Task))
+	case dialog.ActionRemoteFunnelOpen:
+		cmds = append(cmds, m.openFunnelPage(msg.URL))
 	case dialog.ActionRemoteBrowserHelp:
 		cmds = append(cmds, m.remoteBrowserHelp())
 	case dialog.ActionRemoteImportDraft:

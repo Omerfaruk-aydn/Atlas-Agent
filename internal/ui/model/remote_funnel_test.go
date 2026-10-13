@@ -1,3 +1,34 @@
+package model
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	tea "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ui/v2"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/mobile"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/tsfunnel"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/tsfunnel/fakecli"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/dialog"
+	"github.com/stretchr/testify/require"
+)
+
+// newFunnelUI is a /rc model whose Tailscale is the fake CLI. These tests
+// run no real Tailscale and reach no phone.
+func newFunnelUI(t *testing.T, d *fakecli.Daemon) (*UI, *remoteConfigWorkspace) {
+	t.Helper()
+	m, ws := newRemoteLifecycleUI()
+	stateDir := t.TempDir()
+	m.devices.funnel.env = &funnelEnv{
+		CLI:       d,
+		Service:   func() tsfunnel.ServiceState { return tsfunnel.ServiceRunning },
+		OpenURL:   func(string) error { return nil },
+		StateFile: filepath.Join(t.TempDir(), "tailscale-funnel.json"),
+		Tune: func(mgr *tsfunnel.Manager) {
+			mgr.Poll = 5 * time.Millisecond
+			mgr.ConfirmTimeout = 2 * time.Second
+			mgr.ApprovalTimeout = 5 * time.Second
 			mgr.CleanupTimeout = 500 * time.Millisecond
 		},
 		Gateway: func(opts mobile.Options) (*mobile.Gateway, error) {

@@ -158,6 +158,7 @@ func (m *UI) Close() {
 		case <-time.After(2 * time.Second):
 		}
 	}
+	m.closeFunnel()
 }
 
 func (m *UI) handleVoice(msg voiceMsg) tea.Cmd {

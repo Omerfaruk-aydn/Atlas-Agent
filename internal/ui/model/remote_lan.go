@@ -89,6 +89,8 @@ func (m *UI) startHomeNetworkWith(address string, start func(mobile.Options) (*m
 	m.setGateway(nil)
 	m.dialog.CloseDialog(dialog.MobileID)
 	m.devices.homeLAN = true
+	// The saved Tailscale choice stays; this run only tests the LAN.
+	m.devices.funnel.on, m.devices.funnel.err = false, nil
 	if d := m.remoteDialog(); d != nil {
 		d.SetNotice(remotecontrol.Message{}, true)
 	}

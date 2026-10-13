@@ -1,3 +1,73 @@
+package mobile
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"image"
+	"image/color"
+	"image/jpeg"
+	"io"
+	"net/http"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+// syntheticScreen is a stand-in desktop: each capture paints a new frame
+// so tests can tell frames apart. It is not a measurement of real capture.
+type syntheticScreen struct {
+	calls  atomic.Int64
+	mu     sync.Mutex
+	width  int
+	height int
+	err    error
+	black  bool
+	delay  time.Duration
+}
+
+func (s *syntheticScreen) CaptureScreen(maxWidth int) (*image.RGBA, int, int, time.Time, error) {
+	n := s.calls.Add(1)
+	s.mu.Lock()
+	w, h, err, black, delay := s.width, s.height, s.err, s.black, s.delay
+	s.mu.Unlock()
+	if delay > 0 {
+		time.Sleep(delay)
+	}
+	if err != nil {
+		return nil, 0, 0, time.Now(), err
+	}
+	ow, oh := w, h
+	if ow > maxWidth {
+		oh = h * maxWidth / w
+		ow = maxWidth
+	}
+	img := image.NewRGBA(image.Rect(0, 0, ow, oh))
+	c := color.RGBA{R: uint8(40 + n%200), G: 90, B: 160, A: 255}
+	if black {
+		c = color.RGBA{A: 255}
+	}
+	for i := 0; i < len(img.Pix); i += 4 {
+		img.Pix[i], img.Pix[i+1], img.Pix[i+2], img.Pix[i+3] = c.R, c.G, c.B, c.A
+	}
+	return img, w, h, time.Now(), nil
+}
+
+func (s *syntheticScreen) set(f func(*syntheticScreen)) { s.mu.Lock(); f(s); s.mu.Unlock() }
+
+func newScreenGateway(t *testing.T, src ScreenSource) (*Gateway, *fakeBackend) {
+	t.Helper()
+	b := &fakeBackend{pending: map[string]bool{}, questions: map[string]bool{}, revision: "r1"}
+	g, err := Start(t.Context(), Options{StateDir: t.TempDir(), Listen: "127.0.0.1:0", Backend: b, Language: "tr", Screen: src})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = g.Close() })
+	return g, b
 }
 
 func enablePreviews(t *testing.T, g *Gateway, on bool) string {

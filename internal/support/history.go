@@ -20,19 +20,18 @@ import (
 // file contents: commands are reduced to their program name and argument
 // count, transfers to path, size and hash.
 type Event struct {
-	At          int64             `json:"at"`
-	SessionID   string            `json:"session_id"`
-	Role        string            `json:"role"`
-	Kind        string            `json:"kind"`
-	Device      string            `json:"device,omitempty"`
-	Peer        string            `json:"peer,omitempty"`
-	PeerDevice  string            `json:"peer_device,omitempty"`
-	Generation  uint64            `json:"generation,omitempty"`
-	OperationID string            `json:"operation_id,omitempty"`
-	State       string            `json:"state,omitempty"`
-	Effect      string            `json:"effect,omitempty"`
-	Detail      string            `json:"detail,omitempty"`
-	Fields      map[string]string `json:"fields,omitempty"`
+	State        string            `json:"state,omitempty"`
+	Effect       string            `json:"effect,omitempty"`
+	Detail       string            `json:"detail,omitempty"`
+	Fields       map[string]string `json:"fields,omitempty"`
+	TaskID       string            `json:"task_id,omitempty"`
+	AgentSession string            `json:"agent_session,omitempty"`
+	WorkflowID   string            `json:"workflow_id,omitempty"`
+	StepID       string            `json:"step_id,omitempty"`
+	StartedAt    int64             `json:"started_at,omitempty"`
+	EndedAt      int64             `json:"ended_at,omitempty"`
+	Dispatch     string            `json:"dispatch,omitempty"`
+	Verification string            `json:"verification,omitempty"`
 }
 
 // History appends events to one JSONL file per session.
@@ -56,7 +55,7 @@ func (h *History) Append(e Event) error {
 	if e.At == 0 {
 		e.At = h.now().UnixMilli()
 	}
-	e.Detail = redact(e.Detail)
+	e = sanitizeEvent(e)
 	data, err := json.Marshal(e)
 	if err != nil {
 		return err
@@ -73,6 +72,46 @@ func (h *History) Append(e Event) error {
 	defer f.Close()
 	_, err = f.Write(append(data, '\n'))
 	return err
+}
+
+func sanitizeEvent(e Event) Event {
+	e.Detail = redact(e.Detail)
+	if e.Fields != nil {
+		fields := make(map[string]string, len(e.Fields))
+		for key, value := range e.Fields {
+			fields[key] = redact(value)
+		}
+		e.Fields = fields
+	}
+	return e
+}
+
+// RecentEvents loads a bounded tail without retaining an entire long session.
+func (h *History) RecentEvents(sessionID string, n int) ([]Event, error) {
+	if h == nil || !sessionIDPattern.MatchString(sessionID) {
+		return nil, errors.New("invalid session id")
+	}
+	n = min(max(n, 1), 1000)
+	f, err := os.Open(filepath.Join(h.dir, sessionID+".jsonl"))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64<<10), 1<<20)
+	out := make([]Event, 0, n)
+	for sc.Scan() {
+		var e Event
+		if json.Unmarshal(sc.Bytes(), &e) != nil {
+			continue
+		}
+		if len(out) == n {
+			copy(out, out[1:])
+			out = out[:n-1]
+		}
+		out = append(out, sanitizeEvent(e))
+	}
+	return out, sc.Err()
 }
 
 // Events reads one session's history.

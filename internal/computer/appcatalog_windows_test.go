@@ -1,3 +1,18 @@
+//go:build windows
+
+package computer
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+// Discovery on the real computer is read-only: it reads the registry,
+// Start menu entries and window titles and launches nothing.
+func TestDiscoverAppsOnThisComputer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("reads the registry and Start menu")
 	}
 	b := &windowsBackend{}
 	entries, err := b.Apps().List(t.Context(), "", true)

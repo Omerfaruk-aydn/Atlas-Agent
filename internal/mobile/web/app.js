@@ -157,12 +157,75 @@
     }
   }
 
-  function fmtTime(sec) {
-    if (!sec) return "";
-    const d = new Date(sec * 1000);
-    return d.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
+    state.seq = Math.max(state.seq, d.seq || 0);
+    state.lastSync = Date.now();
+    const s = state.sessions.get(id);
+    const pp = (d.permissions || []).length, pq = (d.questions || []).length, pc = (d.credentials || []).length;
+    state.sessions.set(id, Object.assign(s || {}, d.session, { pending_permissions: pp, pending_questions: pq, pending_credentials: pc, paused: !!(d.workflow && d.workflow.paused) }));
+    for (const key of pendingKeys(d)) {
+      if (!state.seenPending.has(key)) { state.seenPending.add(key); state.pendingOpen = true; }
+    }
+    renderMessages(initial);
+    renderTaskChrome();
+  }
+  function scheduleReload() {
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(() => { if (state.current) loadTask(state.current).catch(() => {}); }, 150);
   }
 
+  const scroller = () => $("scroll");
+  function nearBottom() { const s = scroller(); return s.scrollHeight - s.scrollTop - s.clientHeight < 96; }
+  function toBottom() { const s = scroller(); s.scrollTop = s.scrollHeight; state.unseen = false; $("new-msgs").classList.add("hidden"); }
+
+  function renderMessages(forceBottom) {
+    const d = state.detail;
+    if (!d) return;
+    const s = scroller();
+    const stick = forceBottom || nearBottom();
+    const keep = s.scrollTop;
+    const before = $("messages").childElementCount;
+    const ol = $("messages");
+    ol.replaceChildren();
+    let lastDay = "";
+    let prevRole = "";
+    for (const m of d.messages || []) {
+      const hasText = m.text && m.text.trim();
+      const hasImages = Array.isArray(m.images) && m.images.length > 0;
+      if (m.role !== "user" && m.role !== "assistant" && !(m.role === "tool" && hasImages)) continue;
+      if (m.role === "assistant" && !hasText && !hasImages && !m.error) continue;
+      const when = m.created_at || 0;
+      const day = when ? dayKey(new Date(when * 1000)) : lastDay;
+      if (day !== lastDay && when) {
+        ol.append(el("li", "day", dayLabel(when) + ", " + fmtClock(when)));
+        lastDay = day;
+        prevRole = "";
+      }
+      ol.append(messageNode(m, prevRole === m.role && m.role === "assistant"));
+      prevRole = m.role;
+    }
+    renderActivity();
+    renderRunErrors();
+    if (stick) toBottom();
+    else {
+      s.scrollTop = keep;
+      if (ol.childElementCount > before) { state.unseen = true; $("new-msgs").classList.remove("hidden"); }
+    }
+  }
+  function messageNode(m, cont) {
+    const li = el("li", "msg " + (m.role === "tool" ? "assistant" : m.role) + (cont ? " cont" : ""));
+    li.dataset.id = m.id;
+    if (m.role === "user") {
+      const b = el("div", "bubble");
+      b.append(el("span", "sr-only", t("you") + ": "));
+      b.append(markdown(m.text || ""));
+      appendImages(b, m);
+      li.append(b);
+      return li;
+    }
+    const av = el("div", "avatar");
+    av.append(icon("mark"));
+    li.append(av);
+    li.append(el("div", "who msg-body", t("atlas")));
     const body = el("div", "msg-body");
     if (m.text && m.text.trim()) body.append(markdown(m.text));
     appendImages(body, m);

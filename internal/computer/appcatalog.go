@@ -1,3 +1,74 @@
+	Aliases      []string         `json:"aliases,omitempty"`
+	Launch       AppLauncher      `json:"launch"`
+	Sources      []string         `json:"sources"`
+	Scope        string           `json:"scope"`
+	Verified     bool             `json:"verified"`
+	Running      []AppWindow      `json:"running,omitempty"`
+	Capabilities []string         `json:"capabilities"`
+	Profiles     []BrowserProfile `json:"browser_profiles,omitempty"`
+	DiscoveredAt int64            `json:"discovered_at"`
+	// Generation is the catalog generation the entry was discovered in;
+	// it changes on every rediscovery and target change.
+	Generation uint64 `json:"generation"`
+}
+
+// AppDiscoverer is implemented by backends that can list installed apps.
+type AppDiscoverer interface {
+	DiscoverApps(ctx context.Context) ([]AppEntry, error)
+}
+
+// Catalog errors carry the stable codes the tools report.
+var (
+	ErrAppNotFound     = errors.New("app_not_found")
+	ErrAppAmbiguous    = errors.New("app_ambiguous")
+	ErrAppNotInstalled = errors.New("app_not_installed")
+	ErrProfileNotFound = errors.New("profile_not_found")
+	ErrProfileAmbig    = errors.New("profile_ambiguous")
+	ErrLaunchArgs      = errors.New("invalid_launch_args")
+)
+
+// AppCatalog caches discovery for a bounded time. Entries are re-verified
+// when they are used, so an uninstalled application is noticed even inside
+// the cache window.
+type AppCatalog struct {
+	mu         sync.Mutex
+	discover   func(context.Context) ([]AppEntry, error)
+	ttl        time.Duration
+	now        func() time.Time
+	entries    []AppEntry
+	at         time.Time
+	generation uint64
+	// exists checks that a launcher path is still a regular file.
+	exists func(string) bool
+}
+
+// NewAppCatalog wraps a discovery function; ttl <= 0 means 10 minutes.
+func NewAppCatalog(discover func(context.Context) ([]AppEntry, error), ttl time.Duration) *AppCatalog {
+	if ttl <= 0 {
+		ttl = 10 * time.Minute
+	}
+	return &AppCatalog{discover: discover, ttl: ttl, now: time.Now, exists: regularFile}
+}
+
+func regularFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
+}
+
+// Invalidate drops the cache, for example after an installation, an
+// uninstallation or a change of target computer.
+func (c *AppCatalog) Invalidate() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries, c.at = nil, time.Time{}
+}
+
+// Generation is the current discovery generation (0 before the first).
+func (c *AppCatalog) Generation() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.generation
+}
 
 func (c *AppCatalog) load(ctx context.Context, refresh bool) ([]AppEntry, error) {
 	c.mu.Lock()

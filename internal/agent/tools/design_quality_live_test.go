@@ -1,3 +1,74 @@
+func TestDesignCorruptBackupsDoNotOverwriteWithinTheSameSecond(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	file := filepath.Join(root, filepath.FromSlash(designSystemPath))
+	require.NoError(t, os.MkdirAll(filepath.Dir(file), 0o700))
+	now := func() time.Time { return time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC) }
+	sys := validTestDesign()
+	var paths []string
+	for _, corrupt := range []string{"first broken", "second broken"} {
+		require.NoError(t, os.WriteFile(file, []byte(corrupt), 0o600))
+		result, err := runDesignSystem(t.Context(), root, DesignSystemParams{Action: "set", System: &sys}, now)
+		require.NoError(t, err)
+		path := result.(map[string]any)["corrupt_backup"].(string)
+		paths = append(paths, path)
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(path)))
+		require.NoError(t, err)
+		require.Equal(t, corrupt, string(data))
+	}
+	require.NotEqual(t, paths[0], paths[1])
+	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(paths[0])))
+	require.NoError(t, err)
+	require.Equal(t, "first broken", string(data))
+}
+
+type designEntryContext struct {
+	context.Context
+	first   sync.Once
+	entered chan struct{}
+}
+
+func (c *designEntryContext) Err() error {
+	err := c.Context.Err()
+	c.first.Do(func() { close(c.entered) })
+	return err
+}
+
+func TestDesignCanceledWhileWaitingForStoreDoesNotWrite(t *testing.T) {
+	root := t.TempDir()
+	key, err := filepath.EvalSymlinks(root)
+	require.NoError(t, err)
+	sum := sha256.Sum256([]byte(strings.ToLower(key)))
+	mu := &designStoreLocks[int(sum[0])%len(designStoreLocks)]
+	mu.Lock()
+	parent, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	ctx := &designEntryContext{Context: parent, entered: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() {
+		sys := validTestDesign()
+		_, err := runDesignSystem(ctx, root, DesignSystemParams{Action: "set", System: &sys}, time.Now)
+		done <- err
+	}()
+	<-ctx.entered
+	cancel()
+	mu.Unlock()
+	require.ErrorIs(t, <-done, context.Canceled)
+	require.NoFileExists(t, filepath.Join(root, filepath.FromSlash(designSystemPath)))
+}
+
+func TestLiveDesignAuditReportsRealLayoutContrastAndTouchDefects(t *testing.T) {
+	l := newLiveTool(t)
+	page := `<!doctype html><style>body{background:white;color:#bbb;font:16px Arial;margin:0}button{width:20px;height:20px}p{width:700px}</style><p>Unusable layout</p><button></button>`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(page)) }))
+	t.Cleanup(server.Close)
+	deps := DesignServices{Invoke: func(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return l.tool.Run(ctx, call)
+	}, Permissions: &mockPermissionService{}}
+	r := runDesignTest(t, NewDesignSystemTool(l.root, deps), l.ctx, "audit-bad-live", DesignSystemParams{Action: "audit", URL: server.URL, Width: 390, Height: 844})
+	require.True(t, r.IsError, r.Content)
+	var out struct {
+		Audit designAudit `json:"audit"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(r.Content), &out))
 	require.Positive(t, out.Audit.Overflow)

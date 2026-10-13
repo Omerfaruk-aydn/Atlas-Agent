@@ -1,3 +1,74 @@
+	}
+	if r.PollInterval <= 0 {
+		r.PollInterval = 3 * time.Second
+	}
+	if r.Timeout <= 0 {
+		r.Timeout = 120 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, r.Timeout)
+	defer cancel()
+
+	switch r.Provider {
+	case Remote2Captcha:
+		return r.solve2Captcha(ctx, ch, image)
+	case RemoteCapSolver, RemoteAntiCaptcha:
+		return r.solveTaskAPI(ctx, ch, image)
+	default:
+		return Solution{}, fmt.Errorf("captcha: unknown remote provider %q", r.Provider)
+	}
+}
+
+// --- 2captcha ---------------------------------------------------------
+
+func (r *RemoteSolver) solve2Captcha(ctx context.Context, ch Challenge, image []byte) (Solution, error) {
+	form := url.Values{}
+	form.Set("key", r.APIKey)
+	form.Set("json", "1")
+	if r.SoftID != "" {
+		form.Set("soft_id", r.SoftID)
+	}
+	switch ch.Kind {
+	case KindImageText, KindMath:
+		if len(image) == 0 {
+			return Solution{}, fmt.Errorf("captcha: remote image task needs an image")
+		}
+		form.Set("method", "base64")
+		form.Set("body", base64.StdEncoding.EncodeToString(image))
+		if ch.Question != "" {
+			form.Set("textinstructions", ch.Question)
+		}
+	case KindRecaptchaV2:
+		form.Set("method", "userrecaptcha")
+		form.Set("googlekey", ch.SiteKey)
+		form.Set("pageurl", ch.PageURL)
+	case KindRecaptchaV3:
+		form.Set("method", "userrecaptcha")
+		form.Set("googlekey", ch.SiteKey)
+		form.Set("pageurl", ch.PageURL)
+		form.Set("version", "v3")
+		form.Set("action", firstNonEmpty(ch.Action, "verify"))
+		form.Set("min_score", "0.3")
+	case KindHCaptcha:
+		form.Set("method", "hcaptcha")
+		form.Set("sitekey", ch.SiteKey)
+		form.Set("pageurl", ch.PageURL)
+	case KindTurnstile:
+		form.Set("method", "turnstile")
+		form.Set("sitekey", ch.SiteKey)
+		form.Set("pageurl", ch.PageURL)
+	default:
+		return Solution{}, fmt.Errorf("captcha: 2captcha does not support kind %s", ch.Kind)
+	}
+
+	submit, err := r.postForm(ctx, "https://2captcha.com/in.php", form)
+	if err != nil {
+		return Solution{}, err
+	}
+	if submit.Request == "" {
+		return Solution{}, fmt.Errorf("captcha: 2captcha submit rejected: %s", submit.ErrorText)
+	}
+	for {
+		select {
 		case <-ctx.Done():
 			return Solution{}, ctx.Err()
 		case <-time.After(r.PollInterval):

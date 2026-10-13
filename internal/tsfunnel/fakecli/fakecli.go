@@ -1,3 +1,74 @@
+		st["Self"] = map[string]any{"DNSName": ""}
+		st["CurrentTailnet"] = nil
+	}
+	b, _ := json.Marshal(st)
+	return b
+}
+
+func (d *Daemon) serveJSONLocked() []byte {
+	if d.ServeRaw != nil {
+		return d.ServeRaw
+	}
+	if len(d.background) == 0 && len(d.foreground) == 0 {
+		return []byte("null\n")
+	}
+	cfg := maps.Clone(d.background)
+	if len(d.foreground) > 0 {
+		fg := map[string]any{}
+		for k, v := range d.foreground {
+			fg[k] = v
+		}
+		cfg["Foreground"] = fg
+	}
+	b, _ := json.MarshalIndent(cfg, "", "  ")
+	return b
+}
+
+func entry(host string, port uint16, target string) map[string]any {
+	hp := net.JoinHostPort(host, strconv.Itoa(int(port)))
+	return map[string]any{
+		"TCP":         map[string]any{strconv.Itoa(int(port)): map[string]any{"HTTPS": true}},
+		"Web":         map[string]any{hp: map[string]any{"Handlers": map[string]any{"/": map[string]any{"Proxy": target}}}},
+		"AllowFunnel": map[string]any{hp: true},
+	}
+}
+
+// portUsedLocked mirrors tailscaled: a new foreground listener must use
+// a port no background or foreground config uses.
+func (d *Daemon) portUsedLocked(port string) bool {
+	used := func(cfg map[string]any) bool {
+		tcp, _ := cfg["TCP"].(map[string]any)
+		_, ok := tcp[port]
+		return ok
+	}
+	if used(d.background) {
+		return true
+	}
+	for _, fg := range d.foreground {
+		if used(fg) {
+			return true
+		}
+	}
+	return false
+}
+
+// Proc is a fake long-lived CLI process.
+type Proc struct {
+	done   chan struct{}
+	once   sync.Once
+	mu     sync.Mutex
+	code   int
+	Args   []string
+	onStop func()
+}
+
+func newProc(args []string) *Proc { return &Proc{done: make(chan struct{}), code: -1, Args: args} }
+
+// Identity implements tsfunnel.Process; fakes never match a real process.
+func (p *Proc) Identity() procown.Identity { return procown.Identity{} }
+
+// Done implements tsfunnel.Process.
+func (p *Proc) Done() <-chan struct{} { return p.done }
 
 // Result implements tsfunnel.Process.
 func (p *Proc) Result() (int, error) {

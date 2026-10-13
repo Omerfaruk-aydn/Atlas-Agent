@@ -1,3 +1,74 @@
+
+// DesignViewport is a frame size screens are designed for.
+type DesignViewport struct {
+	Name   string `json:"name"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
+// DesignSystem is the stored design memory.
+type DesignSystem struct {
+	Product    string            `json:"product"`
+	Platform   string            `json:"platform" enum:"ios,android,mobile,tablet,web,desktop,tui"`
+	Audience   string            `json:"audience,omitempty"`
+	Direction  DesignDirection   `json:"direction"`
+	Colors     map[string]string `json:"colors" description:"Token name to #RRGGBB."`
+	Pairs      []DesignColorPair `json:"pairs" description:"Every text/icon color on every background it is used on."`
+	FontFamily string            `json:"font_family,omitempty"`
+	TypeScale  []int             `json:"type_scale,omitempty" description:"Font sizes in px/pt, ascending."`
+	Spacing    []int             `json:"spacing,omitempty" description:"Spacing scale, ascending."`
+	Radius     []int             `json:"radius,omitempty"`
+	SafeArea   *DesignSafeArea   `json:"safe_area,omitempty" description:"Required for ios/android/mobile/tablet."`
+	Viewports  []DesignViewport  `json:"viewports,omitempty"`
+	MinTouch   int               `json:"min_touch_target,omitempty" description:"Smallest touch target in px/pt (44 iOS, 48 Android)."`
+	Elevation  []string          `json:"elevation,omitempty" description:"Elevation/shadow levels, lowest first."`
+	Components []DesignComponent `json:"components,omitempty" description:"Components and the states each one has."`
+	IconStyle  string            `json:"icon_style,omitempty" description:"Icon approach, e.g. outlined 24px with a 1.5px stroke."`
+	// Accessibility is the target, e.g. "WCAG 2.2 AA".
+	Accessibility string `json:"accessibility,omitempty" description:"Accessibility target, e.g. WCAG 2.2 AA."`
+	// References are ids of the real artifacts this system is bound to
+	// (a Figma file key, a Stitch project or screen id), copied from the
+	// service, never invented.
+	References  []string `json:"references,omitempty" description:"Ids or links of existing Figma/Stitch files, pages or token sets this system is bound to, exactly as the service reported them."`
+	Preferences []string `json:"preferences,omitempty" description:"What the user explicitly asked for."`
+	Rejected    []string `json:"rejected,omitempty" description:"Approaches the user explicitly rejected; never reintroduce them."`
+	UpdatedAt   string   `json:"updated_at,omitempty"`
+}
+
+// DesignComponent is a component and its states.
+type DesignComponent struct {
+	Name   string   `json:"name"`
+	States []string `json:"states,omitempty" description:"e.g. default, pressed, disabled, focused, error."`
+}
+
+type DesignSystemParams struct {
+	Action          string                `json:"action" enum:"get,set,approve,reset,history,check,package,directions,audit" description:"get/set/approve/reset/history manage design memory. check measures declared tokens. directions renders real alternative previews of one screen. audit measures an actual DOM. package assembles source, screens and evidence."`
+	Note            string                `json:"note,omitempty" description:"approve/reset: what the user said, e.g. approved the dark direction."`
+	System          *DesignSystem         `json:"system,omitempty" description:"set: the complete design system."`
+	Screens         []string              `json:"screens,omitempty" description:"package: image files of the finished screens, relative to the working directory, in flow order."`
+	Name            string                `json:"name,omitempty" description:"package: folder name under design-delivery/, e.g. remote-control-mobile-v1."`
+	OpenQuestions   []string              `json:"open_questions,omitempty" description:"package: anything not verified or still undecided, stated plainly."`
+	ExpectedVersion int                   `json:"expected_version,omitempty" description:"approve: candidate version returned by get/set; stale versions are refused."`
+	Directions      []DesignSystem        `json:"directions,omitempty" description:"directions: 2-3 complete visual systems for the same platform and viewport."`
+	Brief           string                `json:"brief,omitempty" description:"directions: actual representative screen content, shared by all alternatives."`
+	URL             string                `json:"url,omitempty" description:"audit: actual page URL."`
+	Width           int                   `json:"width,omitempty"`
+	Height          int                   `json:"height,omitempty"`
+	RequiredScreens []string              `json:"required_screens,omitempty" description:"package: required source image paths; completeness is checked."`
+	SourceFiles     []string              `json:"source_files,omitempty" description:"package: editable local design source files, relative to the project."`
+	SourceURLs      []string              `json:"source_urls,omitempty" description:"package: original HTTPS source/prototype URLs; links are not proof of execution."`
+	AuditIDs        []string              `json:"audit_ids,omitempty" description:"package: ids returned by actual adapter-run design audits."`
+	PrototypeSteps  []DesignPrototypeStep `json:"prototype_steps,omitempty" description:"audit: bounded real prototype interactions, click or key only."`
+	Assertions      []UIAssertion         `json:"assertions,omitempty" description:"audit: post-interaction DOM visibility/text/focus requirements."`
+}
+
+// DesignCheck is one measured or verified rule.
+type DesignCheck struct {
+	Rule     string  `json:"rule"`
+	Passed   bool    `json:"passed"`
+	Measured string  `json:"measured,omitempty"`
+	Required string  `json:"required,omitempty"`
+	Ratio    float64 `json:"-"`
 }
 
 type designReport struct {

@@ -350,6 +350,77 @@
     renderMessages(d.messages || []);
   }
 
+          if (buf.length < 32 + len) break;
+          const kind = buf[4];
+          const seq = Number(dv.getBigUint64(8));
+          const captured = Number(dv.getBigInt64(16)) / 1000;
+          const w = dv.getUint16(24), h = dv.getUint16(26);
+          const payload = buf.slice(32, 32 + len);
+          buf = buf.slice(32 + len);
+          screen.metrics.bytes += 32 + len;
+          if (kind === 1) onScreenFrame(seq, captured, w, h, payload);
+          else if (kind === 2) onScreenStatus(payload);
+        }
+      }
+      throw new Error("stream ended");
+    } catch (e) {
+      if (screen.ctrl !== ctrl) return;
+      screen.ctrl = null;
+      if (ctrl.signal.aborted) return;
+      if (e.final) { screen.conn = "error"; renderScreenChrome(); return; }
+      scheduleScreenRetry();
+    }
+  }
+  function concatBytes(a, b) {
+    if (!a.length) return b;
+    const out = new Uint8Array(a.length + b.length);
+    out.set(a, 0);
+    out.set(b, a.length);
+    return out;
+  }
+  function scheduleScreenRetry() {
+    if (!screen.open) return;
+    if (screen.retries >= 8) { screen.gaveUp = true; screen.conn = "error"; screen.message = screen.message || t("scr_gave_up"); renderScreenChrome(); return; }
+    const delay = Math.min(15000, 800 * 2 ** screen.retries) + Math.floor(Math.random() * 400);
+    screen.retries++;
+    screen.conn = "retrying";
+    screen.retryAt = Date.now() + delay;
+    renderScreenChrome();
+    screen.retryTimer = setTimeout(() => { screen.retryTimer = null; screenConnect(); }, delay);
+  }
+  function onScreenStatus(payload) {
+    let st = null;
+    try { st = JSON.parse(new TextDecoder().decode(payload)); } catch (_) { return; }
+    screen.lastStats = st;
+    if (st.state === "revoked") { screen.open = false; screenDisconnect("stopped"); startPairing("unpaired"); return; }
+    if (st.state === "previews_off") { screen.gaveUp = true; screen.message = t("scr_off"); screenDisconnect("error"); return; }
+    if (st.state === "blank") screen.message = t("scr_blank");
+    else if (st.state === "capture_error") screen.message = t("scr_capture_error", st.message || "");
+    else screen.message = "";
+    if (st.quality_change) $("screen-note").textContent = t("scr_quality", st.quality_change);
+    renderScreenChrome();
+  }
+  function onScreenFrame(seq, captured, w, h, payload) {
+    // Late or replayed frames never paint over a newer picture.
+    if (seq <= screen.lastSeq) return;
+    screen.lastSeq = seq;
+    screen.retries = 0;
+    screen.conn = "live";
+    screen.pending = { seq, captured, w, h, payload };
+    if (!screen.decoding) decodeNext();
+  }
+  async function decodeNext() {
+    const f = screen.pending;
+    if (!f) return;
+    screen.pending = null;
+    screen.decoding = true;
+    try {
+      const blob = new Blob([f.payload], { type: "image/jpeg" });
+      let img;
+      if (window.createImageBitmap) img = await createImageBitmap(blob);
+      else img = await new Promise((res, rej) => { const i = new Image(); const u = URL.createObjectURL(blob); i.onload = () => { URL.revokeObjectURL(u); res(i); }; i.onerror = () => { URL.revokeObjectURL(u); rej(new Error("decode")); }; i.src = u; });
+      if (screen.open && f.seq > (screen.drawnSeq || 0)) drawScreen(img, f);
+      if (img.close) img.close();
     } catch (_) {
       // A corrupt frame is skipped; the next one replaces it.
     } finally {

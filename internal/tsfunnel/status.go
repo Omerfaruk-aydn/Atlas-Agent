@@ -1,3 +1,73 @@
+		r.Tailnet = st.CurrentTailnet.Name
+		r.MagicDNS = st.CurrentTailnet.MagicDNSEnabled
+	}
+	host := strings.ToLower(strings.TrimSuffix(st.Self.DNSName, "."))
+	if !r.MagicDNS || host == "" {
+		r.Problem = ProblemNeedsMagicDNS
+		return r
+	}
+	if err := checkFunnelHost(host); err != nil {
+		r.Problem, r.Detail = ProblemNeedsMagicDNS, err.Error()
+		return r
+	}
+	r.Host = host
+	r.HTTPS = st.Self.hasCap(capHTTPS)
+	r.Funnel = st.Self.hasCap(capFunnel)
+	r.FunnelPorts = slices.Clone(FunnelPorts)
+	if r.Funnel {
+		if ports, ok := funnelPorts(st.Self); ok {
+			r.FunnelPorts = ports
+		}
+		if len(r.FunnelPorts) == 0 {
+			r.Problem, r.Detail = ProblemNoFunnelPort, "the tailnet policy allows none of 443, 8443 or 10000"
+		}
+	}
+	return r
+}
+
+// funnelPorts reads the funnel-ports capability, whose ports travel in the
+// key's query string (https://tailscale.com/cap/funnel-ports?ports=443,8443).
+func funnelPorts(self *peerJSON) ([]uint16, bool) {
+	for k := range self.CapMap {
+		if !strings.HasPrefix(k, capFunnelPorts+"?") {
+			continue
+		}
+		u, err := url.Parse(k)
+		if err != nil {
+			return nil, true
+		}
+		allowed := map[uint16]bool{}
+		for part := range strings.SplitSeq(u.Query().Get("ports"), ",") {
+			lo, hi, isRange := strings.Cut(strings.TrimSpace(part), "-")
+			if !isRange {
+				hi = lo
+			}
+			a, err1 := strconv.ParseUint(lo, 10, 16)
+			b, err2 := strconv.ParseUint(hi, 10, 16)
+			if err1 != nil || err2 != nil || a > b {
+				continue
+			}
+			for _, p := range FunnelPorts {
+				if uint64(p) >= a && uint64(p) <= b {
+					allowed[p] = true
+				}
+			}
+		}
+		var out []uint16
+		for _, p := range FunnelPorts {
+			if allowed[p] {
+				out = append(out, p)
+			}
+		}
+		return out, true
+	}
+	return nil, false
+}
+
+// checkFunnelHost accepts only a MagicDNS name in a ts.net tailnet, the
+// only domain Funnel serves.
+func checkFunnelHost(h string) error {
+	if !strings.HasSuffix(h, ".ts.net") || len(h) > 253 {
 		return fmt.Errorf("device name %q is not a ts.net MagicDNS name", Sanitize(h))
 	}
 	for label := range strings.SplitSeq(h, ".") {

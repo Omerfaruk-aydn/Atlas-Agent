@@ -1,3 +1,74 @@
+  out.rect = rect(turnstileIframe);
+  return out;
+}
+
+const checkboxes = [...document.querySelectorAll('input[type="checkbox"]')].filter(vis);
+const robotBox = checkboxes.find(e => {
+  const label = ((e.getAttribute("aria-label") || "") + " " + (e.closest("label") && e.closest("label").innerText || "")).toLowerCase();
+  return label.includes("robot") || label.includes("robot değilim") || label.includes("not a robot");
+});
+if (robotBox && !recaptchaIframe && !hcaptchaIframe && !turnstileIframe) {
+  out.kind = "checkbox";
+  out.answer_selector = sel(robotBox);
+  out.confidence = 0.85;
+  out.rect = rect(robotBox);
+  return out;
+}
+
+const captchaWords = ["güvenlik resmi", "guvenlik resmi", "security image", "security picture", "doğrulama kodu", "verification code", "captcha", "güvenlik kodu", "guvenlik kodu", "emniyet kodu"];
+const mathWord = lower.includes("hesaplayın") || lower.includes("hesapla") || lower.includes("solve") || lower.match(/\d+\s*[+\-x×÷*/]\s*\d+/);
+const questionWord = captchaWords.some(w => lower.includes(w));
+
+// Detect click-sequence, rotate and slider challenge widgets before the
+// generic image-text path so the right interaction type is reported.
+const clickWords = lower.includes("select in this order") || lower.includes("tıkla") || lower.includes("click the") || lower.includes("sırayla") || lower.includes("sirayla") || lower.includes("doğru sırayla") || lower.includes("dogru sirayla") || lower.includes("click in order") || lower.includes("seçin") || lower.includes("secin");
+const rotateWords = lower.includes("döndür") || lower.includes("dondur") || lower.includes("rotate") || lower.includes("turn the") || lower.includes("correct orientation") || lower.includes("doğru yön") || lower.includes("dogru yon") || lower.includes("çevir") || lower.includes("cevir");
+const sliderWords = lower.includes("slide") || lower.includes("sürükle") || lower.includes("surukle") || lower.includes("drag") || lower.includes("puzzle") || lower.includes("yapboz") || lower.includes("kaydır") || lower.includes("kaydir") || lower.includes("slide to complete") || lower.includes("tamamla");
+// GeeTest: detect by widget class presence even before it fully loads.
+// The radar/click-to-verify state also implies a slider puzzle underneath.
+const geetestEl = document.querySelector('.geetest_slider_button, .geetest_canvas_slice, .geetest_canvas_bg, .geetest_widget, .geetest_radar_tip, .geetest_radar, [class*="geetest_canvas"], [class*="geetest_slider"], [class*="geetest"]');
+const geetestActive = document.querySelector('.geetest_canvas_slice, .geetest_canvas_bg, .geetest_slider_button');
+const rotateEl = document.querySelector('img[class*="rotate"], [class*="rotate-captcha"], [class*="image-rotate"], canvas[class*="rotate"], [class*="rotate_btn"], [class*="rotate-btn"], [class*="rotating"]');
+const rotateBtns = document.querySelectorAll('[class*="rotate_left"], [class*="rotate_right"], [class*="rotate-left"], [class*="rotate-right"], button[class*="rotate"]');
+const hasRotateBtns = rotateBtns.length >= 2;
+const clickCaptchaEl = document.querySelector('[class*="click-captcha"], [class*="clickcaptcha"], [class*="icon-captcha"], [class*="clicky"], [class*="click_verify"], [class*="keycaptcha_widget"], img[class*="click"]');
+
+// KeyCAPTCHA has its own widget container that may render empty; detect
+// it explicitly so it is not misclassified as rotate or click.
+const keycaptchaEl = document.querySelector('[class*="keycaptcha"], [id*="keycaptcha"], iframe[src*="keycaptcha"]');
+if (keycaptchaEl) {
+  out.kind = "keycaptcha";
+  out.confidence = 0.85;
+  out.rect = rect(keycaptchaEl);
+  out.question = "KeyCAPTCHA widget: drag the piece or click the arrow";
+  return out;
+}
+// GeeTest detection: always classify as slider when any GeeTest widget is
+// present. Even the initial "Click to verify" radar state leads to a slider
+// puzzle after the user clicks it.
+if (geetestEl) {
+  out.kind = "slider";
+  out.slider_selector = sel(geetestActive || geetestEl);
+  out.confidence = geetestActive ? 0.95 : 0.85;
+  out.rect = rect(geetestActive || geetestEl);
+  out.question = "GeeTest slider puzzle: click the widget to open it, then drag the slider handle to fill the gap";
+  // Also grab the puzzle background image selector for gap detection.
+  const bg = document.querySelector('.geetest_canvas_bg, canvas[class*="geetest_canvas_bg"], .geetest_canvas_slice');
+  if (bg) out.image_selector = sel(bg);
+  return out;
+}
+if ((rotateEl || hasRotateBtns) && (rotateWords || hasRotateBtns || document.querySelector('[class*="rotate"]'))) {
+  out.kind = "rotate";
+  out.image_selector = sel(rotateEl);
+  out.slider_selector = sel(rotateEl || rotateBtns[0]);
+  out.confidence = 0.9;
+  out.rect = rect(rotateEl || rotateBtns[0]);
+  out.question = "rotate the image to its correct upright orientation";
+  return out;
+}
+if (clickCaptchaEl && (clickWords || document.querySelector('[class*="clickcaptcha"], [class*="click-captcha"]'))) {
+  out.kind = "click";
+  out.image_selector = sel(clickCaptchaEl);
   out.click_target_selector = sel(clickCaptchaEl);
   out.confidence = 0.85;
   out.rect = rect(clickCaptchaEl);

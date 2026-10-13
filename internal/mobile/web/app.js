@@ -272,6 +272,77 @@
     }
   }
 
+    const target = el("div", "detail-target");
+    const value = kind === "command" ? p.path : p.file_path || p.path;
+    if (value || kind === "command") {
+      target.append(icon(kind === "command" ? "terminal" : kind === "web" ? "globe" : kind === "file" ? "file" : "shield"));
+      const txt = el("div");
+      txt.className = "target-text";
+      if (kind === "command") {
+        txt.append(el("div", "label", t("target_command")));
+        if (p.command) txt.append(el("pre", "cmd", p.command));
+        if (p.path) txt.append(el("div", "label", t("target_dir")), el("div", "value", p.path));
+      } else {
+        txt.append(el("div", "label", kind === "file" ? t("target_file") : t("target")), el("div", "value", value));
+      }
+      target.append(txt);
+      card.append(target);
+      card.append(el("hr"));
+    }
+    card.append(el("p", "muted small", t("tool_action", p.tool + (p.action ? " · " + p.action : ""))));
+    card.append(el("p", "scope", t("scope_note")));
+    if (p.diff) {
+      const toggle = button("link-btn");
+      const label = el("span", "", t("show_changes"));
+      toggle.append(label);
+      if (p.additions !== undefined) toggle.append(el("span", "muted small", t("changes_count", p.additions || 0, p.removals || 0)));
+      toggle.append(icon("down"));
+      toggle.setAttribute("aria-expanded", "false");
+      const pre = el("pre", "diff hidden");
+      pre.tabIndex = 0;
+      pre.id = "perm-diff";
+      toggle.setAttribute("aria-controls", "perm-diff");
+      for (const line of p.diff.split("\n")) {
+        if (line.startsWith("---") || line.startsWith("+++")) continue;
+        pre.append(el("span", line.startsWith("+") ? "add" : line.startsWith("-") ? "del" : line.startsWith("@@") ? "hunk" : "", line || " "));
+      }
+      toggle.addEventListener("click", () => {
+        const now = pre.classList.contains("hidden");
+        pre.classList.toggle("hidden", !now);
+        label.textContent = now ? t("hide_changes") : t("show_changes");
+        toggle.setAttribute("aria-expanded", String(now));
+      });
+      card.append(toggle, pre);
+    }
+    wrap.append(card);
+    const actions = el("div", "actions");
+    const result = el("p", "form-error result hidden");
+    result.setAttribute("role", "alert");
+    const online = state.conn === "connected";
+    const buttons = [];
+    for (const [decision, cls] of [["allow", "primary"], ["allow_session", "secondary"], ["deny", "secondary"]]) {
+      const b = button("btn block " + cls, t(decision));
+      b.dataset.decision = decision;
+      b.disabled = !online;
+      b.addEventListener("click", () => answerPermission(p, decision, b, buttons, result));
+      buttons.push(b);
+      actions.append(b);
+    }
+    wrap.append(actions, result);
+    wrap.append(el("p", "pending-foot", online ? t("pending_foot") : t("answer_offline")));
+    return wrap;
+  }
+  async function answerPermission(p, decision, b, buttons, result) {
+    if (state.answering || state.conn !== "connected") return;
+    state.answering = true;
+    buttons.forEach((x) => { x.disabled = true; });
+    b.classList.add("busy");
+    result.classList.add("hidden");
+    try {
+      await act("/api/permissions/" + encodeURIComponent(p.id), { decision, session_id: p.session_id, tool_call_id: p.tool_call_id });
+      dropPending("p", p.id);
+      toast(decision === "deny" ? t("perm_denied") : t("perm_allowed"));
+    } catch (e) {
       if (isStale(e)) {
         dropPending("p", p.id);
         toast(t("stale"));

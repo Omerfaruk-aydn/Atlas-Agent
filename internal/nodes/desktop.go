@@ -260,16 +260,29 @@ func (s *Server) handleAutomation(w http.ResponseWriter, r *http.Request) {
 // LaunchRequest starts a GUI program in the node's desktop session.
 type LaunchRequest struct {
 	OperationID string   `json:"operation_id"`
-	Argv        []string `json:"argv"`
+	entry, err := launcher.Apps().Resolve(ctx, req.App)
+	if err == nil {
+		var plan computer.LaunchPlan
+		if plan, err = computer.PlanLaunch(entry, req.Args, req.Profile); err == nil {
+			argv := plan.Argv
+			if entry.Launch.Method == computer.LaunchAppsFolder {
+				argv = append([]string{filepath.Join(os.Getenv("WINDIR"), "explorer.exe")}, argv[1:]...)
+			}
+			return argv, &plan, nil
+		}
+	}
+	code := "app_not_found"
+	for _, c := range []error{computer.ErrAppAmbiguous, computer.ErrAppNotInstalled, computer.ErrProfileNotFound, computer.ErrProfileAmbig, computer.ErrLaunchArgs} {
+		if errors.Is(err, c) {
+			code = c.Error()
+		}
+	}
+	return nil, nil, &APIError{Code: code, Message: err.Error(), Effect: "none"}
 }
 
 func (s *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 	var req LaunchRequest
 	if !decode(w, r, &req) {
-		return
-	}
-	if len(req.Argv) == 0 || req.Argv[0] == "" || len(req.Argv) > 64 {
-		writeError(w, http.StatusBadRequest, "invalid_request", "argv must contain 1-64 literal arguments", false, "none")
 		return
 	}
 	g := grantFrom(r)
@@ -280,13 +293,20 @@ func (s *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, replay)
 		return
 	}
+	argv, plan, apiErr := s.resolveLaunch(r.Context(), req)
+	if apiErr != nil {
+		writeJSON(w, http.StatusBadRequest, apiErr)
+		return
+	}
+	// The policy sees the resolved program, so a catalog launch needs the
+	// same capabilities as the literal command it becomes.
 	if policy, ok := s.opts.Access.(ExecPolicy); ok {
-		if apiErr := policy.CheckExec(g, "launch", req.Argv); apiErr != nil {
+		if apiErr := policy.CheckExec(g, "launch", argv); apiErr != nil {
 			writeJSON(w, http.StatusForbidden, apiErr)
 			return
 		}
 	}
-	op, existing, err := s.begin(r, Operation{ID: req.OperationID, Kind: "desktop_launch", RequestHash: RequestHash(req), Argv: req.Argv})
+	op, existing, err := s.begin(r, Operation{ID: req.OperationID, Kind: "desktop_launch", RequestHash: RequestHash(req), Argv: argv})
 	if err != nil {
 		beginError(w, err)
 		return
@@ -296,7 +316,7 @@ func (s *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dir, _ := s.resolveDir(g, "")
-	proc, lerr := procown.Start(procown.Spec{Argv: req.Argv, Dir: dir, Visible: true})
+	proc, lerr := procown.Start(procown.Spec{Argv: argv, Dir: dir, Visible: true})
 	final, ferr := s.finish(g, op.ID, func(o *Operation) {
 		if lerr != nil {
 			o.State, o.Effect, o.Error = taskstate.Failed, "none", lerr.Error()
@@ -304,6 +324,12 @@ func (s *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 		}
 		o.State, o.Effect = taskstate.Completed, "applied"
 		o.Stdout = fmt.Sprintf("pid=%d created_at=%d", proc.Identity.PID, proc.Identity.CreatedAt)
+		if plan != nil {
+			o.Stdout += fmt.Sprintf(" app_id=%s", plan.Entry.ID)
+			if plan.Profile != nil {
+				o.Stdout += fmt.Sprintf(" profile=%q", plan.Profile.Directory)
+			}
+		}
 	})
 	if ferr != nil {
 		writeError(w, http.StatusInternalServerError, "persist_failed", ferr.Error(), true, "unknown")

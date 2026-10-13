@@ -252,6 +252,13 @@ func (c *Client) Observe(ctx context.Context, image bool) (DesktopObservation, e
 	return out, err
 }
 
+// Preview captures a human-view frame without invalidating input observations.
+func (c *Client) Preview(ctx context.Context) (DesktopObservation, error) {
+	var out DesktopObservation
+	err := c.call(ctx, http.MethodGet, "/v1/node/desktop/preview", nil, nil, &out)
+	return out, err
+}
+
 // Input sends one observation-bound input action.
 func (c *Client) Input(ctx context.Context, in DesktopInput) (Operation, error) {
 	var op Operation
@@ -272,8 +279,14 @@ func (c *Client) Automation(ctx context.Context, req AutomationRequest) (json.Ra
 
 // Launch starts a GUI program on the node desktop.
 func (c *Client) Launch(ctx context.Context, operationID string, argv []string) (Operation, error) {
+	return c.LaunchApp(ctx, LaunchRequest{OperationID: operationID, Argv: argv})
+}
+
+// LaunchApp starts a program by literal argv or by the node's application
+// catalog (App, Args, Profile).
+func (c *Client) LaunchApp(ctx context.Context, req LaunchRequest) (Operation, error) {
 	var op Operation
-	err := c.call(ctx, http.MethodPost, "/v1/node/desktop/launch", jsonBody(LaunchRequest{OperationID: operationID, Argv: argv}), nil, &op)
+	err := c.call(ctx, http.MethodPost, "/v1/node/desktop/launch", jsonBody(req), nil, &op)
 	return op, err
 }
 

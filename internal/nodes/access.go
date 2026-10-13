@@ -2,11 +2,9 @@ package nodes
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"slices"
 	"sort"
-	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/transfer"
 )
@@ -121,17 +119,17 @@ func sortedRoots(roots []Root) []Root {
 
 // resolveFor maps a request path onto the grant's roots, or onto the node
 // root for a grant without roots. It returns the absolute path and the root
-// it belongs to. Traversal, absolute paths and symlink escapes are refused
-// by transfer.Resolve against the selected root.
+// it belongs to. Paths may be label-relative or absolute inside a root (see
+// matchRoot). Traversal and symlink escapes are refused by transfer.Resolve
+// against the selected root.
 func (s *Server) resolveFor(g Grant, rel string) (root, full string, err error) {
 	if len(g.Roots) == 0 {
 		full, err = transfer.Resolve(s.opts.Root, rel)
 		return s.opts.Root, full, err
 	}
-	norm := strings.TrimLeft(strings.ReplaceAll(rel, "\\", "/"), "/")
-	label, rest, _ := strings.Cut(norm, "/")
-	for _, r := range g.Roots {
-		if r.Label == label {
+	r, rest, err := matchRoot(g.Roots, rel)
+	if err != nil {
+		return "", "", err
 	}
 	if rest == "" || rest == "." {
 		return r.Path, r.Path, nil

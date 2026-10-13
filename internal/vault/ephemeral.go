@@ -1,3 +1,45 @@
+package vault
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/base32"
+	"errors"
+	"net"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+)
+
+// CredentialState is the lifecycle position of a temporary credential.
+type CredentialState string
+
+const (
+	// CredentialPending waits for the user to type the secret on a paired
+	// device. The model only holds the opaque handle.
+	CredentialPending CredentialState = "pending"
+	// CredentialProvided holds a secret ready for one fill.
+	CredentialProvided CredentialState = "provided"
+	// CredentialConsumed means a fill was dispatched; the secret is gone.
+	CredentialConsumed CredentialState = "consumed"
+	// CredentialCanceled means the user, the task or the input channel
+	// withdrew the request.
+	CredentialCanceled CredentialState = "canceled"
+	// CredentialExpired means the request outlived its lifetime.
+	CredentialExpired CredentialState = "expired"
+)
+
+// Credential lifetime limits. A pending request waits for the user; a
+// provided secret lives only until its single fill.
+const (
+	CredentialRequestTTL = 5 * time.Minute
+	CredentialSecretTTL  = 2 * time.Minute
+	maxCredentialSecret  = 4096
+	maxPendingPerSession = 4
+	maxCredentialsTotal  = 64
+	credentialHandleBits = "cr_"
+)
 
 // Typed errors let tools map refusals onto an actionable next step.
 var (

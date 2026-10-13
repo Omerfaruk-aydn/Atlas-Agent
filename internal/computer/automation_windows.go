@@ -46,6 +46,10 @@ func (b *windowsBackend) Automation(ctx context.Context, p AutomationRequest) (j
 	if p.Action == "windows" {
 		return b.listNativeWindows(ctx)
 	}
+
+// automationScriptRun serves a request through the PowerShell automation
+// script, preferring the persistent worker.
+func (b *windowsBackend) automationScriptRun(ctx context.Context, p AutomationRequest) (json.RawMessage, error) {
 	data, err := json.Marshal(p)
 	if err != nil {
 		return nil, err
@@ -135,28 +139,61 @@ func (b *windowsBackend) focusWindow(ctx context.Context, id string) (json.RawMe
 		return nil, err
 	}
 	hwnd := uintptr(n)
-	valid, _, _ := modUser32.NewProc("IsWindow").Call(hwnd)
-	if valid == 0 {
+	if valid, _, _ := modUser32.NewProc("IsWindow").Call(hwnd); valid == 0 {
 		return nil, fmt.Errorf("target_missing: window %s disappeared; list windows again", id)
 	}
-	visible, _, _ := modUser32.NewProc("IsWindowVisible").Call(hwnd)
-	if visible == 0 {
-		return nil, fmt.Errorf("target_not_actionable: window %s is hidden", id)
+	want := nativeWindowIdentity(hwnd)
+	res, err := focusWithRecovery(ctx, id, want, b.nativeFocusOps(hwnd, id), 500*time.Millisecond)
+	if err != nil {
+		return nil, err
 	}
-	minimized, _, _ := modUser32.NewProc("IsIconic").Call(hwnd)
-	if minimized != 0 {
-		_, _, _ = modUser32.NewProc("ShowWindowAsync").Call(hwnd, 9) // SW_RESTORE.
+	return json.Marshal(map[string]any{"focused": true, "window_id": id, "foreground_window_id": b.ForegroundWindow(), "method": res.Method, "tried": res.Tried})
+}
+
+func nativeWindowIdentity(hwnd uintptr) WindowIdentity {
+	var pid uint32
+	_, _, _ = modUser32.NewProc("GetWindowThreadProcessId").Call(hwnd, uintptr(unsafe.Pointer(&pid)))
+	var className [256]uint16
+	_, _, _ = modUser32.NewProc("GetClassNameW").Call(hwnd, uintptr(unsafe.Pointer(&className[0])), uintptr(len(className)))
+	return WindowIdentity{ProcessID: pid, ClassName: syscall.UTF16ToString(className[:])}
+}
+
+// nativeFocusOps escalates from a plain SetForegroundWindow, which Windows
+// refuses for a background process (the foreground lock), to attaching to
+// the foreground thread's input state, and finally to the documented
+// unlock of a lone Alt key tap, which Windows treats as the last input
+// event and which does not reach the target window.
+func (b *windowsBackend) nativeFocusOps(hwnd uintptr, id string) focusOps {
+	user := func(name string, args ...uintptr) uintptr {
+		r, _, _ := modUser32.NewProc(name).Call(args...)
+		return r
 	}
-	_, _, _ = modUser32.NewProc("SetForegroundWindow").Call(hwnd)
-	// Activation can complete asynchronously on another input queue.
-	deadline := time.NewTimer(500 * time.Millisecond)
-	defer deadline.Stop()
-	tick := time.NewTicker(20 * time.Millisecond)
-	defer tick.Stop()
-	for {
-		if b.ForegroundWindow() == id {
-			return json.Marshal(map[string]any{"focused": true, "window_id": id, "foreground_window_id": id})
+	setForeground := func() error {
+		if user("SetForegroundWindow", hwnd) == 0 {
+			return fmt.Errorf("SetForegroundWindow refused")
 		}
+		return nil
+	}
+	return focusOps{
+		Exists:   func() bool { return user("IsWindow", hwnd) != 0 },
+		Visible:  func() bool { return user("IsWindowVisible", hwnd) != 0 },
+		Identity: func() WindowIdentity { return nativeWindowIdentity(hwnd) },
+		Restore: func() {
+			if user("IsIconic", hwnd) != 0 {
+				user("ShowWindow", hwnd, 9) // SW_RESTORE.
+			}
+		},
+		Foreground: func() bool { return b.ForegroundWindow() == id },
+		Attempts: []focusAttempt{
+			{Method: "set_foreground", Run: setForeground},
+			{Method: "attach_thread_input", Run: func() error {
+				fg := user("GetForegroundWindow")
+				if fg == 0 {
+					return setForeground()
+				}
+				fgThread := user("GetWindowThreadProcessId", fg, 0)
+				self := uintptr(windows.GetCurrentThreadId())
+				if fgThread == 0 || fgThread == self {
 					return setForeground()
 				}
 				if user("AttachThreadInput", self, fgThread, 1) == 0 {

@@ -1,3 +1,74 @@
+	t.Parallel()
+	plan := tsfunnel.Plan{Host: "atlas-pc.tail1234.ts.net", Port: 443}
+
+	d := fakecli.New()
+	d.Funnel = fakecli.FunnelApprovalExit
+	_, err := manager(t, d).Start(t.Context(), plan, 5000, nil)
+	var approval *tsfunnel.ApprovalRequiredError
+	require.ErrorAs(t, err, &approval)
+	require.Equal(t, fakecli.ApprovalURL, approval.URL)
+
+	d = fakecli.New()
+	d.Funnel = fakecli.FunnelFail
+	_, err = manager(t, d).Start(t.Context(), plan, 5000, nil)
+	require.ErrorContains(t, err, "funnel not available")
+
+	d = fakecli.New()
+	d.AddForeign("raced", 443, "http://127.0.0.1:9")
+	_, err = manager(t, d).Start(t.Context(), plan, 5000, nil)
+	var conflict *tsfunnel.PortConflictError
+	require.ErrorAs(t, err, &conflict)
+	require.Equal(t, []string{"raced"}, d.Sessions())
+}
+
+func TestStartTimeoutAndCancelStopTheProcess(t *testing.T) {
+	t.Parallel()
+	plan := tsfunnel.Plan{Host: "atlas-pc.tail1234.ts.net", Port: 443}
+
+	d := fakecli.New()
+	d.Funnel = fakecli.FunnelHang
+	m := manager(t, d)
+	m.ConfirmTimeout = 50 * time.Millisecond
+	_, err := m.Start(t.Context(), plan, 5000, nil)
+	require.ErrorIs(t, err, tsfunnel.ErrTimeout)
+	requireAllStopped(t, d)
+
+	d = fakecli.New()
+	d.Funnel = fakecli.FunnelApproval
+	m = manager(t, d)
+	ctx, cancel := context.WithCancel(t.Context())
+	progress := tsfunnel.NewProgress()
+	errc := make(chan error, 1)
+	go func() {
+		_, err := m.Start(ctx, plan, 5000, progress)
+		errc <- err
+	}()
+	require.Eventually(t, func() bool { _, u, _ := progress.Snapshot(); return u != "" }, 2*time.Second, 5*time.Millisecond)
+	cancel()
+	require.ErrorIs(t, <-errc, context.Canceled)
+	requireAllStopped(t, d)
+	require.Empty(t, d.Sessions())
+	require.NoFileExists(t, m.StateFile)
+}
+
+func requireAllStopped(t *testing.T, d *fakecli.Daemon) {
+	t.Helper()
+	for _, p := range d.Procs() {
+		select {
+		case <-p.Done():
+		case <-time.After(2 * time.Second):
+			t.Fatalf("process %v still runs", p.Args)
+		}
+	}
+}
+
+func TestLinkReportsLostProcess(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	m := manager(t, d)
+	link, err := m.Start(t.Context(), tsfunnel.Plan{Host: "atlas-pc.tail1234.ts.net", Port: 443}, 5000, nil)
+	require.NoError(t, err)
+	d.Procs()[0].Crash()
 	require.Eventually(t, func() bool {
 		phase, _, _ := link.Progress().Snapshot()
 		return phase == tsfunnel.PhaseLost

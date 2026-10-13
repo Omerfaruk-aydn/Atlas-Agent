@@ -1,3 +1,74 @@
+const syntheticSecret = "Synth-Pass-4417!"
+
+type fakeClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *fakeClock) Now() time.Time { c.mu.Lock(); defer c.mu.Unlock(); return c.now }
+func (c *fakeClock) Add(d time.Duration) {
+	c.mu.Lock()
+	c.now = c.now.Add(d)
+	c.mu.Unlock()
+}
+
+func newTestCredentials(t *testing.T) (*Credentials, *fakeClock, *[]CredentialEvent) {
+	t.Helper()
+	clock := &fakeClock{now: time.Unix(1_800_000_000, 0)}
+	c := NewCredentials()
+	c.now = clock.Now
+	var mu sync.Mutex
+	events := &[]CredentialEvent{}
+	unsub := c.Subscribe(func(e CredentialEvent) { mu.Lock(); *events = append(*events, e); mu.Unlock() })
+	t.Cleanup(unsub)
+	return c, clock, events
+}
+
+func spec(session string) CredentialSpec {
+	return CredentialSpec{SessionID: session, Service: "Example", Origin: "https://login.example.test", Account: "user@example.test", Target: CredentialTarget{TabID: "tab-1", Document: "doc-1", Selector: "#pw"}}
+}
+
+func TestCredentialRequiresInputChannel(t *testing.T) {
+	t.Parallel()
+	c := NewCredentials()
+	_, _, err := c.Request(spec("s1"))
+	require.ErrorIs(t, err, ErrNoInputChannel)
+}
+
+func TestCredentialSingleUseNeverSendsTwice(t *testing.T) {
+	t.Parallel()
+	c, _, events := newTestCredentials(t)
+	req, reused, err := c.Request(spec("s1"))
+	require.NoError(t, err)
+	require.False(t, reused)
+	require.True(t, IsCredentialHandle(req.ID))
+	require.NotContains(t, req.ID, syntheticSecret)
+
+	_, err = c.Use(req.ID, "s1", "https://login.example.test", "", func(string) (bool, error) { t.Fatal("fill before the user supplied the secret"); return false, nil })
+	require.ErrorIs(t, err, ErrCredentialNotReady)
+
+	secret := []byte(syntheticSecret)
+	_, err = c.Provide(req.ID, "s1", "phone-1", secret, false)
+	require.NoError(t, err)
+	clear(secret) // The caller's buffer is independent of the store's copy.
+
+	fills := 0
+	view, err := c.Use(req.ID, "s1", "https://login.example.test", "", func(got string) (bool, error) {
+		fills++
+		require.Equal(t, syntheticSecret, got)
+		// The handle is consumed before dispatch: a concurrent or retried
+		// use during the fill is refused.
+		_, again := c.Use(req.ID, "s1", "https://login.example.test", "", func(string) (bool, error) { t.Fatal("second dispatch"); return true, nil })
+		require.ErrorIs(t, again, ErrCredentialUsed)
+		return true, errors.New("timeout after dispatch")
+	})
+	require.Error(t, err)
+	require.Equal(t, CredentialConsumed, view.State)
+	_, err = c.Use(req.ID, "s1", "https://login.example.test", "", func(string) (bool, error) { t.Fatal("resend after timeout"); return true, nil })
+	require.ErrorIs(t, err, ErrCredentialUsed)
+	require.Equal(t, 1, fills)
+	for _, e := range *events {
+		require.NotContains(t, e.Request.ID+e.Request.Service+e.Request.Account+e.Request.Origin, syntheticSecret)
 	}
 }
 

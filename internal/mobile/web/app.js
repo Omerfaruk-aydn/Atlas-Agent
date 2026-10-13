@@ -498,30 +498,55 @@
     clearTimeout(resumeTimer);
     applyI18n();
     show("pair");
-    setConn("offline");
-    const nonce = new URLSearchParams(location.hash.slice(1)).get("pair");
-    $("pair-start").classList.toggle("hidden", !nonce);
-    $("pair-none").classList.toggle("hidden", !!nonce);
-    $("pair-wait").classList.add("hidden");
-    try { $("pair-name").value = localStorage.getItem("atlas.name") || ""; }
-    catch (_) { $("pair-name").value = ""; }
-    $("pair-go").onclick = async () => {
-      const name = $("pair-name").value.trim() || "Phone";
-      try { localStorage.setItem("atlas.name", name); } catch (_) {}
-      $("pair-go").disabled = true;
+      go.classList.remove("busy");
+    }
+  }
+  let pairTick = null;
+  let transferTimer = null;
+  function stopPairTimers() { clearInterval(pairTick); pairTick = null; if (state.pair) state.pair.stopped = true; }
+  function pairCountdown() {
+    const update = () => {
+      const p = state.pair;
+      if (!p) return;
+      const left = Math.max(0, Math.round((p.expires - Date.now()) / 1000));
+      $("pair-status").textContent = t("pair_waiting_left", Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0"));
+      if (left <= 0) { pairDone("expired"); }
+    };
+    clearInterval(pairTick);
+    update();
+    pairTick = setInterval(update, 1000);
+  }
+  function pairDone(kind, unsure) {
+    stopPairTimers();
+    const box = $("pair-done-box");
+    box.className = "notice " + (kind === "rejected" || kind === "expired" ? "warn" : "");
+    $("pair-done-title").textContent = t("pair_" + kind + "_title");
+    $("pair-done-text").textContent = unsure ? t("pair_cancel_unsure") : t("pair_" + kind);
+    $("pair-again").classList.remove("hidden");
+    pairStage("done");
+  }
+  async function pairRequest(path, p) {
+    const resp = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ pending_id: p.id, poll: p.poll }) });
+    let data = {};
+    try { data = await resp.json(); } catch (_) {}
+    return { resp, data };
+  }
+  async function pollPairing(p) {
+    let delay = 1500;
+    while (!p.stopped) {
+      await new Promise((r) => setTimeout(r, delay));
+      if (p.stopped) return;
       try {
-        const resp = await fetch("/api/pair", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ nonce, name }) });
-        const data = await resp.json();
-        if (!resp.ok) throw new Error((data.error && data.error.message) || resp.statusText);
-        history.replaceState(null, "", "/");
-        $("pair-start").classList.add("hidden");
-        $("pair-wait").classList.remove("hidden");
-        $("pair-code").textContent = data.code.slice(0, 3) + " " + data.code.slice(3);
-        poll(data.pending_id, data.poll);
-      } catch (e) {
-        banner(t("failed") + ": " + e.message, true);
-      } finally {
-        $("pair-go").disabled = false;
+        const { resp, data } = await pairRequest("/api/pair/poll", p);
+        if (p.stopped) return;
+        if (resp.status === 404) { pairDone("expired"); return; }
+        if (!resp.ok) throw new Error(resp.statusText);
+        delay = 1500;
+        if (data.state === "accepted") { stopPairTimers(); state.pair = null; boot(); return; }
+        if (data.state === "rejected" || data.state === "expired" || data.state === "cancelled") { pairDone(data.state); return; }
+      } catch (_) {
+        // A dropped network is not a decision; keep waiting until expiry.
+        delay = Math.min(delay * 2, 10000);
       }
     }
   }

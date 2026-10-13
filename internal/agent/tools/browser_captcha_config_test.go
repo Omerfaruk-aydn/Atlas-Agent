@@ -1,3 +1,23 @@
+package tools
+
+import (
+	"testing"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/captcha"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
+	"github.com/stretchr/testify/require"
+)
+
+func TestInitCaptchaChainFromAtlasJSON(t *testing.T) {
+	// A raw key written straight into atlas.json must reach the chain
+	// without any environment variable set.
+	t.Setenv("ATLAS_CAPTCHA_API_KEY", "")
+	t.Setenv("ATLAS_CAPTCHA_PROVIDER", "")
+
+	prev := captchaChain
+	t.Cleanup(func() { captchaChain = prev })
+
+	InitCaptchaChain(config.ToolCaptcha{
 		Enabled:        boolPtr(true),
 		RemoteProvider: "2captcha",
 		RemoteAPIKey:   "raw-key-from-atlas-json",

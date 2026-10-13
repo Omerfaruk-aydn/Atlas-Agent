@@ -252,6 +252,42 @@ func planInput(p Request, vp Viewport) ([]inputEvent, error) {
 			held &^= bit
 			events = append(events, keyEvent("keyUp", modifierKeys[bit], held, ""))
 		}
+			btn = "left"
+		}
+		btns := mouseButtons[btn]
+		hold := time.Duration(p.HoldMS) * time.Millisecond
+
+		// Build CDP events: mousedown at start, mousemove steps, mouseup at end.
+		// CDP Input.dispatchMouseEvent dispatches at viewport coordinates and
+		// the browser finds the correct target automatically.
+		move := func(x, y float64, pressed bool) inputEvent {
+			b := 0
+			if pressed {
+				b = btns
+			}
+			return mouseEvent("mouseMoved", x, y, "none", b, 0, mask)
+		}
+		press := mouseEvent("mousePressed", cssX, cssY, btn, btns, 1, mask)
+		release := mouseEvent("mouseReleased", cssTX, cssTY, btn, 0, 1, mask)
+
+		events := []inputEvent{
+			// Move to start position first
+			move(cssX, cssY, false),
+			// Small delay before press for event stabilization
+			{method: cdpMouseEvent, params: map[string]any{"type": "mouseMoved", "x": cssX, "y": cssY, "button": "none", "buttons": 0, "modifiers": mask}, delay: 50 * time.Millisecond},
+			press,
+		}
+		for i := 1; i <= steps; i++ {
+			f := float64(i) / float64(steps)
+			step := move(cssX+(cssTX-cssX)*f, cssY+(cssTY-cssY)*f, true)
+			if i == 1 {
+				step.delay = hold
+			} else {
+				step.delay = 16 * time.Millisecond
+			}
+			events = append(events, step)
+		}
+		events = append(events, release)
 		return events, nil
 	}
 	if vp.Scale <= 0 || vp.ImageWidth <= 0 || vp.ImageHeight <= 0 {

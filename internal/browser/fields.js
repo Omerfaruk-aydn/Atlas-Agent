@@ -202,7 +202,22 @@
           else if (p.mode === 'replace_selection') {
             const s = e.selectionStart, end = e.selectionEnd;
             if (typeof s === 'number' && typeof end === 'number') expected = e.value.slice(0, s) + p.value + e.value.slice(end);
-          } else e.select();
+          } else {
+            // Replace mode: explicitly clear the field first so a browser
+            // autofill value (e.g. a prefilled student number) cannot
+            // concatenate with the typed text. Disable autocomplete
+            // temporarily to stop the browser from re-filling mid-typing.
+            const prevAC = e.getAttribute('autocomplete');
+            e.setAttribute('autocomplete', 'off');
+            e.value = '';
+            e.dispatchEvent(new Event('input', {bubbles: true}));
+            e.dispatchEvent(new Event('change', {bubbles: true}));
+            e.select();
+            // Restore autocomplete after typing completes (best-effort;
+            // the cleanup op will also restore it).
+            if (prevAC !== null) { const el = e; setTimeout(() => el.setAttribute('autocomplete', prevAC), 3000); }
+            else { const el = e; setTimeout(() => el.removeAttribute('autocomplete'), 3000); }
+          }
         } catch (_) { e.select?.(); }
       }
     }

@@ -3,12 +3,29 @@ package browser
 import (
 	"testing"
 
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/stretchr/testify/require"
 )
 
 func remoteObjectValue(literal string) *runtime.RemoteObject {
 	return &runtime.RemoteObject{Value: []byte(literal)}
+}
+
+func TestClosedDialogDoesNotRemainOnFollowingPages(t *testing.T) {
+	s := &chromedpSession{}
+	s.appendDialog(DialogInfo{Type: "beforeunload"})
+	s.handleTargetEvent(&page.EventJavascriptDialogClosed{})
+	require.Empty(t, s.PendingDialogs())
+	// A later identical dialog must survive the prior dialog's closure.
+	s.appendDialog(DialogInfo{Type: "beforeunload"})
+	require.Len(t, s.PendingDialogs(), 1)
+	s.handleTargetEvent(&page.EventFrameNavigated{Frame: &cdp.Frame{ID: "root"}})
+	require.Empty(t, s.PendingDialogs())
+	s.appendDialog(DialogInfo{Type: "confirm", Message: "Current page"})
+	s.handleTargetEvent(&page.EventFrameNavigated{Frame: &cdp.Frame{ID: "child", ParentID: "root"}})
+	require.Len(t, s.PendingDialogs(), 1, "iframe navigation does not close the top-level dialog")
 }
 
 func TestFormatConsoleArgsPrefersLiteralValues(t *testing.T) {

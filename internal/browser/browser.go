@@ -544,6 +544,7 @@ func (s *chromedpSession) handleTargetEvent(ev any) {
 		s.appendConsole(ConsoleEntry{Type: "exception", Text: text, Time: time.Now()})
 	case *page.EventJavascriptDialogOpening:
 		s.appendDialog(DialogInfo{Type: string(ev.Type), Message: ev.Message, DefaultPrompt: ev.DefaultPrompt})
+	case *page.EventJavascriptDialogClosed:
 		s.mu.Lock()
 		if len(s.dialogs) > 0 {
 			s.dialogs = s.dialogs[1:]

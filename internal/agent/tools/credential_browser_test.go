@@ -1,3 +1,74 @@
+	})
+	defer unsub()
+	resp := runCredTool(t, t.Context(), sess, &mockPermissionService{}, session, BrowserParams{Action: "credential_request"})
+	handle := metaOf(t, resp)["credential_id"].(string)
+
+	other := runCredTool(t, t.Context(), sess, &mockPermissionService{}, "cred-intruder", BrowserParams{Action: "vault_fill", CredentialID: handle})
+	require.True(t, other.IsError)
+	require.Empty(t, sess.fills)
+
+	sess.url = "https://evil.example.test/login"
+	wrong := runCredTool(t, t.Context(), sess, &mockPermissionService{}, session, BrowserParams{Action: "vault_fill", CredentialID: handle})
+	require.True(t, wrong.IsError)
+	require.Equal(t, NextScopeMismatch, metaOf(t, wrong)["next_step"])
+	require.Empty(t, sess.fills)
+}
+
+func TestTemporaryCredentialUncertainFillIsNotResent(t *testing.T) {
+	session := "cred-uncertain"
+	sess := newSecretPage()
+	sess.fillResult = browser.SecretFillResult{Status: browser.SecretFillUncertain, Dispatched: true}
+	unsub := phone(t, session, func(r vault.CredentialRequest) {
+		_, _ = vault.Ephemeral.Provide(r.ID, session, "phone-test", []byte(credSecret), false)
+	})
+	defer unsub()
+	resp := runCredTool(t, t.Context(), sess, &mockPermissionService{}, session, BrowserParams{Action: "credential_request"})
+	handle := metaOf(t, resp)["credential_id"].(string)
+	fill := runCredTool(t, t.Context(), sess, &mockPermissionService{}, session, BrowserParams{Action: "vault_fill", CredentialID: handle})
+	require.Equal(t, "fill_uncertain", metaOf(t, fill)["status"])
+	again := runCredTool(t, t.Context(), sess, &mockPermissionService{}, session, BrowserParams{Action: "vault_fill", CredentialID: handle})
+	require.True(t, again.IsError)
+	require.Len(t, sess.fills, 1)
+}
+
+func TestCredentialCardCanceledByUserStopsTurn(t *testing.T) {
+	session := "cred-cancel"
+	sess := newSecretPage()
+	unsub := phone(t, session, func(r vault.CredentialRequest) { _, _ = vault.Ephemeral.Cancel(r.ID, session) })
+	defer unsub()
+	resp := runCredTool(t, t.Context(), sess, &mockPermissionService{}, session, BrowserParams{Action: "credential_request"})
+	require.True(t, resp.StopTurn)
+	meta := metaOf(t, resp)
+	require.Equal(t, "waiting_for_user", meta["status"])
+	outcome, _ := meta["atlas_outcome"].(map[string]any)
+	require.Equal(t, "waiting_for_user", outcome["claim"], "waiting is never success")
+	require.Empty(t, sess.fills)
+}
+
+func TestCredentialWaitEndsWhenTaskIsCanceled(t *testing.T) {
+	session := "cred-task-cancel"
+	sess := newSecretPage()
+	unsub := vault.Ephemeral.Subscribe(func(vault.CredentialEvent) {})
+	defer unsub()
+	ctx, cancel := context.WithCancel(t.Context())
+	go func() {
+		for range 100 {
+			if len(vault.Ephemeral.Pending(session)) > 0 {
+				cancel()
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+	input, _ := json.Marshal(BrowserParams{Action: "credential_request"})
+	_, err := newBrowserTool(&mockPermissionService{}, t.TempDir(), &secretSessions{sess: sess}, browserDescription(false)).Run(context.WithValue(ctx, SessionIDContextKey, session), fantasy.ToolCall{ID: "c1", Name: BrowserToolName, Input: string(input)})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, vault.Ephemeral.Pending(session), "a canceled task leaves no open card")
+}
+
+// Plan mode is read-only: it neither opens a card nor types a credential
+// the user already provided.
+func TestPlanModeBlocksCredentialFill(t *testing.T) {
 	session := "cred-plan"
 	sess := newSecretPage()
 	unsub := phone(t, session, func(r vault.CredentialRequest) {

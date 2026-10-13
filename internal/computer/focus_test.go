@@ -1,3 +1,33 @@
+package computer
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+type fakeFocus struct {
+	exists, visible bool
+	identity        WindowIdentity
+	foreground      bool
+	// succeedAt is the attempt index that makes the window foreground.
+	succeedAt int
+	calls     []string
+	// recreateAfter replaces the window identity during this attempt.
+	recreateAfter int
+}
+
+func (f *fakeFocus) ops() focusOps {
+	attempt := func(i int, m string) focusAttempt {
+		return focusAttempt{Method: m, Run: func() error {
+			f.calls = append(f.calls, m)
+			if i == f.recreateAfter {
+				f.identity = WindowIdentity{ProcessID: 999, ClassName: "Other"}
+			}
+			if i == f.succeedAt {
 				f.foreground = true
 				return nil
 			}

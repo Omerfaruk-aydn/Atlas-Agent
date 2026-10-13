@@ -1,3 +1,73 @@
+	var lastErr string
+	var frameBytes int
+	var inflight chan encodeResult
+	drain := func() {
+		if inflight != nil {
+			<-inflight
+			inflight = nil
+		}
+	}
+	// An encode in flight finishes before the loop exits.
+	defer drain()
+	for {
+		_, viewers := h.snapshot()
+		if len(viewers) == 0 {
+			drain()
+			h.mu.Lock()
+			if len(h.viewers) == 0 {
+				h.running = false
+				h.stats = screenStats{}
+				h.mu.Unlock()
+				return
+			}
+			h.mu.Unlock()
+			continue
+		}
+		start := time.Now()
+		img, sw, sh, captured, err := h.src.CaptureScreen(screenWidths[tier])
+		captureDur := time.Since(start)
+		state, msg, changed := "live", "", ""
+		if err == nil && uniformBlack(img) {
+			// Black content is a valid frame, not proof of a locked desktop.
+			state, msg = "blank", "the captured frame is black; desktop availability cannot be inferred from pixel colors"
+		}
+		if err != nil {
+			if state != "blank" {
+				state = "capture_error"
+			}
+			msg = err.Error()
+			if msg != lastErr {
+				h.log.Warn("Live screen capture failed", "error", err)
+				lastErr = msg
+			}
+			h.mu.Lock()
+			h.stats.State, h.stats.Message = state, msg
+			st := h.stats
+			h.mu.Unlock()
+			st.Viewers = len(viewers)
+			h.status(st, viewers)
+			lastStatus = time.Now()
+			// Errors are retried slowly; they are not frames.
+			if !sleepUntil(h, time.Now().Add(time.Second)) {
+				return
+			}
+			next = time.Now()
+			continue
+		}
+		lastErr = ""
+		// Encoding of this frame overlaps the next capture. GDI readback
+		// costs about the same at every width, so running the two stages
+		// one after the other would force a lower resolution than either
+		// stage needs. At most one encode is in flight, and captures never
+		// overlap each other.
+		if inflight != nil {
+			r := <-inflight
+			encodeAvg = ewma(encodeAvg, float64(r.dur.Microseconds())/1000)
+			quality, frameBytes = r.quality, r.size
+			if r.changed != "" {
+				changed = r.changed
+			}
+			if r.tooBig {
 				state, msg = "frame_too_large", "a frame exceeded the size limit and was skipped"
 			}
 		}

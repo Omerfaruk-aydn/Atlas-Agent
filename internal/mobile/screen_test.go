@@ -1,3 +1,74 @@
+		require.NoError(t, json.Unmarshal(pk.payload, &st))
+		if state == "" || st.State == state {
+			return st
+		}
+	}
+	t.Fatalf("no %q status", state)
+	return screenStats{}
+}
+
+func openPhoneStream(t *testing.T, p *phone) (*stream, context.CancelFunc) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	resp, err := p.openStream(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
+	require.Equal(t, "application/octet-stream", resp.Header.Get("Content-Type"))
+	t.Cleanup(func() { cancel(); _ = resp.Body.Close() })
+	return &stream{resp: resp, r: bufio.NewReader(resp.Body)}, cancel
+}
+
+func TestScreenStreamRequiresPairingPreviewsAndCSRF(t *testing.T) {
+	src := &syntheticScreen{width: 1920, height: 1080}
+	g, _ := newScreenGateway(t, src)
+	p := newPhone(t, g)
+	resp, err := p.openStream(t.Context(), nil)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	require.Equal(t, 401, resp.StatusCode, "no frames before authentication")
+
+	p.pair(true)
+	resp, err = p.openStream(t.Context(), nil)
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	require.Equal(t, 403, resp.StatusCode, "screen viewing is off by default for a device")
+
+	enablePreviews(t, g, true)
+	resp, err = p.openStream(t.Context(), map[string]string{"X-CSRF-Token": ""})
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	require.Equal(t, 403, resp.StatusCode, "a cross-site page cannot add the CSRF header")
+	resp, err = p.openStream(t.Context(), map[string]string{"Sec-Fetch-Site": "cross-site"})
+	require.NoError(t, err)
+	_ = resp.Body.Close()
+	require.Equal(t, 403, resp.StatusCode)
+	require.Zero(t, src.calls.Load(), "nothing is captured for a refused viewer")
+
+	s, _ := openPhoneStream(t, p)
+	f1 := s.nextFrame(t)
+	f2 := s.nextFrame(t)
+	require.Greater(t, f2.seq, f1.seq, "sequence numbers increase")
+	require.Equal(t, 1280, f1.w, "frames are downscaled to the starting resolution tier")
+	require.Equal(t, 720, f1.h)
+	img, err := jpeg.Decode(bytes.NewReader(f1.payload))
+	require.NoError(t, err)
+	require.Equal(t, 1280, img.Bounds().Dx())
+	require.WithinDuration(t, time.Now(), f1.captured, 5*time.Second)
+	st := s.nextStatus(t, "live")
+	require.Equal(t, screenTargetFPS, st.Target)
+	require.Equal(t, 1920, st.ScreenW)
+}
+
+func TestScreenStreamEndsOnRevokeAndPreviewsOff(t *testing.T) {
+	src := &syntheticScreen{width: 800, height: 600}
+	g, _ := newScreenGateway(t, src)
+	p := newPhone(t, g)
+	p.pair(true)
+	id := enablePreviews(t, g, true)
+	s, _ := openPhoneStream(t, p)
+	s.nextFrame(t)
+	require.NoError(t, g.Auth.SetPreviews(id, false))
 	st := s.nextStatus(t, "previews_off")
 	require.Equal(t, "previews_off", st.State)
 	_, err := s.r.ReadByte()

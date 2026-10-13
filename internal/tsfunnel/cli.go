@@ -1,3 +1,74 @@
+	Identity() procown.Identity
+	Done() <-chan struct{}
+	Result() (int, error)
+	Stop(grace time.Duration)
+}
+
+// CLI runs the installed tailscale binary.
+type CLI struct {
+	// Binary overrides discovery; empty finds the installed CLI.
+	Binary string
+	// Timeout bounds each short command; zero means CommandTimeout.
+	Timeout time.Duration
+}
+
+var _ Exec = CLI{}
+
+// Path finds tailscale on PATH, then in the default Windows location.
+func (c CLI) Path() (string, error) {
+	if c.Binary != "" {
+		if _, err := os.Stat(c.Binary); err != nil {
+			return "", ErrNotInstalled
+		}
+		return c.Binary, nil
+	}
+	if p, err := exec.LookPath("tailscale"); err == nil {
+		return p, nil
+	}
+	if runtime.GOOS == "windows" {
+		for _, env := range []string{"ProgramFiles", "ProgramW6432"} {
+			if dir := os.Getenv(env); dir != "" {
+				p := filepath.Join(dir, "Tailscale", "tailscale.exe")
+				if _, err := os.Stat(p); err == nil {
+					return p, nil
+				}
+			}
+		}
+	}
+	return "", ErrNotInstalled
+}
+
+// Output runs a short command, bounded by CommandTimeout and ctx.
+func (c CLI) Output(ctx context.Context, args ...string) ([]byte, error) {
+	path, err := c.Path()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, orDefault(c.Timeout, CommandTimeout))
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, args...)
+	hideWindow(cmd)
+	cmd.WaitDelay = 2 * time.Second
+	var stdout, stderr limitedBuffer
+	stdout.max, stderr.max = maxOutput, 16<<10
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err = cmd.Run()
+	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return nil, ErrTimeout
+	case ctx.Err() != nil:
+		return nil, ctx.Err()
+	case stdout.overflow:
+		return nil, fmt.Errorf("%w: output too large", ErrMalformed)
+	case err != nil:
+		return stdout.Bytes(), classify(err, stderr.String())
+	}
+	return stdout.Bytes(), nil
+}
+
+// classify turns a failed CLI run into an error the dialog can explain.
+// The CLI's own words are kept, shortened, as detail.
+func classify(err error, stderr string) error {
 	detail := Sanitize(stderr)
 	lower := strings.ToLower(stderr)
 	for _, hint := range []string{"failed to connect to local tailscale", "is tailscale running", "tailscaled not running", "the system cannot find the file specified", "connect: connection refused", "no such file or directory"} {

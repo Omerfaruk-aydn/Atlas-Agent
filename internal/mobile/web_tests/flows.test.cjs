@@ -1,3 +1,74 @@
+  assert.equal(await page.locator("#messages .msg").count(), 0);
+  assert.ok(await noOverflow(page));
+});
+
+// ---------- Permission ----------
+for (const decision of ["allow", "allow_session", "deny"]) {
+  test(`permission "${decision}" posts the exact pending request once`, async (t) => {
+    const { page, state, url } = await fixture(t);
+    await page.goto(url);
+    await page.locator('.task-row[data-id="s2"]').click();
+    const b = page.locator(`#pending-pane button[data-decision="${decision}"]`);
+    await b.waitFor();
+    assert.match(await page.locator("#pending-pane").innerText(), /Dosya değişikliğine izin ver/);
+    assert.match(await page.locator("#pending-pane").innerText(), /internal\/mobile\/web\/app\.css/);
+    await b.dblclick();
+    await page.locator("#pending-pane").waitFor({ state: "hidden" });
+    const posts = state.posts.filter((p) => p.path.startsWith("/api/permissions/"));
+    assert.equal(posts.length, 1, "a double tap sends one answer");
+    assert.deepEqual(posts[0].body, { decision, session_id: "s2", tool_call_id: "tc1" });
+  });
+}
+
+test("permission diff is real, returning to chat is not an answer, and a stale request reloads", async (t) => {
+  const { page, state, url } = await fixture(t);
+  await page.goto(url);
+  await page.locator('.task-row[data-id="s2"]').click();
+  await page.locator("#pending-pane .detail-card .link-btn").click();
+  assert.match(await page.locator("#perm-diff").innerText(), /\+  padding: 8px 16px;/);
+  await page.locator("#pending-pane .back-to-chat button").click();
+  assert.equal(state.posts.length, 0, "going back to the chat does not answer");
+  await page.locator("#waiting-banner").waitFor();
+  await page.locator("#waiting-banner").click();
+  state.staleNext = true;
+  await page.locator('#pending-pane button[data-decision="allow"]').click();
+  await page.locator("#pending-pane").waitFor({ state: "hidden" });
+  assert.match(await page.locator("#toast").innerText(), /artık beklemiyor/);
+  assert.ok(await page.locator("#waiting-banner").isHidden());
+});
+
+test("a non-file permission does not claim to change a file", async (t) => {
+  const { page, url } = await fixture(t, { setup: (s) => {
+    s.details.s2.permissions = [{ id: "perm2", session_id: "s2", tool_call_id: "tc2", tool: "bash", action: "execute", description: "Testleri çalıştırır.", path: "D:/proje", command: "go test ./..." }];
+  } });
+  await page.goto(url);
+  await page.locator('.task-row[data-id="s2"]').click();
+  await page.locator("#pending-pane button[data-decision]").first().waitFor();
+  const text = await page.locator("#pending-pane").innerText();
+  assert.match(text, /Komut çalıştırmaya izin ver/);
+  assert.match(text, /go test/);
+  assert.doesNotMatch(text, /Değiştirilecek dosya|Değişiklikleri göster/);
+});
+
+// ---------- Question ----------
+test("all question types: required answers, notes, drafts across events, and submit", async (t) => {
+  const q = {
+    id: "qa", session_id: "s1", tool_call_id: "tq", confirm_title: "Onay", confirm_description: "Atlas birkaç yanıt bekliyor.",
+    questions: [
+      { id: "go", type: "yes_no", question: "Devam edelim mi?", description: "Değişiklikler uygulanacak." },
+      { id: "theme", type: "single_choice", question: "Hangi tema?", description: "Varsayılan görünüm.", choices: [{ id: "light", label: "Açık" }, { id: "dark", label: "Koyu" }] },
+      { id: "parts", type: "multi_choice", question: "Hangi ekranlar?", description: "Birden fazla seçebilirsin.", choices: [{ id: "list", label: "Liste" }, { id: "chat", label: "Sohbet" }, { id: "settings", label: "Ayarlar" }] },
+      { id: "why", type: "free_text", question: "Neden?", description: "Kısa bir açıklama." },
+    ],
+  };
+  const { page, state, url } = await fixture(t, { setup: (s) => { s.details.s1.questions = [q]; } });
+  await page.goto(url);
+  await page.locator('.task-row[data-id="s1"]').click();
+  await page.locator("#pending-pane form").waitFor();
+  assert.equal(await page.locator("#pending-pane input:checked").count(), 0, "nothing is preselected");
+  await page.locator('#pending-pane input[value="true"]').check();
+  await page.locator("#pending-pane button[type=submit]").click();
+  assert.equal(state.posts.length, 0, "missing answers are never sent");
   assert.match(await page.locator("#pending-pane").innerText(), /Bazı sorular hâlâ yanıt bekliyor/);
   assert.equal(await page.locator('#pending-pane fieldset[data-question="theme"] [aria-invalid="true"]').count(), 2);
   await page.locator('#pending-pane input[value="dark"]').check();

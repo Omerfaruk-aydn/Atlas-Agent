@@ -1,3 +1,74 @@
+	// No --bg: the entry lives only as long as Atlas' process. No --yes:
+	// an unexpected prompt fails instead of being confirmed silently.
+	proc, err := m.CLI.Start([]string{"funnel", "--https=" + strconv.Itoa(int(plan.Port)), target}, progress.line)
+	if err != nil {
+		return nil, err
+	}
+	stop := func() { proc.Stop(3 * time.Second) }
+	started := time.Now()
+	deadline := started.Add(m.confirm())
+	extended := false
+	tick := time.NewTicker(m.poll())
+	defer tick.Stop()
+	var lastErr error
+	for {
+		select {
+		case <-ctx.Done():
+			stop()
+			return nil, ctx.Err()
+		case <-proc.Done():
+			if u := progress.approvalURL(); u != "" {
+				return nil, &ApprovalRequiredError{URL: u}
+			}
+			code, _ := proc.Result()
+			detail := progress.lastLines()
+			if strings.Contains(detail, "listener already exists") || strings.Contains(detail, "already exists for port") {
+				return nil, &PortConflictError{Occupants: []Occupant{{Port: plan.Port, What: detail}}}
+			}
+			return nil, fmt.Errorf("tailscale funnel exited (code %d): %s", code, detail)
+		case <-tick.C:
+		}
+		if !extended && progress.approvalURL() != "" {
+			extended = true
+			progress.Set(PhaseApproval)
+			deadline = started.Add(m.approve())
+		}
+		sc, err := readServe(ctx, m.CLI)
+		if err == nil {
+			if id, ok := sc.owned(plan.Host, plan.Port, target); ok {
+				l := &Link{m: m, plan: plan, target: target, session: id, proc: proc, progress: progress}
+				rec := record{Version: 1, Process: proc.Identity(), Session: id, Host: plan.Host, Port: plan.Port, Target: target, StartedAt: time.Now().UTC()}
+				if err := m.writeRecord(rec); err != nil {
+					stop()
+					return nil, fmt.Errorf("record the Funnel owner: %w", err)
+				}
+				progress.Set(PhaseReady)
+				go l.watch()
+				return l, nil
+			}
+		} else {
+			lastErr = err
+		}
+		if time.Now().After(deadline) {
+			stop()
+			if lastErr != nil {
+				return nil, fmt.Errorf("%w: Funnel entry did not appear: %v", ErrTimeout, lastErr)
+			}
+			return nil, fmt.Errorf("%w: Funnel entry did not appear", ErrTimeout)
+		}
+	}
+}
+
+// Recover handles a run that ended without Close, for example a crash.
+// It stops only the CLI process Atlas recorded (matched by PID and
+// creation time) and waits for its session to disappear. It never
+// removes or edits any Serve or Funnel entry itself.
+func (m *Manager) Recover(ctx context.Context) error {
+	rec, ok, err := m.readRecord()
+	if err != nil || !ok {
+		return err
+	}
+	if procown.Matches(rec.Process) {
 		_ = procown.KillOwned(rec.Process)
 	}
 	gone, err := m.waitGone(ctx, rec.Session)

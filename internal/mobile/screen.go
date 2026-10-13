@@ -1,3 +1,74 @@
+func (h *screenHub) leave(v *screenViewer) {
+	h.mu.Lock()
+	delete(h.viewers, v)
+	h.mu.Unlock()
+	v.end()
+}
+
+// revoke ends the streams of removed devices at once.
+func (h *screenHub) revoke(ids []string) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for v := range h.viewers {
+		if slices.Contains(ids, v.deviceID) {
+			v.end()
+		}
+	}
+}
+
+func (h *screenHub) close() {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.closed = true
+	for v := range h.viewers {
+		v.end()
+	}
+}
+
+func (h *screenHub) snapshot() (screenStats, []*screenViewer) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]*screenViewer, 0, len(h.viewers))
+	for v := range h.viewers {
+		out = append(out, v)
+	}
+	st := h.stats
+	st.Viewers = len(out)
+	return st, out
+}
+
+func (h *screenHub) publish(p *screenPacket, viewers []*screenViewer) {
+	for _, v := range viewers {
+		v.offer(p)
+	}
+}
+
+func (h *screenHub) status(st screenStats, viewers []*screenViewer) {
+	data, _ := json.Marshal(st)
+	h.mu.Lock()
+	h.seq++
+	seq := h.seq
+	h.mu.Unlock()
+	h.publish(&screenPacket{kind: screenKindStatus, seq: seq, captured: time.Now(), payload: data}, viewers)
+}
+
+// loop captures on a monotonic schedule. A slow capture is never
+// overlapped: the next tick waits for it and missed ticks are counted.
+func (h *screenHub) loop() {
+	tier := 1
+	quality := 62
+	next := time.Now()
+	var window []time.Time
+	var slowRun, fastRun int
+	var captureAvg, encodeAvg float64
+	var missed uint64
+	lastStatus := time.Time{}
 	var lastErr string
 	var frameBytes int
 	var inflight chan encodeResult

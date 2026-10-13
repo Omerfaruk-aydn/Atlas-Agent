@@ -1,3 +1,74 @@
+	// Poll, ConfirmTimeout, ApprovalTimeout and CleanupTimeout default to
+	// production values; tests shorten them.
+	Poll            time.Duration
+	ConfirmTimeout  time.Duration
+	ApprovalTimeout time.Duration
+	CleanupTimeout  time.Duration
+}
+
+func (m *Manager) poll() time.Duration    { return orDefault(m.Poll, 400*time.Millisecond) }
+func (m *Manager) confirm() time.Duration { return orDefault(m.ConfirmTimeout, 30*time.Second) }
+func (m *Manager) approve() time.Duration { return orDefault(m.ApprovalTimeout, 10*time.Minute) }
+func (m *Manager) cleanup() time.Duration { return orDefault(m.CleanupTimeout, 6*time.Second) }
+
+func orDefault(d, def time.Duration) time.Duration {
+	if d <= 0 {
+		return def
+	}
+	return d
+}
+
+// record is the ownership file. It holds no secret.
+type record struct {
+	Version   int              `json:"version"`
+	Process   procown.Identity `json:"process"`
+	Session   string           `json:"session"`
+	Host      string           `json:"host"`
+	Port      uint16           `json:"port"`
+	Target    string           `json:"target"`
+	StartedAt time.Time        `json:"started_at"`
+}
+
+// Prepare cleans up after a crashed run and picks the first free Funnel
+// port. It changes nothing in Tailscale.
+func (m *Manager) Prepare(ctx context.Context, r Readiness) (Plan, error) {
+	if !r.Ready() {
+		return Plan{}, fmt.Errorf("tailscale is not ready: %s", r.Problem)
+	}
+	if err := m.Recover(ctx); err != nil {
+		return Plan{}, err
+	}
+	sc, err := readServe(ctx, m.CLI)
+	if err != nil {
+		return Plan{}, err
+	}
+	used := sc.occupants()
+	allowed := r.FunnelPorts
+	if len(allowed) == 0 {
+		allowed = FunnelPorts
+	}
+	var conflicts []Occupant
+	for _, port := range allowed {
+		if o, busy := used[port]; busy {
+			conflicts = append(conflicts, o)
+			continue
+		}
+		return Plan{Host: r.Host, Port: port}, nil
+	}
+	return Plan{}, &PortConflictError{Occupants: conflicts}
+}
+
+// Start runs "tailscale funnel --https=<port> http://127.0.0.1:<local>" in
+// the foreground and returns once tailscaled lists exactly that entry. The
+// returned Link owns the CLI process; closing it removes the entry.
+func (m *Manager) Start(ctx context.Context, plan Plan, localPort int, progress *Progress) (*Link, error) {
+	if progress == nil {
+		progress = NewProgress()
+	}
+	if localPort <= 0 || localPort > 65535 || !slices.Contains(FunnelPorts, plan.Port) || checkFunnelHost(plan.Host) != nil {
+		return nil, fmt.Errorf("invalid Funnel plan %s → %d", plan.URL(), localPort)
+	}
+	target := "http://127.0.0.1:" + strconv.Itoa(localPort)
 	// No --bg: the entry lives only as long as Atlas' process. No --yes:
 	// an unexpected prompt fails instead of being confirmed silently.
 	proc, err := m.CLI.Start([]string{"funnel", "--https=" + strconv.Itoa(int(plan.Port)), target}, progress.line)

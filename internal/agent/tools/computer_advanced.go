@@ -16,7 +16,7 @@ import (
 
 func isComputerAutomationAction(action string) bool {
 	switch action {
-	case "launch_app", "windows", "focus", "inspect", "find", "select", "invoke", "set_value", "assert", "monitors", "ocr", "capture_window":
+	case "launch_app", "apps", "windows", "focus", "inspect", "find", "select", "invoke", "set_value", "assert", "monitors", "ocr", "capture_window":
 		return true
 	}
 	return false

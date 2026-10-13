@@ -424,12 +424,14 @@ func TestCLIBridgeChecksExitCodesAndOutputFiles(t *testing.T) {
 
 	report, resp = h.run(t, "nowrite", "output=never.out")
 	require.True(t, resp.IsError)
+	require.NotNil(t, report.ExitCode, "helper did not start: %s", resp.Content)
 	require.Equal(t, 0, *report.ExitCode, "the program exited 0")
 	require.False(t, report.Passed, "but the declared output was not produced")
 	require.False(t, ToolSucceeded(CLIBridgeToolName, resp, nil))
 
 	report, resp = h.run(t, "exit", "code=3")
 	require.True(t, resp.IsError)
+	require.NotNil(t, report.ExitCode, "helper did not start: %s", resp.Content)
 	require.Equal(t, 3, *report.ExitCode)
 	require.Equal(t, clibridge.OutcomeFailed, report.Outcome)
 	require.Contains(t, report.Stderr, "fixture failing on purpose")

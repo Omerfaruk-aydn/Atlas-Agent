@@ -29,7 +29,7 @@ var computerDescription string
 // computerActions lists every value ComputerParams.Action accepts.
 var computerActions = []string{
 	"batch",
-	"launch_app",
+	"launch_app", "apps",
 	"observe", "health", "file_check",
 	"screenshot", "screen_size", "cursor_position", "move",
 	"click", "double_click", "right_click", "drag",
@@ -46,7 +46,7 @@ type ComputerParams struct {
 	Automation  computer.AutomationRequest `json:"automation,omitempty" description:"Parameters for accessibility actions: window_id required except windows/monitors/ocr. Name, role or element_id select a fresh element."`
 	Width       int                        `json:"width,omitempty" description:"Native pixel width for capture_region and ocr regions. ocr needs x, y, width and height together at the top level, or none of them for the full screen."`
 	Height      int                        `json:"height,omitempty" description:"Native pixel height for capture_region and ocr regions; see width."`
-	Action      string                     `json:"action" enum:"batch,launch_app,observe,health,file_check,screenshot,screen_size,cursor_position,move,click,double_click,right_click,drag,scroll,type,key,hotkey,windows,focus,inspect,find,select,invoke,set_value,assert,monitors,ocr,capture_region,capture_window,handoff,status,trace,trace_start,trace_stop" description:"Desktop action: batch (multiple checkpointed input groups in one call); launch_app/observe/health; file_check (permission-checked saved-file verification); screenshot/screen_size/cursor_position/move/click/double_click/right_click/drag/scroll/type/key/hotkey; windows/focus/inspect/find/select/invoke/set_value/assert/monitors/ocr/capture_region/capture_window; handoff/status/trace/trace_start/trace_stop. See tool description."`
+	Action      string                     `json:"action" enum:"batch,launch_app,apps,observe,health,file_check,screenshot,screen_size,cursor_position,move,click,double_click,right_click,drag,scroll,type,key,hotkey,windows,focus,inspect,find,select,invoke,set_value,assert,monitors,ocr,capture_region,capture_window,handoff,status,trace,trace_start,trace_stop" description:"Desktop action: batch (multiple checkpointed input groups in one call); launch_app/apps/observe/health; file_check (permission-checked saved-file verification); screenshot/screen_size/cursor_position/move/click/double_click/right_click/drag/scroll/type/key/hotkey; windows/focus/inspect/find/select/invoke/set_value/assert/monitors/ocr/capture_region/capture_window; handoff/status/trace/trace_start/trace_stop. See tool description."`
 	// X and Y are screen coordinates in physical pixels, matching the
 	// screenshot image 1:1. Required for move, click, double_click,
 	// right_click, and drag (start point).

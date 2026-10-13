@@ -96,6 +96,8 @@ Tool contract (identical for every provider and every path: direct, batch, pipel
 
 Available actions:
 - launch_app: request one exact installed Start-app name or registered AppID via automation.name. Known localized Calculator and Notepad names resolve through their registered Windows application identities. Unknown or ambiguous names fail; no arbitrary launcher is constructed. The response reports the installed name and AppID. A launch request is not readiness proof. Prefer prepare for launch, focus and observation together.
+- apps: list installed applications from the application catalog (registry App Paths, Start menu, known install folders, running windows; never a filesystem scan). automation.name filters by name; automation.refresh rediscovers. Each entry has app_id, name, aliases, scope (user/system), running windows and, for Chromium browsers, browser_profiles (directory and display name only).
+- launch_app with automation.app_id (from apps), automation.args (literal list, e.g. a URL; never shell text) or automation.profile (browser profile display name or directory) launches through the catalog and reports verification: window_observed or started_no_window_observed. A profile that matches several names is reported as profile_ambiguous; ask instead of guessing. Never relaunch after started_no_window_observed; observe first.
 - screenshot: capture the screen. Returns the image as PNG, downscaled unless full_res is true.
 - screen_size: report the screen width and height in pixels.
 - cursor_position: report where the pointer currently is.

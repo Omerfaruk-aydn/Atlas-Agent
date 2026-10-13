@@ -98,6 +98,17 @@ func (f *fakeBrowserSession) Text(selector string) (string, error) {
 	return "hello world", nil
 }
 
+// ProtectedScreenshot models the protected-driver contract for tool
+// dispatch tests. Real pixel masking is tested against headless Chrome.
+func (f *fakeBrowserSession) ProtectedScreenshot(_ context.Context, full, annotated bool, _ func(string) string) ([]byte, int, error) {
+	if annotated {
+		data, err := f.AnnotatedScreenshot(full)
+		return data, 0, err
+	}
+	data, err := f.Screenshot(full)
+	return data, 0, err
+}
+
 func (f *fakeBrowserSession) HTML(selector string) (string, error) {
 	f.htmlSel = selector
 	return "<p>hi</p>", nil

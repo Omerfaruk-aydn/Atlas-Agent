@@ -1,3 +1,50 @@
+package computer
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+const chromeLocalState = `{"profile":{"info_cache":{
+	"Default":{"name":"Kişisel","user_name":"secret@example.com"},
+	"Profile 3":{"name":"Ömer Faruk","gaia_name":"hidden"},
+	"Profile 4":{"name":"İş"}}}}`
+
+// fixtureSources is a computer whose Chrome is installed per user (not on
+// PATH, only registered under HKCU App Paths) next to a Start menu.
+func fixtureSources(files map[string]bool, apps []startApp, appPaths []appPathValue) appSources {
+	env := map[string]string{
+		"LOCALAPPDATA":      `C:\Users\u\AppData\Local`,
+		"ProgramFiles":      `C:\Program Files`,
+		"ProgramFiles(x86)": `C:\Program Files (x86)`,
+	}
+	return appSources{
+		AppPaths: func() []appPathValue { return appPaths },
+		Env:      func(k string) string { return env[k] },
+		Exists:   func(p string) bool { return files[p] },
+		ReadFile: func(p string) ([]byte, error) {
+			if p == `C:\Users\u\AppData\Local\Google\Chrome\User Data\Local State` {
+				return []byte(chromeLocalState), nil
+			}
+			return nil, errors.New("missing")
+		},
+		StartApps: func(context.Context) ([]startApp, error) { return apps, nil },
+		Windows: func(context.Context) ([]nativeWindowSummary, error) {
+			return []nativeWindowSummary{{ID: "198000", Name: "Yeni sekme - Google Chrome", ProcessID: 14124, ProcessName: "chrome.exe"}}, nil
+		},
+	}
+}
+
+const userChrome = `C:\Users\u\AppData\Local\Google\Chrome\Application\chrome.exe`
+
+func fixtureCatalog(t *testing.T, files map[string]bool) *AppCatalog {
+	t.Helper()
+	src := fixtureSources(files,
 		[]startApp{
 			{Name: "Hesap Makinesi", AppID: "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"},
 			{Name: "Dosya Gezgini", AppID: "Microsoft.Windows.Explorer"},

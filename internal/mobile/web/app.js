@@ -272,6 +272,77 @@
     }
   }
 
+    try {
+      await act("/api/sessions/" + encodeURIComponent(state.current) + "/control", { action, revision: d.workflow.revision });
+    } catch (e) {
+      toast(isStale(e) ? t("stale") : t("failed") + ": " + e.message, !isStale(e));
+    } finally {
+      if (b) b.disabled = false;
+      if (state.current) await loadTask(state.current).catch(() => {});
+    }
+  }
+
+  // ---------- Permission and question pane ----------
+  function questionKey(q) { return JSON.stringify({ id: q.id, session: q.session_id, questions: q.questions }); }
+  function pendingKeys(d) {
+    return [...(d.credentials || []).map((c) => "c:" + c.id), ...(d.permissions || []).map((p) => "p:" + p.id + ":" + p.tool_call_id), ...(d.questions || []).map((q) => "q:" + questionKey(q))];
+  }
+  function renderPendingPane() {
+    const d = state.detail;
+    const pane = $("pending-pane");
+    const perms = (d && d.permissions) || [], qs = (d && d.questions) || [], creds = (d && d.credentials) || [];
+    const open = state.pendingOpen && perms.length + qs.length + creds.length > 0;
+    pane.classList.toggle("hidden", !open);
+    applyView(open);
+    if (open) $("new-msgs").classList.add("hidden");
+    if (!open) {
+      // Closing the pane drops any typed secret with its DOM node.
+      state.paneKey = "";
+      pane.replaceChildren();
+      return;
+    }
+    // Rebuild only when the pending set or the connection changes, so an
+    // unrelated event never steals focus from a half-written answer.
+    // A credential card keeps its typed value across connection blips; its
+    // button follows the connection instead of rebuilding the form.
+    const key = pendingKeys(d).join("|") + (creds.length ? "" : "#" + state.conn);
+    if (key === state.paneKey) { syncCredentialForm(); return; }
+    const hadFocus = pane.contains(document.activeElement);
+    state.paneKey = key;
+    pane.replaceChildren();
+    const total = perms.length + qs.length + creds.length;
+    const chip = el("div", "wait-chip");
+    chip.setAttribute("role", "status");
+    chip.append(el("span", "dot warn"), el("span", "", t("waiting")));
+    if (total > 1) chip.append(el("span", "count", "1/" + total));
+    pane.append(chip);
+    if (creds.length) pane.append(credentialView(creds[0]));
+    else if (perms.length) pane.append(permissionView(perms[0]));
+    else pane.append(questionView(qs[0]));
+    const back = el("div", "back-to-chat");
+    const bb = button("link-btn");
+    bb.append(icon("arrow-left"), document.createTextNode(t("back_to_chat")));
+    bb.addEventListener("click", () => { state.pendingOpen = false; renderTaskChrome(); toBottom(); $("prompt").focus({ preventScroll: true }); });
+    back.append(bb);
+    pane.append(back);
+    if (!hadFocus) pane.scrollTop = 0;
+  }
+  function permissionKind(p) {
+    const tool = (p.tool || "").toLowerCase();
+    if (p.diff || /^(edit|multiedit|multi_edit|write|apply_patch|patch)$/.test(tool)) return "file";
+    if (p.command || /^(bash|shell|powershell|exec)$/.test(tool)) return "command";
+    if (/fetch|download|browser|web|sourcegraph/.test(tool)) return "web";
+    return "generic";
+  }
+  function permissionView(p) {
+    const wrap = el("div");
+    const kind = permissionKind(p);
+    const h = el("h2", "display", kind === "generic" ? t("perm_title_generic", p.tool) : t("perm_title_" + kind));
+    h.id = "pending-h";
+    h.tabIndex = -1;
+    wrap.append(h);
+    if (p.description) wrap.append(el("p", "lead", p.description));
+    const card = el("div", "detail-card");
     const target = el("div", "detail-target");
     const value = kind === "command" ? p.path : p.file_path || p.path;
     if (value || kind === "command") {

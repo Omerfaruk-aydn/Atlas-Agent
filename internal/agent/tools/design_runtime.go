@@ -1,3 +1,74 @@
+func (e *designBrowserFailure) Error() string { return e.response.Content }
+
+func designFailure(err error) (fantasy.ToolResponse, error) {
+	var child *designBrowserFailure
+	if errors.As(err, &child) {
+		return child.response, nil
+	}
+	return fantasy.NewTextErrorResponse(err.Error()), nil
+}
+
+func designPermission(ctx context.Context, p DesignSystemParams, call fantasy.ToolCall, deps DesignServices, root string) error {
+	if deps.Invoke == nil {
+		return fmt.Errorf("design renderer unavailable: enable the browser tool")
+	}
+	if deps.Permissions != nil {
+		ok, err := deps.Permissions.Request(ctx, permission.CreatePermissionRequest{SessionID: GetSessionFromContext(ctx), ToolCallID: call.ID, ToolName: DesignSystemToolName, Action: p.Action, Description: "Render and inspect a design in the local automation browser", Path: root, Params: p})
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("design rendering denied; no browser input sent")
+		}
+	}
+	return nil
+}
+
+func designBrowser(ctx context.Context, deps DesignServices, id string, p BrowserParams) (fantasy.ToolResponse, error) {
+	data, err := json.Marshal(p)
+	if err != nil {
+		return fantasy.ToolResponse{}, err
+	}
+	r, err := deps.Invoke(ctx, fantasy.ToolCall{Name: BrowserToolName, ID: id, Input: string(data)})
+	if journal, _ := ctx.Value(designDispatchKey{}).(*designDispatch); journal != nil && CallMutates(BrowserToolName, string(data)) {
+		if native, ok := ResponseOutcome(r); ok {
+			journal.sent = journal.sent || native.Dispatch != "none"
+		} else {
+			journal.sent = journal.sent || err != nil || !r.IsError
+		}
+	}
+	if err == nil && (r.IsError || r.StopTurn) {
+		err = &designBrowserFailure{response: r}
+	}
+	return r, err
+}
+
+// serveDesign exposes only the supplied generated pages on loopback. No
+// workspace listing, source credentials or unrelated files are served.
+func serveDesign(ctx context.Context, pages map[string]string) (string, func(), error) {
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", nil, err
+	}
+	host := ln.Addr().String()
+	srv := &http.Server{ReadHeaderTimeout: 3 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host != host || r.Method != http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		body, ok := pages[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'")
+		_, _ = w.Write([]byte(body))
+	})}
+	done := make(chan struct{})
+	go func() { defer close(done); _ = srv.Serve(ln) }()
+	return "http://" + host, func() { _ = srv.Close(); <-done }, nil
 }
 
 type localDesignPreviewKey struct{}

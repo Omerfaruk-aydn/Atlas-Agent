@@ -262,16 +262,73 @@
           else input.value = saved.value;
         }
       });
-      box.append(card);
-    }
-    for (const e of d.errors || []) {
-      const c = el("div", "pending-card error");
-      c.append(el("h3", "", t("run_error")));
-      c.append(el("p", "", e));
-      box.append(c);
     }
   }
 
+  function renderTaskChrome() {
+    const d = state.detail;
+    const online = state.conn === "connected";
+    const s = (d && d.session) || state.sessions.get(state.current) || {};
+    $("task-h").textContent = s.title || "";
+    // Connection loss is shown as such; it is not proof the task stopped.
+    const lost = state.conn === "offline";
+    const wasLost = !$("offline-banner").classList.contains("hidden");
+    $("offline-banner").classList.toggle("hidden", !lost);
+    $("offline-title").textContent = t("lost_title");
+    $("offline-text").textContent = t("lost_text");
+    const card = $("status-card");
+    card.replaceChildren();
+    if (lost) {
+      const c = el("div", "status-card");
+      const h = el("div", "status-head");
+      h.append(icon("pause"));
+      const tx = el("div");
+      tx.append(el("strong", "", t("unverified")));
+      if (state.lastSync) tx.append(el("span", "muted small", t("last_update", fmtClock(state.lastSync / 1000))));
+      h.append(tx);
+      c.append(h);
+      c.append(el("p", "muted small", state.offlineReason === "network" ? t("lost_network") : t("lost_computer")));
+      const b = button("btn primary block", t("retry"));
+      b.id = "retry-btn";
+      b.addEventListener("click", manualRetry);
+      c.append(b);
+      c.append(el("p", "foot", state.retryStopped ? t("retry_stopped") + " " + t("keep_open") : t("keep_open")));
+      card.append(c);
+    } else if (d && d.interaction && d.interaction.paused) {
+      card.append(controlCard(d));
+    } else if (d && d.workflow && d.workflow.available && d.workflow.paused) {
+      const c = el("div", "status-card");
+      const h = el("div", "status-head");
+      h.append(icon("pause"));
+      const tx = el("div");
+      tx.append(el("strong", "", t("paused_card")), el("span", "muted small", t("paused_text")));
+      h.append(tx);
+      c.append(h);
+      const b = button("btn secondary block", t("resume"));
+      b.addEventListener("click", () => control("resume", b));
+      c.append(b);
+      card.append(c);
+    }
+    const perms = (d && d.permissions) || [], qs = (d && d.questions) || [], creds = (d && d.credentials) || [];
+    const pending = perms.length + qs.length + creds.length;
+    $("waiting-banner").classList.toggle("hidden", !pending || state.pendingOpen);
+    $("waiting-text").textContent = creds.length ? t("waiting_credential") : perms.length ? t("waiting_permission") : qs.length ? t("waiting_question") : t("waiting");
+    const wf = (d && d.workflow) || {};
+    $("m-pause").classList.toggle("hidden", !wf.available || !!wf.paused);
+    $("m-resume").classList.toggle("hidden", !wf.available || !wf.paused);
+    $("m-preview").classList.toggle("hidden", !(state.me && state.me.preview_available && state.me.device.previews));
+    $("m-screen").classList.toggle("hidden", !screenAllowed());
+    $("screen-btn").classList.toggle("hidden", !screenAllowed());
+    for (const id of ["m-pause", "m-resume", "m-preview", "m-screen"]) $(id).disabled = !online;
+    $("stop-btn").classList.toggle("hidden", !(wf.available && s.busy && online));
+    let model = "";
+    for (const m of (d && d.messages) || []) if (m.model) model = m.model;
+    $("model-name").textContent = model;
+    $("model-name").title = model;
+    $("model-name").classList.toggle("hidden", !online);
+    renderPendingPane();
+    updateComposer();
+    if (d) renderActivity();
     if (lost && !wasLost) toBottom();
   }
 

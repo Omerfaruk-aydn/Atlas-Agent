@@ -1,3 +1,74 @@
+		}
+		err := ws.RemoveConfigField(config.ScopeGlobal, funnelConfigKey)
+		return funnelStoppedMsg{generation: generation, err: errors.Join(closeErr, err)}
+	}
+}
+
+func (m *UI) handleFunnelStopped(msg funnelStoppedMsg) tea.Cmd {
+	if msg.generation != m.devices.remote.generation.Load() {
+		return nil
+	}
+	d := m.remoteDialog()
+	switch {
+	case errors.Is(msg.err, tsfunnel.ErrResidual):
+		if d != nil {
+			d.SetNotice(remotecontrol.Msg("Tailscale still lists Atlas' Funnel entry. Restart the Tailscale app or remove it with the Tailscale CLI; Atlas does not remove entries by force."), false)
+		}
+		return util.ReportError(msg.err)
+	case msg.err != nil:
+		return util.ReportError(msg.err)
+	}
+	if d != nil {
+		d.SetNotice(remotecontrol.Msg("Tailscale connection stopped. Tailscale no longer lists Atlas' Funnel entry, so the address no longer reaches this computer."), true)
+	}
+	return util.ReportInfo(m.com.Text("Tailscale connection stopped"))
+}
+
+// checkFunnel only reads the Tailscale state.
+func (m *UI) checkFunnel() tea.Cmd {
+	f := &m.devices.funnel
+	if f.checking {
+		return nil
+	}
+	f.checking = true
+	env := m.funnelEnv()
+	generation := m.devices.remote.generation.Load()
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), tsfunnel.CommandTimeout+5*time.Second)
+		defer cancel()
+		return funnelCheckedMsg{generation: generation, ready: tsfunnel.Inspect(ctx, env.CLI, env.Service)}
+	}
+}
+
+func (m *UI) handleFunnelChecked(msg funnelCheckedMsg) tea.Cmd {
+	f := &m.devices.funnel
+	f.checking = false
+	if msg.generation != m.devices.remote.generation.Load() {
+		return nil
+	}
+	f.ready, f.checked = msg.ready, true
+	// A check after a fix continues the connection the user asked for.
+	if f.on && msg.ready.Ready() && m.devices.gateway == nil && !m.devices.remote.starting {
+		return m.startFunnel(false)
+	}
+	return nil
+}
+
+// runFunnelTask runs a helper the user chose in /rc. Install and app
+// changes are made only by the official installer and the Tailscale app;
+// sign-in happens on Tailscale's own page.
+func (m *UI) runFunnelTask(task string) tea.Cmd {
+	f := &m.devices.funnel
+	if f.task != "" {
+		return nil
+	}
+	env := m.funnelEnv()
+	r := &m.devices.remote
+	generation := r.generation.Load()
+	f.task, f.err = task, nil
+	f.step.Store(nil)
+	switch task {
+	case funnelTaskInstall:
 		return func() tea.Msg {
 			if env.Install == nil {
 				return funnelTaskMsg{generation: generation, task: task, err: errors.New("installation is not available here")}

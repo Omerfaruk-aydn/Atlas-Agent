@@ -268,3 +268,7 @@ func formatAnswer(answer *question.Answer, _ question.Type) (fantasy.ToolRespons
 
 	return fantasy.NewTextResponse(b.String()), nil
 }
+var secretQuestion = regexp.MustCompile(`(?i)(password|passwort|passcode|şifre|sifre|parola|contraseña|mot de passe|one-time code|doğrulama kodu|\botp\b|\b2fa code\b|\bpin (code|kodu)\b)`)
+
+// asksForSecret reports a question or step that requests a secret value.
+func asksForSecret(text string) bool { return secretQuestion.MatchString(text) }

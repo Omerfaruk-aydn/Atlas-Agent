@@ -1,3 +1,74 @@
+device_approval:has("check your phone","tap yes on","approve sign-in","telefonunuzu kontrol edin","telefonunu kontrol et","oturum açmayı onayla"),
+credential_change:[...document.querySelectorAll('input[autocomplete="new-password"]')].some(vis),
+authenticated_ui:signedIn,
+post_login_ui:continueBtn||postLoginText,
+expected_text:!!expected&&(text+'\n'+document.title.toLowerCase()).includes(expected.toLowerCase())}}`
+
+func (s *chromedpSession) boundContext(parent context.Context, d time.Duration) (context.Context, func()) {
+	ctx, cancel := context.WithTimeout(s.currentContext(), d)
+	stop := context.AfterFunc(parent, cancel)
+	return ctx, func() { stop(); cancel() }
+}
+
+// isolatedWorld returns an execution context in frameID (the top frame when
+// empty) that page scripts cannot observe.
+func (s *chromedpSession) isolatedWorld(ctx context.Context, frameID string) (float64, error) {
+	if frameID == "" {
+		tree, err := s.command(ctx, "Page.getFrameTree", map[string]any{}, false)
+		if err != nil {
+			return 0, err
+		}
+		frame := browserFrameInfo(tree, "")
+		if frame == nil {
+			return 0, errors.New("target_missing: no top frame")
+		}
+		frameID, _ = frame["id"].(string)
+	}
+	v, err := s.command(ctx, "Page.createIsolatedWorld", map[string]any{"frameId": frameID, "worldName": "atlas-secret"}, false)
+	if err != nil {
+		return 0, err
+	}
+	world, _ := v["executionContextId"].(float64)
+	if world == 0 {
+		return 0, errors.New("target_missing: frame has no execution context")
+	}
+	return world, nil
+}
+
+func (s *chromedpSession) callIn(ctx context.Context, world float64, fn string, args ...any) (any, error) {
+	arguments := make([]map[string]any, 0, len(args))
+	for _, a := range args {
+		arguments = append(arguments, map[string]any{"value": a})
+	}
+	v, err := s.command(ctx, "Runtime.callFunctionOn", map[string]any{"functionDeclaration": fn, "executionContextId": world, "arguments": arguments, "returnByValue": true, "awaitPromise": true}, false)
+	if err != nil {
+		return nil, err
+	}
+	if v["exceptionDetails"] != nil {
+		return nil, errors.New("target_missing: page evaluation failed")
+	}
+	r, _ := v["result"].(map[string]any)
+	return r["value"], nil
+}
+
+// PasswordTarget finds the single visible password field for a credential
+// card and records the tab, document and frame it lives in.
+func (s *chromedpSession) PasswordTarget(parent context.Context, frameID, selector string) (PasswordTarget, error) {
+	ctx, done := s.boundContext(parent, 5*time.Second)
+	defer done()
+	id := s.ExecutionIdentity(ctx)
+	world, err := s.isolatedWorld(ctx, frameID)
+	if err != nil {
+		return PasswordTarget{}, err
+	}
+	value, err := s.callIn(ctx, world, passwordTargetScript, selector)
+	if err != nil {
+		return PasswordTarget{}, err
+	}
+	m, _ := value.(map[string]any)
+	count, _ := m["count"].(float64)
+	out := PasswordTarget{Count: int(count), TabID: id.TabID, Document: id.Document, FrameID: frameID}
+	out.Origin, _ = m["origin"].(string)
 	out.Selector, _ = m["selector"].(string)
 	out.NodeToken, _ = m["node_token"].(string)
 	out.Reason, _ = m["reason"].(string)

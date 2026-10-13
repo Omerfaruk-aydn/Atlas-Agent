@@ -486,18 +486,83 @@
     }
   }
 
-  function startPairing() {
+    for (const s of ["none", "invalid", "start", "wait", "done", "transfer"]) $("pair-" + s).classList.toggle("hidden", s !== stage && !(stage === "invalid" && s === "none"));
+  }
+  function startPairing(reason) {
     if (state.es) state.es.close();
     state.es = null;
     state.me = null;
     state.csrf = "";
-    state.current = null;
-    state.detail = null;
+    leaveTask();
     state.upload = null;
     state.seq = 0;
+    state.sessions = new Map();
+    state.listStatus = "loading";
     clearTimeout(resumeTimer);
+    stopPairTimers();
     applyI18n();
     show("pair");
+    state.conn = "offline";
+    const nonce = pairNonce;
+    $("pair-error").classList.add("hidden");
+    $("transfer-error").classList.add("hidden");
+    if (reason === "unpaired" || reason === "expired") {
+      $("pair-invalid").querySelector("strong").textContent = t(reason + "_title");
+      $("pair-invalid-text").textContent = t(reason);
+      pairStage("invalid");
+      // A Home Screen app cannot open a scanned QR link itself.
+      if (standalone()) $("pair-transfer").classList.remove("hidden");
+    } else if (nonce) {
+      pairStage("start");
+    } else if (standalone()) {
+      // iOS gives Home Screen apps their own cookie store; scanning a QR
+      // code would open Safari, not this app. A code from the paired
+      // browser connects it instead of looping on the pairing screen.
+      pairStage("transfer");
+    } else {
+      pairStage("none");
+    }
+    $("pair-name").value = store.get("atlas.name") || "";
+    $("pair-start").onsubmit = (ev) => { ev.preventDefault(); requestPairing(nonce); };
+  }
+  async function requestPairing(nonce) {
+    const name = $("pair-name").value.trim() || (appleMobile ? "iPhone" : android ? "Android" : "Phone");
+    store.set("atlas.name", name);
+    const go = $("pair-go");
+    go.disabled = true;
+    go.classList.add("busy");
+    $("pair-error").classList.add("hidden");
+    try {
+      const resp = await fetch("/api/pair", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ nonce, name }) });
+      let data = {};
+      try { data = await resp.json(); } catch (_) {}
+      if (!resp.ok) {
+        const code = data.error && data.error.code;
+        if (code === "pairing_invalid" || resp.status === 403) {
+          history.replaceState(null, "", "/");
+          pairNonce = null;
+          $("pair-invalid").querySelector("strong").textContent = t("pair_invalid_title");
+          $("pair-invalid-text").textContent = t("pair_invalid");
+          pairStage("invalid");
+          return;
+        }
+        throw new Error((data.error && data.error.message) || resp.statusText);
+      }
+      history.replaceState(null, "", "/");
+      pairNonce = null;
+      state.pair = { id: data.pending_id, poll: data.poll, expires: data.expires || Date.now() + 300000, cancelled: false };
+      $("pair-code").textContent = data.code.slice(0, 3) + " " + data.code.slice(3);
+      $("pair-code").setAttribute("aria-label", data.code.split("").join(" "));
+      $("pair-os").textContent = data.computer_os || "";
+      $("pair-sent-name").value = data.name || name;
+      pairStage("wait");
+      pairCountdown();
+      pollPairing(state.pair);
+    } catch (e) {
+      $("pair-error").textContent = e instanceof TypeError ? t("pair_network") : t("failed") + ": " + e.message;
+      $("pair-error").classList.remove("hidden");
+    } finally {
+      go.disabled = false;
       go.classList.remove("busy");
     }
   }

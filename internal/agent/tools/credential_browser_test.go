@@ -1,3 +1,74 @@
+	fill := runCredTool(t, t.Context(), sess, perms, session, BrowserParams{Action: "vault_fill", CredentialID: handle})
+	require.False(t, fill.IsError, fill.Content)
+	require.Equal(t, []string{credSecret}, sess.fills, "exactly one dispatch")
+	fm := metaOf(t, fill)
+	require.Equal(t, "fill_dispatched", fm["status"])
+	require.Equal(t, NextLoginCheck, fm["next_step"])
+	outcome, _ := fm["atlas_outcome"].(map[string]any)
+	require.Equal(t, "fill_dispatched", outcome["claim"], "a fill is not a verified login")
+
+	// Normal mode did not prompt: the phone action authorized this scope.
+	for _, req := range perms.asked {
+		if req.Action == "vault_fill" || req.Action == "credential_request" {
+			require.True(t, req.Safe, req.Action)
+		}
+	}
+	// A retry never sends the password a second time.
+	again := runCredTool(t, t.Context(), sess, perms, session, BrowserParams{Action: "vault_fill", CredentialID: handle})
+	require.True(t, again.IsError)
+	require.Len(t, sess.fills, 1)
+
+	for _, r := range []fantasy.ToolResponse{resp, fill, again} {
+		require.NotContains(t, r.Content, credSecret)
+		require.NotContains(t, r.Metadata, credSecret)
+	}
+	data, err := json.Marshal(perms.asked)
+	require.NoError(t, err)
+	require.NotContains(t, string(data), credSecret, "permission requests never carry the secret")
+}
+
+func TestTemporaryCredentialStaleTargetRequiresNewAuthorization(t *testing.T) {
+	session := "cred-stale"
+	sess := newSecretPage()
+	unsub := phone(t, session, func(r vault.CredentialRequest) {
+		_, _ = vault.Ephemeral.Provide(r.ID, session, "phone-test", []byte(credSecret), false)
+	})
+	defer unsub()
+	resp := runCredTool(t, t.Context(), sess, &mockPermissionService{}, session, BrowserParams{Action: "credential_request", Service: "Example"})
+	require.False(t, resp.IsError, resp.Content)
+	handle := metaOf(t, resp)["credential_id"].(string)
+
+	for _, change := range []func(){func() { sess.doc = "doc-2" }, func() { sess.tab = "tab-2" }} {
+		change()
+		fill := runCredTool(t, t.Context(), sess, &mockPermissionService{}, session, BrowserParams{Action: "vault_fill", CredentialID: handle})
+		require.True(t, fill.IsError)
+		require.Equal(t, NextTargetStale, metaOf(t, fill)["next_step"])
+		require.Empty(t, sess.fills, "zero dispatch on a changed tab or document")
+		view, _ := vault.Ephemeral.Get(handle)
+		require.Equal(t, vault.CredentialProvided, view.State)
+	}
+	// A changed target opens a new card; the old authorization is canceled.
+	secondPhone := phone(t, session, func(r vault.CredentialRequest) {
+		_, _ = vault.Ephemeral.Provide(r.ID, session, "phone-test", []byte(credSecret), false)
+	})
+	defer secondPhone()
+	rebind := runCredTool(t, t.Context(), sess, &mockPermissionService{}, session, BrowserParams{Action: "credential_request", Service: "Example"})
+	require.False(t, rebind.IsError, rebind.Content)
+	newHandle := metaOf(t, rebind)["credential_id"].(string)
+	require.NotEqual(t, handle, newHandle)
+	oldFill := runCredTool(t, t.Context(), sess, &mockPermissionService{}, session, BrowserParams{Action: "vault_fill", CredentialID: handle})
+	require.True(t, oldFill.IsError)
+	require.Empty(t, sess.fills)
+	fill := runCredTool(t, t.Context(), sess, &mockPermissionService{}, session, BrowserParams{Action: "vault_fill", CredentialID: newHandle})
+	require.False(t, fill.IsError, fill.Content)
+	require.Len(t, sess.fills, 1)
+}
+
+func TestTemporaryCredentialOtherSessionAndOriginRefused(t *testing.T) {
+	session := "cred-owner"
+	sess := newSecretPage()
+	unsub := phone(t, session, func(r vault.CredentialRequest) {
+		_, _ = vault.Ephemeral.Provide(r.ID, session, "phone-test", []byte(credSecret), false)
 	})
 	defer unsub()
 	resp := runCredTool(t, t.Context(), sess, &mockPermissionService{}, session, BrowserParams{Action: "credential_request"})

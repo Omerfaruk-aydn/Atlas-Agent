@@ -1,3 +1,19 @@
+package tools
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+)
+
+// readDesignArtifact bounds allocation before reading an untrusted file.
+func readDesignArtifact(path string, maxBytes int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {

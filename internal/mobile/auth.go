@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -93,7 +94,17 @@ type Auth struct {
 	// OnRevoke is called after devices were removed, so open event streams
 	// can end without waiting for their next periodic check.
 	OnRevoke func()
+	// OnRevokeDevices receives the removed device IDs, so state bound to a
+	// device (such as a password it supplied) is withdrawn at once.
+	OnRevokeDevices func(ids []string)
+	transfers       map[string]*transfer
 }
+
+// transfer lets an already paired browser hand its access to the same
+// phone's Home Screen app, which iOS gives a separate cookie store.
+type transfer struct {
+	hash     string
+	deviceID string
 	expires  time.Time
 }
 

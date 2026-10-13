@@ -1,3 +1,74 @@
+		return "", errors.New("no support controller")
+	}
+	c.viewerMu.Lock()
+	defer c.viewerMu.Unlock()
+	c.mu.Lock()
+	parent, closed := c.ctx, c.closed
+	session := ""
+	if c.remote != nil {
+		session = c.remote.SessionID
+	}
+	c.mu.Unlock()
+	if closed || session == "" {
+		return "", errors.New("no current support session")
+	}
+	if c.viewer != nil && c.viewer.session == session {
+		return c.viewer.URL(), nil
+	}
+	if c.viewer != nil {
+		c.viewer.Close()
+	}
+	if parent == nil {
+		parent = context.Background()
+	}
+	_ = c.LoadTimeline(session)
+	v, err := newScreenViewer(parent, c, session)
+	if err != nil {
+		return "", err
+	}
+	c.viewer = v
+	return v.URL(), nil
+}
+
+func newScreenViewer(parent context.Context, c *Controller, session string) (*ScreenViewer, error) {
+	ln, err := (&net.ListenConfig{}).Listen(parent, "tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, err
+	}
+	var token [24]byte
+	if _, err := rand.Read(token[:]); err != nil {
+		ln.Close()
+		return nil, err
+	}
+	ctx, cancel := context.WithCancel(parent)
+	v := &ScreenViewer{controller: c, session: session, host: ln.Addr().String(), key: hex.EncodeToString(token[:]), ctx: ctx, cancel: cancel, done: make(chan struct{}), lastSeen: time.Now()}
+	v.server = &http.Server{Handler: http.HandlerFunc(v.serve), ReadHeaderTimeout: 3 * time.Second, IdleTimeout: 30 * time.Second}
+	go func() { defer close(v.done); _ = v.server.Serve(ln) }()
+	go v.expireIdle()
+	return v, nil
+}
+
+func (v *ScreenViewer) URL() string { return "http://" + v.host + "/" + v.key + "/" }
+
+func (v *ScreenViewer) Close() {
+	v.closeOnce.Do(func() { v.cancel(); v.watch.stop(); _ = v.server.Close(); <-v.done })
+}
+
+func (v *ScreenViewer) expireIdle() {
+	t := time.NewTicker(5 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-v.ctx.Done():
+			v.Close()
+			return
+		case <-t.C:
+			v.mu.Lock()
+			idle := time.Since(v.lastSeen) > 20*time.Second
+			v.mu.Unlock()
+			if idle {
+				v.watch.stop()
+			}
 		}
 	}
 }

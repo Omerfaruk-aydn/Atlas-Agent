@@ -1,3 +1,72 @@
+# Sign-in from the phone, returning control, live screen and Home Screen
+
+This page covers four phone panel features: typing a password for a sign-in
+Atlas is doing in the browser, returning control after you finished a step
+yourself, watching the computer's screen live, and adding the panel to the
+Home Screen. Pairing and the panel itself are described in
+[remote-control.md](remote-control.md) and [mobile-remote.md](mobile-remote.md).
+
+## Signing in to an account you authorized
+
+When the user explicitly supplies a login password in a new instruction,
+Atlas can separate it before saving the chat or sending it to the model.
+For example: `Gmail user@example.com password: "example password"` (use a
+synthetic password for testing). The instruction must identify one account
+and a clear HTTPS login origin, or name Gmail/Google or Outlook/Microsoft.
+Multiple accounts, ambiguous services and fenced code are not automatically
+authorized. This does not import secrets from old chats or attachments.
+
+The password is held only in memory for up to five minutes while the agent
+reaches the login field. `credential_request` binds it to the exact observed
+field and returns a handle immediately, without opening another phone card.
+The bound handle expires after two minutes, is consumed once, and is withdrawn
+on cancellation or shutdown. No saved vault entry is created. If the field
+or document changes, fresh authorization may still be required.
+
+A user may also instruct Atlas to read credentials from a specific email or
+web document and use them at a particular service. The browser `text` action
+imports a single labeled username/password pair before returning the source
+text to the model. The model sees masked text and the destination/account,
+then uses the same credential_request/vault_fill path without another phone
+card. A named sender must match the selected message header, not a substring
+elsewhere in its body. Explicit source URLs are matched to their document.
+The destination comes from the human's URL, or from one source link whose
+meaningful hostname labels match the human's named service. Conflicting
+credentials or ambiguous destinations require source/destination clarification.
+An HTTP link in old mail can resolve to HTTPS, but filling still requires
+that exact HTTPS origin (loopback test servers are the development exception).
+This is a browser-text transfer, not automatic scanning of all messages,
+files or attachments. Reading the same source again within a human turn
+cannot authorize a second fill after consumption or an uncertain dispatch.
+
+Without a clearly supplied credential, Atlas asks through the secure phone
+card instead of asking for a password in chat. The
+browser tool refuses passwords in `set_field`, `type`, `fill_form`, `eval`
+and in free-text questions. Instead:
+
+1. The agent calls `browser` with `action: "credential_request"`. Atlas reads
+   the page itself and binds the request to the exact origin
+   (`https://login.example.com`, not a domain suffix), tab, document, frame
+   and the actual password DOM element, and to the account name supplied for
+   the card. A replacement element, another tab or a new document requires a
+   new card; an answered card cannot be silently rebound.
+2. A **secure credential card** appears on the paired phone (and the chat
+   shows that Atlas is waiting). It names the service, the full origin and
+   the account. Type the password there. The eye button shows and hides it.
+   **Use for this sign-in** sends it once; **Cancel** withdraws the request.
+3. The agent receives only a handle (`cr_…`), never the value, and calls
+   `vault_fill` with it. Atlas checks that the same page, document, frame,
+   field and origin are still there, consumes the value, then inserts it
+   through an isolated browser context. If the page navigated or the field
+   changed, nothing is typed and the agent must request again.
+4. The agent calls `login_check`. Filling a password is not a successful
+   sign-in: the result says whether the page shows an error, still asks for
+   the password, asks for a one-time code or other verification, or the
+   password field is gone. A missing password field alone is not proof of
+   sign-in: provide both the expected origin/path and visible account-specific
+   evidence plus observed signed-in UI (for example a visible Sign out control).
+   If these cannot be observed, the result stays uncertain rather than claiming
+   a successful login. Host and path boundaries are compared structurally,
    never as a raw URL prefix. One-time codes, security keys and approvals on
    another device are always yours to complete.
 

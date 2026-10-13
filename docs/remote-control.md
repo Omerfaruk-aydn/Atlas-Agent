@@ -259,3 +259,5 @@ and revocation over the real gateway, and Android Chrome browser emulation.
 Not verified: Docker, Caddy and Let's Encrypt on a real Ubuntu or Debian VPS,
 real DNS, the iPhone WebKit browser tests in this environment, and a physical
 iPhone or Android phone.
+`tailscale funnel`, the official installer on a clean Windows machine, real
+`ts.net` certificates, and iPhone or Android access over mobile data.

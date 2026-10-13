@@ -31,6 +31,63 @@ after restarting Atlas.
 No phone application, account, VPS or identity verification is needed for this
 test. It works on the same network only; access from outside still needs a
 separately configured remote connection.
+Safari or Chrome from anywhere. The phone needs no Tailscale app, no APK and
+no account; only this computer uses your own Tailscale account.
+
+```
+phone ──HTTPS (public ts.net certificate)──▶ Tailscale Funnel ──▶ tailscaled on this computer ──▶ 127.0.0.1:<port> (Atlas phone panel)
+```
+
+Requirements, which `/rc` checks and explains one at a time:
+
+1. Tailscale 1.52 or newer is installed and its service is running. On
+   Windows, **Install Tailscale** downloads the official MSI from
+   `pkgs.tailscale.com`, checks its published SHA-256 and the
+   `Tailscale Inc.` Authenticode signature, and only then opens the
+   installer; Windows asks for administrator approval. If any check fails,
+   the installer is not run. On other systems Atlas opens the download page.
+2. This computer is signed in. **Sign in to Tailscale** runs `tailscale up`
+   and opens only Tailscale's own sign-in page in your browser. Atlas never
+   asks for or stores a password, auth key or token.
+3. MagicDNS and HTTPS certificates are on for the tailnet, and the tailnet
+   policy allows Funnel for this device on 443, 8443 or 10000. When Tailscale
+   asks for approval, `/rc` shows **Open the Tailscale approval page** and
+   continues once you approve there. Atlas does not change your account,
+   devices or policy by itself.
+
+How the connection works:
+
+- Atlas starts its phone panel on a loopback-only, plain-HTTP port. It is not
+  reachable from your network. Funnel ends TLS with Tailscale's publicly
+  trusted certificate and forwards to that port, so no certificate check is
+  disabled anywhere and the phone shows no certificate warning.
+- Atlas runs `tailscale funnel --https=<port> http://127.0.0.1:<port>` in
+  the foreground and records its own entry in `tailscale-funnel.json` in the
+  devices directory. It picks the first of 443, 8443 and 10000 that no other
+  Serve or Funnel entry uses. Entries of other apps are never changed, and
+  `tailscale serve reset` or `funnel reset` is never run. If all three ports
+  are taken, `/rc` lists them and stops.
+- The panel accepts only the exact `ts.net` host (with its port when it is
+  not 443). Origin, CSRF, cookie, pairing, rate-limit and preview checks are
+  the same as for the VPS relay. Screen preview stays off for each phone
+  until you allow it in `/mobile`.
+- **Stop Tailscale connection** closes the Funnel entry, waits until
+  Tailscale no longer lists it, and forgets the choice. If Tailscale still
+  lists it, `/rc` says so instead of removing it by force. Exiting Atlas also
+  removes Atlas' entry. The Tailscale service itself keeps running.
+- Choosing the VPS relay later turns Tailscale off on this computer first.
+  Only one public route is used at a time.
+
+Statuses are reported honestly. *Funnel set up; internet access not verified*
+means the Funnel entry is listed and the panel answers locally. Only after a
+paired phone reaches the computer through the Funnel does `/rc` show *Phone
+connected over the internet*, with the phone name and time. To check, turn
+Wi-Fi off on the phone, scan the QR and pair.
+
+Limits: keep this computer on and awake. Funnel has bandwidth limits, serves
+only `ts.net` names, and listens only on ports 443, 8443 and 10000. Tailscale's
+free personal plan is meant for personal use; check Tailscale's plans and terms
+before relying on it for a business.
 
 ## VPS connection
 
@@ -166,7 +223,10 @@ key and no session token.
    session cookie.
 
 If the terminal is too small for the QR, the dialog shows the address to open
-instead. Adding the panel to the Home Screen is optional.
+instead. Adding the panel to the Home Screen is optional; on iPhone the
+Home Screen app is connected with a one-time code from Safari (see
+[phone-sign-in-and-live-screen.md](phone-sign-in-and-live-screen.md), which
+also covers sign-in cards, returning control and the live screen).
 
 From the phone you can follow tasks, send prompts, answer questions and
 permission requests, and pause, resume or stop work. Answers are checked
@@ -259,5 +319,13 @@ and revocation over the real gateway, and Android Chrome browser emulation.
 Not verified: Docker, Caddy and Let's Encrypt on a real Ubuntu or Debian VPS,
 real DNS, the iPhone WebKit browser tests in this environment, and a physical
 iPhone or Android phone.
+
+Tailscale Funnel was developed without a Tailscale installation, account or
+physical phone. Verified: readiness checks, Funnel ownership, port conflicts,
+approval, timeouts, cancellation, crash recovery, installer hash and signature
+refusal, and the /rc state machine against a scripted fake Tailscale CLI; and
+pairing, messages, answers, images, preview permission, forged Host, Origin
+and CSRF rejection and event-stream reconnects through a local TLS ingress
+that emulates Funnel's forwarding to the real gateway. Not verified: a real
 `tailscale funnel`, the official installer on a clean Windows machine, real
 `ts.net` certificates, and iPhone or Android access over mobile data.

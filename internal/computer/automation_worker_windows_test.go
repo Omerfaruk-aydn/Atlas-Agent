@@ -5,6 +5,7 @@ package computer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -87,9 +88,9 @@ func TestAutomationWorkerReusesOneProcess(t *testing.T) {
 	data, err := json.Marshal(request)
 	require.NoError(t, err)
 
-	first, err := backend.Automation(ctx, request)
+	first, err := workerAutomation(ctx, backend, request)
 	require.NoError(t, err)
-	second, err := backend.Automation(ctx, request)
+	second, err := workerAutomation(ctx, backend, request)
 	require.NoError(t, err)
 	once, err := backend.automationOnce(ctx, data)
 	require.NoError(t, err)
@@ -112,7 +113,7 @@ func TestAutomationWorkerReportsScriptErrors(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid_target")
 	// The worker survives a reported failure.
-	_, err = backend.Automation(ctx, AutomationRequest{Action: "monitors"})
+	_, err = workerAutomation(ctx, backend, AutomationRequest{Action: "monitors"})
 	require.NoError(t, err)
 	require.Equal(t, 1, backend.automation.Started)
 }
@@ -133,7 +134,7 @@ if ($p.action -eq 'invoke') { Start-Sleep -Seconds 30 }
 	defer cancel()
 	backend := &windowsBackend{}
 	defer backend.automation.Close()
-	_, err := backend.Automation(ctx, AutomationRequest{Action: "monitors"})
+	_, err := workerAutomation(ctx, backend, AutomationRequest{Action: "monitors"})
 	require.NoError(t, err)
 
 	// The worker is running; run holds the worker's mutex for the whole
@@ -228,4 +229,22 @@ func startTimingFixture(ctx context.Context, t *testing.T) string {
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
+}
+
+// workerAutomation sends a request through the persistent worker even when
+// Automation would answer it natively (as it does for monitors), so the
+// worker's own lifecycle stays under test.
+func workerAutomation(ctx context.Context, b *windowsBackend, p AutomationRequest) (json.RawMessage, error) {
+	data, err := json.Marshal(p)
+	if err != nil {
+		return nil, err
+	}
+	out, used, err := b.automation.run(ctx, p, data)
+	if !used {
+		return nil, errors.New("automation worker was not used")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return automationResult(out)
 }

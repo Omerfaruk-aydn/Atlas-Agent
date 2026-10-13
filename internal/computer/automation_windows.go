@@ -13,11 +13,14 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 	"unicode/utf16"
+	"unsafe"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
+	"golang.org/x/sys/windows"
 )
 
 //go:embed automation.ps1
@@ -46,6 +49,26 @@ func (b *windowsBackend) Automation(ctx context.Context, p AutomationRequest) (j
 	if p.Action == "windows" {
 		return b.listNativeWindows(ctx)
 	}
+	if p.Action == "monitors" {
+		// Native and DPI aware; see listNativeMonitors.
+		return b.listNativeMonitors(ctx)
+	}
+	if UsesCatalog(p) {
+		return CatalogAutomation(ctx, b, p)
+	}
+	if p.Action == "launch_app" {
+		out, err := b.automationScriptRun(ctx, p)
+		// Programs without a Start menu entry (or with a localized name
+		// the Start menu does not use) are found through the catalog.
+		if err != nil && strings.Contains(err.Error(), "Target missing") {
+			if res, cerr := CatalogAutomation(ctx, b, p); cerr == nil {
+				return res, nil
+			}
+		}
+		return out, err
+	}
+	return b.automationScriptRun(ctx, p)
+}
 
 // automationScriptRun serves a request through the PowerShell automation
 // script, preferring the persistent worker.

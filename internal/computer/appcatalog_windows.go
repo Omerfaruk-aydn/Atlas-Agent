@@ -1,3 +1,52 @@
+//go:build windows
+
+package computer
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"time"
+
+	"golang.org/x/sys/windows/registry"
+)
+
+// Apps returns this computer's application catalog, created on first use.
+func (b *windowsBackend) Apps() *AppCatalog {
+	b.catalogOnce.Do(func() { b.catalog = NewAppCatalog(b.DiscoverApps, 10*time.Minute) })
+	return b.catalog
+}
+
+// DiscoverApps lists installed applications from the registry App Paths,
+// known install folders, Start menu entries and running windows.
+func (b *windowsBackend) DiscoverApps(ctx context.Context) ([]AppEntry, error) {
+	return discoverApps(ctx, appSources{
+		AppPaths:  registryAppPaths,
+		Env:       os.Getenv,
+		Exists:    regularFile,
+		ReadFile:  os.ReadFile,
+		StartApps: b.startApps,
+		Windows: func(ctx context.Context) ([]nativeWindowSummary, error) {
+			raw, err := b.listNativeWindows(ctx)
+			if err != nil {
+				return nil, err
+			}
+			var out []nativeWindowSummary
+			return out, json.Unmarshal(raw, &out)
+		},
+	})
+}
+
+func (b *windowsBackend) startApps(ctx context.Context) ([]startApp, error) {
+	req := AutomationRequest{Action: "start_apps"}
+	data, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
 	}
 	var raw json.RawMessage
 	if out, used, rerr := b.automation.run(ctx, req, data); used {

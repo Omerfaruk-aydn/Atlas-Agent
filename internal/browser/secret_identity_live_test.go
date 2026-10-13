@@ -1,3 +1,12 @@
+package browser
+
+import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
 	"github.com/stretchr/testify/require"
 )
 

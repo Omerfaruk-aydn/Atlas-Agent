@@ -138,6 +138,8 @@ const secretVerifyScript = `function(n){const e=globalThis.__atlasSecretTarget?.
 
 // loginStateScript classifies the page structure. Text checks are generic
 // signals for verification steps, not site-specific selectors.
+//
+//nolint:misspell // Turkish page text is intentional.
 const loginStateScript = `function(expected){
 const vis=e=>e.getClientRects().length>0&&getComputedStyle(e).visibility==="visible";
 const pw=[...document.querySelectorAll('input[type="password"]')].filter(vis);

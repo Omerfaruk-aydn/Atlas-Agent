@@ -259,6 +259,7 @@ func TestCaptchaDetectInteractiveTypes(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			sess := newCaptchaSession("https://demo.test", map[string]string{
 				captcha.DetectScript: c.detect,
 			})

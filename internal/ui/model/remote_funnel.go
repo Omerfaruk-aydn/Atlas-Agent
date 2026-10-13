@@ -1,3 +1,74 @@
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/util"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/version"
+)
+
+// funnelConfigKey stores the user's choice to use Tailscale; it holds no
+// credential.
+const funnelConfigKey = "tools.devices.mobile_funnel"
+
+// errFunnelNotReady means Tailscale needs a step from the user first; the
+// readiness says which.
+var errFunnelNotReady = errors.New("tailscale is not ready")
+
+// funnelEnv is everything the Tailscale mode touches outside Atlas. Tests
+// replace it with a fake CLI; production uses the installed Tailscale.
+type funnelEnv struct {
+	CLI       tsfunnel.Exec
+	Service   func() tsfunnel.ServiceState
+	Install   func(ctx context.Context, step func(tsfunnel.InstallStep)) error
+	OpenURL   func(string) error
+	OpenApp   func() error
+	StateFile string
+	// Tune adjusts the manager, for example shorter waits in tests.
+	Tune    func(*tsfunnel.Manager)
+	Gateway func(mobile.Options) (*mobile.Gateway, error)
+}
+
+// funnelState is the /rc Tailscale mode. Fields are read and written on
+// the UI goroutine; progress and step are shared with running commands.
+type funnelState struct {
+	env *funnelEnv
+	// on is set while this run uses Tailscale, from the first check on.
+	on       bool
+	ready    tsfunnel.Readiness
+	checked  bool
+	checking bool
+	progress *tsfunnel.Progress
+	err      error
+	// task is a user-started helper: install, login or app.
+	task string
+	step atomic.Pointer[string]
+}
+
+type (
+	funnelStartedMsg struct {
+		generation uint64
+		gw         *mobile.Gateway
+		ready      tsfunnel.Readiness
+		err        error
+		auto       bool
+	}
+	funnelCheckedMsg struct {
+		generation uint64
+		ready      tsfunnel.Readiness
+	}
+	funnelTaskMsg struct {
+		generation uint64
+		task       string
+		err        error
+	}
+	funnelStoppedMsg struct {
+		generation uint64
+		err        error
+	}
+)
+
+// Funnel helper tasks.
+const (
+	funnelTaskInstall = dialog.FunnelTaskInstall
+	funnelTaskLogin   = dialog.FunnelTaskLogin
+	funnelTaskApp     = dialog.FunnelTaskApp
+)
 
 func (m *UI) funnelEnv() funnelEnv {
 	if e := m.devices.funnel.env; e != nil {

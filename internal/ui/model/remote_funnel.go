@@ -1,3 +1,22 @@
+package model
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/pkg/browser"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
+	tea "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ui/v2"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/mobile"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/remotecontrol"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/tsfunnel"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/dialog"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ui/util"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/version"
 )

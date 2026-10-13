@@ -1,3 +1,74 @@
+	require.Equal(t, entries[1].Launch.Path, e.Launch.Path)
+}
+
+func TestCatalogNoticesARemovedApplication(t *testing.T) {
+	t.Parallel()
+	files := map[string]bool{userChrome: true}
+	c := fixtureCatalog(t, files)
+	_, err := c.Resolve(t.Context(), "chrome")
+	require.NoError(t, err)
+	gen := c.Generation()
+
+	delete(files, userChrome) // Uninstalled inside the cache window.
+	_, err = c.Resolve(t.Context(), "exe:chrome")
+	require.ErrorIs(t, err, ErrAppNotFound, "rediscovery no longer lists it")
+	require.Greater(t, c.Generation(), gen)
+}
+
+func TestCatalogInvalidateOnTargetChange(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	c := NewAppCatalog(func(context.Context) ([]AppEntry, error) {
+		calls++
+		return nil, nil
+	}, time.Hour)
+	_, _ = c.List(t.Context(), "", false)
+	_, _ = c.List(t.Context(), "", false)
+	require.Equal(t, 1, calls, "cached")
+	c.Invalidate()
+	_, _ = c.List(t.Context(), "", false)
+	require.Equal(t, 2, calls)
+	require.Equal(t, uint64(2), c.Generation())
+}
+
+func TestMatchProfile(t *testing.T) {
+	t.Parallel()
+	profiles := []BrowserProfile{{"Default", "Kişisel"}, {"Profile 3", "Ömer Faruk"}, {"Profile 4", "İş"}}
+	// Reported session: the user typed the full name "ömer faruk aydın".
+	p, err := MatchProfile(profiles, "ömer faruk aydın")
+	require.NoError(t, err)
+	require.Equal(t, "Profile 3", p.Directory)
+	p, err = MatchProfile(profiles, "Profile 4")
+	require.NoError(t, err)
+	require.Equal(t, "İş", p.Name)
+	p, err = MatchProfile(profiles, "is")
+	require.NoError(t, err)
+	require.Equal(t, "Profile 4", p.Directory)
+
+	_, err = MatchProfile(profiles, "Ayşe")
+	require.ErrorIs(t, err, ErrProfileNotFound)
+
+	twins := []BrowserProfile{{"Profile 1", "Ömer"}, {"Profile 2", "Ömer Faruk"}, {"Profile 5", "Ömer Faruk"}}
+	_, err = MatchProfile(twins, "ömer faruk")
+	require.ErrorIs(t, err, ErrProfileAmbig)
+	require.ErrorContains(t, err, "Profile 2")
+	require.ErrorContains(t, err, "Profile 5")
+}
+
+func TestPlanLaunchArgsAreAList(t *testing.T) {
+	t.Parallel()
+	chrome := AppEntry{ID: "exe:chrome", Name: "Google Chrome", Launch: AppLauncher{Method: LaunchExecutable, Path: userChrome}, Capabilities: []string{"launch", "browser_profiles"}, Profiles: []BrowserProfile{{"Profile 3", "Ömer Faruk"}}}
+	plan, err := PlanLaunch(chrome, []string{"https://www.google.com/search?q=a b&c"}, "ömer faruk")
+	require.NoError(t, err)
+	require.Equal(t, []string{userChrome, "--profile-directory=Profile 3", "https://www.google.com/search?q=a b&c"}, plan.Argv)
+	require.Equal(t, "chrome.exe", plan.ProcessName)
+
+	_, err = PlanLaunch(chrome, []string{"--profile-directory=Default"}, "")
+	require.ErrorIs(t, err, ErrLaunchArgs)
+	_, err = PlanLaunch(chrome, []string{"a\x00b"}, "")
+	require.ErrorIs(t, err, ErrLaunchArgs)
+
+	calc := AppEntry{ID: "start:calc", Launch: AppLauncher{Method: LaunchAppsFolder, AppID: "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App"}}
 	_, err = PlanLaunch(calc, []string{"x"}, "")
 	require.ErrorIs(t, err, ErrLaunchArgs, "Start menu entries take no arguments")
 	plan, err = PlanLaunch(calc, nil, "")

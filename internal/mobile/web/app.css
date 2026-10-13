@@ -1,15 +1,40 @@
+/* Atlas Remote phone panel.
+   Tokens: calm white surfaces, strong dark type and Atlas purple. Contrast
+   was measured against the surfaces each token is used on (WCAG AA for
+   text, 3:1 for icons and outlines). */
 :root {
-  color-scheme: light dark;
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --surface-2: #eef0f4;
-  --text: #15171c;
-  --muted: #5d6472;
-  --border: #d9dde5;
-  --primary: #3d63dd;
-  --primary-text: #ffffff;
-  --danger: #c4372f;
-  --ok: #1f7a4d;
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-2: #f5f6fa;
+  --bg-3: #eceef4;
+  --text: #202127;
+  --text-2: #626975;      /* 5.6:1 on #fff, 5.2:1 on --bg-2 */
+  --brand: #6046d8;       /* 6.0:1 on #fff; white text on it 6.0:1 */
+  --brand-text: #5a40d2;
+  --on-brand: #ffffff;
+  --select: #f1edfc;
+  --line: #e3e6ed;
+  --line-strong: #cfd3dc;
+  --control: #858b98;     /* 3.4:1 on #fff, for unchecked controls */
+  --ok: #26734e;          /* 5.9:1 on #fff */
+  --warn: #8a5300;        /* 6.1:1 on --warn-bg */
+  --warn-dot: #e5a00d;
+  --warn-bg: #fff6e1;
+  --danger: #c0262d;      /* 5.6:1 on #fff */
+  --danger-bg: #fdecec;
+  --user-bubble: #eef0f6;
+  --code-bg: #f5f6fa;
+  --overlay: rgba(20, 22, 30, .08);
+  --shadow: 0 6px 24px rgba(20, 22, 40, .12), 0 1px 3px rgba(20, 22, 40, .08);
+
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Roboto Mono", monospace;
+
+  /* 4/8 spacing scale. */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s8: 32px;
+  /* Radii by function. */
+  --r-input: 12px; --r-btn: 12px; --r-card: 14px; --r-bubble: 18px; --r-pill: 999px;
   --gutter: 16px;
   --dur: 200ms;
   --app-h: 100dvh;

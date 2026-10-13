@@ -590,19 +590,19 @@
     }
     try { localStorage.setItem("atlas.notify", e.target.checked ? "1" : "0"); } catch (_) {}
   });
-  $("logout").addEventListener("click", async (e) => {
-    try { await act("/api/logout", {}, e.currentTarget); } catch (_) {}
-    if (state.es) state.es.close();
-    startPairing();
-  });
-  window.addEventListener("online", () => { if (state.me) resumeConnection(); else boot(); });
-  window.addEventListener("offline", () => { if (state.es) state.es.close(); state.es = null; setConn("offline"); });
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) resumeConnection();
-  });
-  window.addEventListener("pagehide", () => { if (state.es) state.es.close(); state.es = null; });
+  window.addEventListener("pagehide", () => { if (state.es) state.es.close(); state.es = null; if (screen.ctrl) screenDisconnect("paused"); });
   window.addEventListener("pageshow", (e) => { if (e.persisted) resumeConnection(); });
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+  if ("serviceWorker" in navigator) {
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" }).then((reg) => {
+      if (!reg || typeof reg.update !== "function") return;
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) Promise.resolve(reg.update()).catch(() => {}); });
+    }).catch(() => {});
+    // A new worker took over: offer a reload instead of forcing one, so a
+    // half-typed answer is never lost.
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadController) $("update-bar").classList.remove("hidden"); });
+  }
+  applyTheme();
   applyI18n();
   boot();
 })();

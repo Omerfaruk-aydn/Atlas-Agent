@@ -571,24 +571,64 @@
     } catch (_) { $("attach-info").textContent = ""; }
     e.target.value = "";
   });
-  $("composer").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const text = $("prompt").value.trim();
-    if (!text || !state.current) return;
-    try {
-      const data = await act("/api/sessions/" + encodeURIComponent(state.current) + "/prompt", { text, attachment_ids: state.upload ? [state.upload] : [] }, $("send"));
-      $("prompt").value = "";
-      state.upload = null;
-      $("attach-info").textContent = data.queued ? t("queued") : t("sent");
-    } catch (_) {}
+  $("logout").addEventListener("click", () => {
+    const open = $("logout-confirm").classList.toggle("hidden") === false;
+    $("logout").setAttribute("aria-expanded", String(open));
+    $("logout-error").classList.add("hidden");
+    if (open) $("logout-no").focus();
   });
-  $("notify").checked = (() => { try { return localStorage.getItem("atlas.notify") === "1"; } catch (_) { return false; } })();
-  $("notify").addEventListener("change", async (e) => {
-    if (e.target.checked && "Notification" in window) {
-      const p = await Notification.requestPermission();
-      if (p !== "granted") { e.target.checked = false; banner(t("notify_denied"), true); }
+  $("logout-no").addEventListener("click", () => { $("logout-confirm").classList.add("hidden"); $("logout").setAttribute("aria-expanded", "false"); $("logout").focus(); });
+  $("logout-yes").addEventListener("click", async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    b.classList.add("busy");
+    try {
+      await act("/api/logout", {});
+      $("logout-confirm").classList.add("hidden");
+      startPairing("unpaired");
+    } catch (err) {
+      if (err.status !== 401) {
+        $("logout-error").textContent = t("failed") + ": " + err.message;
+        $("logout-error").classList.remove("hidden");
+      }
+    } finally {
+      b.disabled = false;
+      b.classList.remove("busy");
     }
-    try { localStorage.setItem("atlas.notify", e.target.checked ? "1" : "0"); } catch (_) {}
+  });
+
+  // The chat fills the visual viewport, so the on-screen keyboard never
+  // covers the last line or the send button.
+  function fitViewport() {
+    const vv = window.visualViewport;
+    const h = vv ? vv.height : window.innerHeight;
+    document.documentElement.style.setProperty("--app-h", Math.round(h) + "px");
+    const c = $("composer");
+    if (c) document.documentElement.style.setProperty("--composer-h", c.offsetHeight + "px");
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", fitViewport);
+    window.visualViewport.addEventListener("scroll", () => { if (document.body.classList.contains("chat-open")) window.scrollTo(0, 0); });
+  }
+  window.addEventListener("resize", fitViewport);
+  if (window.ResizeObserver) new ResizeObserver(fitViewport).observe($("composer"));
+  fitViewport();
+
+  window.addEventListener("online", () => {
+    state.retries = 0;
+    retryDelay = 1000;
+    if (state.me) resumeConnection();
+    else if ($("view-pair").classList.contains("hidden")) boot();
+  });
+  window.addEventListener("offline", () => { if (state.es) state.es.close(); state.es = null; if (state.me) setConn("offline", "network"); });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      resumeConnection();
+      if (screen.open) { screen.gaveUp = false; screen.retries = 0; applyView(state.pendingOpen && !!state.detail && pendingKeys(state.detail).length > 0); }
+    } else {
+      stopTick();
+      if (screen.ctrl) screenDisconnect("paused");
+    }
   });
   window.addEventListener("pagehide", () => { if (state.es) state.es.close(); state.es = null; if (screen.ctrl) screenDisconnect("paused"); });
   window.addEventListener("pageshow", (e) => { if (e.persisted) resumeConnection(); });

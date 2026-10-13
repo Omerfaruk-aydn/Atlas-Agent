@@ -1,3 +1,74 @@
+	c.clicked = sel
+	return nil
+}
+
+func newCaptchaSession(url string, eval map[string]string) *captchaSession {
+	return &captchaSession{
+		fakeBrowserSession: &fakeBrowserSession{url: url},
+		evalOut:            eval,
+	}
+}
+
+func withCaptchaChain(t *testing.T, c *captcha.Chain) {
+	t.Helper()
+	prev := captchaChain
+	t.Cleanup(func() { captchaChain = prev })
+	SetCaptchaChain(c)
+}
+
+func TestCaptchaDetectNone(t *testing.T) {
+	t.Parallel()
+	sess := newCaptchaSession("https://example.com", map[string]string{
+		captcha.DetectScript: `{"kind":"none","confidence":0}`,
+	})
+	resp, err := runCaptchaDetect(context.Background(), sess)
+	require.NoError(t, err)
+	require.False(t, resp.IsError)
+	var out CaptchaResult
+	require.NoError(t, json.Unmarshal([]byte(resp.Content), &out))
+	require.Equal(t, "none", out.Status)
+}
+
+func TestCaptchaDetectImageText(t *testing.T) {
+	t.Parallel()
+	sess := newCaptchaSession("https://ois.example/auth", map[string]string{
+		captcha.DetectScript: `{"kind":"image_text","image_selector":"img.captcha","answer_selector":"#code","verify_selector":"button[type=submit]","confidence":0.95,"question":"Güvenlik Resmi","page_url":"https://ois.example/auth"}`,
+	})
+	resp, err := runCaptchaDetect(context.Background(), sess)
+	require.NoError(t, err)
+	require.False(t, resp.IsError)
+	var out CaptchaResult
+	require.NoError(t, json.Unmarshal([]byte(resp.Content), &out))
+	require.Equal(t, "detected", out.Status)
+	require.Equal(t, "image_text", out.Kind)
+	require.Equal(t, "#code", out.AnswerSelector)
+	require.NotEmpty(t, out.Message)
+}
+
+func TestCaptchaSolveCheckbox(t *testing.T) {
+	t.Parallel()
+	sess := newCaptchaSession("https://example.com", map[string]string{
+		captcha.DetectScript: `{"kind":"checkbox","answer_selector":"#robot","confidence":0.85}`,
+	})
+	resp, err := runBrowserCaptcha(context.Background(), sess, "captcha_solve", BrowserParams{Action: "captcha_solve"}, "sess1")
+	require.NoError(t, err)
+	require.False(t, resp.IsError, resp.Content)
+	var out CaptchaResult
+	require.NoError(t, json.Unmarshal([]byte(resp.Content), &out))
+	require.Equal(t, "needs_click", out.Status)
+	require.Empty(t, resp.Data, "checkbox path returns text only")
+}
+
+func TestCaptchaSolveMathOffline(t *testing.T) {
+	withCaptchaChain(t, captcha.NewChain(captcha.MathSolver{}).WithAttemptTimeout(5*time.Second))
+
+	sess := newCaptchaSession("https://example.com", map[string]string{
+		captcha.DetectScript:                `{"kind":"math","question":"7 + 5","answer_selector":"#answer","verify_selector":"#go","confidence":0.9}`,
+		`document.querySelector("#answer")`: "true",
+	})
+	resp, err := runBrowserCaptcha(context.Background(), sess, "captcha_solve", BrowserParams{Action: "captcha_solve"}, "sess1")
+	require.NoError(t, err)
+	require.False(t, resp.IsError, resp.Content)
 	var out CaptchaResult
 	require.NoError(t, json.Unmarshal([]byte(resp.Content), &out))
 	require.Equal(t, "solved", out.Status)

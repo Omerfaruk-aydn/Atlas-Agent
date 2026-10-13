@@ -1,3 +1,74 @@
+			"Rotate right: eval: [...document.querySelectorAll('button')].find(b=>b.textContent.includes('Rotate right')||b.textContent.includes('Rotate Right'))?.click()\n" +
+			"Check: eval: [...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='Check')?.click()\n" +
+			"After each click, verify angle: eval: [...document.querySelectorAll('img')].find(e=>e.src.includes('captcha-')&&e.getBoundingClientRect().width>100)?.style.transform\n" +
+			"After Check, read result: eval: document.body.innerText.match(/Incorrect|Correct|Success|solved/gi)\n" +
+			"IMPORTANT: The image may have a BAKED-IN starting rotation. The CSS transform shows only the ADDED rotation. " +
+			"The correct answer is the angle that makes the image upright — you MUST verify visually after each step.\n" +
+			"Target: " + firstNonEmpty(ch.SliderSelector, "(Rotate buttons)")
+		resp.Content = instructions
+	case captcha.KindSlider:
+		instructions := "SLIDER PUZZLE CAPTCHA (GeeTest). "
+		if gapInfo != nil && gapInfo.Found {
+			instructions += fmt.Sprintf("GAP DETECTION: Gap at x≈%d (canvas %dpx). ", gapInfo.GapX, gapInfo.CanvasWidth)
+			if gapInfo.PieceRange != nil {
+				instructions += fmt.Sprintf("Piece at cols %d-%d. ", gapInfo.PieceRange.Min, gapInfo.PieceRange.Max)
+			}
+			if gapInfo.DragDistance > 0 {
+				instructions += fmt.Sprintf("Estimated drag: ~%d CSS px. ", int(gapInfo.DragDistance))
+			}
+		}
+		instructions += "\nCALIBRATION-FIRST STRATEGY (do NOT guess distances):\n" +
+			"1. Get knob center in CSS pixels:\n" +
+			"   eval: (()=>{const b=document.querySelector('.geetest_slider_button');const r=b.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()\n" +
+			"2. CALIBRATE: css_drag small 50px, then measure piece movement:\n" +
+			`   {"action":"css_drag","advanced":{"x":751,"y":443,"to_x":801,"to_y":443,"steps":10,"hold_ms":50}}` + "\n" +
+			"   (replace 751/443 with your eval result; these are CSS pixels, NOT screenshot pixels)\n" +
+			"   eval: measure pieceMinX from slice canvas before and after\n" +
+			"   ratio = pieceMove / knobMove (typically ~1.0)\n" +
+			"3. FIND GAP: analyze bg canvas luminance — skip piece's own shadow (x=0-N)\n" +
+			"4. CALCULATE: dragDistance = (gapX - pieceMinX) / ratio\n" +
+			"5. DRAG: css_drag with calculated distance\n" +
+			"6. VERIFY: eval: document.querySelector('.geetest_btn')?.innerText\n" +
+			"If 'Incomplete', adjust by 5px and retry. Max 3 attempts.\n" +
+			"CRITICAL: css_drag uses CSS pixels (from getBoundingClientRect), NOT screenshot pixels. Do NOT pass viewport_id.\n" +
+			"Slider: " + firstNonEmpty(ch.SliderSelector, ".geetest_slider_button")
+		resp.Content = instructions
+	case captcha.KindKeyCaptcha:
+		resp.Content = "KEYCAPTCHA. Look at the widget image. If the widget is empty or not loaded, report that the widget failed to render and move on. " +
+			"If visible, find the interactive element (arrow, button, or draggable piece) and interact with it using pointer_click or pointer_drag. " +
+			"Target: " + firstNonEmpty(ch.SliderSelector, "(look for the interactive element in the widget)") + ". " +
+			"After interacting, click Verify/Check."
+	}
+	return resp, nil
+}
+
+// GapDetectResult holds the output of GapDetectScript.
+type GapDetectResult struct {
+	Found        bool    `json:"found"`
+	Method       string  `json:"method"`
+	Reason       string  `json:"reason"`
+	GapX         int     `json:"gapX"`
+	GapRatio     float64 `json:"gapRatio"`
+	GapCSSX      float64 `json:"gapCSSX"`
+	DragDistance float64 `json:"dragDistance"`
+	SliderCSSX   float64 `json:"sliderCSSX"`
+	CanvasWidth  int     `json:"canvasWidth"`
+	CanvasHeight int     `json:"canvasHeight"`
+	Profile      []int   `json:"profile"`
+	PieceRange   *struct {
+		Min   int `json:"min"`
+		Max   int `json:"max"`
+		Width int `json:"width"`
+	} `json:"pieceRange"`
+}
+
+// RotateAngleResult holds the output of RotateAngleScript.
+type RotateAngleResult struct {
+	Found          bool     `json:"found"`
+	EstimatedAngle int      `json:"estimatedAngle"`
+	DeclaredAngle  *float64 `json:"declaredAngle"`
+	Confidence     float64  `json:"confidence"`
+	Reason         string   `json:"reason"`
 	ClickDegrees   int      `json:"clickDegrees"`
 }
 

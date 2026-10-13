@@ -1,3 +1,53 @@
+package vault
+
+import (
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestChatCredentialBindsOnceWithoutPhone(t *testing.T) {
+	c := NewCredentials()
+	t.Cleanup(func() { c.PurgeAll() })
+	secret := "Synthetic-Chat-77!"
+	prompt, err := c.CaptureUserPrompt("chat-one", "gmail hesabına user@example.test ile giriş yap şifre de bu "+secret)
+	require.NoError(t, err)
+	require.NotContains(t, prompt, secret)
+	require.Contains(t, prompt, "credential_request")
+	// Sanitized prompts pass through both coordinator and agent unchanged.
+	again, err := c.CaptureUserPrompt("chat-one", prompt)
+	require.NoError(t, err)
+	require.Equal(t, prompt, again)
+	spec := CredentialSpec{SessionID: "chat-one", Origin: "https://accounts.google.com", Account: "user@example.test", Target: CredentialTarget{TabID: "tab", Document: "doc", Selector: "#pw", NodeToken: "node"}}
+	wrong := spec
+	wrong.SessionID = "other"
+	_, _, err = c.Request(wrong)
+	require.ErrorIs(t, err, ErrNoInputChannel)
+	wrong = spec
+	wrong.Origin = "https://phishing.example.test"
+	_, _, err = c.Request(wrong)
+	require.ErrorIs(t, err, ErrNoInputChannel)
+	wrong = spec
+	wrong.Account = "other@example.test"
+	_, _, err = c.Request(wrong)
+	require.ErrorIs(t, err, ErrNoInputChannel)
+	req, reused, err := c.Request(spec)
+	require.NoError(t, err)
+	require.True(t, reused)
+	require.Equal(t, CredentialProvided, req.State)
+	same, reused, err := c.Request(spec)
+	require.NoError(t, err)
+	require.True(t, reused)
+	require.Equal(t, req.ID, same.ID)
+	require.False(t, c.ChatHasCredential("chat-one"))
+	_, err = c.Use(req.ID, spec.SessionID, spec.Origin, spec.Account, func(value string) (bool, error) {
+		require.Equal(t, secret, value)
+		return true, nil
+	})
+	require.NoError(t, err)
+	_, err = c.Use(req.ID, spec.SessionID, spec.Origin, spec.Account, func(string) (bool, error) {
+		t.Fatal("must not resend")
 		return true, nil
 	})
 	require.Error(t, err)

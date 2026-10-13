@@ -39,17 +39,30 @@ func (g *Gateway) handlerForHost(relayHost string) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		if r.URL.Path == "/sw.js" {
+		switch r.URL.Path {
+		case "/sw.js":
 			w.Header().Set("Service-Worker-Allowed", "/")
+			// The worker must update promptly; the browser checks it on
+			// each navigation only when it is not served from cache.
+			w.Header().Set("Cache-Control", "no-cache")
+		case "/manifest.webmanifest":
+			// Go's MIME table has no entry for .webmanifest; without this
+			// the manifest goes out as text/plain under nosniff.
+			w.Header().Set("Content-Type", "application/manifest+json")
+			w.Header().Set("Cache-Control", "no-cache")
+		case "/", "/app.js", "/app.css":
+			w.Header().Set("Cache-Control", "no-cache")
 		}
 		files.ServeHTTP(w, r)
 	}))
 	mux.HandleFunc("POST /api/pair", g.handlePair)
 	mux.HandleFunc("POST /api/pair/poll", g.handlePoll)
+	mux.HandleFunc("POST /api/pair/cancel", g.handlePairCancel)
 	mux.HandleFunc("GET /api/me", g.authed(g.handleMe))
 	mux.HandleFunc("POST /api/logout", g.authed(g.mutating(g.handleLogout)))
 	mux.HandleFunc("GET /api/sessions", g.authed(g.handleSessions))
 	mux.HandleFunc("GET /api/sessions/{id}", g.authed(g.handleSession))
+	mux.HandleFunc("GET /api/sessions/{id}/messages/{message}/images/{index}", g.authed(g.handleMessageImage))
 	mux.HandleFunc("POST /api/sessions/{id}/prompt", g.authed(g.mutating(g.handlePrompt)))
 	mux.HandleFunc("POST /api/sessions/{id}/control", g.authed(g.mutating(g.handleControl)))
 	mux.HandleFunc("POST /api/sessions/{id}/attachments", g.authed(g.mutating(g.handleUpload)))
@@ -57,6 +70,10 @@ func (g *Gateway) handlerForHost(relayHost string) http.Handler {
 	mux.HandleFunc("POST /api/questions/{id}", g.authed(g.mutating(g.handleQuestion)))
 	mux.HandleFunc("GET /api/events", g.authed(g.handleEvents))
 	mux.HandleFunc("GET /api/preview", g.authed(g.handlePreview))
+	mux.HandleFunc("GET /api/screen/stream", g.authed(g.handleScreenStream))
+	mux.HandleFunc("POST /api/credentials/{id}", g.authed(g.mutating(g.handleCredential)))
+	mux.HandleFunc("POST /api/transfer", g.authed(g.mutating(g.handleTransferCreate)))
+	mux.HandleFunc("POST /api/transfer/redeem", g.handleTransferRedeem)
 	return g.secureForHost(mux, relayHost)
 }
 
@@ -99,6 +116,9 @@ func (g *Gateway) authed(next http.HandlerFunc) http.HandlerFunc {
 		if err != nil {
 			apiError(w, http.StatusUnauthorized, "not_paired", err.Error())
 			return
+		}
+		if ft, ok := r.Context().Value(funnelKey{}).(*funnelTarget); ok {
+			ft.markVerified(d)
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), deviceKey{}, d)))
 	}
@@ -147,7 +167,32 @@ func (g *Gateway) handlePair(w http.ResponseWriter, r *http.Request) {
 		apiError(w, http.StatusForbidden, "pairing_invalid", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"pending_id": p.ID, "code": p.Code, "poll": poll, "expires": p.Expires.UnixMilli(), "fingerprint": g.Fingerprint()})
+	writeJSON(w, http.StatusOK, map[string]any{"pending_id": p.ID, "code": p.Code, "name": p.Name, "poll": poll, "expires": p.Expires.UnixMilli(), "fingerprint": g.Fingerprint(), "computer_os": computerOS()})
+}
+
+// handlePairCancel withdraws a pending pairing request. Like polling, it is
+// authorized by the poll token that only the redeeming phone holds.
+func (g *Gateway) handlePairCancel(w http.ResponseWriter, r *http.Request) {
+	if !g.sameOrigin(r) {
+		apiError(w, http.StatusForbidden, "bad_origin", "request origin does not match this gateway")
+		return
+	}
+	if g.rateLimited("poll:"+clientIP(r), 120) {
+		apiError(w, http.StatusTooManyRequests, "rate_limited", "slow down")
+		return
+	}
+	var req struct {
+		PendingID string `json:"pending_id"`
+		Poll      string `json:"poll"`
+	}
+	if !strictJSON(w, r, &req) {
+		return
+	}
+	if err := g.Auth.Cancel(req.PendingID, req.Poll); err != nil {
+		apiError(w, http.StatusConflict, "not_pending", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"state": "cancelled"})
 }
 
 func (g *Gateway) handlePoll(w http.ResponseWriter, r *http.Request) {
@@ -182,7 +227,14 @@ func (g *Gateway) handlePoll(w http.ResponseWriter, r *http.Request) {
 func (g *Gateway) handleMe(w http.ResponseWriter, r *http.Request) {
 	d := device(r)
 	_, _, last := g.ring.since(0)
-	writeJSON(w, http.StatusOK, map[string]any{"device": map[string]any{"id": d.ID, "name": d.Name, "previews": d.Previews}, "csrf": d.CSRF, "language": g.opts.Language, "version": g.opts.Version, "fingerprint": g.Fingerprint(), "seq": last, "preview_available": g.opts.Preview != nil})
+	// Through Tailscale Funnel the phone sees Tailscale's public
+	// certificate, so this computer's own fingerprint means nothing there.
+	_, funnel := r.Context().Value(funnelKey{}).(*funnelTarget)
+	fingerprint := g.Fingerprint()
+	if funnel {
+		fingerprint = ""
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"device": map[string]any{"id": d.ID, "name": d.Name, "previews": d.Previews, "paired_at": d.CreatedAt}, "csrf": d.CSRF, "language": g.opts.Language, "version": g.opts.Version, "fingerprint": fingerprint, "tailscale": funnel, "seq": last, "preview_available": g.opts.Preview != nil, "screen_available": g.opts.Screen != nil, "computer": computerInfo()})
 }
 
 func (g *Gateway) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -225,6 +277,7 @@ func (g *Gateway) handleSessions(w http.ResponseWriter, r *http.Request) {
 		sum := sessionSummary(s, g.opts.Backend.AgentIsSessionBusy(s.ID))
 		perms, qs := g.pendingFor(s.ID)
 		sum["pending_permissions"], sum["pending_questions"] = len(perms), len(qs)
+		sum["pending_credentials"] = credentialCount(s.ID)
 		out = append(out, sum)
 		if len(out) >= 50 {
 			break
@@ -251,18 +304,20 @@ func (g *Gateway) handleSession(w http.ResponseWriter, r *http.Request) {
 	}
 	var views []map[string]any
 	for _, m := range msgs {
-		if m.Role == message.Tool {
+		if m.Role == message.Tool && len(messageImages(m)) == 0 {
 			continue
 		}
 		views = append(views, messageView(m))
 	}
 	workflow := map[string]any{"available": false}
+	inter := map[string]any{"paused": false}
 	if snap, err := g.opts.Backend.WorkflowSnapshot(r.Context(), id); err == nil {
 		workflow = map[string]any{"available": true, "revision": snap.Revision, "paused": snap.Paused, "busy": snap.Busy}
+		inter = interactionView(snap)
 	}
 	perms, qs := g.pendingFor(id)
 	_, _, last := g.ring.since(0)
-	writeJSON(w, http.StatusOK, map[string]any{"session": sessionSummary(s, g.opts.Backend.AgentIsSessionBusy(id)), "messages": views, "workflow": workflow, "permissions": perms, "questions": qs, "seq": last})
+	writeJSON(w, http.StatusOK, map[string]any{"session": sessionSummary(s, g.opts.Backend.AgentIsSessionBusy(id)), "todos": todoViews(s), "messages": views, "workflow": workflow, "interaction": inter, "credentials": credentialViews(id), "permissions": perms, "questions": qs, "seq": last})
 }
 
 func (g *Gateway) handlePrompt(w http.ResponseWriter, r *http.Request) {
@@ -283,6 +338,11 @@ func (g *Gateway) handlePrompt(w http.ResponseWriter, r *http.Request) {
 	g.idempotent(w, r, d, func() (int, any) {
 		if _, err := g.opts.Backend.GetSession(r.Context(), id); err != nil {
 			return http.StatusNotFound, map[string]any{"error": map[string]string{"code": "not_found", "message": "no such task"}}
+		}
+		if text == resumeCommand {
+			// The desktop command is a control action, not a message: it
+			// goes through the same revision-checked path as the button.
+			if len(req.AttachmentIDs) > 0 {
 				return http.StatusBadRequest, map[string]any{"error": map[string]string{"code": "invalid_prompt", "message": resumeCommand + " takes no attachments"}}
 			}
 			return g.resumeInteraction(r.Context(), id, "", d.Name)

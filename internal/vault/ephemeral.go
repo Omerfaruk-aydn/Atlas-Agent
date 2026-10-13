@@ -1,3 +1,74 @@
+	mu       sync.Mutex
+	entries  map[string]*credentialEntry
+	channels map[int]func(CredentialEvent)
+	nextSub  int
+	now      func() time.Time
+	chat     map[string]*chatCredential
+	sources  map[string]map[string]time.Time
+}
+
+// Ephemeral is the process-wide temporary credential store.
+var Ephemeral = NewCredentials()
+
+// NewCredentials returns an empty store.
+func NewCredentials() *Credentials {
+	return &Credentials{entries: map[string]*credentialEntry{}, channels: map[int]func(CredentialEvent){}, now: time.Now, chat: map[string]*chatCredential{}, sources: map[string]map[string]time.Time{}}
+}
+
+// IsCredentialHandle reports whether id names a temporary credential
+// rather than a saved vault item.
+func IsCredentialHandle(id string) bool { return strings.HasPrefix(id, credentialHandleBits) }
+
+// CredentialOrigin normalizes an exact origin. HTTPS is required except for
+// loopback development hosts, which never leave this computer.
+func CredentialOrigin(raw string) (string, error) {
+	if o, err := Origin(raw); err == nil {
+		return o, nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "http" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return "", errors.New("credential origin must be an exact HTTPS origin")
+	}
+	host := u.Hostname()
+	if ip := net.ParseIP(host); host != "localhost" && !strings.HasSuffix(host, ".localhost") && (ip == nil || !ip.IsLoopback()) {
+		return "", errors.New("credential origin must be an exact HTTPS origin")
+	}
+	return "http://" + strings.ToLower(u.Host), nil
+}
+
+// Subscribe registers an input channel. A request can be created only while
+// at least one channel exists; when the last one leaves, pending requests
+// are canceled so waiting tools stop instead of hanging.
+func (c *Credentials) Subscribe(fn func(CredentialEvent)) func() {
+	c.mu.Lock()
+	c.nextSub++
+	id := c.nextSub
+	c.channels[id] = fn
+	c.mu.Unlock()
+	return func() {
+		c.mu.Lock()
+		delete(c.channels, id)
+		last := len(c.channels) == 0
+		var events []CredentialEvent
+		if last {
+			for _, e := range c.entries {
+				if (e.req.State == CredentialPending || e.req.State == CredentialProvided) && e.req.ProvidedBy != "user_prompt" {
+					events = append(events, c.finishLocked(e, CredentialCanceled))
+				}
+			}
+		}
+		c.mu.Unlock()
+		c.emit(events)
+	}
+}
+
+// HasInputChannel reports whether a paired-device channel is listening.
+func (c *Credentials) HasInputChannel() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.channels) > 0
+}
+
 // Request opens (or reuses) a credential card. An unconsumed request for
 // the same task, origin and account is reused and rebound to the current
 // target, so the user is not asked twice for the same authorization.

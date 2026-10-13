@@ -27,40 +27,57 @@
   </button>
 </header>
 <div class="banner hidden" id="banner" role="alert"></div>
-<main id="main" tabindex="-1">
-  <section id="view-pair" class="view hidden" aria-labelledby="pair-h">
-    <h2 id="pair-h" data-i18n="pair_title"></h2>
-    <div id="pair-start">
-      <p class="muted" data-i18n="pair_intro"></p>
-      <label class="field"><span data-i18n="device_name"></span><input id="pair-name" autocomplete="off" maxlength="48"></label>
-      <button class="btn primary block" id="pair-go" type="button" data-i18n="pair_button"></button>
     </div>
-    <div id="pair-wait" class="hidden">
-      <p data-i18n="pair_compare"></p>
-      <p class="code" id="pair-code" aria-live="polite"></p>
-      <p class="muted" id="pair-status" role="status" data-i18n="pair_waiting"></p>
+    <div class="screen-viewport" id="screen-viewport" tabindex="0" data-i18n-label="live_screen">
+      <canvas id="screen-canvas" width="16" height="9"></canvas>
+      <div class="screen-overlay hidden" id="screen-overlay"><svg aria-hidden="true"><use href="#i-unlink"/></svg><p id="screen-overlay-text"></p><button class="btn secondary hidden" id="screen-retry" type="button" data-i18n="retry"></button></div>
     </div>
-    <div id="pair-none" class="hidden">
-      <p data-i18n="pair_need_qr"></p>
+    <p class="screen-note" id="screen-note"></p>
+    <div class="screen-tools">
+      <button class="icon-btn round" id="screen-zoom-out" type="button" data-i18n-label="zoom_out"><svg aria-hidden="true"><use href="#i-minus"/></svg></button>
+      <span class="screen-zoom" id="screen-zoom" aria-live="polite">100%</span>
+      <button class="icon-btn round" id="screen-zoom-in" type="button" data-i18n-label="zoom_in"><svg aria-hidden="true"><use href="#i-plus"/></svg></button>
+      <button class="icon-btn round" id="screen-fit" type="button" data-i18n-label="zoom_fit"><svg aria-hidden="true"><use href="#i-fit"/></svg></button>
+      <button class="icon-btn round" id="screen-full" type="button" data-i18n-label="fullscreen"><svg aria-hidden="true"><use href="#i-expand"/></svg></button>
+      <button class="btn quiet screen-stop" id="screen-stop" type="button"><svg aria-hidden="true"><use href="#i-stop"/></svg><span data-i18n="stop_watching"></span></button>
     </div>
   </section>
 
-  <section id="view-list" class="view hidden" aria-labelledby="list-h">
-    <h2 id="list-h" class="sr-only" data-i18n="tasks"></h2>
-    <ul class="cards" id="task-list"></ul>
-    <p class="empty hidden" id="list-empty" data-i18n="no_tasks"></p>
-  </section>
+  <div class="scroll" id="scroll">
+    <div class="thread">
+      <img id="preview-img" class="preview hidden" alt="">
+      <ol class="messages" id="messages"></ol>
+      <div id="activity"></div>
+      <div id="run-errors"></div>
+      <div id="status-card"></div>
+    </div>
+  </div>
+  <button class="new-msgs hidden" id="new-msgs" type="button"><svg aria-hidden="true"><use href="#i-down"/></svg><span data-i18n="new_messages"></span></button>
 
-  <section id="view-task" class="view hidden" aria-labelledby="task-h">
-    <div class="task-head">
-      <h2 id="task-h"></h2>
-      <p class="meta" id="task-meta"></p>
-      <div class="controls" id="task-controls">
-        <button class="btn" id="ctl-pause" type="button" data-i18n="pause"></button>
-        <button class="btn" id="ctl-resume" type="button" data-i18n="resume"></button>
-        <button class="btn danger" id="ctl-stop" type="button" data-i18n="stop"></button>
-        <button class="btn" id="ctl-preview" type="button" data-i18n="preview"></button>
+  <div class="scroll pending-pane hidden" id="pending-pane" tabindex="-1"></div>
+
+  <form class="composer" id="composer" novalidate>
+    <div class="attach-chip hidden" id="attach-chip">
+      <svg aria-hidden="true"><use href="#i-file"/></svg>
+      <span class="attach-name" id="attach-name"></span>
+      <span class="attach-state" id="attach-state" role="status"></span>
+      <button class="icon-btn small" id="attach-remove" type="button" data-i18n-label="remove_attachment"><svg aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="composer-row">
+      <label class="icon-btn round" id="attach-label">
+        <input type="file" id="attach" accept="image/png,image/jpeg,image/gif,image/webp,text/plain,application/pdf" class="sr-only" data-i18n-label="attach">
+        <svg aria-hidden="true"><use href="#i-clip"/></svg>
+      </label>
+      <div class="prompt-box">
+        <label class="sr-only" for="prompt" data-i18n="message"></label>
+        <textarea id="prompt" rows="1" maxlength="16000" enterkeyhint="enter"></textarea>
+        <button class="send-btn" type="submit" id="send" data-i18n-label="send"><svg aria-hidden="true"><use href="#i-send"/></svg></button>
       </div>
+    </div>
+    <div class="composer-meta">
+      <span class="model" id="model-name"></span>
+      <span class="composer-note" id="composer-note" role="status"></span>
+      <button class="stop-btn hidden" id="stop-btn" type="button"><span class="stop-ico"><svg aria-hidden="true"><use href="#i-stop"/></svg></span><span data-i18n="stop"></span></button>
     </div>
   </form>
 </section>

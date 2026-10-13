@@ -1,3 +1,12 @@
+package captcha
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+)
+
 // Chain runs solvers in priority order until one returns a usable answer.
 // Built-in solvers (math) need no network and no API key. When every
 // solver fails the caller falls back to showing the challenge image to

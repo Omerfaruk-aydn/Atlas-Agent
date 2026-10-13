@@ -1,3 +1,74 @@
+type remoteWaiter interface {
+	Observe(ctx context.Context, image bool) (nodes.DesktopObservation, error)
+	Automation(ctx context.Context, req nodes.AutomationRequest) (json.RawMessage, error)
+}
+
+type remoteWaitResult struct {
+	Condition string `json:"condition"`
+	Met       bool   `json:"met"`
+	WaitedMS  int64  `json:"waited_ms"`
+	Samples   int    `json:"samples"`
+	State     string `json:"state"`
+	// UnknownSamples records incomplete observations, never absence evidence.
+	UnknownSamples int `json:"unknown_samples,omitempty"`
+	// Difference is the last measured screen difference (0-1).
+	Difference float64 `json:"difference,omitempty"`
+	Name       string  `json:"name,omitempty"`
+}
+
+// remoteWait polls until cond holds or timeout passes. It never sends
+// input. The final observation is returned for the caller to show.
+func remoteWait(ctx context.Context, c remoteWaiter, cond, name, windowID string, timeout, interval time.Duration) (remoteWaitResult, nodes.DesktopObservation, error) {
+	if timeout <= 0 {
+		timeout = remoteWaitDefault
+	}
+	timeout = min(timeout, remoteWaitMax)
+	res := remoteWaitResult{Condition: cond, Name: name, State: "waiting"}
+	switch cond {
+	case "change", "stable":
+	case "text", "text_gone":
+		if name == "" {
+			return res, nodes.DesktopObservation{}, fmt.Errorf("wait_for %s needs name: the visible text or control name to wait for", cond)
+		}
+	default:
+		return res, nodes.DesktopObservation{}, fmt.Errorf("wait_for must be change, stable, text or text_gone")
+	}
+	start := time.Now()
+	parent := ctx
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	if interval <= 0 {
+		interval = remoteWaitInterval
+	}
+	finish := func(err error) (remoteWaitResult, nodes.DesktopObservation, error) {
+		res.WaitedMS = time.Since(start).Milliseconds()
+		if parent.Err() != nil {
+			res.State = "canceled"
+			return res, nodes.DesktopObservation{}, parent.Err()
+		}
+		if ctx.Err() == context.DeadlineExceeded {
+			res.Met, res.State = false, "timeout"
+			return res, nodes.DesktopObservation{}, nil
+		}
+		return res, nodes.DesktopObservation{}, err
+	}
+	var baseline, previous []float64
+	same := 0
+	var last nodes.DesktopObservation
+	for {
+		if err := ctx.Err(); err != nil {
+			r, _, e := finish(err)
+			return r, last, e
+		}
+		res.Samples++
+		switch cond {
+		case "change", "stable":
+			obs, err := c.Observe(ctx, true)
+			if err != nil {
+				r, _, e := finish(err)
+				return r, last, e
+			}
+			last = obs
 			fp, err := screenFingerprint(obs.PNG)
 			if err != nil {
 				return res, last, err

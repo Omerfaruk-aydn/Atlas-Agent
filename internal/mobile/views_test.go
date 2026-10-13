@@ -1,3 +1,60 @@
+package mobile
+
+import (
+	"strings"
+	"testing"
+	"unicode/utf8"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
+	"github.com/stretchr/testify/require"
+)
+
+func TestPhoneCancelWithdrawsPairingFromTheComputer(t *testing.T) {
+	t.Parallel()
+	g, _ := newGateway(t)
+	p := newPhone(t, g)
+	u, _ := g.PairingURL()
+	nonce := u[strings.Index(u, "=")+1:]
+	resp, out := p.do("POST", "/api/pair", map[string]string{"nonce": nonce, "name": "Pixel"}, nil)
+	require.Equal(t, 200, resp.StatusCode, out)
+	require.NotEmpty(t, out["computer_os"])
+	require.Equal(t, "Pixel", out["name"])
+	id, poll := out["pending_id"].(string), out["poll"].(string)
+	require.Len(t, g.Auth.PendingList(), 1)
+
+	// The poll secret is the proof of ownership; the ID alone is not enough.
+	resp, out = p.do("POST", "/api/pair/cancel", map[string]string{"pending_id": id, "poll": "wrong"}, nil)
+	require.Equal(t, 409, resp.StatusCode)
+	require.Equal(t, "not_pending", code(out))
+	require.Len(t, g.Auth.PendingList(), 1)
+
+	resp, _ = p.do("POST", "/api/pair/cancel", map[string]string{"pending_id": id, "poll": poll}, map[string]string{"Origin": "https://evil.example"})
+	require.Equal(t, 403, resp.StatusCode, "a foreign page cannot cancel")
+
+	resp, out = p.do("POST", "/api/pair/cancel", map[string]string{"pending_id": id, "poll": poll}, nil)
+	require.Equal(t, 200, resp.StatusCode, out)
+	require.Equal(t, "cancelled", out["state"])
+	require.Empty(t, g.Auth.PendingList(), "the computer no longer offers the request")
+	_, err := g.Auth.Decide(id, true)
+	require.ErrorIs(t, err, ErrNotPending, "a withdrawn request cannot be accepted")
+
+	resp, out = p.do("POST", "/api/pair/poll", map[string]string{"pending_id": id, "poll": poll}, nil)
+	require.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, "cancelled", out["state"])
+	resp, _ = p.do("GET", "/api/me", nil, nil)
+	require.Equal(t, 401, resp.StatusCode)
+
+	resp, out = p.do("POST", "/api/pair/cancel", map[string]string{"pending_id": id, "poll": poll}, nil)
+	require.Equal(t, 409, resp.StatusCode, "cancel is not repeated")
+	require.Equal(t, "not_pending", code(out))
+}
+
+func TestPhoneCannotCancelADecidedPairing(t *testing.T) {
+	t.Parallel()
+	g, _ := newGateway(t)
+	u, _ := g.PairingURL()
 	pp, poll, err := g.Auth.Redeem(u[strings.Index(u, "=")+1:], "Pixel", "test", "127.0.0.1")
 	require.NoError(t, err)
 	_, err = g.Auth.Decide(pp.ID, true)

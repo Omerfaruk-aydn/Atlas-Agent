@@ -128,3 +128,17 @@ textarea { resize: vertical; }
 @media (prefers-reduced-motion: no-preference) {
   .card { transition: border-color .15s; }
 }
+.cred-expiry { color: var(--text-2); font-size: 14px; font-variant-numeric: tabular-nums; }
+
+/* Returned-control card. */
+.status-card .reason { margin: var(--s3) 0 0; padding: var(--s3); border-radius: 10px; background: var(--bg-2); font-size: 15px; overflow-wrap: anywhere; }
+.status-card .fine { color: var(--text-2); font-size: 14px; margin: var(--s3) 0 0; }
+
+/* Home Screen transfer and update notice. */
+.code-input { font-family: var(--mono); font-size: 22px; letter-spacing: .12em; text-transform: uppercase; text-align: center; }
+.transfer-code { font-size: 28px; text-align: center; margin: var(--s3) 0 0; }
+.update-bar {
+  position: fixed; left: 50%; transform: translateX(-50%); top: max(var(--s2), env(safe-area-inset-top)); z-index: 60;
+  display: flex; align-items: center; gap: var(--s2); padding: 4px 4px 4px var(--s4); border-radius: var(--r-pill);
+  background: var(--bg); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 15px; max-width: calc(100% - 32px);
+}

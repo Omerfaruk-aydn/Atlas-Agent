@@ -1,3 +1,54 @@
+package mobile
+
+import (
+	"encoding/json"
+	"os"
+	"runtime"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/diff"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
+)
+
+// Limits keep phone payloads small; the computer keeps the full data.
+const (
+	maxDiffBytes    = 12 << 10
+	maxCommandBytes = 2 << 10
+	maxPathBytes    = 512
+	maxTodoBytes    = 300
+)
+
+// computerOS names the operating system for display only.
+func computerOS() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "Windows"
+	case "darwin":
+		return "macOS"
+	case "linux":
+		return "Linux"
+	default:
+		return runtime.GOOS
+	}
+}
+
+// computerInfo is shown to an already paired phone. The hostname is the
+// name the owner gave this computer; it is never sent before pairing.
+func computerInfo() map[string]string {
+	name, _ := os.Hostname()
+	return map[string]string{"name": truncateUTF8(strings.TrimSpace(name), 64), "os": computerOS()}
+}
+
+// truncateUTF8 shortens s to at most n bytes without splitting a rune.
+func truncateUTF8(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	s = s[:n]
 	for !utf8.ValidString(s) {
 		s = s[:len(s)-1]
 	}

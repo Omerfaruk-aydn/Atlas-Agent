@@ -1,3 +1,74 @@
+	go func() {
+		errc <- tsfunnel.Login(t.Context(), d, nil, func(u string) error { opened.Store(u); return nil })
+	}()
+	require.Eventually(t, func() bool { return opened.Load() != nil }, 2*time.Second, 5*time.Millisecond)
+	require.Equal(t, fakecli.LoginURL, opened.Load())
+	d.CompleteLogin()
+	require.NoError(t, <-errc)
+	require.Equal(t, []string{"up"}, d.Calls()[0], "login keeps the current profile: no 'login', no flags")
+
+	d = fakecli.New()
+	d.LoginFails = "Error: changing settings via 'tailscale up' requires mentioning all non-default flags"
+	err := tsfunnel.Login(t.Context(), d, nil, nil)
+	require.ErrorContains(t, err, "custom Tailscale settings")
+}
+
+func TestLoginCancel(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	ctx, cancel := context.WithCancel(t.Context())
+	errc := make(chan error, 1)
+	go func() { errc <- tsfunnel.Login(ctx, d, nil, nil) }()
+	require.Eventually(t, func() bool { return len(d.Procs()) == 1 }, 2*time.Second, 5*time.Millisecond)
+	cancel()
+	require.ErrorIs(t, <-errc, context.Canceled)
+	requireAllStopped(t, d)
+}
+
+func TestProgressIgnoresForeignURLs(t *testing.T) {
+	t.Parallel()
+	d := fakecli.New()
+	d.Funnel = fakecli.FunnelApproval
+	// A URL on any other host must never become the approval link.
+	for _, u := range []string{"https://evil.example/login.tailscale.com", "http://login.tailscale.com/a/x", "https://login.tailscale.com.evil.net/a", "https://user@login.tailscale.com/a"} {
+		p := tsfunnel.NewProgress()
+		tsfunnel.FeedLine(p, "To authenticate, visit: "+u)
+		_, got, _ := p.Snapshot()
+		require.Empty(t, got, u)
+	}
+	p := tsfunnel.NewProgress()
+	tsfunnel.FeedLine(p, "visit https://login.tailscale.com/a/abc.")
+	_, got, _ := p.Snapshot()
+	require.Equal(t, "https://login.tailscale.com/a/abc", got)
+}
+
+func TestSanitize(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "key [redacted] bad", tsfunnel.Sanitize("key tskey-auth-abc123\x1b[0m bad"))
+	require.Equal(t, "a b", tsfunnel.Sanitize("a\nb"))
+	require.LessOrEqual(t, len(tsfunnel.Sanitize(strings.Repeat("x", 1000))), 304)
+}
+
+func TestCLINotInstalled(t *testing.T) {
+	t.Parallel()
+	cli := tsfunnel.CLI{Binary: filepath.Join(t.TempDir(), "missing.exe")}
+	_, err := cli.Output(t.Context(), "status")
+	require.ErrorIs(t, err, tsfunnel.ErrNotInstalled)
+	r := tsfunnel.Inspect(t.Context(), cli, nil)
+	require.Equal(t, tsfunnel.ProblemNotInstalled, r.Problem)
+}
+
+func TestSignedByTailscale(t *testing.T) {
+	t.Parallel()
+	require.True(t, tsfunnel.SignedByTailscale(`CN="Tailscale Inc.", O="Tailscale Inc.", L=Toronto, S=Ontario, C=CA`))
+	require.True(t, tsfunnel.SignedByTailscale(`CN=Tailscale Inc., O=Tailscale Inc., C=CA`))
+	require.False(t, tsfunnel.SignedByTailscale(`CN=Tailscale Inc. Evil, O=Evil`))
+	require.False(t, tsfunnel.SignedByTailscale(`CN=Evil, OU=Tailscale Inc.`))
+	require.False(t, tsfunnel.SignedByTailscale(""))
+}
+
+// packageServer serves a fake package index with one MSI.
+func packageServer(t *testing.T, msi []byte, sum string, name string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

@@ -1,3 +1,47 @@
+package captcha
+
+import (
+	"context"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+// MathSolver evaluates arithmetic challenges. It accepts both image_text
+// questions already extracted as text (DetectScript.Question) and math
+// challenges whose question is the expression itself. When a question is
+// missing it falls back to NormalizeMath on the challenge text.
+type MathSolver struct{}
+
+func (MathSolver) Name() string { return "math" }
+
+func (MathSolver) Supports(kind Kind) bool { return kind == KindMath || kind == KindImageText }
+
+func (MathSolver) Solve(_ context.Context, ch Challenge, _ []byte) (Solution, error) {
+	expr := strings.TrimSpace(ch.Question)
+	if expr == "" {
+		return Solution{}, fmt.Errorf("captcha: math challenge has no expression")
+	}
+	expr = NormalizeMath(expr)
+	v, err := EvalMath(expr)
+	if err != nil {
+		return Solution{}, err
+	}
+	return Solution{
+		Text:       strconv.FormatFloat(v, 'f', -1, 64),
+		Confidence: 0.99,
+	}, nil
+}
+
+var (
+	mathTokenRe = regexp.MustCompile(`(\d+(?:\.\d+)?)|([+\-*/x×÷])|(\()|(\))`)
+	mathNoiseRe = regexp.MustCompile(`[^\d+\-*/x×÷().\s]`)
+)
+
+// NormalizeMath strips captcha noise and normalizes operator glyphs so
+// "3 + 4 = ?" and "3+4" both evaluate.
+func NormalizeMath(s string) string {
 	s = strings.ToLower(s)
 	s = strings.ReplaceAll(s, "x", "*")
 	s = strings.ReplaceAll(s, "×", "*")

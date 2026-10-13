@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unicode/utf16"
@@ -134,6 +135,9 @@ type windowsBackend struct {
 	// automation is the persistent UI Automation worker, started on first
 	// use and stopped after it has been idle.
 	automation automationWorker
+	// catalog is the application catalog, created on first use.
+	catalogOnce sync.Once
+	catalog     *AppCatalog
 }
 
 func openPlatform() (Backend, error) {

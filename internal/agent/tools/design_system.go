@@ -1,3 +1,74 @@
+	}
+	records := []*designRecord{st.Approved, st.Candidate}
+	for i := range st.History {
+		records = append(records, &st.History[i])
+	}
+	seen := map[int]bool{}
+	for _, r := range records {
+		if r == nil {
+			continue
+		}
+		if r.Version <= 0 || seen[r.Version] {
+			return designStore{}, fmt.Errorf("%w: invalid or duplicate design version %d", errDesignCorrupt, r.Version)
+		}
+		seen[r.Version] = true
+		if err := validateDesignSystem(r.System); err != nil {
+			return designStore{}, fmt.Errorf("%w: %s version %d: %v", errDesignCorrupt, designSystemPath, r.Version, err)
+		}
+	}
+	return st, nil
+}
+
+// loadDesignStoreForWrite returns the store a write builds on. A damaged
+// file is moved aside (its backup path is returned) instead of being
+// silently overwritten; a newer schema is refused.
+func loadDesignStoreForWrite(dir string, now func() time.Time) (designStore, string, error) {
+	st, err := loadDesignStore(dir)
+	switch {
+	case err == nil:
+		return st, "", nil
+	case errors.Is(err, os.ErrNotExist):
+		return designStore{SchemaVersion: designStoreSchema}, "", nil
+	case errors.Is(err, errDesignCorrupt):
+		base := designStoreFile(dir) + ".corrupt-" + now().UTC().Format("20060102T150405Z")
+		backup := base
+		for i := 0; ; i++ {
+			_, statErr := os.Lstat(backup)
+			if errors.Is(statErr, os.ErrNotExist) {
+				break
+			}
+			if statErr != nil {
+				return designStore{}, "", statErr
+			}
+			if i >= 1000 {
+				return designStore{}, "", errors.New("too many corrupt design backups for this timestamp")
+			}
+			backup = fmt.Sprintf("%s-%d", base, i+1)
+		}
+		if rerr := os.Rename(designStoreFile(dir), backup); rerr != nil {
+			return designStore{}, "", fmt.Errorf("%w; moving it aside failed: %v", err, rerr)
+		}
+		rel, _ := filepath.Rel(dir, backup)
+		return designStore{SchemaVersion: designStoreSchema}, filepath.ToSlash(rel), nil
+	default:
+		return designStore{}, "", err
+	}
+}
+
+func saveDesignStore(dir string, st designStore) error {
+	st.SchemaVersion = designStoreSchema
+	st.MigratedFrom = 0
+	data, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		return err
+	}
+	return taskstate.WriteFileAtomic(designStoreFile(dir), data, 0o644)
+}
+
+// validateDesignSystem rejects an incomplete memory: one that would let a
+// later session guess the platform or the direction again.
+func validateDesignSystem(s DesignSystem) error {
+	var problems []string
 	if strings.TrimSpace(s.Product) == "" {
 		problems = append(problems, "product is required")
 	}

@@ -1,3 +1,74 @@
+	require.Equal(t, "not_paired", code(out))
+	_, out = stranger.do("POST", "/api/pair", map[string]string{"nonce": "guessed", "name": "x"}, nil)
+	require.Equal(t, "pairing_invalid", code(out))
+	at, _ := f.g.FunnelVerified()
+	require.True(t, at.IsZero())
+
+	p := phoneThroughFunnel(t, f.g, f.ingress)
+	require.Equal(t, "accepted", p.pair(true))
+	require.NoError(t, f.g.Auth.Revoke(f.g.Auth.Devices()[0].ID))
+	resp, _ := p.do("GET", "/api/me", nil, nil)
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+
+	p2 := phoneThroughFunnel(t, f.g, f.ingress)
+	require.Equal(t, "accepted", p2.pair(true))
+	f.g.Auth.now = func() time.Time { return time.Now().Add(SessionAbsolute + time.Hour) }
+	resp, _ = p2.do("GET", "/api/me", nil, nil)
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestFunnelEventStreamReconnectsWithoutDuplicates(t *testing.T) {
+	t.Parallel()
+	f := newFunnelGateway(t, nil)
+	p := phoneThroughFunnel(t, f.g, f.ingress)
+	require.Equal(t, "accepted", p.pair(true))
+
+	read := func(since string, want int) []string {
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, p.base+"/api/events?since="+since, nil)
+		resp, err := p.client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, "text/event-stream", strings.Split(resp.Header.Get("Content-Type"), ";")[0])
+		var ids []string
+		sc := bufio.NewScanner(resp.Body)
+		for len(ids) < want && sc.Scan() {
+			if id, ok := strings.CutPrefix(sc.Text(), "id: "); ok {
+				ids = append(ids, id)
+			}
+		}
+		return ids
+	}
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		f.g.Ingest(pubsub.Event[session.Session]{Payload: session.Session{ID: "s1", Title: "one"}})
+		f.g.Ingest(pubsub.Event[session.Session]{Payload: session.Session{ID: "s1", Title: "two"}})
+	}()
+	first := read("0", 2)
+	require.Len(t, first, 2, "events stream through the proxy without buffering")
+
+	f.g.Ingest(pubsub.Event[session.Session]{Payload: session.Session{ID: "s1", Title: "three"}})
+	again := read(first[0], 2)
+	require.Equal(t, first[1], again[0], "a reconnect resumes after the last seen id")
+	require.NotContains(t, again, first[0], "an event already delivered is not repeated")
+}
+
+func TestFunnelCloseRemovesEntryFirstAndOnlyOnce(t *testing.T) {
+	t.Parallel()
+	b := &fakeBackend{pending: map[string]bool{}, questions: map[string]bool{}}
+	g, err := Start(t.Context(), Options{StateDir: t.TempDir(), Listen: "127.0.0.1:0", Backend: b})
+	require.NoError(t, err)
+	var calls atomic.Int32
+	var listening atomic.Bool
+	port, err := g.ServeFunnel(t.Context(), funnelHost, func() error {
+		calls.Add(1)
+		c, err := (&net.Dialer{Timeout: time.Second}).DialContext(t.Context(), "tcp", "127.0.0.1:"+strconv.Itoa(g.FunnelLocalPort()))
+		if err == nil {
+			listening.Store(true)
+			c.Close()
+		}
+		return errors.New("residual")
 	})
 	require.NoError(t, err)
 	require.NotZero(t, port)

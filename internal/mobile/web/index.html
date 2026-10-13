@@ -62,20 +62,67 @@
         <button class="btn" id="ctl-preview" type="button" data-i18n="preview"></button>
       </div>
     </div>
-    <div id="pending"></div>
-    <img id="preview-img" class="preview hidden" alt="">
-    <ol class="messages" id="messages" aria-live="polite"></ol>
-    <form class="composer" id="composer">
-      <label class="sr-only" for="prompt" data-i18n="message"></label>
-      <textarea id="prompt" rows="2" maxlength="16000"></textarea>
-      <div class="composer-row">
-        <label class="btn" id="attach-label"><input type="file" id="attach" accept="image/png,image/jpeg,image/gif,image/webp,text/plain,application/pdf" class="sr-only"><span data-i18n="attach"></span></label>
-        <span class="muted small" id="attach-info"></span>
-        <button class="btn primary" type="submit" id="send" data-i18n="send"></button>
-      </div>
-    </form>
-  </section>
+  </form>
+</section>
 
+<!-- Settings -->
+<section id="view-settings" class="view page settings hidden" aria-labelledby="settings-h">
+  <header class="chat-bar">
+    <button class="icon-btn" id="settings-back" type="button" data-i18n-label="back"><svg aria-hidden="true"><use href="#i-back"/></svg></button>
+    <div class="chat-title"><h1 tabindex="-1" id="settings-h" data-i18n="settings"></h1></div>
+    <svg class="mark end" aria-hidden="true"><use href="#i-mark"/></svg>
+  </header>
+  <div class="page-body">
+    <h2 class="group-h" data-i18n="this_phone_group"></h2>
+    <div class="group">
+      <div class="row">
+        <svg class="row-icon" aria-hidden="true"><use href="#i-phone"/></svg>
+        <div class="row-main"><div id="set-device"></div><div class="muted small" id="set-paired"></div></div>
+      </div>
+      <div class="row">
+        <svg class="row-icon" aria-hidden="true"><use href="#i-laptop"/></svg>
+        <div class="row-main"><div id="set-computer"></div><div class="small"><span class="conn" id="set-conn"></span></div></div>
+      </div>
+    </div>
+
+    <h2 class="group-h" id="theme-h" data-i18n="appearance"></h2>
+    <div class="group">
+      <div class="row">
+        <svg class="row-icon" aria-hidden="true"><use href="#i-moon"/></svg>
+        <div class="row-main"><span data-i18n="theme"></span></div>
+      </div>
+      <div class="segmented" role="radiogroup" aria-labelledby="theme-h">
+        <label><input type="radio" name="theme" value="light"><span data-i18n="theme_light"></span></label>
+        <label><input type="radio" name="theme" value="dark"><span data-i18n="theme_dark"></span></label>
+        <label><input type="radio" name="theme" value="system"><span data-i18n="theme_system"></span></label>
+      </div>
+    </div>
+
+    <h2 class="group-h" data-i18n="notifications_group"></h2>
+    <div class="group">
+      <label class="row" for="notify">
+        <svg class="row-icon" aria-hidden="true"><use href="#i-bell"/></svg>
+        <span class="row-main" data-i18n="notifications"></span>
+        <input type="checkbox" role="switch" id="notify" class="switch">
+      </label>
+      <p class="row-note" id="notify-note"></p>
+    </div>
+
+    <h2 class="group-h" data-i18n="previews"></h2>
+    <div class="group">
+      <div class="row">
+        <svg class="row-icon" aria-hidden="true"><use href="#i-monitor"/></svg>
+        <div class="row-main" id="set-previews"></div>
+      </div>
+      <p class="row-note" id="set-previews-note"></p>
+    </div>
+
+    <h2 class="group-h" data-i18n="connection"></h2>
+    <div class="group">
+      <details class="row-details">
+        <summary class="row"><svg class="row-icon" aria-hidden="true"><use href="#i-lock"/></svg><span class="row-main" data-i18n="certificate"></span><svg class="chev" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
+        <div class="details-body"><p class="muted small" id="set-cert-note"></p><p class="mono small" id="set-fp"></p></div>
+      </details>
     </div>
 
     <div id="install-section">

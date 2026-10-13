@@ -1,3 +1,74 @@
+	PhasePanelReady Phase = "panel_ready"
+	// PhaseApproval waits for the user to enable HTTPS or Funnel on
+	// Tailscale's own page.
+	PhaseApproval Phase = "approval"
+	// PhaseReady means tailscaled lists Atlas' Funnel entry. It does not
+	// mean a phone has reached it; the gateway reports that separately.
+	PhaseReady   Phase = "ready"
+	PhaseLost    Phase = "lost"
+	PhaseStopped Phase = "stopped"
+	PhaseFailed  Phase = "failed"
+)
+
+// Progress is shared by a running start and the UI, which reads it on
+// every refresh. All methods are safe for concurrent use.
+type Progress struct {
+	mu       sync.Mutex
+	phase    Phase
+	approval string
+	lines    []string
+	detail   string
+}
+
+// NewProgress returns a progress at PhaseChecking.
+func NewProgress() *Progress { return &Progress{phase: PhaseChecking} }
+
+// Set changes the phase.
+func (p *Progress) Set(ph Phase) {
+	p.mu.Lock()
+	p.phase = ph
+	p.mu.Unlock()
+}
+
+func (p *Progress) fail(ph Phase, detail string) {
+	p.mu.Lock()
+	p.phase, p.detail = ph, detail
+	p.mu.Unlock()
+}
+
+// Snapshot returns the phase, an approval URL and a short detail.
+func (p *Progress) Snapshot() (Phase, string, string) {
+	if p == nil {
+		return PhaseIdle, "", ""
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.phase, p.approval, p.detail
+}
+
+func (p *Progress) line(s string) {
+	s = Sanitize(s)
+	if s == "" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if u := findLoginURL(s); u != "" && p.approval == "" {
+		p.approval = u
+	}
+	p.lines = append(p.lines, s)
+	if len(p.lines) > 12 {
+		p.lines = p.lines[len(p.lines)-12:]
+	}
+}
+
+func (p *Progress) approvalURL() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.approval
+}
+
+func (p *Progress) lastLines() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var keep []string

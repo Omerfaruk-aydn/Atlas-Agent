@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
@@ -131,6 +132,9 @@ func NewQuestionTool(svc question.Service, modes ...permissionModer) fantasy.Age
 						label = item.Question
 					}
 					return fantasy.NewTextErrorResponse(fmt.Sprintf("question %d [%s]: invalid type %q (must be yes_no, single_choice, multi_choice, or free_text)", i+1, label, item.Type)), nil
+				}
+				if qType == question.TypeFreeText && asksForSecret(item.Label+" "+item.Question+" "+item.Description) {
+					return fantasy.NewTextErrorResponse("secret_question_refused: No question was shown. Passwords and one-time codes are never collected through chat or questions, because answers are stored in the conversation and sent to the model. For a sign-in password call browser credential_request on the password field; the user types it on their paired phone and you receive only a handle."), nil
 				}
 				questions[i] = question.Question{
 					Type:        qType,
@@ -268,6 +272,9 @@ func formatAnswer(answer *question.Answer, _ question.Type) (fantasy.ToolRespons
 
 	return fantasy.NewTextResponse(b.String()), nil
 }
+
+// secretQuestion matches requests for values that must never be typed
+// into a chat answer. Short tokens are matched as whole words.
 var secretQuestion = regexp.MustCompile(`(?i)(password|passwort|passcode|şifre|sifre|parola|contraseña|mot de passe|one-time code|doğrulama kodu|\botp\b|\b2fa code\b|\bpin (code|kodu)\b)`)
 
 // asksForSecret reports a question or step that requests a secret value.

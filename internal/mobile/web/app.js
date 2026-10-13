@@ -308,17 +308,70 @@
       }
     }
     const actions = el("div", "actions");
-    const submit = el("button", "btn primary", t("submit"));
-    submit.type = "submit";
-    const cancel = el("button", "btn", t("cancel"));
-    cancel.type = "button";
-    actions.append(submit, cancel);
-    c.append(actions);
-    c.addEventListener("submit", async (ev) => {
+    clearInterval(credTimer);
+    credTimer = setInterval(tick, 1000);
+    tick();
+    const send = async (body, b) => {
+      // One request per card at a time; a double tap or a retry after a
+      // dropped connection reuses the same idempotency key.
+      if (state.credBusy.has(c.id) || state.conn !== "connected") return;
+      state.credBusy.add(c.id);
+      use.disabled = cancel.disabled = true;
+      b.classList.add("busy");
+      result.classList.add("hidden");
+      try {
+        await act("/api/credentials/" + encodeURIComponent(c.id), body);
+        input.value = "";
+        dropPending("c", c.id);
+        toast(body.cancel ? t("cred_cancelled") : t("cred_sent"));
+      } catch (e) {
+        if (e.code === "expired" || isStale(e) || e.code === "already_provided") {
+          input.value = "";
+          dropPending("c", c.id);
+          toast(e.code === "expired" ? t("cred_expired") : t("stale"));
+        } else {
+          result.textContent = t("failed") + ": " + e.message;
+          result.classList.remove("hidden");
+          use.disabled = cancel.disabled = state.conn !== "connected" || expired();
+          if (!e.status) setConn("offline");
+        }
+      } finally {
+        body.secret = "";
+        b.classList.remove("busy");
+        state.credBusy.delete(c.id);
+        if (state.current) loadTask(state.current).catch(() => {});
+      }
+    };
+    form.addEventListener("submit", (ev) => {
       ev.preventDefault();
-      const answers = inputs.map((f) => f()).filter(Boolean);
-      try { await act("/api/questions/" + encodeURIComponent(q.id), { session_id: q.session_id, answers }, submit); c.remove(); } catch (_) {}
+      if (!input.value) {
+        result.textContent = t("cred_empty");
+        result.classList.remove("hidden");
+        input.setAttribute("aria-invalid", "true");
+        input.focus();
+        return;
+      }
+      input.removeAttribute("aria-invalid");
+      send({ session_id: c.session_id, secret: input.value, persist: !!(persist && persist.checked) }, use);
     });
+    cancel.addEventListener("click", () => { input.value = ""; send({ session_id: c.session_id, cancel: true }, cancel); });
+    syncCredentialForm(form);
+    return form;
+  }
+  function syncCredentialForm(form) {
+    form = form || document.querySelector("form.cred-form");
+    if (!form) return;
+    const online = state.conn === "connected";
+    const busy = state.credBusy.has(form.dataset.credential);
+    form.querySelectorAll("button.btn").forEach((b) => { if (!busy) b.disabled = !online; });
+    const input = form.querySelector("input.input");
+    if (input && input.disabled) form.querySelector('button[data-role="use"]').disabled = true;
+  }
+
+  // ---------- Returned control ----------
+  function controlCard(d) {
+    const c = el("div", "status-card control-card");
+    const h = el("div", "status-head");
     h.append(icon("hand"));
     const tx = el("div");
     tx.append(el("strong", "", t("ctl_title")));

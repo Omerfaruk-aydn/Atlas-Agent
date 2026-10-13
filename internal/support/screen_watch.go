@@ -1,3 +1,20 @@
+package support
+
+import (
+	"context"
+	"sync"
+	"time"
+)
+
+type screenWatch struct {
+	mu     sync.Mutex
+	cancel context.CancelFunc
+	done   chan struct{}
+	err    string
+}
+
+// watchScreen polls a separate, read-only preview channel. The newest frame
+// replaces the last; there is no unbounded queue or model message delivery.
 func (c *Controller) watchScreen(ctx context.Context, interval time.Duration, session string, onError func(string)) {
 	interval = max(interval, 500*time.Millisecond)
 	ticker := time.NewTicker(interval)

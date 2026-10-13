@@ -1,0 +1,6 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Atlas · Uzak ekran</title><link rel="stylesheet" href="app.css"></head><body>
+<header><div><span class="brand">Atlas</span><h1>Uzak ekran</h1><p id="device">Bağlantı okunuyor…</p></div><div class="actions"><button id="start">İzlemeyi başlat</button><button id="stop" disabled>İzlemeyi duraklat</button></div></header>
+<p id="status" role="status" aria-live="polite">Henüz ekran yakalanmadı.</p>
+<main><section class="screen" aria-label="Uzak bilgisayar ekranı"><img id="frame" alt="Uzak bilgisayarın son ekran görüntüsü" hidden><p id="empty">İzlemeyi başlatınca ekran burada görünür.</p></section><aside><h2>Görev zaman çizelgesi</h2><p>Bu panel yalnızca ekranı izler; fare ve klavye kontrolünü almaz.</p><ol id="timeline"></ol></aside></main>
+<script src="app.js"></script></body></html>

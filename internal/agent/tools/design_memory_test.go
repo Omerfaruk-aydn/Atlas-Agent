@@ -1,3 +1,65 @@
+package tools
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/stretchr/testify/require"
+)
+
+func designGet(t *testing.T, dir string) map[string]any {
+	t.Helper()
+	got, err := runDesignSystem(t.Context(), dir, DesignSystemParams{Action: "get"}, time.Now)
+	require.NoError(t, err)
+	return got.(map[string]any)
+}
+
+// A model proposal is a candidate; only approve makes it the system later
+// work follows, and a revision keeps the approved version until approved.
+// The user changing direction is such a revision.
+func TestDesignMemoryCandidateApprovalAndRevision(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	sys := mobileSystem()
+	set, err := runDesignSystem(t.Context(), dir, DesignSystemParams{Action: "set", System: &sys}, time.Now)
+	require.NoError(t, err)
+	require.Equal(t, "candidate", set.(map[string]any)["status"])
+	got := designGet(t, dir)
+	require.Equal(t, "candidate", got["status"])
+	require.Nil(t, got["approved"])
+
+	_, err = runDesignSystem(t.Context(), dir, DesignSystemParams{Action: "approve", Note: "user approved the dark console"}, time.Now)
+	require.NoError(t, err)
+	got = designGet(t, dir)
+	require.Equal(t, "approved", got["status"])
+	require.Equal(t, 1, got["approved"].(*designRecord).Version)
+
+	// The user switches to a light direction and rejects the dark one.
+	rev := mobileSystem()
+	rev.Direction = DesignDirection{Name: "Bright minimal", ChosenBy: "user", Alternatives: []string{"Calm dark console"}}
+	rev.Rejected = []string{"dark console"}
+	set, err = runDesignSystem(t.Context(), dir, DesignSystemParams{Action: "set", System: &rev}, time.Now)
+	require.NoError(t, err)
+	require.Equal(t, 2, set.(map[string]any)["version"])
+	got = designGet(t, dir)
+	require.Equal(t, "Calm dark console", got["system"].(DesignSystem).Direction.Name, "approved v1 stays in use")
+	require.Equal(t, "Bright minimal", got["candidate"].(*designRecord).System.Direction.Name)
+
+	_, err = runDesignSystem(t.Context(), dir, DesignSystemParams{Action: "approve"}, time.Now)
+	require.NoError(t, err)
+	got = designGet(t, dir)
+	require.Equal(t, "Bright minimal", got["system"].(DesignSystem).Direction.Name)
+	require.Equal(t, []string{"dark console"}, got["system"].(DesignSystem).Rejected)
+	require.Equal(t, []int{1, 2}, got["history_versions"])
+
+	_, err = runDesignSystem(t.Context(), dir, DesignSystemParams{Action: "approve"}, time.Now)
+	require.ErrorContains(t, err, "needs a candidate", "nothing to approve twice")
+
+	reset, err := runDesignSystem(t.Context(), dir, DesignSystemParams{Action: "reset", Note: "start over"}, time.Now)
 	require.NoError(t, err)
 	require.Equal(t, true, reset.(map[string]any)["reset"])
 	got = designGet(t, dir)

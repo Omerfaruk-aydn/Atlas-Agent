@@ -26,3 +26,69 @@ func Hash(content string) string {
 	return hex.EncodeToString(sum[:16])
 }
 
+// Extract reads one source file. It never fails: a file it cannot make
+// sense of yields fewer symbols, not an error.
+func Extract(file, content string) File {
+	out := File{Path: file, Language: LanguageOf(file), Hash: Hash(content), Lines: strings.Count(content, "\n") + 1}
+	ext := strings.ToLower(path.Ext(file))
+	if ext == ".v" && isVlang(content) {
+		out.Language = "vlang"
+	}
+	switch Category(out.Language) {
+	case "", CategoryAsset:
+		return out
+	case CategoryDoc:
+		extractDoc(&out, content)
+		return out
+	}
+	switch out.Language {
+	case "go":
+		extractGo(&out, content)
+	case "sql":
+		extractSQL(&out, content)
+	case "graphql":
+		extractGraphQL(&out, content)
+	case "protobuf", "thrift":
+		extractIDL(&out, content)
+	case "prisma":
+		extractPrisma(&out, content)
+	case "openapi":
+		extractOpenAPI(&out, content)
+	case "terraform":
+		extractTerraform(&out, content)
+	case "css", "scss", "less":
+		extractCSS(&out, out.Language, content)
+	case "html", "template":
+		extractHTML(&out, content)
+	case "notebook":
+		extractNotebook(&out, content)
+	case "godot":
+		extractGodot(&out, content)
+	case "npm", "make", "just", "taskfile", "docker", "compose", "workflow", "gitlab-ci", "pyproject", "cargo":
+		extractBuild(&out, content)
+	default:
+		if ext == ".vue" || ext == ".svelte" || ext == ".astro" {
+			extractComponent(&out, ext, content)
+			break
+		}
+		extractCode(&out, languages[out.Language], content)
+	}
+	return out
+}
+
+// extractCode reads content as lang and adds what it defines and uses to
+// out. Markup and notebooks call it for the code they embed.
+func extractCode(out *File, lang *language, content string) {
+	if lang == nil {
+		return
+	}
+	x := extractor{
+		lang:  lang,
+		toks:  lex(content, lang),
+		lines: strings.Split(content, "\n"),
+		file:  out,
+		first: len(out.Symbols),
+	}
+	x.run()
+}
+

@@ -135,3 +135,13 @@ func dropBlocks(content string, blocks []block) string {
 // lineIndex maps offsets to line numbers.
 type lineIndex []int
 
+func newLineIndex(s string) lineIndex {
+	idx := lineIndex{0}
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			idx = append(idx, i+1)
+		}
+	}
+	return idx
+}
+

@@ -151,3 +151,84 @@ func (x *extractor) defineOnce(i int, kind string) {
 	x.addSymbol(i, name, kind, container, -1)
 }
 
+// erlangDecl handles name(Args) -> clauses and -record and -define
+// attributes.
+func (x *extractor) erlangDecl(i int) bool {
+	t := x.toks[i]
+	if prev := x.tok(i - 1); prev.text == "-" && prev.first {
+		// An attribute: -module(m), -export([...]), -record(name, ...).
+		if (t.text == "record" || t.text == "define") && x.tok(i+1).text == "(" && x.tok(i+2).kind == tIdent {
+			kind := "struct"
+			if t.text == "define" {
+				kind = "macro"
+			}
+			x.names[i+2] = true
+			x.addSymbol(i+2, x.toks[i+2].text, kind, "", -1)
+		}
+		if end, ok := x.match[i+1]; ok && x.tok(i+1).text == "(" && t.text != "define" {
+			for j := i; j <= end; j++ {
+				x.names[j] = true
+			}
+		}
+		return true
+	}
+	if !t.first || t.indent != 0 || !isLowerStart(t.text) || x.tok(i+1).text != "(" {
+		return false
+	}
+	end, ok := x.match[i+1]
+	if !ok {
+		return false
+	}
+	for j := end + 1; j < len(x.toks) && j < end+60; j++ {
+		switch x.toks[j].text {
+		case "->":
+			x.names[i] = true
+			x.defineOnce(i, "function")
+			return true
+		case ".", ";":
+			return false
+		}
+	}
+	return false
+}
+
+// nimTypeDecl handles a type section entry: Name* = object, ref object,
+// enum, tuple, concept, distinct.
+func (x *extractor) nimTypeDecl(i int) bool {
+	t := x.toks[i]
+	if !t.first || t.indent == 0 {
+		return false
+	}
+	k := i + 1
+	if x.tok(k).text == "*" {
+		k++
+	}
+	if x.tok(k).text == "[" {
+		if end, ok := x.match[k]; ok {
+			k = end + 1
+		}
+	}
+	if x.tok(k).text != "=" {
+		return false
+	}
+	v := x.tok(k + 1).text
+	if v == "ref" || v == "ptr" {
+		if x.tok(k+2).text == "object" {
+			v = "object"
+		}
+	}
+	kind := map[string]string{"object": "struct", "enum": "enum", "tuple": "struct", "concept": "interface", "distinct": "type", "ref": "type", "ptr": "type"}[v]
+	if kind == "" {
+		return false
+	}
+	x.names[i] = true
+	x.addSymbol(i, t.text, kind, "", -1)
+	for j := k + 1; j < len(x.toks) && x.toks[j].line == t.line; j++ {
+		if x.toks[j].text == "of" && x.tok(j+1).kind == tIdent {
+			x.addRef(x.toks[j+1].text, "", RefInherit, t.line)
+			x.names[j+1] = true
+		}
+	}
+	return true
+}
+

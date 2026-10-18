@@ -119,3 +119,19 @@ func keepBlocks(content string, blocks []block, keep func(block) bool) string {
 	return b.String()
 }
 
+// dropBlocks blanks the content of every block.
+func dropBlocks(content string, blocks []block) string {
+	var b strings.Builder
+	pos := 0
+	for _, bl := range blocks {
+		b.WriteString(content[pos:bl.start])
+		b.WriteString(blankLines(content[bl.start:bl.end]))
+		pos = bl.end
+	}
+	b.WriteString(content[pos:])
+	return b.String()
+}
+
+// lineIndex maps offsets to line numbers.
+type lineIndex []int
+

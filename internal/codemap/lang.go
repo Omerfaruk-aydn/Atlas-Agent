@@ -365,3 +365,28 @@ func LanguageOf(file string) string {
 	return assetKinds[ext]
 }
 
+// Categories of files.
+const (
+	// CategoryCode files define and use names: programs, markup,
+	// stylesheets, schemas, build and infrastructure files.
+	CategoryCode = "code"
+	// CategoryDoc files are documentation.
+	CategoryDoc = "doc"
+	// CategoryAsset files are images, fonts, media, models and data,
+	// which the map measures but does not read.
+	CategoryAsset = "asset"
+)
+
+// Category returns what kind of file a language is.
+func Category(lang string) string {
+	switch lang {
+	case "":
+		return ""
+	case "markdown", "rst", "asciidoc":
+		return CategoryDoc
+	case "image", "font", "audio", "video", "model", "document", "data":
+		return CategoryAsset
+	}
+	return CategoryCode
+}
+

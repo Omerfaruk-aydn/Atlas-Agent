@@ -55,7 +55,7 @@ var browserActions = []string{
 	"wait_for", "popup_wait", "dialog_wait", "dialog_handle",
 	"navigate", "back", "forward", "click", "type", "key", "scroll", "eval",
 	"text", "html", "snapshot", "images", "console", "dialog", "cdp",
-	"screenshot", "url", "close", "export_test", "trace_start", "trace_stop",
+	"screenshot", "url", "close", "trace_start", "trace_stop",
 	"vault_list", "vault_fill", "credential_request", "login_check",
 	"find", "assert", "semantic_click", "semantic_type", "tabs", "tab_new", "tab_select", "tab_close", "frames", "network", "capture_region", "upload", "download_start", "download_wait", "handoff", "status", "trace", "auth_code",
 	browser.InputPointerMove, browser.InputPointerClick, browser.InputPointerDrag, browser.InputCSSDrag, browser.InputKeyCombo, browser.InputInsertText,
@@ -94,7 +94,7 @@ type BrowserParams struct {
 	Account      string          `json:"account,omitempty" description:"For credential_request/vault_fill: the account identifier (email or username) the password belongs to, when known. Never a password."`
 	Advanced     browser.Request `json:"advanced,omitempty" description:"Parameters for semantic targets/scope, document/tab/origin guards, conditions, tabs/popups/dialogs, frames, upload/download. Action is taken from the outer action field."`
 	SecretEnv    string          `json:"secret_env,omitempty" description:"For auth_code: environment variable containing an authorized TOTP seed; never supply the seed itself."`
-	Action       string          `json:"action" description:"Browser action: navigate/back/forward/click/type/key/scroll/eval/text/html/snapshot/images/console/dialog/cdp/screenshot/url/close, find/assert/wait_for/semantic_click/semantic_type, tabs/tab_new/tab_select/tab_close/popup_wait/dialog_wait/dialog_handle/frames/network/capture_region/upload/download_start/download_wait, handoff/status/trace/trace_start/trace_stop/export_test/auth_code/vault_list/vault_fill, captcha_detect/captcha_solve/captcha_fill, pointer_move/pointer_click/pointer_drag/css_drag/key_combo/insert_text. See tool description."`
+	Action       string          `json:"action" description:"Browser action: navigate/back/forward/click/type/key/scroll/eval/text/html/snapshot/images/console/dialog/cdp/screenshot/url/close, find/assert/wait_for/semantic_click/semantic_type, tabs/tab_new/tab_select/tab_close/popup_wait/dialog_wait/dialog_handle/frames/network/capture_region/upload/download_start/download_wait, handoff/status/trace/trace_start/trace_stop/auth_code/vault_list/vault_fill, captcha_detect/captcha_solve/captcha_fill, pointer_move/pointer_click/pointer_drag/css_drag/key_combo/insert_text. See tool description."`
 	// URL is required for navigate.
 	URL string `json:"url,omitempty" description:"Destination for the navigate action. Must start with http:// or https://."`
 	// Selector is an alternative to Ref for click, type, text, and html.
@@ -288,9 +288,6 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 				data, _ := json.Marshal(items)
 				return fantasy.NewTextResponse(string(data)), nil
 			}
-			if action == "export_test" {
-				return exportInteractionTest(workingDir, controlID, params.Advanced.Paths)
-			}
 			resource := "browser/" + sessionID
 			if manager, ok := sessions.(interface{ OwnershipResource(string) string }); ok {
 				resource = manager.OwnershipResource(sessionID)
@@ -348,11 +345,19 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 				SessionContextURL(context.Context, string, string) (browser.Session, error)
 			})
 			unguarded := params.Advanced.ExpectedTabID == "" && params.Advanced.ExpectedOrigin == "" && params.Advanced.DocumentID == ""
-			if canBootstrap && action == "navigate" && unguarded && !interaction.Default.Snapshot(controlID).RecordImages {
-				sess, err = bootstrap.SessionContextURL(ctx, sessionID, params.URL)
-			} else if manager, ok := sessions.(interface {
+			manager, hasContext := sessions.(interface {
 				SessionContext(context.Context, string) (browser.Session, error)
-			}); ok {
+			})
+			if canBootstrap && action == "navigate" && unguarded && !interaction.Default.Snapshot(controlID).RecordImages && !loopbackRefused(ctx, params.URL) {
+				sess, err = bootstrap.SessionContextURL(ctx, sessionID, params.URL)
+				if err != nil && hasContext && ctx.Err() == nil {
+					// Starting on the destination failed, often because the
+					// page never loaded. Start blank so the navigation below
+					// reports what really went wrong.
+					slog.Warn("Browser start on the first URL failed; starting blank", "error", err)
+					sess, err = manager.SessionContext(ctx, sessionID)
+				}
+			} else if hasContext {
 				sess, err = manager.SessionContext(ctx, sessionID)
 			} else {
 				sess, err = sessions.Session(sessionID)

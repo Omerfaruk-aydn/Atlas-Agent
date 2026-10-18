@@ -7,6 +7,7 @@ import (
 	"encoding/base32"
 	"encoding/binary"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -170,4 +171,17 @@ func totp(seed string, now time.Time) (string, error) {
 	offset := sum[len(sum)-1] & 15
 	value := binary.BigEndian.Uint32(sum[offset:offset+4]) & 0x7fffffff
 	return fmt.Sprintf("%06d", value%1000000), nil
+}
+
+// safeTraceURL drops credentials, the query and the fragment from a URL
+// before it is recorded.
+func safeTraceURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	u.User = nil
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/schema"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 	"github.com/stretchr/testify/require"
 )
@@ -494,6 +495,7 @@ func (d *simDesktop) Hotkey(modifiers []string, key string) error {
 // coordinator does: schema validation against the advertised computer
 // schema, then the tool's own permission, guard and lease checks.
 type simTool struct {
+	state   *computerToolState
 	desktop *simDesktop
 	tool    fantasy.AgentTool
 	spec    schema.Schema
@@ -507,12 +509,28 @@ func newSimTool(t *testing.T, d *simDesktop, permissions permission.Service) *si
 		permissions = permission.NewPermissionService(t.TempDir(), true, nil)
 	}
 	state := &computerToolState{permissions: permissions, workingDir: t.TempDir(), backend: d, enabled: func() bool { return true }, actionTimeout: 10 * time.Second, settleTiming: desktopSettleTiming{MinSettle: 5 * time.Millisecond, Poll: 5 * time.Millisecond, ReadSettle: 30 * time.Millisecond, OpenWait: 60 * time.Millisecond, LaunchWait: 100 * time.Millisecond, Track: 10 * time.Second}}
+	state.controller = interaction.New()
 	tool := newComputerToolWithState(state, "computer")
 	data, err := json.Marshal(fantasy.PrepareFunctionTool(tool).InputSchema)
 	require.NoError(t, err)
 	var spec schema.Schema
 	require.NoError(t, json.Unmarshal(data, &spec))
-	return &simTool{desktop: d, tool: tool, spec: spec}
+	return &simTool{desktop: d, tool: tool, spec: spec, state: state}
+}
+
+func TestIndependentSimulatedDesktopsDoNotShareLease(t *testing.T) {
+	t.Parallel()
+	first := newSimTool(t, newSimDesktop(), nil)
+	second := newSimTool(t, newSimDesktop(), nil)
+	ctx := simContext(t)
+	release, err := first.state.interactions().Acquire(ctx, "first", "desktop")
+	require.NoError(t, err)
+	defer release()
+	bounded, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	response, err := second.invoke(bounded, fantasy.ToolCall{ID: "windows", Name: ComputerToolName, Input: `{"action":"windows"}`})
+	require.NoError(t, err)
+	require.False(t, response.IsError, response.Content)
 }
 
 func (s *simTool) invoke(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {

@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"encoding/base32"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -53,26 +52,14 @@ func TestTOTPStandardVectorsAndSecretIsolation(t *testing.T) {
 	require.True(t, response.IsError)
 }
 
-func TestInteractionPathAndExportRejectTraversalAndOverwrite(t *testing.T) {
+func TestInteractionPathRejectsTraversal(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	_, err := interactionPath(root, "../outside")
 	require.Error(t, err)
 	_, err = interactionPath(root, filepath.Join(t.TempDir(), "outside"))
 	require.Error(t, err)
-	path, err := interactionPath(root, "fixture.spec.ts")
+	_, err = interactionPath(root, "fixture.png")
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(path, []byte("keep"), 0o600))
-	data, err := renderInteractionTest([]interaction.Entry{{Resource: "browser", Action: "navigate", URL: safeTraceURL("https://user:password@example.test/?token=secret"), Status: "succeeded"}, {Resource: "browser", Action: "assert", Target: "#result", Condition: "visible", Status: "succeeded"}, {Resource: "browser", Action: "auth_code", Status: "succeeded"}})
-	require.NoError(t, err)
-	require.Contains(t, data, "toBeVisible()")
-	require.NotContains(t, data, "password")
-	require.NotContains(t, data, "token=")
-	require.Contains(t, data, "TODO")
-	response, err := exportInteractionTest(root, "empty", []string{path})
-	require.NoError(t, err)
-	require.True(t, response.IsError)
-	unchanged, err := os.ReadFile(path)
-	require.NoError(t, err)
-	require.Equal(t, "keep", string(unchanged))
+	require.Equal(t, "https://example.test/", safeTraceURL("https://user:password@example.test/?token=secret#x"))
 }

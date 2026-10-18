@@ -33,6 +33,12 @@ const (
 	MaxImageDeliveryBytes = 2 * 1024 * 1024
 	// MaxImageDeliveryPixels refuses decompression bombs before decoding.
 	MaxImageDeliveryPixels = 60_000_000
+	// MaxImageDeliverySide bounds the width and the height of one image.
+	// Anthropic rejects the whole request with a 400 when either side is over
+	// 8000 px, which would poison every later turn of the session, so the
+	// limit sits safely below it. A full-page screenshot of a long web page
+	// is small in bytes and easily taller than this.
+	MaxImageDeliverySide = 7500
 	// previewMaxWidth is the first preview width tried for an oversized
 	// image; it matches the screenshot width models aim at.
 	previewMaxWidth = 1600
@@ -76,10 +82,11 @@ type ImageDelivery struct {
 var ErrImageInvalid = errors.New("image is corrupt or not a supported format (PNG, JPEG, GIF, WebP)")
 
 // PrepareImageForDelivery validates an image and returns what may be sent to
-// the model. Images up to and including MaxImageDeliveryBytes pass through
-// byte for byte. Larger images are replaced by a JPEG preview that fits, and
-// the result says so; an image that cannot be decoded or previewed fails
-// with an explicit error instead of being sent.
+// the model. Images up to and including MaxImageDeliveryBytes whose sides are
+// at most MaxImageDeliverySide pass through byte for byte. Larger images are
+// replaced by a JPEG preview that fits, and the result says so; an image that
+// cannot be decoded or previewed fails with an explicit error instead of
+// being sent.
 func PrepareImageForDelivery(data []byte, declared string) (ImageDelivery, error) {
 	if len(data) == 0 {
 		return ImageDelivery{}, fmt.Errorf("%w: empty data", ErrImageInvalid)
@@ -106,13 +113,13 @@ func PrepareImageForDelivery(data []byte, declared string) (ImageDelivery, error
 	if err != nil {
 		return ImageDelivery{}, fmt.Errorf("%w: %v", ErrImageInvalid, err)
 	}
-	if len(data) <= MaxImageDeliveryBytes {
+	if len(data) <= MaxImageDeliveryBytes && cfg.Width <= MaxImageDeliverySide && cfg.Height <= MaxImageDeliverySide {
 		out.SHA256 = imageDeliveryHash(data)
 		return out, nil
 	}
 	preview, w, h, err := encodePreview(img, MaxImageDeliveryBytes)
 	if err != nil {
-		return ImageDelivery{}, fmt.Errorf("image is %d bytes, over the %d byte limit, and no preview fits: %w", len(data), MaxImageDeliveryBytes, err)
+		return ImageDelivery{}, fmt.Errorf("image is %dx%d and %d bytes, over the limits (%d bytes, %d px per side), and no preview fits: %w", cfg.Width, cfg.Height, len(data), MaxImageDeliveryBytes, MaxImageDeliverySide, err)
 	}
 	out.Data, out.MediaType, out.Preview = preview, "image/jpeg", true
 	out.RawBytes, out.Base64Bytes, out.Width, out.Height = len(preview), ImageBase64Len(len(preview)), w, h
@@ -132,8 +139,30 @@ func (d ImageDelivery) Note() string {
 	if !d.Preview {
 		return fmt.Sprintf("Image delivered to the model only (not shown to the user): %s %dx%d, %d bytes (%d base64).", d.MediaType, d.Width, d.Height, d.RawBytes, d.Base64Bytes)
 	}
-	return fmt.Sprintf("Preview delivered to the model only (not shown to the user): the original %s %dx%d is %d bytes, over the %d byte image limit, so a %s %dx%d preview of %d bytes (%d base64) was sent. The original file is unchanged; small text may be less legible. Convert preview coordinates to original pixels with x * %.6g and y * %.6g.",
-		d.OriginalType, d.OriginalWidth, d.OriginalHeight, d.OriginalBytes, MaxImageDeliveryBytes, d.MediaType, d.Width, d.Height, d.RawBytes, d.Base64Bytes, d.CoordinateScaleX, d.CoordinateScaleY)
+	reason := fmt.Sprintf("is %d bytes, over the %d byte image limit", d.OriginalBytes, MaxImageDeliveryBytes)
+	if d.OriginalBytes <= MaxImageDeliveryBytes {
+		reason = fmt.Sprintf("is over the %d px per side image limit", MaxImageDeliverySide)
+	}
+	return fmt.Sprintf("Preview delivered to the model only (not shown to the user): the original %s %dx%d %s, so a %s %dx%d preview of %d bytes (%d base64) was sent. The original file is unchanged; small text may be less legible. Convert preview coordinates to original pixels with x * %.6g and y * %.6g.",
+		d.OriginalType, d.OriginalWidth, d.OriginalHeight, reason, d.MediaType, d.Width, d.Height, d.RawBytes, d.Base64Bytes, d.CoordinateScaleX, d.CoordinateScaleY)
+}
+
+// RepairOversizedImage returns data unchanged unless it is a decodable image
+// with a side over MaxImageDeliverySide, in which case it returns a scaled
+// preview and its media type. It is for images that were stored before the
+// side limit existed, or that reach a request without passing a tool: one such
+// image makes the provider reject the whole conversation. Anything it cannot
+// repair is returned as it came.
+func RepairOversizedImage(data []byte, mediaType string) ([]byte, string) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || (cfg.Width <= MaxImageDeliverySide && cfg.Height <= MaxImageDeliverySide) {
+		return data, mediaType
+	}
+	d, err := PrepareImageForDelivery(data, mediaType)
+	if err != nil {
+		return data, mediaType
+	}
+	return d.Data, d.MediaType
 }
 
 func formatMediaType(format string) string {
@@ -150,10 +179,18 @@ func formatMediaType(format string) string {
 	return ""
 }
 
-// encodePreview shrinks img until its JPEG encoding fits limit.
+// encodePreview shrinks img until its JPEG encoding fits limit and neither of
+// its sides is over MaxImageDeliverySide.
 func encodePreview(img image.Image, limit int) ([]byte, int, int, error) {
 	b := img.Bounds()
 	width := min(b.Dx(), previewMaxWidth)
+	minWidth := previewMinWidth
+	if b.Dy()*width/b.Dx() > MaxImageDeliverySide {
+		// A very tall image: the width that keeps the height in range may be
+		// narrower than the usual floor, and must be allowed.
+		width = max(1, b.Dx()*MaxImageDeliverySide/b.Dy())
+		minWidth = min(minWidth, width)
+	}
 	for {
 		height := max(1, b.Dy()*width/b.Dx())
 		dst := image.NewRGBA(image.Rect(0, 0, width, height))
@@ -171,10 +208,10 @@ func encodePreview(img image.Image, limit int) ([]byte, int, int, error) {
 		if buf.Len() <= limit {
 			return buf.Bytes(), width, height, nil
 		}
-		if width <= previewMinWidth {
+		if width <= minWidth {
 			return nil, 0, 0, fmt.Errorf("a %dx%d preview is still %d bytes", width, height, buf.Len())
 		}
-		width = max(previewMinWidth, width*3/4)
+		width = max(minWidth, width*3/4)
 	}
 }
 

@@ -74,7 +74,7 @@ func CallMutates(name, input string) bool {
 	_ = json.Unmarshal([]byte(input), &p)
 	p.Action = strings.ToLower(strings.TrimSpace(p.Action))
 	switch name {
-	case "edit", "write", "multiedit", "bash", "replace_symbol", "rename_symbol", "lsp_rename_file", "undo_feature":
+	case "edit", "write", "multiedit", "bash", "replace_symbol", "rename_symbol", "lsp_rename_file", "undo_feature", SkillManageToolName:
 		return true
 	case ComputerToolName:
 		return computerMutates(strings.ToLower(p.Action))

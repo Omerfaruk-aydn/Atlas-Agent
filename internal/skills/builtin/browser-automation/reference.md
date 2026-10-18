@@ -177,9 +177,7 @@ shows what remains; after a restart it says reobserve_required.
   returns the viewport_id; `full_page: true` captures the whole page (no grant).
 - `status` / `trace` show control state and real browser_metrics. `knowledge`
   lists methods that verified on this origin before; they only order attempts.
-  `trace_start` / `trace_stop` toggle before/after PNG recording. `export_test`
-  writes a `.spec.ts` from replayable actions (one advanced.paths entry); run it
-  before claiming replay works.
+  `trace_start` / `trace_stop` toggle before/after PNG recording.
 - `health` separates browser_disconnected, tab_closed, dialog_blocking,
   input_cleanup_pending and page_unresponsive from a target problem.
 - A missing browser binary or launch failure comes back from the first call that

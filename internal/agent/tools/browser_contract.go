@@ -301,7 +301,7 @@ func browserDeliveryAction(action string, params BrowserParams) bool {
 	}
 	switch action {
 	case "pointer_move", "navigate", "back", "forward", "tab_new", "tab_select", "tab_close", "tab_return",
-		"dialog", "dialog_handle", "close", "handoff", "trace_start", "trace_stop", "export_test", "download_start", "status", "trace":
+		"dialog", "dialog_handle", "close", "handoff", "trace_start", "trace_stop", "download_start", "status", "trace":
 		return false
 	case "key", "key_combo":
 		key := strings.ToLower(strings.TrimSpace(firstNonEmpty(params.Key, params.Advanced.Key)))

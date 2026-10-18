@@ -111,12 +111,6 @@ the intended workflow. PNGs stay local under `.atlas/interactions/captures`.
 The capture cache is bounded to 1024 files / 512 MiB; remove unneeded captures
 when that limit is reached. Preview frames reuse identical content by hash.
 
-Browser `export_test` requires one new workspace `.spec.ts` file in
-`advanced.paths`. It exports observed navigation, stable clicks and supported
-assertions to a Playwright test. It refuses to overwrite a file. Credentials,
-typed values, query strings and arbitrary scripts are omitted; TODO comments
-identify required test inputs. Review and run the test before relying on replay.
-
 ## TUI and authentication
 
 Open `/interactions` (or press `i` in the workflow panel). `p` takes control;

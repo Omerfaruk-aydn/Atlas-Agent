@@ -131,6 +131,109 @@ func TestPrepareImageOneByteOverTheLimitDeliversAMarkedPreview(t *testing.T) {
 	require.InDelta(t, 1920.0/float64(d.Width), d.CoordinateScale, 1e-9)
 }
 
+// gradientPNG is a w×h image that compresses well, so a very tall one is
+// still small in bytes, like a full-page screenshot of a flat page.
+func gradientPNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		for x := range w {
+			img.SetNRGBA(x, y, color.NRGBA{R: uint8(x / 8), G: uint8(y / 16), B: 200, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	require.NoError(t, png.Encode(&buf, img))
+	return buf.Bytes()
+}
+
+func TestPrepareImageScalesATallScreenshotUnderTheSideLimit(t *testing.T) {
+	t.Parallel()
+	data := gradientPNG(t, 1280, 9000)
+	require.Less(t, len(data), MaxImageDeliveryBytes, "small in bytes, tall in pixels")
+	d, err := PrepareImageForDelivery(data, "image/png")
+	require.NoError(t, err)
+	require.True(t, d.Preview)
+	require.Equal(t, "image/jpeg", d.MediaType)
+	require.LessOrEqual(t, d.Height, MaxImageDeliverySide)
+	require.LessOrEqual(t, d.Width, 1280)
+	require.Equal(t, 9000, d.OriginalHeight)
+	// The aspect ratio is kept, within one pixel of rounding.
+	require.InDelta(t, 1280.0/9000.0, float64(d.Width)/float64(d.Height), 0.01)
+	require.InDelta(t, 9000.0/float64(d.Height), d.CoordinateScaleY, 1e-9)
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(d.Data))
+	require.NoError(t, err)
+	require.Equal(t, "jpeg", format)
+	require.Equal(t, d.Height, cfg.Height)
+	require.Contains(t, d.Note(), "per side")
+	require.NotContains(t, d.Note(), "byte image limit")
+}
+
+func TestPrepareImageKeepsTheSideLimitExactAndScalesOnePixelOver(t *testing.T) {
+	t.Parallel()
+	atLimit := gradientPNG(t, 40, MaxImageDeliverySide)
+	d, err := PrepareImageForDelivery(atLimit, "image/png")
+	require.NoError(t, err)
+	require.False(t, d.Preview)
+	require.Equal(t, atLimit, d.Data)
+
+	over := gradientPNG(t, 40, MaxImageDeliverySide+1)
+	d, err = PrepareImageForDelivery(over, "image/png")
+	require.NoError(t, err)
+	require.True(t, d.Preview)
+	require.LessOrEqual(t, d.Height, MaxImageDeliverySide)
+}
+
+func TestPrepareImageScalesAnExtremelyTallStripBelowTheUsualMinimumWidth(t *testing.T) {
+	t.Parallel()
+	data := gradientPNG(t, 200, 30000)
+	d, err := PrepareImageForDelivery(data, "image/png")
+	require.NoError(t, err)
+	require.True(t, d.Preview)
+	require.LessOrEqual(t, d.Height, MaxImageDeliverySide)
+	require.Less(t, d.Width, previewMinWidth, "the width follows the height cap here")
+	require.GreaterOrEqual(t, d.Width, 1)
+}
+
+func TestPrepareImageScalesAnExtremelyWideImage(t *testing.T) {
+	t.Parallel()
+	data := gradientPNG(t, 9000, 200)
+	d, err := PrepareImageForDelivery(data, "image/png")
+	require.NoError(t, err)
+	require.True(t, d.Preview)
+	require.LessOrEqual(t, d.Width, previewMaxWidth)
+	require.LessOrEqual(t, d.Height, MaxImageDeliverySide)
+}
+
+func TestRepairOversizedImageOnlyTouchesOversizedImages(t *testing.T) {
+	t.Parallel()
+	normal := gradientPNG(t, 300, 200)
+	got, mediaType := RepairOversizedImage(normal, "image/png")
+	require.Equal(t, normal, got)
+	require.Equal(t, "image/png", mediaType)
+
+	got, mediaType = RepairOversizedImage([]byte("not an image"), "image/png")
+	require.Equal(t, []byte("not an image"), got)
+	require.Equal(t, "image/png", mediaType)
+
+	tall := gradientPNG(t, 500, 8100)
+	got, mediaType = RepairOversizedImage(tall, "image/png")
+	require.Equal(t, "image/jpeg", mediaType)
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(got))
+	require.NoError(t, err)
+	require.LessOrEqual(t, cfg.Height, MaxImageDeliverySide)
+}
+
+func TestEnforceImageDeliveryScalesATallToolImage(t *testing.T) {
+	t.Parallel()
+	resp := fantasy.NewImageResponse(gradientPNG(t, 1280, 9000), "image/png")
+	out := EnforceImageDelivery(resp)
+	require.Equal(t, "image", out.Type)
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(out.Data))
+	require.NoError(t, err)
+	require.LessOrEqual(t, cfg.Height, MaxImageDeliverySide)
+	require.Contains(t, out.Content, "Preview delivered")
+}
+
 func TestPrepareImageRejectsCorruptAndEmptyData(t *testing.T) {
 	t.Parallel()
 	for name, data := range map[string][]byte{

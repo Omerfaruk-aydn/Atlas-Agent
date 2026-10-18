@@ -108,6 +108,16 @@ type computerToolState struct {
 	actionTimeout        time.Duration
 	// settleTiming bounds input transition waits; zero selects defaults.
 	settleTiming desktopSettleTiming
+	// controller permits independent backend instances to own independent
+	// resources. Real desktop tools default to the shared controller.
+	controller *interaction.Controller
+}
+
+func (s *computerToolState) interactions() *interaction.Controller {
+	if s.controller != nil {
+		return s.controller
+	}
+	return interaction.Default
 }
 
 func newComputerTool(
@@ -175,7 +185,7 @@ func newComputerToolWithState(state *computerToolState, description string) fant
 
 			sessionID := GetSessionFromContext(ctx)
 			controlID := engineering.GetScope(ctx, sessionID).SessionID
-			if err := interaction.Default.Load(workingDir, controlID); err != nil {
+			if err := state.interactions().Load(workingDir, controlID); err != nil {
 				return fantasy.NewTextErrorResponse("Cannot load interaction state: " + err.Error()), nil
 			}
 
@@ -215,19 +225,19 @@ func newComputerToolWithState(state *computerToolState, description string) fant
 					return contractResponse(err), nil
 				}
 				state.observations.clear()
-				interaction.Default.Pause(controlID, step)
-				if err := interaction.Default.Record(workingDir, controlID, interaction.Entry{Time: time.Now(), Resource: "desktop", Action: action, Status: "paused"}); err != nil {
+				state.interactions().Pause(controlID, step)
+				if err := state.interactions().Record(workingDir, controlID, interaction.Entry{Time: time.Now(), Resource: "desktop", Action: action, Status: "paused"}); err != nil {
 					return fantasy.NewTextErrorResponse(err.Error()), nil
 				}
 				return handoffResponse(step, "on the desktop"), nil
 			}
 			if action == "status" || action == "trace" {
-				data, _ := json.Marshal(interaction.Default.ToolSnapshot(controlID, action == "trace"))
+				data, _ := json.Marshal(state.interactions().ToolSnapshot(controlID, action == "trace"))
 				return fantasy.NewTextResponse(string(data)), nil
 			}
 			if action == "trace_start" || action == "trace_stop" {
-				interaction.Default.SetImageRecording(controlID, action == "trace_start")
-				if err := interaction.Default.Record(workingDir, controlID, interaction.Entry{Time: time.Now(), Resource: "desktop", OwnerID: sessionID, Action: action, Status: "ready"}); err != nil {
+				state.interactions().SetImageRecording(controlID, action == "trace_start")
+				if err := state.interactions().Record(workingDir, controlID, interaction.Entry{Time: time.Now(), Resource: "desktop", OwnerID: sessionID, Action: action, Status: "ready"}); err != nil {
 					return fantasy.NewTextErrorResponse(err.Error()), nil
 				}
 				return fantasy.NewTextResponse("Before/after image recording updated. Text-entry actions are omitted from image recording."), nil
@@ -300,7 +310,7 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 	go func() {
 		controlID := engineering.GetScope(ctx, GetSessionFromContext(ctx)).SessionID
 		var operation activity.Operation
-		release, err := interaction.Default.Acquire(ctx, controlID, "desktop")
+		release, err := s.interactions().Acquire(ctx, controlID, "desktop")
 		if err != nil {
 			resp := interactionAcquireResponse(err)
 			done <- result{resp: withToolOutcome(resp, computerOutcome(action, params, resp, false))}
@@ -315,7 +325,7 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 			if supportsFeedback {
 				point = false
 			}
-			finish := interaction.Default.StartActivity(controlID, func() func() {
+			finish := s.interactions().StartActivity(controlID, func() func() {
 				operation = activity.Default.Start(ctx, activity.Event{Session: controlID, Resource: "desktop", Action: action, WindowID: params.Automation.WindowID, X: params.X, Y: params.Y, Point: point, ReducedMotion: s.overlayReducedMotion})
 				return operation.End
 			})
@@ -333,7 +343,7 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 		}
 		started := time.Now()
 		before, after := "", ""
-		recordImages := interaction.Default.Snapshot(controlID).RecordImages && recordableComputerAction(action)
+		recordImages := s.interactions().Snapshot(controlID).RecordImages && recordableComputerAction(action)
 		if recordImages {
 			before = captureComputerTrace(s.backend, s.workingDir, controlID)
 		}
@@ -349,7 +359,7 @@ func (s *computerToolState) runWithTimeout(ctx context.Context, action string, p
 			// Only a verified failure earns the banner's blocked reaction.
 			operation.Fail()
 		}
-		if traceErr := interaction.Default.Record(s.workingDir, controlID, interaction.Entry{Time: started, Resource: "desktop", OwnerID: GetSessionFromContext(ctx), Before: before, After: after, Target: params.Automation.WindowID, Action: action, Status: status, DurationMS: time.Since(started).Milliseconds()}); traceErr != nil {
+		if traceErr := s.interactions().Record(s.workingDir, controlID, interaction.Entry{Time: started, Resource: "desktop", OwnerID: GetSessionFromContext(ctx), Before: before, After: after, Target: params.Automation.WindowID, Action: action, Status: status, DurationMS: time.Since(started).Milliseconds()}); traceErr != nil {
 			slog.Warn("Failed to persist interaction trace", "error", traceErr)
 		}
 		resp = withToolOutcome(resp, computerOutcome(action, params, resp, dispatch.sent.Load()))

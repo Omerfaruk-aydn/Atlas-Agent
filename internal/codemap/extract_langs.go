@@ -653,3 +653,493 @@ func selectorRefs(f *File, selector string, line int) {
 	}
 }
 
+// moreImports reads the imports of the languages importAt does not.
+func (x *extractor) moreImports(i int) bool {
+	t := x.toks[i]
+	w := x.kw(t.text)
+	switch x.lang.name {
+	case "haskell", "elm":
+		if w == "import" && t.first {
+			x.mlImport(i)
+			return true
+		}
+	case "ocaml", "fsharp":
+		if w == "open" || w == "include" && x.lang.name == "ocaml" && t.first {
+			x.dottedImport(i+1, ".", false)
+			x.markLine(i)
+			return true
+		}
+	case "clojure", "lisp":
+		return x.lispImport(i)
+	case "erlang":
+		return x.erlangImport(i)
+	case "gleam":
+		if w == "import" && t.first {
+			x.gleamImport(i)
+			return true
+		}
+	case "nim":
+		if t.first && (w == "import" || w == "include" || w == "from") {
+			x.nimImport(i)
+			return true
+		}
+	case "vlang":
+		if w == "import" && t.first {
+			x.dottedImport(i+1, ".", true)
+			x.markLine(i)
+			return true
+		}
+	case "solidity":
+		if w == "import" {
+			return x.jsImport(i)
+		}
+	case "verilog":
+		if t.text == "`" && x.tok(i+1).text == "include" && x.tok(i+2).kind == tString {
+			x.file.Imports = append(x.file.Imports, Import{Spec: x.toks[i+2].text, Line: t.line})
+			return true
+		}
+		if w == "import" {
+			x.dottedImport(i+1, "::", false)
+			x.markLine(i)
+			return true
+		}
+	case "vhdl":
+		switch w {
+		case "use":
+			var parts []string
+			for k := i + 1; x.tok(k).kind == tIdent; k += 2 {
+				parts = append(parts, strings.ToLower(x.toks[k].text))
+				if x.tok(k+1).text != "." {
+					break
+				}
+			}
+			if len(parts) >= 2 && parts[0] == "work" {
+				x.file.Imports = append(x.file.Imports, Import{Spec: parts[1], Line: t.line})
+			} else if len(parts) > 0 {
+				x.file.Imports = append(x.file.Imports, Import{Spec: strings.Join(parts, "."), Line: t.line, Module: "_"})
+			}
+			x.markLine(i)
+			return true
+		case "library":
+			x.markLine(i)
+			return true
+		}
+	case "powershell":
+		switch {
+		case t.first && t.text == ".":
+			x.psDotSource(i)
+			return true
+		case w == "import-module" || w == "using" && x.kw(x.tok(i+1).text) == "module":
+			if spec := psModuleSpec(x.lines[t.line-1]); spec != "" {
+				x.file.Imports = append(x.file.Imports, Import{Spec: psPath(spec), Line: t.line})
+			}
+			x.markLine(i)
+			return true
+		}
+	case "vb":
+		if w == "imports" && t.first {
+			x.dottedImport(i+1, ".", false)
+			x.markLine(i)
+			return true
+		}
+	case "pascal":
+		if w == "uses" {
+			x.pascalUses(i)
+			return true
+		}
+	case "fortran":
+		if w == "use" && t.first {
+			k := i + 1
+			for x.tok(k).text == "," || x.tok(k).text == "::" || x.kw(x.tok(k).text) == "intrinsic" || x.kw(x.tok(k).text) == "non_intrinsic" {
+				k++
+			}
+			if x.tok(k).kind == tIdent {
+				x.file.Imports = append(x.file.Imports, Import{Spec: strings.ToLower(x.toks[k].text), Line: t.line})
+			}
+			x.markLine(i)
+			return true
+		}
+	case "gdscript":
+		if (w == "preload" || w == "load") && x.tok(i+1).text == "(" && x.tok(i+2).kind == tString && strings.HasSuffix(x.toks[i+2].text, ".gd") {
+			x.file.Imports = append(x.file.Imports, Import{Spec: x.toks[i+2].text, Line: t.line})
+			return true
+		}
+	}
+	return false
+}
+
+// mlImport reads a Haskell or Elm import: import qualified A.B as C
+// (x, y) hiding (z), import A.B as C exposing (x).
+func (x *extractor) mlImport(i int) {
+	line := x.toks[i].line
+	k := i + 1
+	qualified := false
+	if x.tok(k).text == "qualified" {
+		qualified = true
+		k++
+	}
+	var parts []string
+	for x.tok(k).kind == tIdent && x.tok(k).line == line {
+		parts = append(parts, x.toks[k].text)
+		if x.tok(k+1).text == "." && x.tok(k+2).kind == tIdent {
+			k += 2
+			continue
+		}
+		k++
+		break
+	}
+	end := k
+	defer func() {
+		for j := i; j <= end && j < len(x.toks); j++ {
+			x.names[j] = true
+		}
+	}()
+	if len(parts) == 0 {
+		return
+	}
+	spec := strings.Join(parts, ".")
+	alias := parts[len(parts)-1]
+	if x.tok(k).text == "qualified" {
+		qualified = true
+		k++
+	}
+	if x.tok(k).text == "as" && x.tok(k+1).kind == tIdent {
+		alias = x.toks[k+1].text
+		k += 2
+	}
+	everything := !qualified
+	var bindings []Binding
+	if x.tok(k).text == "exposing" {
+		k++
+		everything = false
+	}
+	hiding := false
+	if x.tok(k).text == "hiding" {
+		hiding = true
+		k++
+	}
+	if x.tok(k).text == "(" {
+		if close, ok := x.match[k]; ok {
+			end = close
+			if hiding {
+				everything = true
+			} else {
+				everything = false
+				for j := k + 1; j < close; j++ {
+					s := x.toks[j]
+					if s.text == ".." && x.tok(j-1).text == "(" && j == k+1 {
+						everything = true
+					}
+					if s.kind == tIdent && x.tok(j-1).text != "." {
+						bindings = append(bindings, Binding{Local: s.text, Remote: s.text})
+					}
+					if s.text == "(" {
+						// Type(..) or Type(A, B): its constructors.
+						if c, ok := x.match[j]; ok {
+							j = c
+						}
+					}
+				}
+			}
+		}
+	} else {
+		end = k
+	}
+	x.file.Imports = append(x.file.Imports, Import{Spec: spec, Line: line, Module: alias, Bindings: bindings})
+	if everything {
+		// An unqualified import without a list brings every name in.
+		x.file.Imports = append(x.file.Imports, Import{Spec: spec, Line: line})
+	}
+}
+
+// lispImport reads (:require [a.b :as c :refer [d]]), (require 'x) and
+// (require "x.rkt"), and the ns name of a Clojure file.
+func (x *extractor) lispImport(i int) bool {
+	t := x.toks[i]
+	if x.tok(i-1).text != "(" {
+		return false
+	}
+	switch t.text {
+	case "ns":
+		if x.tok(i+1).kind == tIdent {
+			x.names[i+1] = true
+		}
+		return false
+	case ":require", "require", ":use", "use", ":import":
+	default:
+		return false
+	}
+	end, ok := x.match[i-1]
+	if !ok {
+		return false
+	}
+	for j := i; j <= end; j++ {
+		x.names[j] = true
+	}
+	if t.text == ":import" {
+		return true
+	}
+	add := func(spec string, line int) *Import {
+		x.file.Imports = append(x.file.Imports, Import{Spec: spec, Line: line})
+		return &x.file.Imports[len(x.file.Imports)-1]
+	}
+	for j := i + 1; j < end; j++ {
+		s := x.toks[j]
+		switch {
+		case s.kind == tString:
+			add(s.text, s.line)
+		case s.text == "[" || s.text == "(":
+			close, ok := x.match[j]
+			if !ok || x.tok(j+1).kind != tIdent {
+				continue
+			}
+			imp := add(x.toks[j+1].text, x.toks[j+1].line)
+			plain := true
+			for k := j + 2; k < close; k++ {
+				switch x.toks[k].text {
+				case ":as":
+					if x.tok(k+1).kind == tIdent {
+						imp.Module = x.toks[k+1].text
+						plain = false
+					}
+				case ":refer":
+					if x.tok(k+1).text == ":all" {
+						plain = true
+					} else if x.tok(k+1).text == "[" {
+						plain = false
+						if c, ok := x.match[k+1]; ok {
+							for r := k + 2; r < c; r++ {
+								if x.toks[r].kind == tIdent {
+									imp.Bindings = append(imp.Bindings, Binding{Local: x.toks[r].text, Remote: x.toks[r].text})
+								}
+							}
+						}
+					}
+				}
+			}
+			if !plain && imp.Module == "" && len(imp.Bindings) == 0 {
+				imp.Module = "_"
+			}
+			j = close
+		case s.kind == tIdent && !strings.HasPrefix(s.text, ":"):
+			add(s.text, s.line)
+		}
+	}
+	return true
+}
+
+// erlangImport reads -import(mod, [f/1]) and -include("x.hrl").
+func (x *extractor) erlangImport(i int) bool {
+	t := x.toks[i]
+	if t.text != "-" || !t.first || x.tok(i+2).text != "(" {
+		return false
+	}
+	switch x.tok(i + 1).text {
+	case "include", "include_lib":
+		if s := x.tok(i + 3); s.kind == tString {
+			x.file.Imports = append(x.file.Imports, Import{Spec: s.text, Line: t.line})
+		}
+	case "import":
+		mod := x.tok(i + 3)
+		if mod.kind != tIdent {
+			return false
+		}
+		imp := Import{Spec: mod.text, Line: t.line}
+		if end, ok := x.match[i+2]; ok {
+			for k := i + 4; k < end; k++ {
+				if x.toks[k].kind == tIdent && x.tok(k+1).text == "/" {
+					imp.Bindings = append(imp.Bindings, Binding{Local: x.toks[k].text, Remote: x.toks[k].text})
+				}
+			}
+		}
+		x.file.Imports = append(x.file.Imports, imp)
+	default:
+		return false
+	}
+	return true
+}
+
+// gleamImport reads import a/b.{c, type D} as e.
+func (x *extractor) gleamImport(i int) {
+	line := x.toks[i].line
+	k := i + 1
+	var parts []string
+	for x.tok(k).kind == tIdent {
+		parts = append(parts, x.toks[k].text)
+		if x.tok(k+1).text != "/" {
+			k++
+			break
+		}
+		k += 2
+	}
+	if len(parts) == 0 {
+		return
+	}
+	imp := Import{Spec: strings.Join(parts, "/"), Line: line, Module: parts[len(parts)-1]}
+	if x.tok(k).text == "." && x.tok(k+1).text == "{" {
+		if end, ok := x.match[k+1]; ok {
+			for j := k + 2; j < end; j++ {
+				if s := x.toks[j]; s.kind == tIdent && s.text != "type" && s.text != "as" && x.tok(j-1).text != "as" {
+					imp.Bindings = append(imp.Bindings, Binding{Local: s.text, Remote: s.text})
+				}
+			}
+			k = end + 1
+		}
+	}
+	if x.tok(k).text == "as" && x.tok(k+1).kind == tIdent {
+		imp.Module = x.toks[k+1].text
+	}
+	x.file.Imports = append(x.file.Imports, imp)
+	x.markLine(i)
+}
+
+// nimImport reads import a, b/c, std/[d, e], from a import b and include a.
+func (x *extractor) nimImport(i int) {
+	t := x.toks[i]
+	line := t.line
+	from := x.kw(t.text) == "from"
+	k := i + 1
+	readPath := func() []string {
+		var prefix []string
+		for x.tok(k).kind == tIdent && x.tok(k).line == line {
+			prefix = append(prefix, x.toks[k].text)
+			k++
+			if x.tok(k).text != "/" {
+				return []string{strings.Join(prefix, "/")}
+			}
+			k++
+			if x.tok(k).text == "[" {
+				end, ok := x.match[k]
+				if !ok {
+					return nil
+				}
+				var out []string
+				for j := k + 1; j < end; j++ {
+					if x.toks[j].kind == tIdent {
+						out = append(out, strings.Join(append(append([]string(nil), prefix...), x.toks[j].text), "/"))
+					}
+				}
+				k = end + 1
+				return out
+			}
+		}
+		if len(prefix) > 0 {
+			return []string{strings.Join(prefix, "/")}
+		}
+		return nil
+	}
+	if from {
+		specs := readPath()
+		if len(specs) == 0 || x.tok(k).text != "import" {
+			return
+		}
+		imp := Import{Spec: specs[0], Line: line}
+		for j := k + 1; j < len(x.toks) && x.toks[j].line == line; j++ {
+			if x.toks[j].kind == tIdent {
+				imp.Bindings = append(imp.Bindings, Binding{Local: x.toks[j].text, Remote: x.toks[j].text})
+			}
+		}
+		x.file.Imports = append(x.file.Imports, imp)
+		x.markLine(i)
+		return
+	}
+	for {
+		for _, spec := range readPath() {
+			// Nim's import brings every exported name in, and still
+			// allows module.name.
+			x.file.Imports = append(x.file.Imports, Import{Spec: spec, Line: line}, Import{Spec: spec, Line: line, Module: path.Base(spec)})
+		}
+		if x.tok(k).text == "as" {
+			k += 2
+		}
+		if x.tok(k).text != "," {
+			break
+		}
+		k++
+	}
+	x.markLine(i)
+}
+
+// pascalUses reads uses A, B.C in 'path', D;
+func (x *extractor) pascalUses(i int) {
+	k := i + 1
+	for k < len(x.toks) && x.toks[k].text != ";" {
+		if x.toks[k].kind != tIdent {
+			k++
+			continue
+		}
+		parts := []string{x.toks[k].text}
+		line := x.toks[k].line
+		for x.tok(k+1).text == "." && x.tok(k+2).kind == tIdent {
+			k += 2
+			parts = append(parts, x.toks[k].text)
+		}
+		spec := strings.Join(parts, ".")
+		if x.kw(x.tok(k+1).text) == "in" && x.tok(k+2).kind == tString {
+			spec = strings.ReplaceAll(x.toks[k+2].text, "\\", "/")
+			k += 2
+		}
+		x.file.Imports = append(x.file.Imports, Import{Spec: spec, Line: line})
+		k++
+	}
+	for j := i; j <= k && j < len(x.toks); j++ {
+		x.names[j] = true
+	}
+}
+
+// psDotSource reads . ./lib.ps1 and . $PSScriptRoot\lib.ps1.
+func (x *extractor) psDotSource(i int) {
+	t := x.toks[i]
+	line := x.lines[t.line-1]
+	rest := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "."))
+	if fields := strings.Fields(rest); len(fields) > 0 {
+		x.file.Imports = append(x.file.Imports, Import{Spec: psPath(fields[0]), Line: t.line})
+	}
+	x.markLine(i)
+}
+
+// psModuleSpec returns the module an Import-Module or using module line
+// names: the first argument that is not a parameter, or the value of
+// -Name.
+func psModuleSpec(line string) string {
+	fields := strings.Fields(line)
+	start := -1
+	for k, f := range fields {
+		if lower := strings.ToLower(f); lower == "import-module" || lower == "module" && k > 0 && strings.EqualFold(fields[k-1], "using") {
+			start = k + 1
+			break
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	for k := start; k < len(fields); k++ {
+		f := strings.TrimRight(fields[k], ";")
+		lower := strings.ToLower(f)
+		switch {
+		case lower == "-name" || lower == "-path":
+			if k+1 < len(fields) {
+				return strings.TrimRight(fields[k+1], ";")
+			}
+		case strings.HasPrefix(f, "-"):
+			// A switch such as -Force; one with a value takes it along.
+			if k+1 < len(fields) && strings.EqualFold(f, "-Prefix") {
+				k++
+			}
+		case f != "" && f != "|":
+			return f
+		}
+	}
+	return ""
+}
+
+// psPath turns a PowerShell path into a slash path relative to the script.
+func psPath(p string) string {
+	p = strings.Trim(p, `"'`)
+	for _, root := range []string{"$PSScriptRoot", "${PSScriptRoot}"} {
+		if rest, ok := strings.CutPrefix(p, root); ok {
+			p = "." + rest
+		}
+	}
+	return strings.ReplaceAll(p, "\\", "/")
+}

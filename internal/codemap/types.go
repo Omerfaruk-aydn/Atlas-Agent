@@ -17,3 +17,23 @@ type File struct {
 	Asset *Asset `json:"asset,omitempty"`
 }
 
+// FileLink is a reference to another file by its path.
+type FileLink struct {
+	// Target is the path as written, with any #fragment; a ${...} in it
+	// stands for any name.
+	Target string `json:"target"`
+	Kind   string `json:"kind"`
+	Line   int    `json:"line"`
+}
+
+// FileLink kinds, worded to read "a.md embeds b.png".
+const (
+	LinkEmbeds   = "embeds"
+	LinkLinks    = "links to"
+	LinkIncludes = "includes"
+	LinkLoads    = "loads"
+	LinkNames    = "names"
+	LinkEntry    = "entry"
+	LinkRuns     = "runs"
+)
+

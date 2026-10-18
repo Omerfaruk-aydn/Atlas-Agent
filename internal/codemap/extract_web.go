@@ -158,3 +158,51 @@ const (
 	markupAstro
 )
 
+func extractHTML(out *File, content string) {
+	blocks := findBlocks(content)
+	if script := keepBlocks(content, blocks, func(b block) bool { return b.kind == "script" }); strings.TrimSpace(script) != "" {
+		extractCode(out, languages["javascript"], script)
+	}
+	for _, lang := range []string{"css", "scss", "less"} {
+		if style := keepBlocks(content, blocks, func(b block) bool { return b.kind == "style" && b.lang == lang }); strings.TrimSpace(style) != "" {
+			extractCSS(out, lang, style)
+		}
+	}
+	scanMarkup(out, dropBlocks(content, blocks), markupHTML)
+	if out.Language == "template" {
+		templateIncludes(out, content)
+	}
+}
+
+// extractComponent reads a Vue, Svelte or Astro component: its script, its
+// styles, its template, and the component the file itself is.
+func extractComponent(out *File, ext, content string) {
+	blocks := findBlocks(content)
+	mode := map[string]markupMode{".vue": markupVue, ".svelte": markupSvelte, ".astro": markupAstro}[ext]
+	if mode == markupAstro && strings.HasPrefix(strings.TrimLeft(content, string(rune(0xFEFF))), "---") {
+		// The frontmatter between --- fences is the component's script.
+		first := strings.Index(content, "---")
+		if end := strings.Index(content[first+3:], "\n---"); end >= 0 {
+			fm := block{start: first + 3, end: first + 3 + end, kind: "script", lang: "typescript"}
+			blocks = append([]block{fm}, blocks...)
+		}
+	}
+	lang := "typescript"
+	if script := keepBlocks(content, blocks, func(b block) bool { return b.kind == "script" }); strings.TrimSpace(script) != "" {
+		extractCode(out, languages[lang], script)
+	}
+	for _, style := range []string{"css", "scss", "less"} {
+		if css := keepBlocks(content, blocks, func(b block) bool { return b.kind == "style" && b.lang == style }); strings.TrimSpace(css) != "" {
+			extractCSS(out, style, css)
+		}
+	}
+	scanMarkup(out, dropBlocks(content, blocks), mode)
+	name := pascalCase(strings.TrimSuffix(path.Base(out.Path), path.Ext(out.Path)))
+	if name != "" {
+		out.Symbols = append(out.Symbols, Symbol{
+			Name: name, Kind: "component", Line: 1, EndLine: out.Lines,
+			Signature: "<" + name + "> (" + path.Base(out.Path) + ")", Exported: true,
+		})
+	}
+}
+

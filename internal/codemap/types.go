@@ -71,3 +71,10 @@ type Import struct {
 	Line   int    `json:"line"`
 }
 
+// Binding is a name an import brings in: Local in this file for Remote in
+// the imported module.
+type Binding struct {
+	Local  string `json:"local"`
+	Remote string `json:"remote"`
+}
+

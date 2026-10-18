@@ -456,3 +456,87 @@ func (x *extractor) commandRef(i int) bool {
 	return true
 }
 
+// webRef records what a script uses of the page: classes set through
+// className or classList, elements found by id or selector, and classes of
+// an imported CSS module (styles.button).
+func (x *extractor) webRef(i int) {
+	t := x.toks[i]
+	str := func(k int) (lexToken, bool) {
+		s := x.tok(k)
+		return s, s.kind == tString
+	}
+	if kind, ok := x.domHelpers[t.text]; ok && x.tok(i-1).text != "." {
+		// $<HTMLButtonElement>('skip'): a call of the script's own lookup
+		// helper, type arguments and all.
+		k := i + 1
+		if x.tok(k).text == "<" {
+			for k < len(x.toks) && x.toks[k].text != ">" && x.toks[k].line == t.line {
+				k++
+			}
+			k++
+		}
+		if s, ok := str(k + 1); ok && x.tok(k).text == "(" {
+			switch {
+			case kind == RefDOM && isCSSName(s.text):
+				addRef(x.file, Ref{Name: s.text, Kind: RefDOM, Line: s.line})
+			case kind != RefDOM:
+				selectorRefs(x.file, s.text, s.line)
+			}
+		}
+		return
+	}
+	switch t.text {
+	case "className", "class":
+		if x.tok(i+1).text != "=" {
+			break
+		}
+		k := i + 2
+		if x.tok(k).text == "{" {
+			k++
+		}
+		if s, ok := str(k); ok {
+			classRefs(x.file, s.text, s.line)
+		}
+	case "classList":
+		if x.tok(i+1).text != "." || x.tok(i+3).text != "(" {
+			break
+		}
+		switch x.tok(i + 2).text {
+		case "add", "remove", "toggle", "contains", "replace":
+			for k := i + 4; ; k++ {
+				s := x.tok(k)
+				if s.kind == tString {
+					classRefs(x.file, s.text, s.line)
+				} else if s.text != "," {
+					break
+				}
+			}
+		}
+	case "getElementById":
+		if s, ok := str(i + 2); ok && x.tok(i+1).text == "(" && isCSSName(s.text) {
+			addRef(x.file, Ref{Name: s.text, Kind: RefDOM, Line: s.line})
+		}
+	case "getElementsByClassName":
+		if s, ok := str(i + 2); ok && x.tok(i+1).text == "(" {
+			classRefs(x.file, s.text, s.line)
+		}
+	case "querySelector", "querySelectorAll", "closest", "matches", "$", "jQuery":
+		if s, ok := str(i + 2); ok && x.tok(i+1).text == "(" && (t.text[0] != '$' && t.text != "jQuery" || x.tok(i-1).text != ".") {
+			selectorRefs(x.file, s.text, s.line)
+		}
+	}
+	if x.tok(i-1).text == "." || !x.cssModule(t.text) {
+		return
+	}
+	switch x.tok(i + 1).text {
+	case ".":
+		if n := x.tok(i + 2); n.kind == tIdent {
+			addRef(x.file, Ref{Name: n.text, Qualifier: t.text, Kind: RefCSS, Line: n.line})
+		}
+	case "[":
+		if s, ok := str(i + 2); ok {
+			addRef(x.file, Ref{Name: s.text, Qualifier: t.text, Kind: RefCSS, Line: s.line})
+		}
+	}
+}
+

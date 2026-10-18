@@ -100,3 +100,13 @@ type language struct {
 	selfPrefix bool
 }
 
+var (
+	cControl = words("if for while switch catch return sizeof typeof alignof decltype new delete throw do else case when foreach using lock fixed synchronized with elif except match not and or in is assert await yield super this self print echo function fn func def lambda")
+	jsDecls  = map[string]string{"function": "function", "class": "class", "interface": "interface", "type": "type", "enum": "enum", "namespace": "namespace", "module": "namespace"}
+	// mlControl are the keywords of the ML family and Haskell, which call
+	// functions without parentheses.
+	mlControl = words("let in where case of if then else do module import qualified as hiding data newtype type class instance deriving forall infixl infixr infix family default match with fun function rec and or not begin end open val mutable struct sig functor include exception external method object inherit initializer virtual private new lazy assert when try raise true false type alias exposing port effect namespace member override abstract static inline use yield return elif mod land lor lxor lsl lsr asr")
+	// lispControl are special forms, not calls of the project's functions.
+	lispControl = words("if when unless cond case let let* letfn loop recur do fn lambda quote and or not def defn defn- defmacro defprotocol defrecord deftype defmulti defmethod definterface defun defclass defstruct defgeneric define define-syntax define-record-type ns require import progn setq setf try catch finally throw doseq dotimes for while begin set! else")
+)
+

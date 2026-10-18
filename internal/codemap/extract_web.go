@@ -145,3 +145,9 @@ func newLineIndex(s string) lineIndex {
 	return idx
 }
 
+func (l lineIndex) at(off int) int {
+	return sort.Search(len(l), func(i int) bool { return l[i] > off })
+}
+
+type markupMode int
+

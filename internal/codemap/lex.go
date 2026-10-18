@@ -30,3 +30,22 @@ type lexToken struct {
 // multiPunct are punctuation sequences kept as one token.
 var multiPunct = []string{"...", "::", "->", "=>", "?.", "<-"}
 
+// lex splits src into tokens, dropping comments and whitespace. String
+// literals are kept as one token holding their contents without quotes,
+// since import paths are strings.
+func lex(src string, lang *language) []lexToken {
+	lx := lexer{src: src, lang: lang, line: 1, lineStart: true}
+	lx.run()
+	return lx.out
+}
+
+type lexer struct {
+	src       string
+	lang      *language
+	pos       int
+	line      int
+	out       []lexToken
+	lineStart bool
+	indent    int
+}
+

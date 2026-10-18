@@ -605,3 +605,19 @@ func (x *extractor) cssModule(name string) bool {
 	return false
 }
 
+// isCSSName reports whether s is a class or id name.
+func isCSSName(s string) bool {
+	if s == "" || len(s) > 120 {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r == '_' || r == '-' || unicode.IsLetter(r):
+		case unicode.IsDigit(r) && i > 0:
+		default:
+			return false
+		}
+	}
+	return s != "-"
+}
+

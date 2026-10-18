@@ -3,8 +3,27 @@ package nodes
 import (
 	"testing"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/taskstate"
 	"github.com/stretchr/testify/require"
 )
+
+func TestJournalBeginReturnsIndependentSnapshot(t *testing.T) {
+	t.Parallel()
+	j, err := OpenJournal(t.TempDir())
+	require.NoError(t, err)
+	op := Operation{ID: "op-begin-snapshot", DeviceID: "device", RequestHash: "request"}
+	started, replayed, err := j.Begin(op)
+	require.NoError(t, err)
+	require.False(t, replayed)
+	_, err = j.Finish(op.ID, func(record *Operation) {
+		record.State = taskstate.Canceled
+	})
+	require.NoError(t, err)
+	require.Equal(t, taskstate.Running, started.State)
+	stored, ok := j.Get(op.ID, op.DeviceID)
+	require.True(t, ok)
+	require.Equal(t, taskstate.Canceled, stored.State)
+}
 
 func TestJournalCannotReplayOrExposeAnotherSupportSession(t *testing.T) {
 	t.Parallel()

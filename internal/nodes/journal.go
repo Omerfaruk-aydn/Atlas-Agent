@@ -98,7 +98,8 @@ func (j *Journal) Begin(op Operation) (*Operation, bool, error) {
 	}
 	stored := op
 	j.ops[op.ID] = &stored
-	return &stored, false, nil
+	// Callers must not observe the mutable record outside the journal lock.
+	return &op, false, nil
 }
 
 // Replay returns the recorded operation for a repeated request before any

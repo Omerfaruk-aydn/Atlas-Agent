@@ -114,3 +114,13 @@ const (
 // Confidence says how a link was established.
 type Confidence string
 
+const (
+	// Resolved links go through an import, the same file or the same
+	// package.
+	Resolved Confidence = "resolved"
+	// Inferred links match the only definition with that name in the
+	// project.
+	Inferred Confidence = "inferred"
+	// Ambiguous links match several definitions; each is a candidate.
+	Ambiguous Confidence = "ambiguous"
+)

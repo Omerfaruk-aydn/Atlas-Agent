@@ -9,6 +9,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestMeasuredNonInteractiveOutputDistinguishesInvocationsFromResponses(t *testing.T) {
+	t.Parallel()
+	var out bytes.Buffer
+	n := int64(3)
+	require.NoError(t, printNonInteractiveMeasured(&out, session.Session{ID: "s"}, "answer", &n))
+	var got NonInteractiveResult
+	require.NoError(t, json.Unmarshal(out.Bytes(), &got))
+	require.Equal(t, int64(3), *got.ProviderInvocations)
+	require.Zero(t, got.ProviderSteps)
+	require.Contains(t, got.ProviderInvocationBasis, "adapter-internal HTTP retries")
+}
+
 func TestPrintNonInteractiveResult(t *testing.T) {
 	var out bytes.Buffer
 	sess := session.Session{

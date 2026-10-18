@@ -11,6 +11,7 @@ import (
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 )
 
@@ -100,13 +101,16 @@ func (d *toolDeferral) capabilityIndex(palette []fantasy.AgentTool) string {
 		return ""
 	}
 	groups := map[string][]string{}
+	hints := map[string]string{}
 	for _, tool := range palette {
-		name := tool.Info().Name
+		info := tool.Info()
+		name := info.Name
 		if slices.Contains(tools.CoreToolNames, name) || slices.Contains(d.pinned, name) {
 			continue
 		}
 		category := tools.ToolCategory(name)
 		groups[category] = append(groups[category], name)
+		hints[name] = tools.ToolHint(name, info.Description)
 	}
 	if len(groups) == 0 {
 		return ""
@@ -117,12 +121,20 @@ func (d *toolDeferral) capabilityIndex(palette []fantasy.AgentTool) string {
 	}
 	slices.Sort(categories)
 	var b strings.Builder
-	b.WriteString("\n\n<deferred_tools>\nThe tools above the conversation start with core schemas only. These further tools are enabled for this session; their schemas load on demand:\n")
+	b.WriteString("\n\n<deferred_tools>\nThe tools above the conversation start with core schemas only. These further tools are enabled for this session; their schemas load on demand. Each name is followed by when it helps; reach for one whenever it fits the work better than a shell command:\n")
 	for _, category := range categories {
 		names := groups[category]
 		slices.Sort(names)
 		shown := names[:min(len(names), maxIndexedNamesPerCategory)]
-		fmt.Fprintf(&b, "- %s: %s", category, strings.Join(shown, ", "))
+		entries := make([]string, 0, len(shown))
+		for _, name := range shown {
+			entry := name
+			if hint := hints[name]; hint != "" {
+				entry += " (" + hint + ")"
+			}
+			entries = append(entries, entry)
+		}
+		fmt.Fprintf(&b, "- %s: %s", category, strings.Join(entries, "; "))
 		if hidden := len(names) - len(shown); hidden > 0 {
 			fmt.Fprintf(&b, " (+%d more, use tool_search)", hidden)
 		}
@@ -139,6 +151,17 @@ func (d *toolDeferral) capabilityIndex(palette []fantasy.AgentTool) string {
 func (d *toolDeferral) stepTools(ctx context.Context, a *sessionAgent, palette []fantasy.AgentTool) (advertised, stubs []fantasy.AgentTool, err error) {
 	if d == nil {
 		return palette, nil, nil
+	}
+	if a.engineering != nil && !a.isSubAgent {
+		st, readErr := a.engineering.Read(ctx, engineering.GetScope(ctx, d.sessionID).SessionID)
+		if readErr != nil {
+			return nil, nil, readErr
+		}
+		if names := workCapabilityNames(st, tools.ScopeToolsForDesktop(ctx, palette)); len(names) > 0 {
+			if err := d.load(ctx, names); err != nil {
+				return nil, nil, err
+			}
+		}
 	}
 	loaded, deferred, err := tools.SplitDeferredPalette(ctx, a.engineering, d.sessionID, palette, d.pinned)
 	if err != nil {

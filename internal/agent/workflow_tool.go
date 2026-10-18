@@ -19,6 +19,18 @@ import (
 )
 
 type WorkflowParams struct {
+	ExpertiseAction   string                        `json:"expertise_action,omitempty" description:"For action expertise: list, load or unload. Only enabled skills may load; exclusive groups/conflicts must be resolved by unloading first."`
+	ExpertiseName     string                        `json:"expertise_name,omitempty" description:"Exact enabled skill name."`
+	BranchAction      string                        `json:"branch_action,omitempty" description:"For action branch: fork, propose, status or merge. Patch-only isolation when checkouts/worktrees are unavailable. Merge invokes guarded edit and never auto-replays."`
+	BranchID          string                        `json:"branch_id,omitempty" description:"Persisted patch-branch identity."`
+	BranchName        string                        `json:"branch_name,omitempty" description:"fork: distinct branch name."`
+	BranchPaths       []string                      `json:"branch_paths,omitempty" description:"fork: 1-8 existing project-relative text files, total at most 64 KiB."`
+	BranchFiles       []engineering.BranchFile      `json:"branch_files,omitempty" description:"propose: path and proposed text only; runtime retains the original base."`
+	BranchNotes       []string                      `json:"branch_notes,omitempty" description:"propose: branch-local assumptions and findings; do not inherit these into other branches."`
+	LearnAction       string                        `json:"learn_action,omitempty" description:"For action learn: extract, list, inspect, export or forget. Export writes an evidence-scoped skill through normal skill_manage permissions/hooks. Forget removes only the candidate record."`
+	LearnedMethod     *engineering.LearnedMethod    `json:"learned_method,omitempty" description:"extract: name, description, conditions, versions, limits, optional abstract steps, ordered operation_ids and source paths. Runtime owns evidence and status."`
+	MethodID          string                        `json:"method_id,omitempty" description:"Persisted learned-method identity for inspect/export."`
+	SkillScope        string                        `json:"skill_scope,omitempty" description:"For learned-method export: project (default) or user."`
 	RecipeID          string                        `json:"recipe_id,omitempty" description:"Exact versioned recipe ID; never overwrites existing work."`
 	RecipeAction      string                        `json:"recipe_action,omitempty" description:"list, validate, plan, run or checks. Plan compiles without mutations; run admits tasks without automatically dispatching them."`
 	RecipeParams      map[string]json.RawMessage    `json:"recipe_params,omitempty" description:"Typed literal JSON parameter values defined by the recipe."`
@@ -33,7 +45,9 @@ type WorkflowParams struct {
 	ResumePlan        *engineering.ResumePlan       `json:"resume_plan,omitempty" description:"Exact observed resume plan; apply rejects changed tasks, source, state and unresolved operations. Never replays commands."`
 	EnvironmentAction string                        `json:"environment_action,omitempty" description:"inspect, plan, apply or verify; inspect never executes commands."`
 	EnvironmentPlan   *environment.EnvironmentPlan  `json:"environment_plan,omitempty" description:"Exact source-verified plan returned by environment inspect; runtime rejects modified commands or stale manifests."`
-	Action            string                        `json:"action" description:"status, recipe, environment, checkpoint, resume-plan, resume, repair, contract, finding, remediate, prepare, profile, plan, trace, advance, design, critique, artifact, knowledge, decision, lesson, ready, dispatch, review, budget, recover. Plan registers requirements and ordered stages; advance runs real stage checks. Dispatch does not complete tasks."`
+	WorkAction        string                        `json:"work_action,omitempty" description:"For action work: status, contract_add, contract_advance, contract_supersede, contract_decline, method, hypothesis, experiment, experiment_result, suite, candidate, candidate_result, select, attempt, question, answer, phase or budget. Every progress claim must cite observed operations."`
+	Work              *WorkInput                    `json:"work,omitempty" description:"Fields for the work action; see each field."`
+	Action            string                        `json:"action" description:"work, learn, branch, expertise, status, recipe, environment, checkpoint, resume-plan, resume, repair, contract, finding, remediate, prepare, profile, plan, trace, advance, design, critique, artifact, knowledge, decision, lesson, ready, dispatch, review, budget, recover. Learn extracts scoped skill candidates. Branch isolates patches without checkouts. Expertise loads/unloads enabled guides. Dispatch does not complete tasks."`
 	Profile           string                        `json:"profile,omitempty" description:"small_fix, feature, migration, ui or research. This changes workflow guidance, never model or permissions."`
 	Plan              *engineering.DeliveryPlan     `json:"plan,omitempty" description:"Requirements mapped to existing task IDs and ordered stages. Runtime overwrites root, fingerprints, stage results and current index."`
 	Design            *engineering.DesignBrief      `json:"design,omitempty" description:"Design audience, primary flow, visual direction, states, criteria, task IDs and narrow/wide widths. Critiques are server-managed."`
@@ -63,7 +77,7 @@ func (c *coordinator) scopedCoordinator(root string) *coordinator {
 }
 
 func (c *coordinator) workflowTool(invoke tools.ToolInvoker) fantasy.AgentTool {
-	return fantasy.NewAgentTool("workflow", "Manage dependency-aware execution using the persisted todos graph. Give tasks stable IDs, dependencies, named agents, explicit ownership and criteria. Dispatch a ready wave and inspect structured handoffs. Integrate isolated patches, then review with task_id to run independent test/review specialists and machine verification. Update todos only after the quality gate passes; then dispatch the next wave. Status includes role executions, budgets and recovery records. Normal permissions and budgets apply.", func(ctx context.Context, p WorkflowParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	return fantasy.NewAgentTool("workflow", "Manage dependency-aware execution using the persisted todos graph. Give tasks stable IDs, dependencies, named agents, explicit ownership and criteria. Dispatch a ready wave and inspect structured handoffs. Integrate isolated patches, then review with task_id to run independent test/review specialists and machine verification. Update todos only after the quality gate passes; then dispatch the next wave. Status includes role executions, budgets and recovery records. Action work keeps the task contract (user requirements cited to user turns, separate from your proposals and assumptions), method decisions with their evidence, hypotheses and experiments, solution candidates judged by a fixed suite, failed attempts and open questions. Normal permissions and budgets apply.", func(ctx context.Context, p WorkflowParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 		id := tools.GetSessionFromContext(ctx)
 		scope := engineering.GetScope(ctx, id)
 		sess, err := c.sessions.Get(ctx, id)
@@ -74,7 +88,16 @@ func (c *coordinator) workflowTool(invoke tools.ToolInvoker) fantasy.AgentTool {
 			data, err := json.Marshal(v)
 			return fantasy.NewTextResponse(string(data)), err
 		}
+		p = normalizeWorkflowParams(p, call.Input)
 		switch p.Action {
+		case "expertise":
+			return c.expertiseWorkflow(ctx, p, call, invoke)
+		case "branch":
+			return c.branchWorkflow(ctx, p, call, invoke)
+		case "learn":
+			return c.learnWorkflow(ctx, p, call, invoke)
+		case "work":
+			return c.workWorkflow(ctx, p, call)
 		case "recipe":
 			return c.recipeWorkflow(ctx, p, call, invoke)
 		case "remediate", "finding":

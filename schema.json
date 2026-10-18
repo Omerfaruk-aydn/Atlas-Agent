@@ -184,6 +184,25 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "Evaluator": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Turn the completion gate on.",
+          "default": false
+        },
+        "max_rounds": {
+          "type": "integer",
+          "description": "How many times one request can be sent back for fixes before the turn ends with the remaining findings reported. 0 uses the default.",
+          "default": 2,
+          "examples": [
+            3
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "Execution": {
       "properties": {
         "mode": {
@@ -228,6 +247,62 @@
             "type": "string"
           },
           "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Harness": {
+      "properties": {
+        "check_guard": {
+          "type": "boolean",
+          "description": "Send the work back once when a turn weakens its own checks: removed assertions or tests, new skip or focus markers, new lint suppressions, lowered coverage thresholds or loosened plan checks.",
+          "default": true
+        },
+        "request_checklist": {
+          "type": "boolean",
+          "description": "Split a request with several asks into a checklist that survives compaction and is checked item by item before the turn ends.",
+          "default": true
+        },
+        "parallel_alternatives": {
+          "type": "boolean",
+          "description": "When a check keeps failing, prepare two git worktrees so two different approaches can be tried side by side and the one that passes kept.",
+          "default": true
+        },
+        "flaky_checks": {
+          "type": "boolean",
+          "description": "Tell flaky checks (different results with no code change) apart from real failures and regressions.",
+          "default": true
+        },
+        "error_memory": {
+          "type": "boolean",
+          "description": "Remember how an error was fixed and show it when the same error comes back.",
+          "default": true
+        },
+        "environment": {
+          "type": "boolean",
+          "description": "Detect the installed toolchains and their versions once and tell the model.",
+          "default": true
+        },
+        "diff_hygiene": {
+          "type": "boolean",
+          "description": "Before a turn ends, flag leftover debug statements, conflict markers, new TODOs, commented-out code, likely secrets and large files in the change.",
+          "default": true
+        },
+        "budget_line": {
+          "type": "boolean",
+          "description": "Tell the model how full its context is and how many steps the turn has taken.",
+          "default": true
+        },
+        "failure_corpus": {
+          "type": "boolean",
+          "description": "Save requests that ended with unmet checks or findings so atlas eval corpus can replay them.",
+          "default": true
+        },
+        "strategy_hints": {
+          "type": "boolean",
+          "description": "Suggest the checks that verified similar projects before.",
+          "default": true
         }
       },
       "additionalProperties": false,
@@ -602,6 +677,16 @@
           "type": "string",
           "description": "Active named usage profile"
         },
+        "work_budget": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "direct",
+            "standard",
+            "deep"
+          ],
+          "description": "Work budget tier: auto (default) derives it from the request and observed difficulty; direct"
+        },
         "usage_profiles": {
           "additionalProperties": {
             "$ref": "#/$defs/UsageProfile"
@@ -904,7 +989,7 @@
             "$ref": "#/$defs/SelectedModel"
           },
           "type": "object",
-          "description": "Named model roles a subagent's model field can reference by name, e.g. \"frontend\" or \"research\". A few names are recognized by built-in features when present: advisor, escalate, and compact (used to summarize with a different model than the session's own)."
+          "description": "Named model roles a subagent's model field can reference by name, e.g. \"frontend\" or \"research\". A few names are recognized by built-in features when present: advisor, escalate, evaluator, and compact (used to summarize with a different model than the session's own). A role named after a subagent without its own model, or \"task\" for the generic sub-agent, routes that agent to the role's model."
         },
         "role_model_selection": {
           "additionalProperties": {
@@ -923,6 +1008,18 @@
         "advisor": {
           "$ref": "#/$defs/Advisor",
           "description": "A second model that reviews each turn and can leave a note for the next one. Needs a \"advisor\" entry in model_roles to run on."
+        },
+        "evaluator": {
+          "$ref": "#/$defs/Evaluator",
+          "description": "An independent reviewer that checks a turn which changed files before it ends. A failing verdict sends its findings back to the agent to fix. Runs on the \"evaluator\" model role, else the \"advisor\" role, else the session's large model."
+        },
+        "work_plan": {
+          "$ref": "#/$defs/WorkPlan",
+          "description": "What Atlas does around a work plan (.atlas/work.json). Every option is on unless set to false."
+        },
+        "harness": {
+          "$ref": "#/$defs/Harness",
+          "description": "General checks around turns that changed files and the context given to the model. Every option is on unless set to false."
         },
         "sandbox": {
           "$ref": "#/$defs/Sandbox",
@@ -1917,6 +2014,37 @@
         "max_agents",
         "instructions"
       ]
+    },
+    "WorkPlan": {
+      "properties": {
+        "plan_review": {
+          "type": "boolean",
+          "description": "Have a reviewer critique a new or changed plan once before the work goes on.",
+          "default": true
+        },
+        "prove_checks": {
+          "type": "boolean",
+          "description": "Ask that each finished feature's check be run against the code from before the feature, where it must fail.",
+          "default": true
+        },
+        "checkpoints": {
+          "type": "boolean",
+          "description": "Record a git checkpoint whenever the contract holds, so a check that breaks later comes with the files changed since it last passed.",
+          "default": true
+        },
+        "breaker": {
+          "type": "boolean",
+          "description": "After features are finished, ask for an adversarial pass that tries to break them.",
+          "default": true
+        },
+        "learn_recipes": {
+          "type": "boolean",
+          "description": "Save the commands that verified the work to project memory.",
+          "default": true
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
     }
   }
 }

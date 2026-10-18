@@ -32,9 +32,11 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/catwalk"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/discover"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/envprobe"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/execution"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/factstore"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/filetracker"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/history"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/hooks"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/integrations"
@@ -257,6 +259,13 @@ type CoordinatorOptions struct {
 }
 
 func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, error) {
+	if opts.Config != nil {
+		if cfg := opts.Config.Config(); cfg != nil && cfg.Options != nil && cfg.Options.Harness.EnvironmentEnabled() {
+			// Detect toolchains in the background now, so the first
+			// request already sees them.
+			envprobe.Start()
+		}
+	}
 	// Skills are pre-discovered by the caller (see app.New /
 	// backend.CreateWorkspace) and passed in via the manager. If no
 	// manager was provided (legacy callers), fall back to an in-line
@@ -401,6 +410,17 @@ func (c *coordinator) run(ctx context.Context, accept *AcceptedRun, sessionID st
 	}
 
 	model := c.currentAgent.Model()
+	if c.engineering != nil {
+		var reason string
+		model, reason = adaptiveEffort(ctx, c.engineering, engineering.GetScope(ctx, sessionID).SessionID, prompt, c.workBudgetOverride(), model)
+		if reason != "" {
+			slog.Info("Adapted reasoning effort to the work budget", "session_id", sessionID, "reason", reason)
+			key := sessionID + "\x00" + model.ModelCfg.Provider + "\x00" + model.ModelCfg.Model + "\x00effort"
+			if _, seen := reportedAdjustments.LoadOrStore(key, true); !seen && c.notify != nil {
+				c.notify.Publish(pubsub.CreatedEvent, notify.Notification{SessionID: sessionID, Type: notify.TypeCapabilityNotice, ProviderID: model.ModelCfg.Provider, Message: model.ModelCfg.Provider + "/" + model.ModelCfg.Model + ": " + reason})
+			}
+		}
+	}
 	maxTokens := model.CatwalkCfg.DefaultMaxTokens
 	if model.ModelCfg.MaxTokens != 0 {
 		maxTokens = model.ModelCfg.MaxTokens
@@ -412,6 +432,7 @@ func (c *coordinator) run(ctx context.Context, accept *AcceptedRun, sessionID st
 	}
 
 	mergedOptions, temp, topP, topK, freqPenalty, presPenalty := mergeCallOptions(model, providerCfg)
+	c.reportCapabilityAdjustments(sessionID, model, providerCfg)
 
 	if err := c.refreshTokenIfExpired(ctx, providerCfg); err != nil {
 		// NOTE(@andreynering): We don't return here because the event handling to ask the user to reauthenticate
@@ -515,20 +536,29 @@ func effectiveReasoningEffort(model Model) string {
 }
 
 func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.ProviderOptions {
-	options := fantasy.ProviderOptions{}
-	if providerCfg.Type == catwalk.TypeVertexAI {
-		if strings.HasPrefix(model.CatwalkCfg.ID, "claude-") {
-			providerCfg.Type = catwalk.TypeAnthropic
-		} else {
-			providerCfg.Type = catwalk.TypeGoogle
+	options, _ := resolveProviderOptions(model, providerCfg)
+	return options
+}
+
+// resolveProviderOptions builds the provider options for a call and reports
+// every requested setting that could not be applied as requested. Nothing
+// the user configured is dropped silently: an unsupported effort, a setting
+// for a model that cannot reason or options the adapter rejects are all
+// returned as adjustments with a reason.
+func resolveProviderOptions(model Model, providerCfg config.ProviderConfig) (options fantasy.ProviderOptions, adjustments []CapabilityAdjustment) {
+	options = fantasy.ProviderOptions{}
+	adjustments = reasoningAdjustments(model)
+	parsed := func(name string, value fantasy.ProviderOptionsData, err error) {
+		if err != nil {
+			adjustments = append(adjustments, CapabilityAdjustment{
+				Setting: "provider_options", Applied: "none",
+				Reason: fmt.Sprintf("%s adapter rejected the merged options: %v", name, err),
+			})
+			return
 		}
+		options[name] = value
 	}
-	if providerCfg.ID == string(catwalk.InferenceProviderOpenCodeGo) || providerCfg.ID == string(catwalk.InferenceProviderOpenCodeZen) {
-		providerCfg.Type = opencodeModelType(providerCfg.ID, model.CatwalkCfg.ID)
-	}
-	if providerCfg.ID == string(catwalk.InferenceProviderCopilot) && copilotResponsesModels[model.CatwalkCfg.ID] {
-		providerCfg.Type = catwalk.TypeOpenAI
-	}
+	providerCfg.Type = adapterType(model, providerCfg)
 
 	cfgOpts := []byte("{}")
 	providerCfgOpts := []byte("{}")
@@ -564,7 +594,8 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 	got, err := jsons.Merge(readers)
 	if err != nil {
 		slog.Error("Could not merge call config", "err", err)
-		return options
+		adjustments = append(adjustments, CapabilityAdjustment{Setting: "provider_options", Applied: "none", Reason: "configured provider options could not be merged: " + err.Error()})
+		return options, adjustments
 	}
 
 	mergedOptions := make(map[string]any)
@@ -572,7 +603,8 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 	err = json.Unmarshal([]byte(got), &mergedOptions)
 	if err != nil {
 		slog.Error("Could not create config for call", "err", err)
-		return options
+		adjustments = append(adjustments, CapabilityAdjustment{Setting: "provider_options", Applied: "none", Reason: "configured provider options are not a JSON object: " + err.Error()})
+		return options, adjustments
 	}
 
 	reasoningEffort := effectiveReasoningEffort(model)
@@ -592,15 +624,11 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 				mergedOptions["reasoning_summary"] = "auto"
 				mergedOptions["include"] = []openai.IncludeType{openai.IncludeReasoningEncryptedContent}
 			}
-			parsed, err := openai.ParseResponsesOptions(mergedOptions)
-			if err == nil {
-				options[openai.Name] = parsed
-			}
+			value, err := openai.ParseResponsesOptions(mergedOptions)
+			parsed(openai.Name, value, err)
 		} else {
-			parsed, err := openai.ParseOptions(mergedOptions)
-			if err == nil {
-				options[openai.Name] = parsed
-			}
+			value, err := openai.ParseOptions(mergedOptions)
+			parsed(openai.Name, value, err)
 		}
 
 	case anthropic.Name, bedrock.Name, claude.Name, muse.Name:
@@ -633,10 +661,8 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 			}
 		}
 
-		parsed, err := anthropic.ParseOptions(mergedOptions)
-		if err == nil {
-			options[anthropic.Name] = parsed
-		}
+		value, err := anthropic.ParseOptions(mergedOptions)
+		parsed(anthropic.Name, value, err)
 
 	case openrouter.Name:
 		_, hasReasoning := mergedOptions["reasoning"]
@@ -646,10 +672,8 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 				"effort":  reasoningEffort,
 			}
 		}
-		parsed, err := openrouter.ParseOptions(mergedOptions)
-		if err == nil {
-			options[openrouter.Name] = parsed
-		}
+		value, err := openrouter.ParseOptions(mergedOptions)
+		parsed(openrouter.Name, value, err)
 
 	case vercel.Name:
 		_, hasReasoning := mergedOptions["reasoning"]
@@ -659,14 +683,14 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 				"effort":  reasoningEffort,
 			}
 		}
-		parsed, err := vercel.ParseOptions(mergedOptions)
-		if err == nil {
-			options[vercel.Name] = parsed
-		}
+		value, err := vercel.ParseOptions(mergedOptions)
+		parsed(vercel.Name, value, err)
 
 	case google.Name:
 		_, hasReasoning := mergedOptions["thinking_config"]
-		if !hasReasoning {
+		// A model that cannot reason gets no thinking configuration, and an
+		// empty level is never sent: both are rejected or ignored upstream.
+		if !hasReasoning && model.CatwalkCfg.CanReason && (reasoningEffort != "" || strings.HasPrefix(model.CatwalkCfg.ID, "gemini-2")) {
 			if strings.HasPrefix(model.CatwalkCfg.ID, "gemini-2") {
 				mergedOptions["thinking_config"] = map[string]any{
 					"thinking_budget":  2000,
@@ -679,20 +703,16 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 				}
 			}
 		}
-		parsed, err := google.ParseOptions(mergedOptions)
-		if err == nil {
-			options[google.Name] = parsed
-		}
+		value, err := google.ParseOptions(mergedOptions)
+		parsed(google.Name, value, err)
 
 	case antigravity.Name:
 		_, hasEffort := mergedOptions["thinking_level"]
 		if !hasEffort && shouldSetEffort {
 			mergedOptions["thinking_level"] = reasoningEffort
 		}
-		parsed, err := antigravity.ParseOptions(mergedOptions)
-		if err == nil {
-			options[antigravity.Name] = parsed
-		}
+		value, err := antigravity.ParseOptions(mergedOptions)
+		parsed(antigravity.Name, value, err)
 
 	case openaicompat.Name:
 		extraBody, _ := mergedOptions["extra_body"].(map[string]any)
@@ -806,23 +826,19 @@ func getProviderOptions(model Model, providerCfg config.ProviderConfig) fantasy.
 
 		mergedOptions["extra_body"] = extraBody
 
-		parsed, err := openaicompat.ParseOptions(mergedOptions)
-		if err == nil {
-			options[openaicompat.Name] = parsed
-		}
+		value, err := openaicompat.ParseOptions(mergedOptions)
+		parsed(openaicompat.Name, value, err)
 
 	default:
 		// Known custom providers (litellm, ollama, omlx) are
 		// openai-compat under the hood.
 		if discover.IsKnownCustomProvider(string(providerCfg.Type)) {
-			parsed, err := openaicompat.ParseOptions(mergedOptions)
-			if err == nil {
-				options[openaicompat.Name] = parsed
-			}
+			value, err := openaicompat.ParseOptions(mergedOptions)
+			parsed(openaicompat.Name, value, err)
 		}
 	}
 
-	return options
+	return options, adjustments
 }
 
 func mergeCallOptions(model Model, cfg config.ProviderConfig) (fantasy.ProviderOptions, *float64, *float64, *int64, *float64, *float64) {
@@ -839,6 +855,14 @@ func (c *coordinator) buildAgent(ctx context.Context, prompt *prompt.Prompt, age
 	large, small, largeFallbacks, smallFallbacks, err := c.buildAgentModels(ctx, isSubAgent)
 	if err != nil {
 		return nil, err
+	}
+	if isSubAgent {
+		// A configured role named after the agent routes its work to that
+		// model: "task" puts the generic sub-agent's exploration on a
+		// faster or cheaper model without touching the main one.
+		if routed, ok := c.roleModelFor(ctx, agent.ID); ok {
+			large, largeFallbacks = routed, nil
+		}
 	}
 
 	var advisorModel *Model
@@ -864,8 +888,12 @@ func (c *coordinator) buildAgent(ctx context.Context, prompt *prompt.Prompt, age
 	}
 
 	var compactModel *Model
+	var evaluatorModel *Model
+	var evaluatorTools []fantasy.AgentTool
+	var evaluatorRounds int
 	if !isSubAgent {
 		compactModel = c.buildCompactModel(ctx)
+		evaluatorModel, evaluatorTools, evaluatorRounds = c.buildEvaluator(ctx, large, advisorModel)
 	}
 
 	largeProviderCfg, _ := c.cfg.Config().Providers.Get(large.ModelCfg.Provider)
@@ -899,6 +927,9 @@ func (c *coordinator) buildAgent(ctx context.Context, prompt *prompt.Prompt, age
 		EscalateModel:          escalateModel,
 		EscalateTools:          escalateTools,
 		EscalateThreshold:      escalateThreshold,
+		EvaluatorModel:         evaluatorModel,
+		EvaluatorTools:         evaluatorTools,
+		EvaluatorMaxRounds:     evaluatorRounds,
 		IsYolo:                 c.permissions.SkipRequests(),
 		Permissions:            c.permissions,
 		Sessions:               c.sessions,
@@ -1350,6 +1381,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		Load: func(ctx context.Context, names []string) error {
 			return tools.DiscoverTools(ctx, c.engineering, tools.GetSessionFromContext(ctx), names)
 		},
+		Observe: observeToolSearch(harnessmetrics.New(harnessDataDir(c.cfg, c.cfg.WorkingDir())), isSubAgent),
 	}))
 	if c.stateStore() != nil {
 		allTools = append(allTools, tools.NewPlatformTools(c.stateStore(), c.cfg.WorkingDir(), c.platformScope(), c.permissions)...)
@@ -1682,6 +1714,36 @@ func (c *coordinator) buildAdvisor(ctx context.Context) (*Model, []fantasy.Agent
 	}
 
 	return &model, tools
+}
+
+// buildEvaluator resolves the completion gate's model -- the "evaluator"
+// role, else the advisor's model, else the session's own large model, which
+// still reviews independently because it starts from a fresh context -- and
+// its read-only toolset. It returns a nil model when the gate is off or its
+// tools fail to build, and never fails buildAgent.
+func (c *coordinator) buildEvaluator(ctx context.Context, large Model, advisorModel *Model) (*Model, []fantasy.AgentTool, int) {
+	opts := c.cfg.Config().Options
+	if opts == nil || opts.Evaluator == nil || !opts.Evaluator.Enabled {
+		return nil, nil, 0
+	}
+	model := &large
+	if advisorModel != nil {
+		model = advisorModel
+	}
+	if roleModel, ok := c.cfg.Config().ResolveRole("evaluator"); ok {
+		resolved, err := c.resolveModel(ctx, roleModel, true)
+		if err != nil {
+			slog.Warn("Evaluator model role failed to build; using the fallback model", "error", err)
+		} else {
+			model = &resolved
+		}
+	}
+	evaluatorTools, err := c.buildTools(ctx, config.Agent{AllowedTools: evaluatorToolNames}, true)
+	if err != nil {
+		slog.Warn("Evaluator tools failed to build; running without the completion gate", "error", err)
+		return nil, nil, 0
+	}
+	return model, evaluatorTools, opts.Evaluator.Rounds()
 }
 
 // buildGoalJudgeModel resolves the model that checks whether a goal has
@@ -2384,6 +2446,7 @@ func (c *coordinator) UpdateModels(ctx context.Context) error {
 	}
 	c.currentAgent.SetAdvisorOptions(advisorModel, advisorTools, advisorEveryNTurns, advisorNotifyThreshold)
 	c.currentAgent.SetEscalateOptions(escalateModel, escalateTools, escalateThreshold)
+	c.currentAgent.SetEvaluatorOptions(c.buildEvaluator(ctx, large, advisorModel))
 
 	// The goal judge (see judgeGoal) reuses the advisor model just built
 	// above unless a "goal" role names its own -- refresh it here too so

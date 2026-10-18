@@ -297,26 +297,86 @@ func (app *App) resolveSession(ctx context.Context, continueSessionID string, us
 // counts are the session's totals, not this turn's: a continued session
 // carries what it already spent.
 type NonInteractiveResult struct {
-	SessionID        string  `json:"session_id"`
-	Response         string  `json:"response"`
-	PromptTokens     int64   `json:"prompt_tokens"`
-	CompletionTokens int64   `json:"completion_tokens"`
-	Cost             float64 `json:"cost"`
+	ProviderInvocations     *int64  `json:"provider_invocations,omitempty"`
+	ProviderInvocationBasis string  `json:"provider_invocation_basis,omitempty"`
+	SessionID               string  `json:"session_id"`
+	Response                string  `json:"response"`
+	PromptTokens            int64   `json:"prompt_tokens"`
+	CompletionTokens        int64   `json:"completion_tokens"`
+	Cost                    float64 `json:"cost"`
+	// The fields below are session totals derived from the stored
+	// messages. ProviderSteps counts model responses (transport retries
+	// inside one response are not counted). ClaimedComplete is true when
+	// the final response ended the turn on the model's own decision with
+	// text, rather than on an error, a cancellation or a stop for the user.
+	ProviderSteps   int    `json:"provider_steps"`
+	ToolCalls       int    `json:"tool_calls"`
+	ToolErrors      int    `json:"tool_errors"`
+	FinishReason    string `json:"finish_reason,omitempty"`
+	ClaimedComplete bool   `json:"claimed_complete"`
+	ClaimBasis      string `json:"claim_basis"`
+	EndedNormally   bool   `json:"ended_normally"`
+	FinishError     string `json:"finish_error,omitempty"`
+	Provider        string `json:"provider,omitempty"`
+	Model           string `json:"model,omitempty"`
+}
+
+// runStats derives the message-level fields of the JSON result.
+func runStats(result *NonInteractiveResult, msgs []message.Message) {
+	var last *message.Message
+	for i := range msgs {
+		m := &msgs[i]
+		switch m.Role {
+		case message.Assistant:
+			result.ProviderSteps++
+			result.ToolCalls += len(m.ToolCalls())
+			last = m
+		case message.Tool:
+			for _, r := range m.ToolResults() {
+				if r.IsError {
+					result.ToolErrors++
+				}
+			}
+		}
+	}
+	if last == nil {
+		return
+	}
+	result.Provider, result.Model = last.Provider, last.Model
+	if finish := last.FinishPart(); finish != nil {
+		result.FinishReason = string(finish.Reason)
+		result.ClaimedComplete = finish.Reason == message.FinishReasonEndTurn && finish.Message == "" && strings.TrimSpace(last.Content().Text) != ""
+		result.EndedNormally = result.ClaimedComplete
+		result.ClaimBasis = "normal_end_turn_proxy"
+		if finish.Reason == message.FinishReasonError || finish.Message != "" {
+			result.FinishError = strings.TrimSpace(finish.Message + ": " + finish.Details)
+		}
+	}
 }
 
 // printNonInteractiveResult writes the one document a --json run produces.
 // The response is trimmed: the streamed form ends with a newline the
 // terminal wants and a JSON consumer does not.
-func printNonInteractiveResult(out io.Writer, sess session.Session, response string) error {
+func printNonInteractiveResult(out io.Writer, sess session.Session, response string, msgs ...message.Message) error {
+	return printNonInteractiveMeasured(out, sess, response, nil, msgs...)
+}
+
+func printNonInteractiveMeasured(out io.Writer, sess session.Session, response string, invocations *int64, msgs ...message.Message) error {
 	enc := json.NewEncoder(out)
 	enc.SetEscapeHTML(false)
-	return enc.Encode(NonInteractiveResult{
+	result := NonInteractiveResult{
 		SessionID:        sess.ID,
 		Response:         strings.TrimSpace(response),
 		PromptTokens:     sess.PromptTokens,
 		CompletionTokens: sess.CompletionTokens,
 		Cost:             sess.Cost,
-	})
+	}
+	runStats(&result, msgs)
+	result.ProviderInvocations = invocations
+	if invocations != nil {
+		result.ProviderInvocationBasis = "Agent Generate/Stream adapter invocations, including outer retries/failovers; excludes helper/title/compact calls and adapter-internal HTTP retries"
+	}
+	return enc.Encode(result)
 }
 
 // RunNonInteractive runs the application in non-interactive mode with the
@@ -472,7 +532,19 @@ func (app *App) RunNonInteractive(ctx context.Context, output io.Writer, prompt,
 			slog.Warn("Failed to read session usage for the JSON result", "error", err)
 			latest = sess
 		}
-		return printNonInteractiveResult(output, latest, collected.String())
+		msgs, err := app.Messages.List(ctx, sess.ID)
+		if err != nil {
+			slog.Warn("Failed to read session messages for the JSON result", "error", err)
+		}
+		var invocations *int64
+		if app.config != nil {
+			state, err := engineering.NewStore(app.config.Config().Options.DataDirectory).Read(ctx, sess.ID)
+			if err == nil && state.Revision > 0 {
+				n := state.Usage.ProviderInvocations
+				invocations = &n
+			}
+		}
+		return printNonInteractiveMeasured(output, latest, collected.String(), invocations, msgs...)
 	}
 
 	for {

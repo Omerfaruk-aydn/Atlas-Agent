@@ -43,7 +43,9 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/catwalk"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-style/v2"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/envprobe"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/execution"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/hooks"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
@@ -52,6 +54,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/stringext"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/version"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workplan"
 )
 
 const (
@@ -156,6 +159,7 @@ type SessionAgent interface {
 	SetHooks(promptHooks, sessionStartHooks, preCompactHooks *hooks.Runner)
 	SetAdvisorOptions(advisorModel *Model, advisorTools []fantasy.AgentTool, everyNTurns int, notifyThreshold string)
 	SetEscalateOptions(escalateModel *Model, escalateTools []fantasy.AgentTool, threshold string)
+	SetEvaluatorOptions(evaluatorModel *Model, evaluatorTools []fantasy.AgentTool, maxRounds int)
 	SetFallbackCooldown(d time.Duration)
 	Cancel(sessionID string)
 	CancelAll()
@@ -311,10 +315,26 @@ type sessionAgent struct {
 	escalateModel     *csync.Value[ptrBox[Model]]
 	escalateTools     *csync.Slice[fantasy.AgentTool]
 	escalateThreshold *csync.Value[string]
-	isYolo            bool
-	permissions       permission.Service
-	notify            pubsub.Publisher[notify.Notification]
-	runComplete       pubsub.Publisher[notify.RunComplete]
+	// evaluatorModel and evaluatorTools drive the completion gate (see
+	// evaluator.go); a nil model disables it. evaluatorLedgers holds each
+	// session's evidence for the request in progress.
+	evaluatorModel   *csync.Value[ptrBox[Model]]
+	evaluatorTools   *csync.Slice[fantasy.AgentTool]
+	evaluatorRounds  *csync.Value[int]
+	evaluatorLedgers *csync.Map[string, *evaluatorLedger]
+	// projectRoots holds, per session, the folder the agent moved the work
+	// to when it is not the working directory (see project_root.go).
+	projectRoots *csync.Map[string, string]
+	// shellNudgesGiven records, per session and tool, that a shell result
+	// already named that tool (see tool_nudge.go).
+	shellNudgesGiven *csync.Map[string, bool]
+	// harness records harness events for the stats report (see
+	// internal/harnessmetrics).
+	harness     *harnessmetrics.Recorder
+	isYolo      bool
+	permissions permission.Service
+	notify      pubsub.Publisher[notify.Notification]
+	runComplete pubsub.Publisher[notify.RunComplete]
 
 	messageQueue   *csync.Map[string, []SessionAgentCall]
 	activeRequests *csync.Map[string, *activeCancel]
@@ -442,13 +462,19 @@ type SessionAgentOptions struct {
 	// EscalateThreshold is the lowest severity (NIT, CONCERN, or
 	// BLOCKER) that triggers an escalation pass.
 	EscalateThreshold string
-	IsYolo            bool
-	Permissions       permission.Service
-	Sessions          session.Service
-	Messages          message.Service
-	Tools             []fantasy.AgentTool
-	Notify            pubsub.Publisher[notify.Notification]
-	RunComplete       pubsub.Publisher[notify.RunComplete]
+	// EvaluatorModel runs the completion gate. Nil disables it.
+	EvaluatorModel *Model
+	// EvaluatorTools are the reviewer's read-only tools.
+	EvaluatorTools []fantasy.AgentTool
+	// EvaluatorMaxRounds bounds how often one request is sent back.
+	EvaluatorMaxRounds int
+	IsYolo             bool
+	Permissions        permission.Service
+	Sessions           session.Service
+	Messages           message.Service
+	Tools              []fantasy.AgentTool
+	Notify             pubsub.Publisher[notify.Notification]
+	RunComplete        pubsub.Publisher[notify.RunComplete]
 }
 
 func NewSessionAgent(
@@ -490,6 +516,13 @@ func NewSessionAgent(
 		escalateModel:          csync.NewValue(ptrBox[Model]{v: opts.EscalateModel}),
 		escalateTools:          csync.NewSliceFrom(opts.EscalateTools),
 		escalateThreshold:      csync.NewValue(opts.EscalateThreshold),
+		evaluatorModel:         csync.NewValue(ptrBox[Model]{v: opts.EvaluatorModel}),
+		evaluatorTools:         csync.NewSliceFrom(opts.EvaluatorTools),
+		evaluatorRounds:        csync.NewValue(opts.EvaluatorMaxRounds),
+		evaluatorLedgers:       csync.NewMap[string, *evaluatorLedger](),
+		projectRoots:           csync.NewMap[string, string](),
+		shellNudgesGiven:       csync.NewMap[string, bool](),
+		harness:                harnessmetrics.New(harnessDataDir(opts.TaskContextConfig, opts.WorkingDir)),
 		onProviderExhausted:    opts.OnProviderExhausted,
 		tools:                  csync.NewSliceFrom(opts.Tools),
 		isYolo:                 opts.IsYolo,
@@ -821,6 +854,8 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		}
 	}
 	acceptedOutcomePrompt := call.Prompt
+	a.beginEvaluatorRequest(call)
+	turnStarted := time.Now()
 	// Task scope comes from the accepted request, before hook/advisor additions.
 	ctx = context.WithValue(ctx, tools.SessionIDContextKey, call.SessionID)
 	ctx = tools.WithDesktopTaskScope(ctx, call.Prompt)
@@ -1013,6 +1048,24 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		// from its checkpoint, so compaction and a model switch keep the
 		// requirements, their verification state and the remaining work.
 		systemPrompt += tools.BrowserTaskPromptBlock(a.workingDir, call.SessionID)
+		// The work plan is the agent's own long-work record: read it per
+		// request so a new session or a compacted one resumes from the
+		// contract, the open features and the latest notes.
+		systemPrompt += workplan.PromptBlock(a.projectRoot(call.SessionID))
+		// The request's own checklist, and its wording after a compaction,
+		// sit next to the plan for the same reason.
+		systemPrompt += a.requestChecklistBlock(call.SessionID)
+		systemPrompt += a.strategyHintsBlock(call.SessionID)
+		if a.harnessOptions().EnvironmentEnabled() {
+			systemPrompt += envprobe.Block()
+		}
+	}
+	if a.engineering != nil && !a.isSubAgent && !call.internalContinuation && !call.QueueContinuation && ctx.Value(tools.ScheduledTurnKey{}) != true {
+		// The accepted prompt, before hook and advisor additions, is what
+		// the user said; it anchors the task contract.
+		if _, err := recordWorkTurn(ctx, a.engineering, engineering.GetScope(ctx, call.SessionID).SessionID, acceptedOutcomePrompt, a.workBudgetOverride()); err != nil {
+			return nil, fmt.Errorf("record task turn: %w", err)
+		}
 	}
 	if a.engineering != nil && a.workingDir != "" && !a.isSubAgent {
 		contextText, err := a.deliveryContext(ctx, call.SessionID, call.Prompt, currentSession.Todos)
@@ -1039,7 +1092,13 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		systemPrompt += "\n\n<execution_status>\n" + string(data) + "\nOperations still marked running may be active background work or interrupted calls. Inspect their actual state; never replay a mutating operation merely because its completion record is absent. Use workflow status/recover.\n</execution_status>"
 	}
 
-	deferral := a.beginToolDeferral(ctx, call, currentSession, a.tools.Copy(), pendingOperations)
+	// The work guidance points at workflow work for any task beyond a
+	// direct answer, so the tool must be callable without discovery.
+	pinWorkflow := pendingOperations
+	if a.engineering != nil && !a.isSubAgent {
+		pinWorkflow = pinWorkflow || workTier(ctx, a.engineering, engineering.GetScope(ctx, call.SessionID).SessionID) != engineering.TierDirect
+	}
+	deferral := a.beginToolDeferral(ctx, call, currentSession, a.tools.Copy(), pinWorkflow)
 	systemPrompt += deferral.capabilityIndex(tools.ScopeToolsForDesktop(ctx, a.tools.Copy()))
 
 	agent := fantasy.NewAgent(
@@ -1135,7 +1194,10 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		a.publishRunComplete(ctx, call, complete)
 	}()
 
-	history, files := a.preparePrompt(msgs, largeModel.CatwalkCfg.SupportsImages, call.Attachments...)
+	turnOrigin := originOf(chain.Current())
+	history, files := a.prepareHistory(msgs, largeModel.CatwalkCfg.SupportsImages, turnOrigin, call.Attachments...)
+	reasoningOrigins := map[string]reasoningOrigin{}
+	rememberReasoning(reasoningOrigins, history, turnOrigin)
 
 	startTime := time.Now()
 	a.eventPromptSent(call.SessionID)
@@ -1156,6 +1218,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		}
 	}
 	var deliveryErr, stepFinishErr error
+	monitor := &strategyMonitor{}
 	result, err = agent.Stream(genCtx, fantasy.AgentStreamCall{
 		Prompt:           message.PromptWithTextAttachments(call.Prompt, call.Attachments),
 		Files:            files,
@@ -1188,7 +1251,8 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			if outcomeErr != nil {
 				return callContext, prepared, outcomeErr
 			}
-			prepared.Messages = withRuntimeOutcomes(options.Messages, outcomeBlock)
+			stepMessagesIn := filterTurnReasoning(options.Messages, reasoningOrigins, originOf(chain.Current()))
+			prepared.Messages = withRuntimeOutcomes(stepMessagesIn, outcomeBlock)
 			prepared.Messages = withRemoteContext(prepared.Messages, a.remoteContextBlock())
 			directives, directiveErr := a.prepareDirectives(callContext, call, options.StepNumber == 0)
 			if directiveErr != nil {
@@ -1198,6 +1262,9 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				return callContext, prepared, fmt.Errorf("queued instruction is no longer ready; no work was started")
 			}
 			prepared.Messages = append(prepared.Messages, directives...)
+			if review := monitor.takePending(); review != "" {
+				prepared.Messages = append(prepared.Messages, fantasy.NewUserMessage(review))
+			}
 			for i := range prepared.Messages {
 				prepared.Messages[i].ProviderOptions = nil
 			}
@@ -1207,7 +1274,8 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			// are advertised; the live palette is re-read every step, so a
 			// tool disabled mid-turn disappears from the next request.
 			deferral.touchUsed(callContext, options.Steps, stepPalette)
-			palette, stubs, err := deferral.stepTools(callContext, a, a.tools.Copy())
+			authorized := a.tools.Copy()
+			palette, stubs, err := deferral.stepTools(callContext, a, authorized)
 			if err != nil {
 				return callContext, prepared, err
 			}
@@ -1218,7 +1286,9 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			sessionLock.Lock()
 			stepPalette = palette
 			sessionLock.Unlock()
-			prepared.Tools = append(markLastToolForCache(guardTools(palette, a.engineering, a.sessions), a.getCacheControlOptions()), stubs...)
+			executable := nudgeShellTools(palette, authorized, a.shellNudgesGiven, a.observeShell)
+			executable = a.recallErrors(a.captureBaselines(executable))
+			prepared.Tools = append(markLastToolForCache(guardTools(executable, a.engineering, a.sessions), a.getCacheControlOptions()), stubs...)
 			if len(stubs) > 0 && len(palette) > 0 {
 				// Stubs are executable but never advertised.
 				prepared.ActiveTools = paletteNames(palette)
@@ -1241,6 +1311,13 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			for _, queued := range fold {
 				if !queued.internalContinuation {
 					callContext = tools.WithUserInstruction(callContext, queued.Prompt)
+					if a.engineering != nil && !a.isSubAgent {
+						// A prompt folded into a running turn is often a
+						// correction; it joins the contract like any turn.
+						if _, workErr := recordWorkTurn(callContext, a.engineering, engineering.GetScope(callContext, call.SessionID).SessionID, queued.Prompt, a.workBudgetOverride()); workErr != nil {
+							return callContext, prepared, workErr
+						}
+					}
 				}
 				userMessage, createErr := a.createUserMessage(callContext, queued)
 				if createErr != nil {
@@ -1249,7 +1326,15 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				prepared.Messages = append(prepared.Messages, userMessage.ToAIMessage()...)
 			}
 
-			prepared.Messages = a.workaroundProviderMediaLimitations(prepared.Messages, largeModel)
+			if a.engineering != nil && !a.isSubAgent {
+				st, workErr := a.engineering.Read(callContext, engineering.GetScope(callContext, call.SessionID).SessionID)
+				if workErr != nil {
+					return callContext, prepared, workErr
+				}
+				prepared.Messages = withCurrentWork(prepared.Messages, st)
+				prepared.Messages = withExpertiseLifecycle(prepared.Messages, st)
+			}
+			prepared.Messages = a.workaroundProviderMediaLimitations(prepared.Messages, chain.Current())
 			prepared.Messages = redactRegisteredSecrets(call.SessionID, prepared.Messages)
 
 			lastSystemRoleInx := 0
@@ -1268,6 +1353,12 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				}
 			}
 
+			if !a.isSubAgent && a.harnessOptions().BudgetLineEnabled() {
+				// After the cache breakpoints: the line changes every step.
+				line := budgetLine(int64(largeModel.CatwalkCfg.ContextWindow), currentSession.PromptTokens+currentSession.CompletionTokens, a.autoSummarizeAt.Get(), options.StepNumber)
+				prepared.Messages = withBudgetLine(prepared.Messages, line)
+			}
+
 			if promptPrefix != "" {
 				prepared.Messages = append([]fantasy.Message{fantasy.NewSystemMessage(promptPrefix)}, prepared.Messages...)
 			}
@@ -1284,8 +1375,8 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			assistantMsg, err = a.messages.Create(callContext, call.SessionID, message.CreateMessageParams{
 				Role:     message.Assistant,
 				Parts:    []message.ContentPart{},
-				Model:    largeModel.ModelCfg.Model,
-				Provider: largeModel.ModelCfg.Provider,
+				Model:    chain.Current().ModelCfg.Model,
+				Provider: chain.Current().ModelCfg.Provider,
 			})
 			if err != nil {
 				return callContext, prepared, err
@@ -1305,6 +1396,10 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			return a.messages.Update(genCtx, *currentAssistant)
 		},
 		OnReasoningEnd: func(id string, reasoning fantasy.ReasoningContent) error {
+			// Record the producer first, so the stored block is replayed only
+			// to the model that can validate it.
+			producer := chain.Current()
+			currentAssistant.SetReasoningOrigin(producer.ModelCfg.Provider, producer.ModelCfg.Model)
 			// handle anthropic signature
 			if anthropicData, ok := reasoning.ProviderMetadata[anthropic.Name]; ok {
 				if reasoning, ok := anthropicData.(*anthropic.ReasoningOptionMetadata); ok {
@@ -1382,7 +1477,17 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			slog.Info("ModelProvider called",
 				"provider", m.ModelCfg.Provider,
 				"model", m.ModelCfg.Model)
-			return m.Model
+			return &attemptModel{LanguageModel: m.Model, prepare: func(request fantasy.Call) fantasy.Call {
+				return a.prepareAttempt(request, m, turnOrigin, reasoningOrigins)
+			}, beforeCall: func(ctx context.Context) error {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				if a.engineering == nil {
+					return nil
+				}
+				return a.engineering.Update(ctx, engineering.GetScope(ctx, call.SessionID).SessionID, func(st *engineering.State) error { st.Usage.ProviderInvocations++; return nil })
+			}}
 		},
 		OnToolCall: func(tc fantasy.ToolCallContent) error {
 			input, wasSanitized := sanitizeToolInput(tc.ToolName, tc.ToolCallID, tc.Input)
@@ -1425,6 +1530,13 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			return createMsgErr
 		},
 		OnStepFinish: func(stepResult fantasy.StepResult) (finishErr error) {
+			producer := originOf(chain.Current())
+			for _, reasoning := range stepResult.Content.Reasoning() {
+				part := fantasy.ReasoningPart{Text: reasoning.Text, ProviderOptions: fantasy.ProviderOptions(reasoning.ProviderMetadata)}
+				if key := reasoningKey(part); key != "" {
+					reasoningOrigins[key] = producer
+				}
+			}
 			defer func() {
 				if finishErr != nil {
 					stepFinishErr = errors.Join(stepFinishErr, finishErr)
@@ -1502,8 +1614,16 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				if deliveryErr == nil {
 					deliveryErr = syncBrowserEvidence(context.WithoutCancel(ctx), a.engineering, a.workingDir, call.SessionID)
 				}
+				if deliveryErr == nil {
+					deliveryErr = markWorkDelivered(context.WithoutCancel(ctx), a.engineering, engineering.GetScope(ctx, call.SessionID).SessionID)
+				}
 				if deliveryErr != nil {
 					return deliveryErr
+				}
+			}
+			if !a.isSubAgent && stoppedForUser(stepResult.Content.ToolResults()) {
+				if err := markWorkWaiting(context.WithoutCancel(ctx), a.engineering, engineering.GetScope(ctx, call.SessionID).SessionID, stepResult.Content.ToolResults()); err != nil {
+					return err
 				}
 			}
 			return nil
@@ -1522,7 +1642,14 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				return true
 			},
 			func(steps []fantasy.StepResult) bool {
-				return hasRepeatedToolCalls(steps, loopDetectionWindowSize, loopDetectionMaxRepeats)
+				if !hasRepeatedToolCalls(steps, loopDetectionWindowSize, loopDetectionMaxRepeats) {
+					return false
+				}
+				a.recordHarness(harnessmetrics.LoopStopped, call.SessionID, nil)
+				return true
+			},
+			func(steps []fantasy.StepResult) bool {
+				return monitor.observe(genCtx, a.engineering, engineering.GetScope(genCtx, call.SessionID).SessionID, steps)
 			},
 			func(steps []fantasy.StepResult) bool {
 				return maxStepsReached(steps, a.maxStepsPerTurn.Get())
@@ -1666,6 +1793,14 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		return nil, err
 	}
 
+	if reason := monitor.stoppedReason(); reason != "" && currentAssistant != nil {
+		// Say why the turn ended instead of leaving a silent tool step.
+		currentAssistant.AddFinish(message.FinishReasonEndTurn, "Stopped without progress", reason)
+		if updateErr := a.messages.Update(context.WithoutCancel(ctx), *currentAssistant); updateErr != nil {
+			return nil, updateErr
+		}
+	}
+
 	if shouldSummarize && a.preCompactDenied(genCtx, call.SessionID) {
 		shouldSummarize = false
 	}
@@ -1684,6 +1819,40 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			call.Prompt = summaryResumeAfterTurn(call.Prompt, result)
 			existing = append(existing, call)
 			a.messageQueue.Set(call.SessionID, existing)
+		}
+	}
+
+	// The completion gate reviews a turn that ended on its own (no pending
+	// tool calls, no queued user prompt) while the session is still busy,
+	// so a failing verdict becomes the agent's next instruction before the
+	// user sees the turn as done.
+	if result != nil {
+		a.recordNudgesFollowed(call.SessionID, result.Steps)
+		if a.workingDir != "" && !a.isSubAgent {
+			// The turn's time and tokens are charged to the feature being
+			// worked on, so a feature that drags on shows in the plan.
+			usage := result.TotalUsage
+			if err := workplan.AddTurn(a.projectRoot(call.SessionID), time.Since(turnStarted), usage.InputTokens+usage.OutputTokens+usage.CacheReadTokens); err != nil {
+				slog.Debug("Failed to record work plan cost", "error", err)
+			}
+		}
+	}
+	var evaluation evaluatorDecision
+	if a.completionGateActive() && result != nil {
+		a.recordEvaluatorEvidence(call.SessionID, result.Steps)
+		pending, _ := a.messageQueue.Get(call.SessionID)
+		if currentAssistant != nil && len(currentAssistant.ToolCalls()) == 0 && !shouldSummarize &&
+			monitor.stoppedReason() == "" && len(pending) == 0 && genCtx.Err() == nil {
+			evaluation = a.evaluateTurn(genCtx, call.SessionID, currentAssistant.Content().Text)
+		}
+		// A turn cut short by a message the user sent meanwhile leaves the
+		// request open, so that message extends it instead of replacing it.
+		a.markRequestOpen(call.SessionID, evaluation.Continue != "" || len(pending) > 0)
+	}
+	if evaluation.Unresolved != "" && currentAssistant != nil {
+		currentAssistant.AddFinish(message.FinishReasonEndTurn, "Evaluator findings unresolved", evaluation.Unresolved)
+		if updateErr := a.messages.Update(context.WithoutCancel(ctx), *currentAssistant); updateErr != nil {
+			return nil, updateErr
 		}
 	}
 
@@ -1733,12 +1902,20 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	mu.Lock()
 	queuedMessages, _ := a.messageQueue.Get(call.SessionID)
 	mark, _ := a.cancelMark.Get(call.SessionID)
-	if !queueReady && mark == 0 {
+	if evaluation.Continue != "" && mark == 0 && ctx.Err() == nil {
+		next := call
+		next.Prompt = evaluation.Continue
+		next.Attachments, next.Accepted, next.OnComplete, next.RunID, next.acceptSeq = nil, nil, nil, "", 0
+		next.QueueContinuation = false
+		next.internalContinuation = true
+		queuedMessages = append(queuedMessages, next)
+		a.messageQueue.Set(call.SessionID, queuedMessages)
+	} else if !queueReady && mark == 0 {
 		// An unfinished browser completion contract continues on its own
 		// instead of stopping with "should I continue?" for approved work.
 		decision := a.browserCompletionPrompt(ctx, call.SessionID, call.Prompt, result, len(queuedMessages))
 		if !decision.Continue && decision.StopReason == "" {
-			shared := a.sharedCompletionPrompt(ctx, call.SessionID, result, len(queuedMessages))
+			shared := a.sharedCompletionPrompt(ctx, call.SessionID, result, len(queuedMessages), call.internalContinuation)
 			if shared.Continue || shared.StopReason != "" {
 				decision = tools.BrowserContinuation{Continue: shared.Continue, Prompt: shared.Prompt, Open: shared.Open, StopReason: shared.StopReason, TaskID: "shared"}
 			}
@@ -1753,13 +1930,22 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			next.internalContinuation = true
 			queuedMessages = append(queuedMessages, next)
 			a.messageQueue.Set(call.SessionID, queuedMessages)
-		} else if decision.Open > 0 && decision.StopReason != "" && !call.NonInteractive && a.notify != nil {
-			// The contract's own bound stopped the work: say so with the
-			// real reason instead of leaving an unfinished task looking done.
-			a.notify.Publish(pubsub.CreatedEvent, notify.Notification{
-				SessionID: call.SessionID,
-				Message:   fmt.Sprintf("Task %q stopped with %d open requirement(s): %s", decision.TaskID, decision.Open, decision.StopReason),
-			})
+		} else if decision.Open > 0 && decision.StopReason != "" {
+			// Preserve the gate's conclusion for JSON clients as well as the
+			// TUI: an end-turn response does not establish task completion.
+			if currentAssistant != nil && decision.StopReason != "waiting_for_user" && decision.StopReason != "user_control" {
+				currentAssistant.AddFinish(message.FinishReasonEndTurn, "Stopped with unverified requirements", fmt.Sprintf("%d open requirement(s): %s", decision.Open, decision.StopReason))
+				if updateErr := a.messages.Update(context.WithoutCancel(ctx), *currentAssistant); updateErr != nil {
+					mu.Unlock()
+					return result, updateErr
+				}
+			}
+			if !call.NonInteractive && a.notify != nil {
+				a.notify.Publish(pubsub.CreatedEvent, notify.Notification{
+					SessionID: call.SessionID,
+					Message:   fmt.Sprintf("Task %q stopped with %d open requirement(s): %s", decision.TaskID, decision.Open, decision.StopReason),
+				})
+			}
 		}
 	}
 	if queueReady && mark == 0 && ctx.Err() == nil {
@@ -1863,6 +2049,8 @@ func (a *sessionAgent) Summarize(ctx context.Context, sessionID string, opts fan
 	if a.IsSessionBusy(sessionID) {
 		return ErrSessionBusy
 	}
+	a.recordHarness(harnessmetrics.Compaction, sessionID, nil)
+	a.markCompacted(sessionID)
 	if engineering.GetScope(ctx, "").SessionID == "" {
 		var finish func()
 		var err error
@@ -1916,7 +2104,14 @@ func (a *sessionAgent) summarizeAttempt(ctx context.Context, sessionID string, s
 		return nil
 	}
 
-	aiMsgs, _ := a.preparePrompt(msgs, summaryModel.CatwalkCfg.SupportsImages)
+	aiMsgs, _ := a.prepareHistory(msgs, summaryModel.CatwalkCfg.SupportsImages, originOf(summaryModel))
+	if a.engineering != nil {
+		state, err := a.engineering.Read(ctx, engineering.GetScope(ctx, sessionID).SessionID)
+		if err != nil {
+			return err
+		}
+		aiMsgs = withExpertiseLifecycle(aiMsgs, state)
+	}
 
 	genCtx, cancel := context.WithCancel(ctx)
 	ac := &activeCancel{cancel: cancel}
@@ -1944,7 +2139,7 @@ func (a *sessionAgent) summarizeAttempt(ctx context.Context, sessionID string, s
 		return err
 	}
 
-	summaryPromptText := buildSummaryPrompt(currentSession.Todos)
+	summaryPromptText := buildSummaryPrompt(currentSession.Todos) + workPlanSummaryNote(a.workingDir)
 
 	resp, err := agent.Stream(genCtx, fantasy.AgentStreamCall{
 		Prompt:          summaryPromptText,
@@ -2115,6 +2310,14 @@ const yoloReminder = `YOLO mode is on: the user has pre-approved every tool call
 Still ask, briefly and specifically, when you need information only the user has (a missing value, which of several observed accounts to use) or a step only they can perform (passkey, biometric, phone approval). Set purpose=information on every such question; any question type, including yes_no for a missing fact, is allowed. Never relabel a request for approval to act or continue as information. That is an information request, not a permission request. A choice between outcomes the request leaves open is also information only the user has, for example a file with the requested name already exists (keep both under a numbered name, use another name, or leave it): state what you observed and ask once. Pre-approved tool calls never authorize deleting or overwriting data the task did not name, and ending with the work undone is not an answer to such a choice. YOLO does not allow guessing missing facts, acting on an unverified window or tab, or reporting an unverified result as done. Stop immediately when the user says stop or cancel.`
 
 func (a *sessionAgent) preparePrompt(msgs []message.Message, supportsImages bool, attachments ...message.Attachment) ([]fantasy.Message, []fantasy.FilePart) {
+	return a.prepareHistory(msgs, supportsImages, reasoningOrigin{}, attachments...)
+}
+
+// prepareHistory converts stored messages for the target model. Reasoning
+// produced by a different provider or model is dropped: its opaque
+// signatures and encrypted state are only valid for their producer, and its
+// text must not be presented to another provider as its own reasoning.
+func (a *sessionAgent) prepareHistory(msgs []message.Message, supportsImages bool, target reasoningOrigin, attachments ...message.Attachment) ([]fantasy.Message, []fantasy.FilePart) {
 	var history []fantasy.Message
 	if !a.isSubAgent {
 		history = append(history, fantasy.NewUserMessage(
@@ -2177,6 +2380,9 @@ When you're done presenting the plan and believe it's ready to implement, call t
 			}
 			continue
 		}
+		if m.Role == message.Assistant && !target.accepts(m) {
+			m = withoutReasoning(m)
+		}
 		aiMsgs := m.ToAIMessage()
 		if !supportsImages {
 			for i := range aiMsgs {
@@ -2202,10 +2408,11 @@ When you're done presenting the plan and believe it's ready to implement, call t
 		if !supportsImages {
 			continue
 		}
+		content, mediaType := tools.RepairOversizedImage(attachment.Content, attachment.MimeType)
 		files = append(files, fantasy.FilePart{
 			Filename:  attachment.FileName,
-			Data:      attachment.Content,
-			MediaType: attachment.MimeType,
+			Data:      content,
+			MediaType: mediaType,
 		})
 	}
 
@@ -2837,12 +3044,15 @@ func (a *sessionAgent) convertToToolResult(result fantasy.ToolResultContent) mes
 //	BEFORE: [tool result: image data]
 //	AFTER:  [tool result: "Image loaded - see attached"], [user: image attachment]
 func (a *sessionAgent) workaroundProviderMediaLimitations(messages []fantasy.Message, largeModel Model) []fantasy.Message {
+	// Before anything else, and for every provider: an image over the side
+	// limit fails the whole request.
+	messages = repairOversizedImages(messages)
 	providerSupportsMedia := largeModel.ModelCfg.Provider == string(catwalk.InferenceProviderAnthropic) ||
 		largeModel.ModelCfg.Provider == string(catwalk.InferenceProviderClaude) ||
 		largeModel.ModelCfg.Provider == string(catwalk.InferenceProviderBedrock) ||
 		largeModel.ModelCfg.Provider == string(catwalk.InferenceProviderBedrockEurope)
 
-	if providerSupportsMedia {
+	if providerSupportsMedia && largeModel.CatwalkCfg.SupportsImages {
 		return messages
 	}
 
@@ -2852,6 +3062,21 @@ func (a *sessionAgent) workaroundProviderMediaLimitations(messages []fantasy.Mes
 
 	for _, msg := range messages {
 		if msg.Role != fantasy.MessageRoleTool {
+			if !supportsImages {
+				parts := make([]fantasy.MessagePart, 0, len(msg.Content))
+				removed := false
+				for _, part := range msg.Content {
+					if file, ok := fantasy.AsMessagePart[fantasy.FilePart](part); ok && strings.HasPrefix(strings.ToLower(file.MediaType), "image/") {
+						removed = true
+						continue
+					}
+					parts = append(parts, part)
+				}
+				if removed {
+					parts = append(parts, fantasy.TextPart{Text: "[Image attachment omitted: this model does not support images. Use fresh semantic observations or an authorized vision-capable model for visual decisions.]"})
+					msg.Content = parts
+				}
+			}
 			convertedMessages = append(convertedMessages, msg)
 			continue
 		}

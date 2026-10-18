@@ -101,6 +101,29 @@ func sharedTaskRequirements(ctx context.Context, store *engineering.Store, sessi
 		}
 		requirements = append(requirements, req)
 	}
+	if state.Work != nil {
+		for _, item := range state.Work.Items {
+			if item.Origin != engineering.OriginUser || item.Status == engineering.ItemSuperseded {
+				continue
+			}
+			req := outcome.Requirement{ID: "work:" + item.ID, Description: item.Text, Phase: outcome.PhasePlanned}
+			switch engineering.EffectiveStatus(item, state.Generation) {
+			case engineering.ItemVerified, engineering.ItemDelivered:
+				req.Phase = outcome.PhaseVerified
+			case engineering.ItemImplemented:
+				req.Phase = outcome.PhaseApplied
+			}
+			for _, question := range state.Work.Questions {
+				if question.Status == "open" && slices.Contains(question.Blocks, item.ID) {
+					req.Phase, req.Reason = outcome.PhaseBlocked, "Unresolved question "+question.ID+": "+question.Text
+				}
+			}
+			if state.Paused {
+				req.Phase, req.Reason = outcome.PhaseBlocked, "Task paused by the user"
+			}
+			requirements = append(requirements, req)
+		}
+	}
 	return requirements, nil
 }
 
@@ -190,12 +213,12 @@ func sharedProofStale(state engineering.State, op engineering.Operation) bool {
 
 // sharedCompletionPrompt continues only normal turns that actually used task
 // tools. The persisted contract and progress bounds prevent restart loops.
-func (a *sessionAgent) sharedCompletionPrompt(ctx context.Context, sessionID string, result *fantasy.AgentResult, queued int) sharedContinuation {
+func (a *sessionAgent) sharedCompletionPrompt(ctx context.Context, sessionID string, result *fantasy.AgentResult, queued int, continuation ...bool) sharedContinuation {
 	if a.isSubAgent || a.engineering == nil || a.sessions == nil || result == nil || ctx.Err() != nil || queued > 0 || len(result.Steps) == 0 {
 		return sharedContinuation{}
 	}
 	steps := result.Steps
-	worked := turnWorkedOnSharedTask(steps)
+	worked := turnWorkedOnSharedTask(steps) || len(continuation) > 0 && continuation[0]
 	// A desktop turn without a task plan still answers for effects the
 	// runtime itself observed: unknown mutations and windows that appeared
 	// after an input but were never reported to the model.
@@ -229,6 +252,7 @@ func (a *sessionAgent) sharedCompletionPrompt(ctx context.Context, sessionID str
 			return sharedContinuation{}
 		}
 	}
+	requirements = a.verifiedByContract(sessionID, requirements)
 	var actionable []outcome.Requirement
 	decision := sharedContinuation{}
 	for i, resolved := range outcome.Resolve(requirements) {
@@ -298,7 +322,7 @@ func (a *sessionAgent) sharedCompletionPrompt(ctx context.Context, sessionID str
 	}
 	if decision.Continue {
 		data, _ := json.Marshal(actionable)
-		decision.Prompt = sharedContinuationMarker + " Authorized task requirements remain actionable: " + string(data) + "\nContinue the ready work and verify applied work against its actual acceptance criteria. Use task-scoped machine checks and current evidence. Dependents wait for verified upstream work. Report unknown effects or concrete blockers honestly; do not replay unknown mutations. Update todos using the actual result."
+		decision.Prompt = sharedContinuationMarker + " Authorized task requirements remain actionable: " + string(data) + "\nContinue the ready work and verify applied work against its actual acceptance criteria. Use task-scoped machine checks and current evidence. Dependents wait for verified upstream work. Report unknown effects or concrete blockers honestly; do not replay unknown mutations. Update todos using the actual result. Requirements prefixed work: come from workflow work; advance their original item_id to verified only with current observed evidence, or record a concrete open question blocking that item."
 	}
 	return decision
 }

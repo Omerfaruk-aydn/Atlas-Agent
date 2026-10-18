@@ -60,6 +60,11 @@ func (a *sessionAgent) prepareDirectives(ctx context.Context, call SessionAgentC
 		if err := a.engineering.ReceiveDirective(ctx, scope.SessionID, directive.ID); err != nil {
 			return nil, err
 		}
+		if !a.isSubAgent {
+			if _, err := recordWorkTurn(ctx, a.engineering, scope.SessionID, directive.Text, a.workBudgetOverride()); err != nil {
+				return nil, err
+			}
+		}
 		messages = append(messages, userMessage.ToAIMessage()...)
 		if directive.Mode == "next" {
 			first = false

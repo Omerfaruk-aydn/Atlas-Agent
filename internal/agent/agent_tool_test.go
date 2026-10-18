@@ -470,3 +470,35 @@ func TestResolveSubagentUnknownNameErrors(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `no subagent named "nope"`)
 }
+
+// A role named after a subagent that sets no model routes it, so assigning
+// a model to a kind of work needs no edit to the subagent definition.
+func TestBuildSubagentSessionAgentRoutesByItsNameWithoutAModel(t *testing.T) {
+	coord := hermeticSubagentCoordinator(t)
+	coord.cfg.Config().Options.ModelRoles = map[string]config.SelectedModel{
+		"reviewer": {Provider: "role-provider", Model: "role-model"},
+	}
+	taskCfg := coord.cfg.Config().Agents[config.AgentTask]
+
+	agent, err := coord.buildSubagentSessionAgent(t.Context(), taskCfg, &subagents.Subagent{Name: "reviewer", Description: "d"})
+	require.NoError(t, err)
+	require.Equal(t, "role-model", agent.Model().ModelCfg.Model)
+
+	other, err := coord.buildSubagentSessionAgent(t.Context(), taskCfg, &subagents.Subagent{Name: "writer", Description: "d"})
+	require.NoError(t, err)
+	require.Equal(t, "mock-model", other.Model().ModelCfg.Model, "an agent without a matching role keeps the default")
+}
+
+func TestRoleModelForIgnoresBuiltInNamesAndBrokenRoles(t *testing.T) {
+	coord := hermeticSubagentCoordinator(t)
+	coord.cfg.Config().Options.ModelRoles = map[string]config.SelectedModel{
+		"large":  {Provider: "role-provider", Model: "role-model"},
+		"broken": {Provider: "no-such-provider", Model: "x"},
+	}
+	_, ok := coord.roleModelFor(t.Context(), "large")
+	require.False(t, ok, "large and small are model types, not roles")
+	_, ok = coord.roleModelFor(t.Context(), "broken")
+	require.False(t, ok, "a role that fails to build never breaks the agent")
+	_, ok = coord.roleModelFor(t.Context(), "")
+	require.False(t, ok)
+}

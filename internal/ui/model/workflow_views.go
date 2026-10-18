@@ -28,10 +28,11 @@ const (
 	workflowAutomation
 	workflowDurableBoard
 	workflowSourceMemory
+	workflowWork
 	workflowTabCount
 )
 
-var workflowTabs = [workflowTabCount]string{"Tasks", "Graph", "Handoffs", "Ownership", "Operations", "Queue", "Checkpoints", "Attention", "Context", "Batches", "Interactions", "Automation", "Board", "Memory"}
+var workflowTabs = [workflowTabCount]string{"Tasks", "Graph", "Handoffs", "Ownership", "Operations", "Queue", "Checkpoints", "Attention", "Context", "Batches", "Interactions", "Automation", "Board", "Memory", "Work"}
 
 type workflowRow struct {
 	ID, TaskID, Label string
@@ -46,6 +47,7 @@ type workflowViews [workflowTabCount][]workflowRow
 func projectWorkflow(s engineering.WorkflowSnapshot, codes ...string) workflowViews {
 	text := workflowTranslator(codes...)
 	var views workflowViews
+	views[workflowWork] = projectWork(s.Work, text)
 	for _, j := range s.PlatformJobs {
 		views[workflowAutomation] = append(views[workflowAutomation], workflowRow{ID: j.ID, Label: fmt.Sprintf(text("%s · %s · runs %d/%d · paused %t"), j.ID, j.Kind, j.Runs, j.MaxRuns, j.Paused), Details: []string{text("p: pause; r: resume; x: recover expired attempt"), j.Prompt, fmt.Sprintf(text("Next: %s · status: %s · lease: %d"), time.Unix(j.NextAt, 0).Format(time.RFC3339), workflowStatus(text, j.LastStatus), j.LeaseUntil), j.LastResult}})
 	}

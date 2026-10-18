@@ -22,10 +22,21 @@ func shouldAutoSummarize(contextWindow, tokens int64, usedRatio float64) bool {
 
 	threshold := int64(float64(contextWindow) * smallContextWindowRatio)
 	if contextWindow > largeContextWindowThreshold {
+		// A large window is not used to its end: the model's grip on early
+		// instructions and details weakens long before the window fills,
+		// so a structured handoff at three quarters keeps quality higher
+		// than one squeezed out at the last moment.
+		if float64(tokens) >= float64(contextWindow)*largeContextWindowCompactAt {
+			return true
+		}
 		threshold = largeContextWindowBuffer
 	}
 	return contextWindow-tokens <= threshold
 }
+
+// largeContextWindowCompactAt is the fraction of a large window at which
+// the session is summarized even though room remains.
+const largeContextWindowCompactAt = 0.75
 
 // validUsedRatio rejects values that would make the agent summarize on every
 // turn (<= 0) or never (>= 1), falling back to the built-in thresholds rather

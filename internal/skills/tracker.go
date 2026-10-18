@@ -55,6 +55,16 @@ func (t *Tracker) IsLoaded(name string) bool {
 	return t.loaded[name]
 }
 
+// MarkUnloaded removes a guide from the active load projection.
+func (t *Tracker) MarkUnloaded(name string) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.loaded, name)
+}
+
 // LoadedNames returns the names of all skills that have been loaded, sorted
 // alphabetically. Safe to call on a nil Tracker (returns nil).
 func (t *Tracker) LoadedNames() []string {

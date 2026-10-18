@@ -427,6 +427,14 @@ func (c *coordinator) buildSubagentSessionAgent(ctx context.Context, taskCfg con
 		return nil, err
 	}
 
+	if sub.Model == "" {
+		// Without an explicit model, a role named after the subagent
+		// ("reviewer", "explorer") routes it, so assigning a model to a
+		// kind of work needs no edit to every subagent definition.
+		if routed, ok := c.roleModelFor(ctx, sub.Name); ok {
+			large, largeFallbacks = routed, nil
+		}
+	}
 	if sub.Model != "" {
 		modelCfg, ok := c.cfg.Config().ResolveRole(sub.Model)
 		measured, enabled, selectionErr := c.cfg.ResolveMeasuredRole(sub.Model)

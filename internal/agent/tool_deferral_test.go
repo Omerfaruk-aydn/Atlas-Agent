@@ -253,9 +253,9 @@ func TestCapabilityIndexIsStableAndExcludesCore(t *testing.T) {
 	d := &toolDeferral{pinned: []string{"todos"}}
 	palette := []string{"bash", "browser", "computer", "todos", "tool_pipeline", "tool_search", "mcp_github_create_issue"}
 	index := d.capabilityIndex(fixturePalette(palette))
-	require.Contains(t, index, "- browser: browser")
-	require.Contains(t, index, "- desktop: computer")
-	require.Contains(t, index, "- mcp: mcp_github_create_issue")
+	require.Contains(t, index, "- browser: browser (use a web page like a person")
+	require.Contains(t, index, "- desktop: computer (see and control desktop apps)")
+	require.Contains(t, index, "- mcp: mcp_github_create_issue (fixture mcp_github_create_issue)", "unknown tools fall back to their description")
 	require.NotContains(t, index, "bash")
 	require.NotContains(t, index, "todos")
 	require.Equal(t, index, d.capabilityIndex(fixturePalette(palette)))

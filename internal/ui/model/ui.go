@@ -5456,7 +5456,7 @@ func (m *UI) openDialog(id string) tea.Cmd {
 		if cmd := m.openWorkflowPanel(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
-	case "context-inspector", "agent-batches", "interactions", "agent-automation", "durable-board", "source-memory":
+	case "context-inspector", "agent-batches", "interactions", "agent-automation", "durable-board", "source-memory", "agent-work":
 		m.workflow.tab = workflowContext
 		if id == "agent-batches" {
 			m.workflow.tab = workflowBatches
@@ -5472,6 +5472,9 @@ func (m *UI) openDialog(id string) tea.Cmd {
 		}
 		if id == "source-memory" {
 			m.workflow.tab = workflowSourceMemory
+		}
+		if id == "agent-work" {
+			m.workflow.tab = workflowWork
 		}
 		m.workflow.selected = 0
 		if cmd := m.openWorkflowPanel(); cmd != nil {
@@ -5980,6 +5983,8 @@ func (m *UI) handleAgentNotification(n notify.Notification) tea.Cmd {
 		return m.handleAWSSSOAuth(n.AWSSOCommand, n.AWSSOURL)
 	case notify.TypeAWSSSOAuthResult:
 		return m.handleAWSSSOAuthResult(n.Message)
+	case notify.TypeCapabilityNotice:
+		return util.ReportWarn(n.Message)
 	default:
 		return nil
 	}

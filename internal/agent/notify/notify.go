@@ -30,6 +30,10 @@ const (
 	// severity -- a nit is queued for the next prompt silently, with no
 	// notification. Message carries the advisor's note.
 	TypeAdvisorNote Type = "advisor_note"
+	// TypeCapabilityNotice indicates a configured model setting that the
+	// selected provider path cannot apply as requested. Message names the
+	// setting, what is sent instead and why.
+	TypeCapabilityNotice Type = "capability_notice"
 )
 
 // Notification represents a domain event published by the agent.

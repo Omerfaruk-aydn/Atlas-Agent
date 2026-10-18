@@ -16,9 +16,13 @@ func TestUnknownContextWindowNeverSummarizes(t *testing.T) {
 }
 
 func TestBuiltInThresholdForLargeWindows(t *testing.T) {
-	const cw = 1_000_000 // above largeContextWindowThreshold: fixed 20k buffer
-	require.False(t, shouldAutoSummarize(cw, cw-largeContextWindowBuffer-1, 0))
-	require.True(t, shouldAutoSummarize(cw, cw-largeContextWindowBuffer, 0))
+	const cw = 1_000_000 // above largeContextWindowThreshold: three quarters
+	require.False(t, shouldAutoSummarize(cw, 749_999, 0))
+	require.True(t, shouldAutoSummarize(cw, 750_000, 0), "a large window is summarized before it fills")
+
+	const near = 210_000 // just above the threshold: three quarters is 157.5k
+	require.False(t, shouldAutoSummarize(near, 157_000, 0))
+	require.True(t, shouldAutoSummarize(near, 157_500, 0))
 }
 
 func TestBuiltInThresholdForSmallWindows(t *testing.T) {

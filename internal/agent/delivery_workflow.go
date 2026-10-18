@@ -227,7 +227,7 @@ func (c *coordinator) deliveryWorkflow(ctx context.Context, p WorkflowParams, ca
 		return c.advanceDelivery(ctx, p, call, sess, st, invoke)
 	case "design":
 		if st.Delivery == nil || p.Design == nil {
-			return fail(fmt.Errorf("design requires a registered delivery plan and brief"))
+			return fail(fmt.Errorf("design requires a registered delivery plan and brief: call workflow with action \"plan\" first (its plan field lists requirements and stages), then action \"design\""))
 		}
 		design := *p.Design
 		design.Critiques = nil

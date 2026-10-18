@@ -567,8 +567,11 @@ func (Attribution) JSONSchemaExtend(schema *jsonschema.Schema) {
 }
 
 type Options struct {
-	Voice                speech.DictationOptions `json:"voice,omitzero" jsonschema:"description=Offline microphone dictation using Vosk models or optional Windows recognition; no cloud service"`
-	UsageProfile         string                  `json:"usage_profile,omitempty" jsonschema:"description=Active named usage profile"`
+	Voice        speech.DictationOptions `json:"voice,omitzero" jsonschema:"description=Offline microphone dictation using Vosk models or optional Windows recognition; no cloud service"`
+	UsageProfile string                  `json:"usage_profile,omitempty" jsonschema:"description=Active named usage profile"`
+	// WorkBudget fixes the work budget tier instead of deriving it from the
+	// request and observed difficulty. Empty or "auto" means derived.
+	WorkBudget           string                  `json:"work_budget,omitempty" jsonschema:"description=Work budget tier: auto (default) derives it from the request and observed difficulty; direct, standard or deep fixes it,enum=auto,enum=direct,enum=standard,enum=deep"`
 	UsageProfiles        map[string]UsageProfile `json:"usage_profiles,omitempty" jsonschema:"description=Custom usage profiles or overrides for economical, research, implementation, review and ci"`
 	WorkflowPaths        []string                `json:"workflow_paths,omitempty" jsonschema:"description=Directories or JSON files containing versioned project workflow recipes"`
 	Execution            *Execution              `json:"execution,omitempty" jsonschema:"description=Command isolation policy; does not isolate LSP or MCP"`
@@ -671,8 +674,10 @@ type Options struct {
 	// primary model. A handful of names are also recognized by built-in
 	// features when present: "advisor" and "escalate" (see Advisor below),
 	// and "compact", which -- when set -- summarization (auto or
-	// /summarize) runs on instead of the session's own model.
-	ModelRoles         map[string]SelectedModel      `json:"model_roles,omitempty" jsonschema:"description=Named model roles a subagent's model field can reference by name\\, e.g. \"frontend\" or \"research\". A few names are recognized by built-in features when present: advisor\\, escalate\\, and compact (used to summarize with a different model than the session's own).,example={\"research\":{\"model\":\"o3\",\"provider\":\"openai\"}}"`
+	// /summarize) runs on instead of the session's own model. A role named
+	// after a subagent that sets no model of its own, or "task" for the
+	// generic sub-agent, routes that agent to the role's model.
+	ModelRoles         map[string]SelectedModel      `json:"model_roles,omitempty" jsonschema:"description=Named model roles a subagent's model field can reference by name\\, e.g. \"frontend\" or \"research\". A few names are recognized by built-in features when present: advisor\\, escalate\\, evaluator\\, and compact (used to summarize with a different model than the session's own). A role named after a subagent without its own model\\, or \"task\" for the generic sub-agent\\, routes that agent to the role's model.,example={\"research\":{\"model\":\"o3\",\"provider\":\"openai\"}}"`
 	RoleModelSelection map[string]RoleModelSelection `json:"role_model_selection,omitempty" jsonschema:"description=Opt-in role model selection using comparable live evaluation records and explicit candidate policies."`
 	// SessionMode names a mode (see internal/subagents' built-in modes,
 	// plus any subagent the user has authored) whose instructions are
@@ -689,6 +694,22 @@ type Options struct {
 	// "advisor" ModelRoles entry; with none configured, Advisor has
 	// nothing to run on and is silently inert even if Enabled is true.
 	Advisor *Advisor `json:"advisor,omitempty" jsonschema:"description=A second model that reviews each turn and can leave a note for the next one. Needs a \"advisor\" entry in model_roles to run on."`
+	// Evaluator gates the end of a turn that changed files on an
+	// independent reviewer. Unlike the advisor, which leaves a note for
+	// the next prompt, a failing verdict sends the findings straight back
+	// to the agent, which keeps working before the user sees the turn as
+	// finished. It runs on the "evaluator" model role, then the "advisor"
+	// role, then the session's own large model with a fresh context.
+	Evaluator *Evaluator `json:"evaluator,omitempty" jsonschema:"description=An independent reviewer that checks a turn which changed files before it ends. A failing verdict sends its findings back to the agent to fix. Runs on the \"evaluator\" model role\\, else the \"advisor\" role\\, else the session's large model."`
+	// WorkPlan tunes what Atlas does around a work plan (.atlas/work.json)
+	// when one exists: reviewing the plan, proving checks can fail,
+	// recording checkpoints, an adversarial pass after each finished
+	// feature, and remembering verified commands. Each is on by default.
+	WorkPlan *WorkPlan `json:"work_plan,omitempty" jsonschema:"description=What Atlas does around a work plan (.atlas/work.json). Every option is on unless set to false."`
+	// Harness tunes the general checks Atlas makes around every turn that
+	// changed files and the context it gives the model. Each is on by
+	// default.
+	Harness *Harness `json:"harness,omitempty" jsonschema:"description=General checks around turns that changed files and the context given to the model. Every option is on unless set to false."`
 
 	// Sandbox contains every external process the shell interpreter
 	// spawns (bash tool commands, hook commands, scripts they invoke) in
@@ -813,6 +834,111 @@ func (a Advisor) EscalateSeverityThreshold() string {
 		return strings.ToUpper(a.EscalateThreshold)
 	default:
 		return "BLOCKER"
+	}
+}
+
+// WorkPlan holds the work plan options. See Options.WorkPlan. A nil
+// pointer field means the default, on.
+type WorkPlan struct {
+	PlanReview   *bool `json:"plan_review,omitempty" jsonschema:"description=Have a reviewer critique a new or changed plan once before the work goes on.,default=true"`
+	ProveChecks  *bool `json:"prove_checks,omitempty" jsonschema:"description=Ask that each finished feature's check be run against the code from before the feature\\, where it must fail.,default=true"`
+	Checkpoints  *bool `json:"checkpoints,omitempty" jsonschema:"description=Record a git checkpoint whenever the contract holds\\, so a check that breaks later comes with the files changed since it last passed.,default=true"`
+	Breaker      *bool `json:"breaker,omitempty" jsonschema:"description=After features are finished\\, ask for an adversarial pass that tries to break them.,default=true"`
+	LearnRecipes *bool `json:"learn_recipes,omitempty" jsonschema:"description=Save the commands that verified the work to project memory.,default=true"`
+}
+
+func defaultOn(b *bool) bool { return b == nil || *b }
+
+// PlanReviewEnabled reports whether plans are reviewed.
+func (w *WorkPlan) PlanReviewEnabled() bool { return w == nil || defaultOn(w.PlanReview) }
+
+// ProveChecksEnabled reports whether finished features' checks are probed.
+func (w *WorkPlan) ProveChecksEnabled() bool { return w == nil || defaultOn(w.ProveChecks) }
+
+// CheckpointsEnabled reports whether green checkpoints are recorded.
+func (w *WorkPlan) CheckpointsEnabled() bool { return w == nil || defaultOn(w.Checkpoints) }
+
+// BreakerEnabled reports whether a breaker pass follows finished features.
+func (w *WorkPlan) BreakerEnabled() bool { return w == nil || defaultOn(w.Breaker) }
+
+// LearnRecipesEnabled reports whether verified commands are remembered.
+func (w *WorkPlan) LearnRecipesEnabled() bool { return w == nil || defaultOn(w.LearnRecipes) }
+
+// Harness holds the harness options. See Options.Harness. A nil Harness
+// keeps every option on.
+type Harness struct {
+	CheckGuard           *bool `json:"check_guard,omitempty" jsonschema:"description=Send the work back once when a turn weakens its own checks: removed assertions or tests\\, new skip or focus markers\\, new lint suppressions\\, lowered coverage thresholds or loosened plan checks.,default=true"`
+	RequestChecklist     *bool `json:"request_checklist,omitempty" jsonschema:"description=Split a request with several asks into a checklist that survives compaction and is checked item by item before the turn ends.,default=true"`
+	ParallelAlternatives *bool `json:"parallel_alternatives,omitempty" jsonschema:"description=When a check keeps failing\\, prepare two git worktrees so two different approaches can be tried side by side and the one that passes kept.,default=true"`
+	FlakyChecks          *bool `json:"flaky_checks,omitempty" jsonschema:"description=Tell flaky checks (different results with no code change) apart from real failures and regressions.,default=true"`
+	ErrorMemory          *bool `json:"error_memory,omitempty" jsonschema:"description=Remember how an error was fixed and show it when the same error comes back.,default=true"`
+	Environment          *bool `json:"environment,omitempty" jsonschema:"description=Detect the installed toolchains and their versions once and tell the model.,default=true"`
+	DiffHygiene          *bool `json:"diff_hygiene,omitempty" jsonschema:"description=Before a turn ends\\, flag leftover debug statements\\, conflict markers\\, new TODOs\\, commented-out code\\, likely secrets and large files in the change.,default=true"`
+	BudgetLine           *bool `json:"budget_line,omitempty" jsonschema:"description=Tell the model how full its context is and how many steps the turn has taken.,default=true"`
+	FailureCorpus        *bool `json:"failure_corpus,omitempty" jsonschema:"description=Save requests that ended with unmet checks or findings so atlas eval corpus can replay them.,default=true"`
+	StrategyHints        *bool `json:"strategy_hints,omitempty" jsonschema:"description=Suggest the checks that verified similar projects before.,default=true"`
+}
+
+// CheckGuardEnabled reports whether weakened checks are flagged.
+func (h *Harness) CheckGuardEnabled() bool { return h == nil || defaultOn(h.CheckGuard) }
+
+// RequestChecklistEnabled reports whether requests get a checklist.
+func (h *Harness) RequestChecklistEnabled() bool { return h == nil || defaultOn(h.RequestChecklist) }
+
+// ParallelAlternativesEnabled reports whether stuck checks get worktrees
+// for alternative approaches.
+func (h *Harness) ParallelAlternativesEnabled() bool {
+	return h == nil || defaultOn(h.ParallelAlternatives)
+}
+
+// FlakyChecksEnabled reports whether flaky checks are detected.
+func (h *Harness) FlakyChecksEnabled() bool { return h == nil || defaultOn(h.FlakyChecks) }
+
+// ErrorMemoryEnabled reports whether error fixes are remembered.
+func (h *Harness) ErrorMemoryEnabled() bool { return h == nil || defaultOn(h.ErrorMemory) }
+
+// EnvironmentEnabled reports whether installed toolchains are detected.
+func (h *Harness) EnvironmentEnabled() bool { return h == nil || defaultOn(h.Environment) }
+
+// DiffHygieneEnabled reports whether the change is scanned for leftovers.
+func (h *Harness) DiffHygieneEnabled() bool { return h == nil || defaultOn(h.DiffHygiene) }
+
+// BudgetLineEnabled reports whether the model is told its context use.
+func (h *Harness) BudgetLineEnabled() bool { return h == nil || defaultOn(h.BudgetLine) }
+
+// FailureCorpusEnabled reports whether failed requests are saved.
+func (h *Harness) FailureCorpusEnabled() bool { return h == nil || defaultOn(h.FailureCorpus) }
+
+// StrategyHintsEnabled reports whether checks from similar projects are
+// suggested.
+func (h *Harness) StrategyHintsEnabled() bool { return h == nil || defaultOn(h.StrategyHints) }
+
+// Evaluator holds settings for the completion gate. See Options.Evaluator.
+type Evaluator struct {
+	Enabled bool `json:"enabled,omitempty" jsonschema:"description=Turn the completion gate on.,default=false"`
+	// MaxRounds bounds how many times one request can be sent back to the
+	// agent. The gate is a quality aid, not a proof of correctness: a
+	// reviewer and an agent that keep disagreeing must not loop on the
+	// user's money.
+	MaxRounds int `json:"max_rounds,omitempty" jsonschema:"description=How many times one request can be sent back for fixes before the turn ends with the remaining findings reported. 0 uses the default.,default=2,example=3"`
+}
+
+// defaultEvaluatorRounds and maxEvaluatorRounds bound Evaluator.MaxRounds.
+const (
+	defaultEvaluatorRounds = 2
+	maxEvaluatorRounds     = 5
+)
+
+// Rounds returns the configured round limit, defaulting to 2 for an unset
+// value and capped at 5.
+func (e Evaluator) Rounds() int {
+	switch {
+	case e.MaxRounds <= 0:
+		return defaultEvaluatorRounds
+	case e.MaxRounds > maxEvaluatorRounds:
+		return maxEvaluatorRounds
+	default:
+		return e.MaxRounds
 	}
 }
 

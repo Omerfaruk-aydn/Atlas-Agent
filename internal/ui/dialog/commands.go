@@ -621,6 +621,7 @@ func (c *Commands) defaultCommands() []*CommandItem {
 		NewCommandItem(c.com.Styles, "agent-automation", "Agent Automation", "", ActionOpenDialog{DialogID: "agent-automation"}).WithSlash("/automation").WithSummary("Inspect heartbeat and cron jobs; pause or resume explicitly"),
 		NewCommandItem(c.com.Styles, "durable-board", "Durable Task Board", "", ActionOpenDialog{DialogID: "durable-board"}).WithSlash("/board").WithSummary("Inspect worker ownership and evidence; accept review tasks"),
 		NewCommandItem(c.com.Styles, "source-memory", "Source Memory", "", ActionOpenDialog{DialogID: "source-memory"}).WithSlash("/source-memory").WithSummary("Inspect memory provenance, expiry and source freshness"),
+		NewCommandItem(c.com.Styles, "agent-work", "Agent Work", "", ActionOpenDialog{DialogID: "agent-work"}).WithSlash("/work").WithSummary("Show the task contract, method, hypotheses, candidates and what the agent waits for"),
 		NewCommandItem(c.com.Styles, "session-mode", sessionModeCommandLabel(c.com.Config()), "", ActionOpenDialog{DialogID: ModesID}).WithAliases("mode").WithSlash("/mode").WithSummary("Switch the session's working mode"),
 		NewCommandItem(c.com.Styles, "model-roles", "Model Roles", "", ActionOpenDialog{DialogID: ModelRolesID}).WithSlash("/roles").WithSummary("Assign models to roles like title and summary"),
 		NewCommandItem(c.com.Styles, "model-fallbacks", "Model Fallbacks", "", ActionOpenDialog{DialogID: FallbacksID}).WithSlash("/fallbacks").WithSummary("Set which models to fall back to on failure"),

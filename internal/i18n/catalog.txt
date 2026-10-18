@@ -1973,3 +1973,35 @@ Code valid until %s, single use.|Kod %s saatine kadar geçerli, tek kullanımlı
 Internet access: not verified yet; open the QR with Wi-Fi turned off|İnternet erişimi: henüz doğrulanmadı; QR kodu Wi-Fi kapalıyken aç|Internetzugriff: noch nicht bestätigt; öffne den QR-Code mit ausgeschaltetem WLAN|Accès Internet : pas encore vérifié ; ouvrez le QR avec le Wi-Fi désactivé|Accesso Internet: non ancora verificato; apri il QR con il Wi-Fi spento|الوصول عبر الإنترنت: لم يُتحقق منه بعد؛ افتح رمز QR مع إيقاف Wi-Fi
 Internet access: verified by %s at %s|İnternet erişimi: %s tarafından saat %s'de doğrulandı|Internetzugriff: bestätigt durch %s um %s|Accès Internet : vérifié par %s à %s|Accesso Internet: verificato da %s alle %s|الوصول عبر الإنترنت: تحقق منه %s في %s
 Tailscale Funnel: trusted HTTPS, no certificate warning on the phone.|Tailscale Funnel: güvenilir HTTPS, telefonda sertifika uyarısı çıkmaz.|Tailscale Funnel: vertrauenswürdiges HTTPS, keine Zertifikatswarnung auf dem Telefon.|Tailscale Funnel : HTTPS de confiance, aucun avertissement de certificat sur le téléphone.|Tailscale Funnel: HTTPS attendibile, nessun avviso sul certificato nel telefono.|Tailscale Funnel: HTTPS موثوق، دون تحذير شهادة على الهاتف.
+Tailscale Funnel — internet, no VPS|Tailscale Funnel — internet, VPS gerekmez|Tailscale Funnel — Internet, kein VPS|Tailscale Funnel — Internet, sans VPS|Tailscale Funnel — Internet, senza VPS|Tailscale Funnel — إنترنت دون VPS
+Tailscale Funnel: copy the complete link with l and paste it on the supporting computer. Keep this computer awake.|Tailscale Funnel: l ile tam bağlantıyı kopyalayıp destek veren bilgisayara yapıştır. Bu bilgisayarı uyanık tut.|Tailscale Funnel: Mit l den vollständigen Link kopieren und am unterstützenden Computer einfügen. Diesen Computer wach halten.|Tailscale Funnel : copiez le lien complet avec l et collez-le sur le poste de support. Gardez ce poste éveillé.|Tailscale Funnel: copia il link completo con l e incollalo sul computer di supporto. Mantieni questo computer attivo.|Tailscale Funnel: انسخ الرابط الكامل بالمفتاح l والصقه على حاسوب الدعم. أبق هذا الحاسوب مستيقظًا.
+Same network: enter the code. Tailscale Funnel: paste the complete support link; only the host needs Tailscale. Relay mode: configure the same relay on both computers.|Aynı ağ: kodu gir. Tailscale Funnel: tam destek bağlantısını yapıştır; yalnızca destek alan bilgisayara Tailscale gerekir. Relay: iki bilgisayarda aynı sunucuyu ayarla.|Gleiches Netzwerk: Code eingeben. Tailscale Funnel: vollständigen Link einfügen; nur der Host benötigt Tailscale. Relay: denselben Server auf beiden Computern einrichten.|Même réseau : saisissez le code. Funnel : collez le lien complet ; seul le poste distant nécessite Tailscale. Relais : configurez le même serveur sur les deux postes.|Stessa rete: inserisci il codice. Funnel: incolla il link completo; solo il computer remoto richiede Tailscale. Relay: configura lo stesso server su entrambi.|نفس الشبكة: أدخل الرمز. Funnel: الصق رابط الدعم الكامل؛ المضيف فقط يحتاج Tailscale. المرحّل: اضبط الخادم نفسه على الحاسوبين.
+Work|Çalışma|Arbeit|Travail|Lavoro|العمل
+Agent Work|Ajan çalışması|Agentenarbeit|Travail de l'agent|Lavoro dell'agente|عمل الوكيل
+Show the task contract, method, hypotheses, candidates and what the agent waits for|Görev sözleşmesini, yöntemi, hipotezleri, adayları ve ajanın neyi beklediğini göster|Aufgabenvertrag, Methode, Hypothesen, Kandidaten und das, worauf der Agent wartet, anzeigen|Afficher le contrat de tâche, la méthode, les hypothèses, les candidats et ce que l'agent attend|Mostra il contratto dell'attività, il metodo, le ipotesi, i candidati e ciò che l'agente attende|عرض عقد المهمة والطريقة والفرضيات والمرشحين وما ينتظره الوكيل
+No task working memory recorded yet|Henüz görev çalışma belleği kaydedilmedi|Noch kein Arbeitsgedächtnis für die Aufgabe aufgezeichnet|Aucune mémoire de travail de tâche enregistrée pour l'instant|Nessuna memoria di lavoro dell'attività registrata finora|لم تُسجَّل ذاكرة عمل للمهمة بعد
+Reasons:|Gerekçeler:|Gründe:|Raisons :|Motivi:|الأسباب:
+Source generation: %d|Kaynak sürümü: %d|Quellgeneration: %d|Génération de la source : %d|Generazione del sorgente: %d|جيل المصدر: %d
+Last user turn %d (%s): %s|Son kullanıcı mesajı %d (%s): %s|Letzte Nutzereingabe %d (%s): %s|Dernier tour utilisateur %d (%s) : %s|Ultimo turno utente %d (%s): %s|آخر دور للمستخدم %d (%s): %s
+Next checks:|Sıradaki kontroller:|Nächste Prüfungen:|Prochaines vérifications :|Prossimi controlli:|الفحوصات التالية:
+State recovered from a damaged record:|Durum bozuk bir kayıttan kurtarıldı:|Zustand aus einem beschädigten Datensatz wiederhergestellt:|État récupéré à partir d'un enregistrement endommagé :|Stato recuperato da un record danneggiato:|تمت استعادة الحالة من سجل تالف:
+Budget: %s · phase: %s|Bütçe: %s · aşama: %s|Budget: %s · Phase: %s|Budget : %s · phase : %s|Budget: %s · fase: %s|الميزانية: %s · المرحلة: %s
+Waiting:|Bekleniyor:|Wartet:|En attente :|In attesa:|بانتظار:
+User turns: %v|Kullanıcı mesajları: %v|Nutzereingaben: %v|Tours utilisateur : %v|Turni utente: %v|أدوار المستخدم: %v
+requested|istendi|angefordert|demandé|richiesto|مطلوب
+proposed|önerildi|vorgeschlagen|proposé|proposto|مقترح
+assumption|varsayım|Annahme|hypothèse de travail|assunzione|افتراض
+Method: %s|Yöntem: %s|Methode: %s|Méthode : %s|Metodo: %s|الطريقة: %s
+Trigger:|Tetikleyen:|Auslöser:|Déclencheur :|Attivazione:|المُحفِّز:
+Hypothesis %s · %s|Hipotez %s · %s|Hypothese %s · %s|Hypothèse %s · %s|Ipotesi %s · %s|الفرضية %s · %s
+limited fixture|sınırlı düzenek|eingeschränkte Testumgebung|banc d'essai limité|banco di prova limitato|بيئة اختبار محدودة
+Refuted if:|Çürütülür eğer:|Widerlegt, wenn:|Réfutée si :|Confutata se:|تُدحض إذا:
+Limits:|Sınırlar:|Grenzen:|Limites :|Limiti:|الحدود:
+Experiment %s · %s · running|Deney %s · %s · sürüyor|Experiment %s · %s · läuft|Expérience %s · %s · en cours|Esperimento %s · %s · in corso|التجربة %s · %s · قيد التنفيذ
+shared checkout|ortak çalışma kopyası|gemeinsamer Checkout|copie de travail partagée|checkout condiviso|نسخة عمل مشتركة
+isolated|yalıtılmış|isoliert|isolé|isolato|معزول
+Candidate %s · %s · %d/%d checks|Aday %s · %s · %d/%d kontrol|Kandidat %s · %s · %d/%d Prüfungen|Candidat %s · %s · %d/%d vérifications|Candidato %s · %s · %d/%d controlli|المرشح %s · %s · %d/%d فحوصات
+Discriminating checks:|Ayırt edici kontroller:|Unterscheidende Prüfungen:|Vérifications discriminantes :|Controlli discriminanti:|فحوصات مميِّزة:
+Open question %s|Açık soru %s|Offene Frage %s|Question ouverte %s|Domanda aperta %s|سؤال مفتوح %s
+Blocks:|Engellediği:|Blockiert:|Bloque :|Blocca:|يحجب:
+Failed attempt:|Başarısız deneme:|Fehlgeschlagener Versuch:|Tentative échouée :|Tentativo fallito:|محاولة فاشلة:

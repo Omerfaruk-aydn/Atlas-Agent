@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
@@ -96,6 +97,32 @@ func TestSharedTaskRequirementsRejectModelAndUnrelatedProof(t *testing.T) {
 	requirements, err = sharedTaskRequirements(t.Context(), a.engineering, a.sessions, sessionID)
 	require.NoError(t, err)
 	require.Equal(t, outcome.PhaseApplied, requirements[0].Phase, "later mutations require fresh checks")
+}
+
+func TestWorkContractJoinsSharedCompletion(t *testing.T) {
+	t.Parallel()
+	a, id := sharedOutcomeAgent(t)
+	_, err := a.engineering.UpdateWork(t.Context(), id, func(w *engineering.WorkState, _ engineering.State) error {
+		w.RecordUserTurn("fix export", time.Now())
+		_, err := w.AddItem("behavior", "export works", engineering.OriginUser, []int{1}, time.Now())
+		return err
+	})
+	require.NoError(t, err)
+	decision := a.sharedCompletionPrompt(t.Context(), id, sharedEndTurn(), 0)
+	require.True(t, decision.Continue)
+	require.Contains(t, decision.Prompt, "work:R1")
+	_, err = a.engineering.UpdateWork(t.Context(), id, func(w *engineering.WorkState, st engineering.State) error {
+		w.Items[0].Status = engineering.ItemVerified
+		w.Items[0].Evidence = []engineering.EvidenceRef{{Passed: true, Generation: st.Generation}}
+		return nil
+	})
+	require.NoError(t, err)
+	decision = a.sharedCompletionPrompt(t.Context(), id, sharedEndTurn(), 0)
+	require.False(t, decision.Continue)
+	require.Zero(t, decision.Open)
+	require.NoError(t, a.engineering.Update(t.Context(), id, func(st *engineering.State) error { st.Generation++; return nil }))
+	decision = a.sharedCompletionPrompt(t.Context(), id, sharedEndTurn(), 0)
+	require.True(t, decision.Continue, "stale verification cannot end the contract")
 }
 
 func TestSharedTaskRequirementsRequireActualOperationForOutputEvidence(t *testing.T) {

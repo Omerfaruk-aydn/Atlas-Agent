@@ -52,6 +52,9 @@ func (m *mockSessionAgent) SetAdvisorOptions(advisorModel *Model, advisorTools [
 
 func (m *mockSessionAgent) SetEscalateOptions(escalateModel *Model, escalateTools []fantasy.AgentTool, threshold string) {
 }
+
+func (m *mockSessionAgent) SetEvaluatorOptions(evaluatorModel *Model, evaluatorTools []fantasy.AgentTool, maxRounds int) {
+}
 func (m *mockSessionAgent) SetFallbackCooldown(d time.Duration) {}
 func (m *mockSessionAgent) SetSummarizeOptions(autoSummarizeAt float64, disableAutoSummarize bool, compactModel *Model) {
 }

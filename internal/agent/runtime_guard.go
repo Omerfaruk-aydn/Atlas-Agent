@@ -172,7 +172,7 @@ func (t *guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 			return resp, err
 		}
 	}
-	mutation := call.Name == "edit" || call.Name == "write" || call.Name == "multiedit" || call.Name == tools.ReplaceSymbolToolName || call.Name == tools.RenameToolName || call.Name == tools.LspRenameFileToolName
+	mutation := call.Name == "edit" || call.Name == "write" || call.Name == "multiedit" || call.Name == tools.ReplaceSymbolToolName || call.Name == tools.RenameToolName || call.Name == tools.LspRenameFileToolName || call.Name == tools.SkillManageToolName
 	if call.Name == tools.ReplaceSymbolToolName || call.Name == tools.RenameToolName || call.Name == tools.LspRenameFileToolName || call.Name == tools.LSPEditPlanToolName {
 		var meta struct {
 			Mutation bool `json:"semantic_mutation"`

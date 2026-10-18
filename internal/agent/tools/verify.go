@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workplan"
 )
 
 type ToolInvoker func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error)
@@ -150,6 +152,33 @@ func DiscoverVerification(root string) []VerificationStep {
 			}
 		}
 	}
+	return withPlanChecks(root, steps)
+}
+
+// withPlanChecks adds the work plan's runnable checks that discovery did
+// not already find: the project's own contract is what "verified" means
+// for it, and a stack guess misses e.g. an end-to-end suite.
+func withPlanChecks(root string, steps []VerificationStep) []VerificationStep {
+	plan, _, err := workplan.Load(root)
+	if err != nil || plan == nil {
+		return steps
+	}
+	have := map[string]bool{}
+	for _, step := range steps {
+		var in BashParams
+		if step.Tool == "bash" && json.Unmarshal(step.Input, &in) == nil {
+			have[strings.Join(strings.Fields(in.Command), " ")] = true
+		}
+	}
+	for _, check := range plan.Verify {
+		command := strings.Join(strings.Fields(check.Command), " ")
+		if command == "" || have[command] || workplan.CheckProblem(command) != "" || len(steps) >= 12 {
+			continue
+		}
+		have[command] = true
+		data, _ := json.Marshal(BashParams{Description: "Verify " + cmp.Or(check.Name, command), Command: command, AutoBackgroundAfter: 1800})
+		steps = append(steps, VerificationStep{Name: cmp.Or(check.Name, command), Tool: "bash", Input: data})
+	}
 	return steps
 }
 
@@ -195,6 +224,13 @@ func NewVerifyTool(root string, store *engineering.Store, invoke ToolInvoker, av
 		}
 		if p.Action != "run" || len(checks) == 0 {
 			return fantasy.NewTextErrorResponse("use plan or run; explicit checks are required for an unknown stack"), nil
+		}
+		if len(p.Checks) > 0 {
+			resolved, err := resolvePlanReferences(checks, DiscoverVerification(root))
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			checks = resolved
 		}
 		for _, c := range checks {
 			if c.Name == "" || len(c.Name) > 128 || len(c.Input) > 16*1024 || !json.Valid(c.Input) || !engineering.IsVerificationTool(c.Tool) {

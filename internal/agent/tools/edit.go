@@ -13,6 +13,7 @@ import (
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/diff"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/filepathext"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/filetracker"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/fsext"
@@ -23,10 +24,11 @@ import (
 )
 
 type EditParams struct {
-	FilePath   string `json:"file_path" description:"The absolute path to the file to modify"`
-	OldString  string `json:"old_string,omitempty" description:"The exact text to replace. Omit this and use anchor_line + anchor_hash instead for a single-line change, when view is showing hash anchors."`
-	NewString  string `json:"new_string" description:"The text to replace it with. May be empty to delete, or span multiple lines to expand one line into several."`
-	ReplaceAll bool   `json:"replace_all,omitempty" description:"Replace all occurrences of old_string (default false)"`
+	ExpectedFileHash string `json:"expected_file_hash,omitempty" description:"Optional SHA-256 of the exact current file bytes. Checked before editing and again after approval; drift rejects the write."`
+	FilePath         string `json:"file_path" description:"The absolute path to the file to modify"`
+	OldString        string `json:"old_string,omitempty" description:"The exact text to replace. Omit this and use anchor_line + anchor_hash instead for a single-line change, when view is showing hash anchors."`
+	NewString        string `json:"new_string" description:"The text to replace it with. May be empty to delete, or span multiple lines to expand one line into several."`
+	ReplaceAll       bool   `json:"replace_all,omitempty" description:"Replace all occurrences of old_string (default false)"`
 
 	AnchorLine int    `json:"anchor_line,omitempty" description:"1-indexed line number to replace, using the hash view showed next to it. An alternative to old_string for a single line: no need to reproduce its exact whitespace. Requires anchor_hash; cannot be combined with old_string."`
 	AnchorHash string `json:"anchor_hash,omitempty" description:"The hash view displayed for anchor_line. Verified against the file's current content before the edit is applied; a mismatch means the file changed since it was last viewed, and the edit is rejected instead of landing on the wrong line."`
@@ -58,6 +60,8 @@ type editContext struct {
 	workingDir  string
 }
 
+type expectedEditHashKey struct{}
+
 func NewEditTool(
 	lspManager *lsp.Manager,
 	permissions permission.Service,
@@ -84,6 +88,12 @@ func NewEditTool(
 			var err error
 
 			editCtx := editContext{ctx, permissions, files, filetracker, workingDir}
+			if params.ExpectedFileHash != "" {
+				if params.OldString == "" || len(params.ExpectedFileHash) != 64 {
+					return fantasy.NewTextErrorResponse("expected_file_hash requires a 64-character SHA-256 and old_string"), nil
+				}
+				editCtx.ctx = context.WithValue(ctx, expectedEditHashKey{}, params.ExpectedFileHash)
+			}
 
 			switch {
 			case params.AnchorLine > 0:
@@ -263,6 +273,12 @@ func notFoundError(content, old string) error {
 // and records the read in the file tracker. Callers must convert line endings
 // before calling this function.
 func commitFileChange(edit editContext, sessionID, filePath, oldContent, newContent string) error {
+	if expected, _ := edit.ctx.Value(expectedEditHashKey{}).(string); expected != "" {
+		current, err := os.ReadFile(filePath)
+		if err != nil || engineering.Hash(string(current)) != expected {
+			return fmt.Errorf("file changed before commit; no write sent")
+		}
+	}
 	if err := os.WriteFile(filePath, []byte(newContent), 0o644); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
@@ -329,6 +345,9 @@ func loadExistingFile(edit editContext, filePath, sessionError string) (sessionI
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", "", false, fantasy.ToolResponse{}, fmt.Errorf("failed to read file: %w", err)
+	}
+	if expected, _ := edit.ctx.Value(expectedEditHashKey{}).(string); expected != "" && engineering.Hash(string(content)) != expected {
+		return "", "", false, fantasy.NewTextErrorResponse("file hash changed; no write sent"), nil
 	}
 
 	oldContent, isCrlf = fsext.ToUnixLineEndings(string(content))

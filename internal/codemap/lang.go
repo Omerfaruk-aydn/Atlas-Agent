@@ -309,3 +309,28 @@ var extensions = map[string]string{
 	".ipynb": "notebook", ".dockerfile": "docker", ".mk": "make",
 }
 
+// namedFiles maps a file name to its language when the extension does
+// not say it.
+var namedFiles = map[string]string{
+	"dockerfile": "docker", "containerfile": "docker",
+	"makefile": "make", "gnumakefile": "make", "justfile": "just", ".justfile": "just",
+	"package.json": "npm", "taskfile.yml": "taskfile", "taskfile.yaml": "taskfile",
+	"docker-compose.yml": "compose", "docker-compose.yaml": "compose", "compose.yml": "compose", "compose.yaml": "compose",
+	".gitlab-ci.yml": "gitlab-ci", "pyproject.toml": "pyproject", "cargo.toml": "cargo",
+}
+
+// assetKinds maps the extension of a file that is not read as text to
+// what it is.
+var assetKinds = map[string]string{
+	".png": "image", ".jpg": "image", ".jpeg": "image", ".gif": "image", ".webp": "image", ".svg": "image", ".ico": "image",
+	".bmp": "image", ".avif": "image", ".tif": "image", ".tiff": "image", ".heic": "image", ".hdr": "image", ".exr": "image",
+	".ktx2": "image", ".dds": "image", ".tga": "image",
+	".woff": "font", ".woff2": "font", ".ttf": "font", ".otf": "font", ".eot": "font",
+	".mp3": "audio", ".wav": "audio", ".ogg": "audio", ".flac": "audio", ".m4a": "audio", ".aac": "audio", ".opus": "audio",
+	".mp4": "video", ".webm": "video", ".mov": "video", ".mkv": "video", ".avi": "video", ".m4v": "video",
+	".glb": "model", ".gltf": "model", ".obj": "model", ".fbx": "model", ".stl": "model", ".dae": "model", ".3ds": "model",
+	".usdz": "model", ".ply": "model",
+	".pdf": "document",
+	".csv": "data", ".tsv": "data", ".geojson": "data", ".parquet": "data", ".wasm": "data",
+}
+

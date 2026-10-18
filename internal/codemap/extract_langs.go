@@ -397,3 +397,62 @@ func (x *extractor) lispRef(i int) {
 	x.addRef(name, qualifier, kind, t.line)
 }
 
+// juxtaposedRef records a name in an expression of a language that calls
+// functions without parentheses.
+func (x *extractor) juxtaposedRef(i int) {
+	t := x.toks[i]
+	name := t.text
+	if len(name) < 2 || x.lang.notCalls[name] {
+		return
+	}
+	if _, ok := x.lang.decls[name]; ok {
+		return
+	}
+	next := x.tok(i + 1).text
+	if next == "." && x.tok(i+2).kind == tIdent {
+		// A module qualifier: the use is the name after it.
+		return
+	}
+	prev := x.tok(i - 1)
+	if next == "=" && (t.first || prev.text == "let" || prev.text == "," || prev.text == "{" || prev.text == "and" || prev.text == "mutable") {
+		// A binding or a record label.
+		return
+	}
+	if (next == ":" || next == "::") && (prev.text == "{" || prev.text == "," || prev.text == ";" || prev.text == "(" || prev.text == "mutable" || t.first) {
+		// A record field or an annotated parameter: { mass : float }.
+		return
+	}
+	if prev.text == ":" && isLowerStart(name) && (x.lang.name == "ocaml" || x.lang.name == "fsharp") {
+		// A type in an annotation: x : float.
+		return
+	}
+	qualifier := ""
+	if prev.text == "." && x.tok(i-2).kind == tIdent {
+		qualifier = x.tok(i - 2).text
+	}
+	kind := RefCall
+	if isUpperStart(name) {
+		kind = RefUse
+	}
+	x.addRef(name, qualifier, kind, t.line)
+}
+
+// commandRef records a PowerShell command, called by its name at the
+// start of a statement or pipeline stage.
+func (x *extractor) commandRef(i int) bool {
+	t := x.toks[i]
+	prev := x.tok(i - 1)
+	if !t.first && prev.text != "|" && prev.text != "=" && prev.text != "(" && prev.text != "{" && prev.text != ";" && prev.text != "&" {
+		return false
+	}
+	w := strings.ToLower(t.text)
+	if x.lang.notCalls[w] || strings.HasPrefix(w, "$") || strings.HasPrefix(w, "-") || x.tok(i+1).text == "=" {
+		return false
+	}
+	if _, ok := x.lang.decls[w]; ok {
+		return false
+	}
+	x.addRef(t.text, "", RefCall, t.line)
+	return true
+}
+

@@ -102,3 +102,20 @@ func tagClose(s string, from int) int {
 	return -1
 }
 
+// keepBlocks returns content with everything outside the chosen blocks
+// blanked, keeping the line breaks so line numbers stay.
+func keepBlocks(content string, blocks []block, keep func(block) bool) string {
+	var b strings.Builder
+	pos := 0
+	for _, bl := range blocks {
+		if !keep(bl) {
+			continue
+		}
+		b.WriteString(blankLines(content[pos:bl.start]))
+		b.WriteString(content[bl.start:bl.end])
+		pos = bl.end
+	}
+	b.WriteString(blankLines(content[pos:]))
+	return b.String()
+}
+

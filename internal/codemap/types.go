@@ -78,3 +78,13 @@ type Binding struct {
 	Remote string `json:"remote"`
 }
 
+// Ref is a use of a name: a call, an instantiation or a base type.
+type Ref struct {
+	Name string `json:"name"`
+	// Qualifier is the name before the dot or ::, if any (pkg in
+	// pkg.Func, this in this.update).
+	Qualifier string `json:"qualifier,omitempty"`
+	Kind      string `json:"kind"`
+	Line      int    `json:"line"`
+}
+

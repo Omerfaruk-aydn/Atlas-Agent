@@ -173,3 +173,40 @@ func qualifierOf(expr ast.Expr) string {
 	return ""
 }
 
+// goEmbeds records the files a //go:embed directive puts in the binary:
+// names, globs and directories, relative to the package.
+func goEmbeds(out *File, lines []string) {
+	for n, line := range lines {
+		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "//go:embed ")
+		if !ok {
+			continue
+		}
+		for _, pattern := range embedPatterns(rest) {
+			pattern = strings.TrimPrefix(pattern, "all:")
+			if pattern != "" {
+				addLink(out, FileLink{Target: "./" + pattern, Kind: LinkEmbeds, Line: n + 1})
+			}
+		}
+	}
+}
+
+// embedPatterns splits a go:embed argument list, which may quote names
+// with spaces.
+func embedPatterns(s string) []string {
+	var out []string
+	for s = strings.TrimSpace(s); s != ""; s = strings.TrimSpace(s) {
+		if s[0] == '"' || s[0] == '`' {
+			end := strings.IndexByte(s[1:], s[0])
+			if end < 0 {
+				break
+			}
+			out = append(out, s[1:end+1])
+			s = s[end+2:]
+			continue
+		}
+		field, rest, _ := strings.Cut(s, " ")
+		out = append(out, field)
+		s = rest
+	}
+	return out
+}

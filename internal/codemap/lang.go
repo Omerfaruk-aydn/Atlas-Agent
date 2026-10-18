@@ -110,3 +110,21 @@ var (
 	lispControl = words("if when unless cond case let let* letfn loop recur do fn lambda quote and or not def defn defn- defmacro defprotocol defrecord deftype defmulti defmethod definterface defun defclass defstruct defgeneric define define-syntax define-record-type ns require import progn setq setf try catch finally throw doseq dotimes for while begin set! else")
 )
 
+func words(s string) map[string]bool {
+	out := map[string]bool{}
+	for _, w := range strings.Fields(s) {
+		out[w] = true
+	}
+	return out
+}
+
+func merge(sets ...map[string]bool) map[string]bool {
+	out := map[string]bool{}
+	for _, s := range sets {
+		for w := range s {
+			out[w] = true
+		}
+	}
+	return out
+}
+

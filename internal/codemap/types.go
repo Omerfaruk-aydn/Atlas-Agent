@@ -37,3 +37,11 @@ const (
 	LinkRuns     = "runs"
 )
 
+// Asset is what the map measures of a file it does not read.
+type Asset struct {
+	Bytes  int64  `json:"bytes"`
+	Format string `json:"format,omitempty"`
+	Width  int    `json:"width,omitempty"`
+	Height int    `json:"height,omitempty"`
+}
+

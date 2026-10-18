@@ -311,3 +311,15 @@ func (lx *lexer) number() {
 	lx.emit(tNumber, lx.src[start:lx.pos], lx.line)
 }
 
+func (lx *lexer) punct(size int) {
+	rest := lx.src[lx.pos:]
+	for _, p := range multiPunct {
+		if strings.HasPrefix(rest, p) {
+			lx.pos += len(p)
+			lx.emit(tPunct, p, lx.line)
+			return
+		}
+	}
+	lx.pos += size
+	lx.emit(tPunct, rest[:size], lx.line)
+}

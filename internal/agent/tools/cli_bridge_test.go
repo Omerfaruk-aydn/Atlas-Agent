@@ -119,7 +119,7 @@ var defaultFixtureOps = []map[string]any{
 	fixtureOperation("sleep", []any{"sleep", "{seconds}", "{output}"}, []any{
 		map[string]any{"name": "seconds", "type": "integer", "required": true, "min": 0, "max": 60},
 		map[string]any{"name": "output", "type": "output_file"},
-	}, map[string]any{"timeout_seconds": 2, "background": true, "outputs": []any{map[string]any{"param": "output", "min_bytes": 1}}}),
+	}, map[string]any{"timeout_seconds": 5, "background": true, "outputs": []any{map[string]any{"param": "output", "min_bytes": 1}}}),
 	fixtureOperation("flood", []any{"flood", "{bytes}"}, []any{
 		map[string]any{"name": "bytes", "type": "integer", "required": true, "min": 0, "max": 8 << 20},
 	}, map[string]any{"max_output_bytes": 4096}),

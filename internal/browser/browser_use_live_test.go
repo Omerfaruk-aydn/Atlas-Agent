@@ -303,7 +303,11 @@ func TestLivePopupThenReturnToWorkTab(t *testing.T) {
 	_, _, err = s.Advanced(ctx, Request{Action: "tab_select", TabID: popup.TabID})
 	require.NoError(t, err)
 	_, _, err = s.Advanced(ctx, Request{Action: "semantic_click", Role: "button", Name: "Allow", TimeoutMS: 5000})
-	require.NoError(t, err)
+	if err != nil {
+		// Closing the target can discard the click acknowledgment. The
+		// closure and opener-side effect are independently required below.
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	}
 
 	// The popup closed itself. Page actions report tab_closed, the browser
 	// survives, and tab_return goes back to the opener.

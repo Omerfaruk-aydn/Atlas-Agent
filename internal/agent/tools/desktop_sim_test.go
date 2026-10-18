@@ -335,8 +335,9 @@ func (d *simDesktop) Automation(_ context.Context, q computer.AutomationRequest)
 func (d *simDesktop) put(full, content string) {
 	d.files[full] = content
 	if d.onDisk {
-		_ = os.MkdirAll(filepath.Dir(full), 0o755)
-		_ = os.WriteFile(full, []byte(content), 0o644)
+		diskPath := filepath.FromSlash(strings.ReplaceAll(full, `\`, "/"))
+		_ = os.MkdirAll(filepath.Dir(diskPath), 0o755)
+		_ = os.WriteFile(diskPath, []byte(content), 0o644)
 	}
 }
 
@@ -344,7 +345,7 @@ func (d *simDesktop) put(full, content string) {
 func (d *simDesktop) drop(full string) {
 	delete(d.files, full)
 	if d.onDisk {
-		_ = os.Remove(full)
+		_ = os.Remove(filepath.FromSlash(strings.ReplaceAll(full, `\`, "/")))
 	}
 }
 

@@ -69,16 +69,16 @@ require (
 	go.uber.org/goleak v1.3.0
 	go.yaml.in/yaml/v4 v4.0.0-rc.3
 	golang.design/x/clipboard v0.8.0
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.57.0
 	golang.org/x/exp v0.0.0-20260718201538-764159d718ef
 	golang.org/x/image v0.45.0
-	golang.org/x/mod v0.38.0
-	golang.org/x/net v0.58.0
+	golang.org/x/mod v0.41.0
+	golang.org/x/net v0.60.0
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sync v0.22.0
-	golang.org/x/sys v0.47.0
-	golang.org/x/term v0.45.0
-	golang.org/x/text v0.41.0
+	golang.org/x/sync v0.23.0
+	golang.org/x/sys v0.48.0
+	golang.org/x/term v0.46.0
+	golang.org/x/text v0.42.0
 	google.golang.org/genai v1.68.0
 	gopkg.in/dnaeon/go-vcr.v4 v4.0.6-0.20251110073552-01de4eb40290
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
@@ -185,7 +185,7 @@ require (
 	golang.org/x/exp/shiny v0.0.0-20250606033433-dcc06ee1d476 // indirect
 	golang.org/x/mobile v0.0.0-20250606033058-a2a15c67f36f // indirect
 	golang.org/x/time v0.15.0 // indirect
-	golang.org/x/tools v0.48.0 // indirect
+	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/api v0.293.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260818201246-1b0934165a6f // indirect
 	google.golang.org/grpc v1.83.0 // indirect

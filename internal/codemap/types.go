@@ -45,3 +45,29 @@ type Asset struct {
 	Height int    `json:"height,omitempty"`
 }
 
+// Symbol is a definition: a function, method, class, type and the like.
+type Symbol struct {
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	// Container is the class, type or module the symbol is defined in.
+	Container string `json:"container,omitempty"`
+	Line      int    `json:"line"`
+	EndLine   int    `json:"end_line"`
+	// Signature is the definition's first line, trimmed.
+	Signature string `json:"signature,omitempty"`
+	Exported  bool   `json:"exported,omitempty"`
+}
+
+// Import is one import statement.
+type Import struct {
+	// Spec is the module, path or package as written.
+	Spec string `json:"spec"`
+	// Bindings are the names the import brings into the file.
+	Bindings []Binding `json:"bindings,omitempty"`
+	// Module is set when the import binds the whole module to a name
+	// (import * as X, import pkg, import numpy as np), so X.name refers
+	// to a definition in the module.
+	Module string `json:"module,omitempty"`
+	Line   int    `json:"line"`
+}
+

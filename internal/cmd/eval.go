@@ -118,7 +118,28 @@ func newEvalCommand() *cobra.Command {
 			return encoder.Encode(report)
 		},
 	})
+	command.AddCommand(&cobra.Command{
+		Use:   "attempts <results.json>",
+		Short: "Separate first-attempt, any-attempt and measured delivery success",
+		Long:  "Group live records by model and scenario. pass_at_1 uses the first non-provider-failed attempt and pass_at_k any candidate. delivered_success_rate scores separately executed selection runs (manifest select_delivery and delivery_files); missing delivery runs remain unmeasured. predicted_selection_success_rate is only a retrospective heuristic. Provider failures are reported separately.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var records []evaluation.LiveRecord
+			if err := evaluation.ReadJSONFile(args[0], &records); err != nil {
+				return err
+			}
+			report, err := evaluation.SummarizeAttempts(records)
+			if err != nil {
+				return err
+			}
+			encoder := json.NewEncoder(cmd.OutOrStdout())
+			encoder.SetIndent("", "  ")
+			return encoder.Encode(report)
+		},
+	})
 	command.AddCommand(newPromptComparisonCommand())
+	command.AddCommand(newEvalBenchCommand())
+	command.AddCommand(newEvalCorpusCommand())
 	return command
 }
 

@@ -79,6 +79,17 @@ func TestLiveManifestRejectsIncompleteChecksBeforeLaunching(t *testing.T) {
 	require.Error(t, ValidateLive(LiveManifest{Repository: t.TempDir(), Models: []string{"model"}, PromptVersion: "v1", Cases: []LiveCase{{Scenario: "ui-states", Prompt: "task"}}}))
 }
 
+func TestRuntimeVerificationRequiresCurrentContract(t *testing.T) {
+	t.Parallel()
+	require.False(t, workContractVerified(engineering.State{}))
+	st := engineering.State{Generation: 2, Work: &engineering.WorkState{Items: []engineering.WorkItem{{Origin: engineering.OriginUser, Status: engineering.ItemVerified, Evidence: []engineering.EvidenceRef{{Passed: true, Generation: 1}}}}}}
+	require.False(t, workContractVerified(st))
+	st.Work.Items[0].Evidence[0].Generation = 2
+	require.True(t, workContractVerified(st))
+	st.Work.Items[0].Status = engineering.ItemOpen
+	require.False(t, workContractVerified(st))
+}
+
 func TestLiveCommandRunnerObservesActualExitCodeAndIsolatedEnvironment(t *testing.T) {
 	program, err := os.Executable()
 	require.NoError(t, err)

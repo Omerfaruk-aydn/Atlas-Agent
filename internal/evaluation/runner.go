@@ -27,6 +27,8 @@ type (
 		Checks   []LiveCheck `json:"checks"`
 	}
 	LiveManifest struct {
+		SelectDelivery bool       `json:"select_delivery,omitempty"`
+		DeliveryFiles  []string   `json:"delivery_files,omitempty"`
 		Repeats        int        `json:"repeats,omitempty"`
 		Role           string     `json:"role,omitempty"`
 		Repository     string     `json:"repository"`
@@ -38,16 +40,36 @@ type (
 )
 
 type LiveRecord struct {
-	CaseHash    string `json:"case_hash,omitempty"`
-	Baseline    string `json:"baseline,omitempty"`
-	FixtureHash string `json:"fixture_hash,omitempty"`
-	RecordedAt  int64  `json:"recorded_at,omitempty"`
+	ProviderInvocations     *int64 `json:"provider_invocations,omitempty"`
+	ProviderInvocationBasis string `json:"provider_invocation_basis,omitempty"`
+	Delivery                bool   `json:"delivery,omitempty"`
+	CandidateAttempts       []int  `json:"candidate_attempts,omitempty"`
+	CaseHash                string `json:"case_hash,omitempty"`
+	Baseline                string `json:"baseline,omitempty"`
+	FixtureHash             string `json:"fixture_hash,omitempty"`
+	RecordedAt              int64  `json:"recorded_at,omitempty"`
 	Run
 	Workspace     string `json:"workspace"`
 	SessionID     string `json:"session_id,omitempty"`
 	AgentError    string `json:"agent_error,omitempty"`
 	ClaimObserved bool   `json:"claim_observed"`
+	ClaimBasis    string `json:"claim_basis,omitempty"`
 	MetricsSource string `json:"metrics_source"`
+	// Attempt is the zero-based repeat index of this model on this case.
+	Attempt       int    `json:"attempt"`
+	ProviderSteps int64  `json:"provider_steps,omitempty"`
+	ToolErrors    int64  `json:"tool_errors,omitempty"`
+	FinishReason  string `json:"finish_reason,omitempty"`
+	FinishError   string `json:"finish_error,omitempty"`
+	// ErrorKind separates provider/transport failures and timeouts from
+	// the agent failing; see ClassifyError.
+	ErrorKind string `json:"error_kind,omitempty"`
+	// AtlasVerified is Atlas's own view: a passing check was observed at
+	// the final source generation and no user requirement was left open.
+	// External checkers are not consulted for it.
+	AtlasVerified  bool   `json:"atlas_verified"`
+	ActualProvider string `json:"actual_provider,omitempty"`
+	ActualModel    string `json:"actual_model,omitempty"`
 }
 
 type CommandRunner func(context.Context, string, string, []string) ([]byte, error)
@@ -92,6 +114,16 @@ func (b *limitedLiveOutput) Write(p []byte) (int, error) {
 }
 
 func ValidateLive(m LiveManifest) error {
+	if m.SelectDelivery {
+		if len(m.DeliveryFiles) == 0 || len(m.DeliveryFiles) > 16 {
+			return errors.New("select_delivery requires 1-16 explicit delivery_files")
+		}
+		for _, path := range m.DeliveryFiles {
+			if !safeDeliveryPath(path) {
+				return errors.New("delivery_files must be literal relative paths")
+			}
+		}
+	}
 	repeats := m.Repeats
 	if repeats == 0 {
 		repeats = 1
@@ -99,7 +131,11 @@ func ValidateLive(m LiveManifest) error {
 			repeats = 3
 		}
 	}
-	if repeats < 1 || repeats > 20 || len(m.Models)*len(m.Cases)*repeats > 256 {
+	runs := repeats
+	if m.SelectDelivery {
+		runs++
+	}
+	if repeats < 1 || repeats > 20 || len(m.Models)*len(m.Cases)*runs > 256 {
 		return errors.New("repeats must be 1-20 with at most 256 total runs")
 	}
 	if m.Role != "" {
@@ -188,7 +224,7 @@ func RunLive(ctx context.Context, m LiveManifest, program, output string, allowT
 		}
 	}
 	for _, model := range m.Models {
-		for range repeats {
+		for attempt := range repeats {
 			for _, c := range m.Cases {
 				if err := ctx.Err(); err != nil {
 					return records, err
@@ -210,23 +246,44 @@ func RunLive(ctx context.Context, m LiveManifest, program, output string, allowT
 				data, runErr := runner(runCtx, w.Path, program, args)
 				cancel()
 				var result struct {
-					SessionID        string  `json:"session_id"`
-					PromptTokens     int64   `json:"prompt_tokens"`
-					CompletionTokens int64   `json:"completion_tokens"`
-					Cost             float64 `json:"cost"`
-					ClaimedComplete  *bool   `json:"claimed_complete"`
+					ProviderInvocations     *int64  `json:"provider_invocations"`
+					ProviderInvocationBasis string  `json:"provider_invocation_basis"`
+					SessionID               string  `json:"session_id"`
+					PromptTokens            int64   `json:"prompt_tokens"`
+					CompletionTokens        int64   `json:"completion_tokens"`
+					Cost                    float64 `json:"cost"`
+					ClaimedComplete         *bool   `json:"claimed_complete"`
+					ClaimBasis              string  `json:"claim_basis"`
+					ProviderSteps           int64   `json:"provider_steps"`
+					ToolCalls               int64   `json:"tool_calls"`
+					ToolErrors              int64   `json:"tool_errors"`
+					FinishReason            string  `json:"finish_reason"`
+					FinishError             string  `json:"finish_error"`
+					Provider                string  `json:"provider"`
+					Model                   string  `json:"model"`
 				}
 				decodeErr := json.Unmarshal(data, &result)
 				record := LiveRecord{Run: Run{Scenario: c.Scenario, Model: model, PromptVersion: m.PromptVersion, Tokens: result.PromptTokens + result.CompletionTokens, Cost: result.Cost}, Workspace: w.Path, SessionID: result.SessionID}
 				record.MetricsSource = "session_context_fallback"
+				record.ProviderInvocations = result.ProviderInvocations
+				record.ProviderInvocationBasis = result.ProviderInvocationBasis
+				record.Attempt = attempt
+				record.ProviderSteps, record.ToolErrors, record.ToolCalls = result.ProviderSteps, result.ToolErrors, result.ToolCalls
+				record.FinishReason, record.FinishError = result.FinishReason, result.FinishError
+				record.ActualProvider, record.ActualModel = result.Provider, result.Model
 				if result.ClaimedComplete != nil {
-					record.ClaimObserved = true
-					record.ClaimedComplete = *result.ClaimedComplete
+					record.ClaimBasis = result.ClaimBasis
+					record.ClaimObserved = result.ClaimBasis != "normal_end_turn_proxy"
+					record.ClaimedComplete = record.ClaimObserved && *result.ClaimedComplete
 				}
 				if runErr != nil {
 					record.AgentError = runErr.Error()
 				} else if decodeErr != nil {
 					record.AgentError = "agent returned invalid JSON: " + decodeErr.Error()
+				}
+				record.ErrorKind = ClassifyError(record.AgentError, record.FinishError)
+				if record.ErrorKind == "" && result.FinishReason == "error" {
+					record.ErrorKind = ClassifyError("", "error")
 				}
 				record.ExecutionError = record.AgentError
 				record.Role = m.Role
@@ -259,6 +316,8 @@ func RunLive(ctx context.Context, m LiveManifest, program, output string, allowT
 						record.Cost = state.Usage.Cost
 						record.ToolCalls = state.Usage.ToolCalls
 						record.RepeatedToolCalls = state.Usage.RepeatedFailedCalls
+						_, checked := engineering.LatestCheck(state)
+						record.AtlasVerified = checked && workContractVerified(state)
 					}
 				}
 				records = append(records, record)
@@ -272,5 +331,26 @@ func RunLive(ctx context.Context, m LiveManifest, program, output string, allowT
 			}
 		}
 	}
+	if m.SelectDelivery {
+		return runDeliverySelection(ctx, m, program, output, allowTools, runner, records)
+	}
 	return records, nil
+}
+
+func workContractVerified(st engineering.State) bool {
+	if st.Work == nil {
+		return false
+	}
+	requested := 0
+	for _, item := range st.Work.Items {
+		if item.Origin != engineering.OriginUser || item.Status == engineering.ItemSuperseded {
+			continue
+		}
+		requested++
+		status := engineering.EffectiveStatus(item, st.Generation)
+		if status != engineering.ItemDelivered && status != engineering.ItemVerified {
+			return false
+		}
+	}
+	return requested > 0
 }

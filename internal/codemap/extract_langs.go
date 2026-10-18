@@ -136,3 +136,18 @@ func (x *extractor) equationDecl(i int) bool {
 	return true
 }
 
+// defineOnce records the definition named at i unless an earlier clause
+// already did.
+func (x *extractor) defineOnce(i int, kind string) {
+	name := x.toks[i].text
+	if x.defined[name] {
+		return
+	}
+	x.defined[name] = true
+	container := ""
+	if x.lang.name == "erlang" {
+		container = strings.TrimSuffix(path.Base(x.file.Path), path.Ext(x.file.Path))
+	}
+	x.addSymbol(i, name, kind, container, -1)
+}
+

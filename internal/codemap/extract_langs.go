@@ -334,3 +334,35 @@ func (x *extractor) vhdlDecl(i int) bool {
 	return false
 }
 
+// gdscriptDecl handles extends and class_name, which names the class the
+// whole file defines.
+func (x *extractor) gdscriptDecl(i int) bool {
+	t := x.toks[i]
+	if !t.first {
+		return false
+	}
+	next := x.tok(i + 1)
+	switch t.text {
+	case "extends":
+		switch next.kind {
+		case tString:
+			x.file.Imports = append(x.file.Imports, Import{Spec: next.text, Line: t.line})
+		case tIdent:
+			x.addRef(next.text, "", RefInherit, t.line)
+			x.names[i+1] = true
+		}
+		return true
+	case "class_name":
+		if next.kind != tIdent {
+			return false
+		}
+		x.names[i+1] = true
+		x.addSymbol(i+1, next.text, "class", "", -1)
+		s := len(x.file.Symbols) - 1
+		x.file.Symbols[s].EndLine = len(x.lines)
+		x.fixedEnd[s] = true
+		return true
+	}
+	return false
+}
+

@@ -266,3 +266,71 @@ func (x *extractor) pascalTypeDecl(i int) bool {
 	return true
 }
 
+// verilogInstance records Module #(...) name (...) and Module name (...):
+// an instance is a use of the module.
+func (x *extractor) verilogInstance(i int) {
+	t := x.toks[i]
+	if !t.first && x.tok(i-1).text != ";" {
+		return
+	}
+	if x.lang.notCalls[t.text] {
+		return
+	}
+	if _, ok := x.lang.decls[t.text]; ok {
+		return
+	}
+	next := x.tok(i + 1)
+	if next.text == "#" || next.kind == tIdent && x.tok(i+2).text == "(" {
+		x.addRef(t.text, "", RefNew, t.line)
+		x.names[i] = true
+		if next.kind == tIdent {
+			x.names[i+1] = true
+		}
+	}
+}
+
+// vhdlDecl handles architectures, component declarations, instances and
+// the end of a unit.
+func (x *extractor) vhdlDecl(i int) bool {
+	t := x.toks[i]
+	switch x.kw(t.text) {
+	case "architecture":
+		if x.tok(i+1).kind == tIdent && x.kw(x.tok(i+2).text) == "of" && x.tok(i+3).kind == tIdent {
+			x.names[i+1], x.names[i+3] = true, true
+			x.addSymbol(i+1, x.toks[i+1].text, "impl", x.toks[i+3].text, -1)
+			x.addRef(x.toks[i+3].text, "", RefUse, t.line)
+			return true
+		}
+	case "component":
+		if x.tok(i+1).kind == tIdent {
+			x.names[i+1] = true
+			x.addRef(x.toks[i+1].text, "", RefUse, t.line)
+			return true
+		}
+	case "entity":
+		if x.tok(i-1).text == ":" {
+			// u1 : entity work.counter
+			k := i + 1
+			for x.tok(k).kind == tIdent && x.tok(k+1).text == "." && x.tok(k+2).kind == tIdent {
+				k += 2
+			}
+			if x.tok(k).kind == tIdent {
+				x.addRef(x.toks[k].text, "", RefNew, t.line)
+				for j := i + 1; j <= k; j++ {
+					x.names[j] = true
+				}
+			}
+			return true
+		}
+	}
+	if x.tok(i-1).text == ":" {
+		// u1 : counter port map (...)
+		if w := x.kw(x.tok(i + 1).text); w == "port" || w == "generic" {
+			x.addRef(t.text, "", RefNew, t.line)
+			x.names[i] = true
+			return true
+		}
+	}
+	return false
+}
+

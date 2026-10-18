@@ -159,3 +159,17 @@ func typeName(expr ast.Expr) (string, string) {
 	return "", ""
 }
 
+// qualifierOf is the last name in the expression before a selector: pkg
+// in pkg.F, client in s.client.Do.
+func qualifierOf(expr ast.Expr) string {
+	switch x := expr.(type) {
+	case *ast.Ident:
+		return x.Name
+	case *ast.SelectorExpr:
+		return x.Sel.Name
+	case *ast.CallExpr:
+		return ""
+	}
+	return ""
+}
+

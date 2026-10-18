@@ -390,3 +390,24 @@ func Category(lang string) string {
 	return CategoryCode
 }
 
+// Languages lists the programming, markup, schema and build languages the
+// map reads.
+func Languages() []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(name string) {
+		if !seen[name] && Category(name) == CategoryCode {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	for _, name := range extensions {
+		add(name)
+	}
+	for _, name := range namedFiles {
+		add(name)
+	}
+	add("workflow")
+	add("openapi")
+	return out
+}

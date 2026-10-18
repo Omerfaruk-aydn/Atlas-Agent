@@ -151,3 +151,10 @@ func (l lineIndex) at(off int) int {
 
 type markupMode int
 
+const (
+	markupHTML markupMode = iota
+	markupVue
+	markupSvelte
+	markupAstro
+)
+

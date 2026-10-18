@@ -88,3 +88,29 @@ type Ref struct {
 	Line      int    `json:"line"`
 }
 
+// Ref kinds. The first four link code to code; the others cross into
+// stylesheets, markup, databases, build files, APIs and documentation.
+const (
+	RefCall    = "call"
+	RefNew     = "new"
+	RefInherit = "inherit"
+	RefUse     = "use"
+	// RefCSS uses a stylesheet class, mixin, variable or animation.
+	RefCSS = "css"
+	// RefDOM uses an element id defined in markup.
+	RefDOM = "element"
+	// RefTable reads or writes a database table, view or function.
+	RefTable = "table"
+	// RefTask runs a script, target, job, stage or service.
+	RefTask = "task"
+	// RefInfra uses an infrastructure resource, module or variable.
+	RefInfra = "infra"
+	// RefRoute requests an API endpoint.
+	RefRoute = "route"
+	// RefMention names a definition in documentation.
+	RefMention = "mention"
+)
+
+// Confidence says how a link was established.
+type Confidence string
+

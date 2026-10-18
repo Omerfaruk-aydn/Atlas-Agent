@@ -134,3 +134,7 @@ func scriptOnly(content string) string {
 	}
 }
 
+func blankLines(s string) string {
+	return strings.Repeat("\n", strings.Count(s, "\n"))
+}
+

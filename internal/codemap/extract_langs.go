@@ -60,3 +60,32 @@ func (x *extractor) langDeclAt(i int) bool {
 	return false
 }
 
+// markLine marks the rest of the line as names, which are not uses.
+func (x *extractor) markLine(i int) {
+	for j := i; j < len(x.toks) && x.toks[j].line == x.toks[i].line; j++ {
+		x.names[j] = true
+	}
+}
+
+// markHeader marks a module header up to its where or the end of its
+// export list.
+func (x *extractor) markHeader(i int) {
+	for j := i; j < len(x.toks) && j < i+400; j++ {
+		x.names[j] = true
+		if x.toks[j].text == "where" {
+			return
+		}
+		if x.toks[j].text == "(" {
+			if end, ok := x.match[j]; ok {
+				for k := j; k <= end; k++ {
+					x.names[k] = true
+				}
+				if x.lang.name == "elm" {
+					return
+				}
+				j = end
+			}
+		}
+	}
+}
+

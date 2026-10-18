@@ -10,6 +10,7 @@ import (
 	"unicode"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/schema"
 )
 
 const ToolSearchToolName = "tool_search"
@@ -19,6 +20,8 @@ const (
 	toolSearchMaxLimit     = 20
 	toolSearchMaxQuery     = 256
 	toolSearchMaxNames     = 16
+	// toolSearchMaxDetails bounds the descriptions or schemas in one reply.
+	toolSearchMaxDetails = 4
 	// toolSearchLoadScore is the relevance a query result needs before it is
 	// loaded. Name and category matches qualify; a single incidental word
 	// in a long description does not.
@@ -29,9 +32,10 @@ const (
 var toolSearchDescription string
 
 type ToolSearchParams struct {
-	Query string   `json:"query,omitempty" description:"Short capability words in English or the user's language, e.g. \"browser screenshot\", \"git diff\", \"masaüstü pencere\"."`
-	Names []string `json:"names,omitempty" description:"Exact tool names to load, e.g. [\"browser\"]. Use names listed in the deferred tool index."`
-	Limit int      `json:"limit,omitempty" description:"Maximum query results, 1-20; default 5."`
+	Query  string   `json:"query,omitempty" description:"Short capability words in English or the user's language, e.g. \"browser screenshot\", \"git diff\", \"masaüstü pencere\"."`
+	Names  []string `json:"names,omitempty" description:"Exact tool names to load, e.g. [\"browser\"]. Use names listed in the deferred tool index."`
+	Limit  int      `json:"limit,omitempty" description:"Maximum query results, 1-20; default 5."`
+	Detail string   `json:"detail,omitempty" description:"summary (default), description or schema. Details require exact names (up to 4 per reply; the rest are listed for a follow-up call) and return the live authorized tool definition without running it."`
 }
 
 // ToolSearchOptions wires tool_search to the live authorized palette of the
@@ -47,6 +51,10 @@ type ToolSearchOptions struct {
 	// Load records tools to expose from the next step on. It must not run
 	// them or grant anything.
 	Load func(context.Context, []string) error
+	// Observe, when set, is told how each capability query ended: how
+	// many results it had and how many closest-match suggestions. It is
+	// for harness statistics and must not affect the search.
+	Observe func(ctx context.Context, query string, results, closest int)
 }
 
 type toolSearchResult struct {
@@ -60,6 +68,14 @@ type toolSearchResult struct {
 // tools, and returns short summaries instead of schemas.
 func NewToolSearchTool(opts ToolSearchOptions) fantasy.AgentTool {
 	return fantasy.NewParallelAgentTool(ToolSearchToolName, toolSearchDescription, func(ctx context.Context, p ToolSearchParams, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		if p.Detail != "" && p.Detail != "summary" && p.Detail != "description" && p.Detail != "schema" {
+			return fantasy.NewTextErrorResponse("detail must be summary, description or schema"), nil
+		}
+		if p.Detail == "description" || p.Detail == "schema" {
+			if len(p.Names) < 1 || p.Query != "" {
+				return fantasy.NewTextErrorResponse("description/schema detail requires exact names and no query"), nil
+			}
+		}
 		query := slices.DeleteFunc(searchTokens(p.Query), func(word string) bool { return slices.Contains(searchStopwords, word) })
 		if len(p.Query) > toolSearchMaxQuery || len(p.Names) > toolSearchMaxNames || p.Limit < 0 || p.Limit > toolSearchMaxLimit {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("query must be at most %d bytes, names at most %d entries and limit 1-%d", toolSearchMaxQuery, toolSearchMaxNames, toolSearchMaxLimit)), nil
@@ -146,12 +162,58 @@ func NewToolSearchTool(opts ToolSearchOptions) fantasy.AgentTool {
 			next = "Tools with loaded=true become callable on your next step with their full schemas. To load a listed tool with loaded=false, call tool_search with its exact name in names."
 		}
 		response := map[string]any{"results": results, "total_matches": total + len(named), "next": next}
+		if p.Detail == "description" || p.Detail == "schema" {
+			details := map[string]any{}
+			var later []string
+			for _, info := range named {
+				// Details are large; more than a few per call would crowd
+				// the context. The rest still load, and their details come
+				// with the next call instead of an error that loads nothing.
+				if len(details) == toolSearchMaxDetails {
+					later = append(later, info.Name)
+					continue
+				}
+				entry := map[string]any{"description": info.Description}
+				if p.Detail == "schema" {
+					data, err := json.Marshal(map[string]any{"type": "object", "properties": info.Parameters, "required": info.Required})
+					if err != nil {
+						return fantasy.ToolResponse{}, err
+					}
+					var definition map[string]any
+					if err := json.Unmarshal(data, &definition); err != nil {
+						return fantasy.ToolResponse{}, err
+					}
+					schema.Normalize(definition)
+					entry["input_schema"] = definition
+					entry["schema_scope"] = "authorized definition; the advertised schema may be narrowed until related tools are loaded"
+				}
+				details[info.Name] = entry
+			}
+			response["details"] = details
+			if len(later) > 0 {
+				response["details_later"] = later
+				response["details_note"] = fmt.Sprintf("Details come for %d tools per call; call tool_search again with these names and the same detail for theirs.", toolSearchMaxDetails)
+			}
+		}
 		if len(unknown) > 0 {
 			response["unavailable"] = unknown
 			response["unavailable_reason"] = "not an enabled tool for this agent; it may be disabled, not allowed or disconnected"
 		}
+		var closest []toolSearchResult
 		if len(results) == 0 {
 			response["next"] = "No enabled tool matched. Try a broader capability word (for example file, shell, web, browser, desktop, git, test, memory) or continue with the loaded tools."
+			if len(query) > 0 {
+				for _, info := range closestTools(palette, query) {
+					closest = append(closest, toolSearchResult{info.Name, ToolCategory(info.Name), toolSummary(info.Description), !deferred})
+				}
+				if len(closest) > 0 {
+					response["closest"] = closest
+					response["next"] = "No tool matched every word, but these are spelled like your request. If one fits, load it with its exact name in names; otherwise try a broader capability word or continue with the loaded tools."
+				}
+			}
+		}
+		if opts.Observe != nil && strings.TrimSpace(p.Query) != "" {
+			opts.Observe(ctx, strings.TrimSpace(p.Query), len(results), len(closest))
 		}
 		data, err := json.Marshal(response)
 		if err != nil {

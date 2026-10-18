@@ -190,7 +190,9 @@ func termMatches(token, term string) bool {
 func toolSearchScore(info fantasy.ToolInfo, query []string) int {
 	category := ToolCategory(info.Name)
 	nameParts := searchTokens(info.Name)
+	aliases := aliasTokens(info.Name)
 	terms := toolCategories[category].Terms
+	hintWords := searchTokens(ToolHint(info.Name, info.Description))
 	descWords := searchTokens(toolSummary(info.Description) + " " + firstRunes(info.Description, 600))
 	score := 0
 	matched := 0
@@ -201,8 +203,12 @@ func toolSearchScore(info fantasy.ToolInfo, query []string) int {
 			best = 100
 		case slices.ContainsFunc(nameParts, func(part string) bool { return termMatches(token, part) }):
 			best = 40
+		case slices.ContainsFunc(aliases, func(alias string) bool { return termMatches(token, alias) }):
+			best = 30
 		case token == category || slices.ContainsFunc(terms, func(term string) bool { return termMatches(token, term) }):
 			best = 25
+		case slices.ContainsFunc(hintWords, func(word string) bool { return len(word) > 2 && termMatches(token, word) }):
+			best = 12
 		case slices.ContainsFunc(descWords, func(word string) bool { return termMatches(token, word) }):
 			best = 6
 		}

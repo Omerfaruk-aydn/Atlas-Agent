@@ -247,12 +247,16 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 				return fantasy.ToolResponse{}, err
 			}
 			exit := shell.ExitCode(err)
-			output := formatOutput(stdout.String(), stderr.String(), err, limits.MaxOutputLength)
+			output := formatOutput(stdout.String(), stderr.String(), err, limits.MaxOutputLength, workingDir)
 			metadata := BashResponseMetadata{ExitCode: &exit, StartTime: start.UnixMilli(), EndTime: time.Now().UnixMilli(), Output: output, Description: params.Description, WorkingDirectory: execWorkingDir}
 			if opts := argvOptions(ctx); opts.StreamLimit > 0 {
 				metadata.Streams = argvStreams(stdout, stderr, opts.StreamLimit)
 			}
 			return fantasy.WithResponseMetadata(fantasy.NewTextResponse(cmp.Or(output, BashNoOutput)), metadata), nil
+		}
+
+		if note := runningDuplicate(params.Command, execWorkingDir); note != "" {
+			return fantasy.NewTextResponse(note), nil
 		}
 
 		// If explicitly requested as background, start immediately with detached context
@@ -280,7 +284,7 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 					return fantasy.ToolResponse{}, fmt.Errorf("[Job %s] error executing command: %w", bgShell.ID, execErr)
 				}
 
-				stdout = formatOutput(stdout, stderr, execErr, limits.MaxOutputLength)
+				stdout = formatOutput(stdout, stderr, execErr, limits.MaxOutputLength, workingDir)
 
 				metadata := BashResponseMetadata{
 					ExitCode:         &exitCode,
@@ -365,7 +369,7 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 				return fantasy.ToolResponse{}, fmt.Errorf("[Job %s] error executing command: %w", bgShell.ID, execErr)
 			}
 
-			stdout = formatOutput(stdout, stderr, execErr, limits.MaxOutputLength)
+			stdout = formatOutput(stdout, stderr, execErr, limits.MaxOutputLength, workingDir)
 
 			metadata := BashResponseMetadata{
 				ExitCode:         &exitCode,
@@ -421,7 +425,8 @@ func startArgvJob(ctx context.Context, params BashParams, workingDir string, blo
 }
 
 // formatOutput formats the output of a completed command with error handling
-func formatOutput(stdout, stderr string, execErr error, maxOutputLength int) string {
+func formatOutput(stdout, stderr string, execErr error, maxOutputLength int, logRoot string) string {
+	stdout, stderr = spillOutput(logRoot, stdout, stderr)
 	interrupted := shell.IsInterrupt(execErr)
 	exitCode := shell.ExitCode(execErr)
 

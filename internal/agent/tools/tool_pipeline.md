@@ -6,7 +6,7 @@ Exactly one shape per call. Each is a JSON object, never a string containing JSO
 - `desktop`: desktop recipes. `mode:"flow"` is the long form: up to {%.FlowNodes%} nodes, forward edges only, all validated before the first input. Other modes: `"prepare"`, `"observe"`, `"act"`, `"fill_submit"`, `"sequence"`, `"adaptive"`, `"transition"`, `"rename"`.
 - `browser`: `{tab_id, origin, steps:[...]}` with 1-{%.BrowserSteps%} semantic browser steps and optional `verify` assertions.
 - `flow`: a reusable browser template run over 1-{%.FlowItems%} input items, with rerun of failed/uncertain items.
-- `steps`: generic tool calls (1-{%.Steps%}) with `bindings`, `when`, `if_success`, `if_failed`, `require_passed` and `items`.
+- `steps`: generic tool calls (1-{%.Steps%}) with `bindings`, `when`, `if_success`, `if_failed`, `require_passed`, `items` and `items_from`, plus pure `transform` steps that filter, extract, count or reshape earlier results without another model turn (help topic `steps`).
 - `help`: one topic name; returns detailed rules and executable examples and runs nothing. Topics: {%.Topics%}.
 
 Desktop flow nodes (window IDs are never written; nodes bind them at run time):

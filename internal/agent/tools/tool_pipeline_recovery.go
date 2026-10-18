@@ -46,7 +46,7 @@ func pipelineDispatch(texts ...string) string {
 // behavior from their names or caller-supplied arguments.
 func pipelineReadOnlyRecovery(s PipelineStep) bool {
 	switch s.Tool {
-	case ViewToolName, GrepToolName, GlobToolName, LSToolName:
+	case ViewToolName, GrepToolName, GlobToolName, LSToolName, PipelineTransformTool:
 		return true
 	case BrowserToolName:
 		switch s.Arguments["action"] {
@@ -146,8 +146,14 @@ func validatePipelineCondition(s PipelineStep, seen map[string]bool) string {
 	if c.Exists != nil {
 		given++
 	}
+	if c.GreaterThan != nil {
+		given++
+	}
+	if c.LessThan != nil {
+		given++
+	}
 	if given != 1 {
-		return fmt.Sprintf("step %s: when needs exactly one of equals, not_equals or exists", s.ID)
+		return fmt.Sprintf("step %s: when needs exactly one of equals, not_equals, exists, greater_than or less_than", s.ID)
 	}
 	return ""
 }
@@ -165,12 +171,32 @@ func pipelineConditionMet(c PipelineCondition, outputs map[string]json.RawMessag
 	if err != nil {
 		return false, "when " + c.Source + " is unreadable: " + err.Error()
 	}
+	if c.GreaterThan != nil || c.LessThan != nil {
+		number, ok := value.(float64)
+		if n, exact := value.(json.Number); exact {
+			var err error
+			number, err = n.Float64()
+			ok = err == nil
+		}
+		if !ok {
+			return false, "when " + c.Source + " is not a number"
+		}
+		if c.GreaterThan != nil && !(number > *c.GreaterThan) {
+			return false, fmt.Sprintf("when %s is %v, not greater than %v", c.Source, number, *c.GreaterThan)
+		}
+		if c.LessThan != nil && !(number < *c.LessThan) {
+			return false, fmt.Sprintf("when %s is %v, not less than %v", c.Source, number, *c.LessThan)
+		}
+		return true, ""
+	}
 	var text string
 	switch v := value.(type) {
 	case string:
 		text = v
 	case float64:
 		text = strconv.FormatFloat(v, 'f', -1, 64)
+	case json.Number:
+		text = v.String()
 	case bool:
 		text = strconv.FormatBool(v)
 	default:

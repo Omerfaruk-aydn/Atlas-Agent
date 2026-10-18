@@ -32,7 +32,7 @@ func pipelinePointer(outputs map[string]json.RawMessage, source string) (any, er
 		return nil, fmt.Errorf("invalid source %q: use step#/field", source)
 	}
 	var value any
-	if err := json.Unmarshal(outputs[id], &value); err != nil {
+	if err := decodeTransformValue(outputs[id], &value); err != nil {
 		return nil, fmt.Errorf("binding source %s has no JSON result", id)
 	}
 	for _, field := range strings.Split(pointer, "/") {
@@ -80,6 +80,9 @@ func bindPipelineArguments(arguments any, bindings map[string]string, outputs ma
 		if number, isNumber := value.(float64); isNumber && (path == "advanced.value" || path == "advanced.expected" || path == "text" || path == "automation.expected") {
 			// A read value such as a count binds as its decimal text.
 			text, ok = strconv.FormatFloat(number, 'f', -1, 64), true
+		}
+		if number, isNumber := value.(json.Number); isNumber && (path == "advanced.value" || path == "advanced.expected" || path == "text" || path == "automation.expected") {
+			text, ok = number.String(), true
 		}
 		if !ok || (text == "" && path != "advanced.value") || len(text) > 4096 {
 			return fmt.Errorf("binding requires a nonempty bounded string")

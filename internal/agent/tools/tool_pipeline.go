@@ -31,6 +31,7 @@ type PipelineStep struct {
 	Tool            string             `json:"tool"`
 	Arguments       map[string]any     `json:"arguments"`
 	Items           []string           `json:"items,omitempty"`
+	ItemsFrom       string             `json:"items_from,omitempty" description:"Repeat this step once per element of an earlier array result, e.g. names#/items from a transform. At most 64 scalar elements; \"$item\" is substituted. An empty array skips the step. Cannot be combined with items or bindings."`
 	IfSuccess       string             `json:"if_success,omitempty"`
 	IfFailed        string             `json:"if_failed,omitempty" description:"Run only when that earlier step failed: a recovery or fallback branch. Its failure no longer stops the pipeline before this branch."`
 	OnError         string             `json:"on_error,omitempty" description:"stop (default) or continue. continue is for independent steps only; steps depending on this one should use if_success."`
@@ -45,6 +46,10 @@ type PipelineCondition struct {
 	Equals    *string `json:"equals,omitempty" description:"Run when the field's text equals this."`
 	NotEquals *string `json:"not_equals,omitempty" description:"Run when the field's text differs from this."`
 	Exists    *bool   `json:"exists,omitempty" description:"true: run when the field exists; false: run when it does not."`
+	// GreaterThan and LessThan compare a numeric field, such as a
+	// transform count.
+	GreaterThan *float64 `json:"greater_than,omitempty" description:"Run when the numeric field is greater than this, e.g. {\"source\":\"todos#/count\",\"greater_than\":0}."`
+	LessThan    *float64 `json:"less_than,omitempty" description:"Run when the numeric field is less than this."`
 }
 
 // pipelineRetryCodes are failures that were refused before any input and
@@ -288,6 +293,18 @@ func validatePipelineStep(s PipelineStep, seen, observations map[string]bool) st
 	if s.ID == "" || seen[s.ID] || s.Tool == "" || s.Tool == "tool_pipeline" || s.Tool == "agent_jobs" || s.Tool == "task_board" || s.Tool == "goal" {
 		return "invalid step identity or recursive/control tool"
 	}
+	if s.Tool == PipelineTransformTool {
+		if msg := validateTransformStep(s, seen); msg != "" {
+			return msg
+		}
+		return validatePipelineCondition(s, seen)
+	}
+	if s.ItemsFrom != "" {
+		id, _, ok := strings.Cut(s.ItemsFrom, "#/")
+		if !ok || !seen[id] || len(s.Items) > 0 || len(s.Bindings) > 0 || s.ObservationFrom != "" {
+			return "items_from must be an earlier step#/array and cannot be combined with items, bindings or observation_from"
+		}
+	}
 	if s.IfSuccess != "" && !seen[s.IfSuccess] {
 		return "if_success must reference an earlier step"
 	}
@@ -527,6 +544,11 @@ func executePipeline(ctx context.Context, steps []PipelineStep, ret []string, ca
 	recovered := map[string]bool{}
 	snapshots := map[string]string{}
 	outputs := map[string]json.RawMessage{}
+	// texts keeps each successful step's text result for transform steps;
+	// a step with items keeps every iteration's result in order.
+	texts := map[string]string{}
+	textOverflow := map[string]bool{}
+	invocations := 0
 	uncertain := map[string]bool{}
 	observations := map[string]bool{}
 	for _, s := range steps {
@@ -565,11 +587,63 @@ func executePipeline(ctx context.Context, steps []PipelineStep, ret []string, ca
 				continue
 			}
 		}
+		fail := func(i int, message string) bool {
+			run.results = append(run.results, PipelineResult{ID: s.ID, Iteration: i, Status: StepFailed, Outcome: OutcomeFailed, IsError: true, Dispatch: "none", Content: message + "; nothing was sent"})
+			success[s.ID], failedSteps[s.ID] = false, true
+			delete(outputs, s.ID)
+			delete(texts, s.ID)
+			handled := slices.ContainsFunc(steps[index+1:], func(next PipelineStep) bool { return next.IfFailed == s.ID })
+			if s.OnError == "continue" && !handled {
+				return false
+			}
+			run.failed = true
+			stoppedBy = s.ID
+			return true
+		}
+		if s.Tool == PipelineTransformTool {
+			// Pure data step: nothing is invoked, so nothing can be sent.
+			source, _ := s.Arguments["source"].(string)
+			sourceID, _, _ := strings.Cut(source, "#/")
+			if textOverflow[sourceID] {
+				fail(0, "transform source exceeds the retained data limit; narrow the producing operation before transforming it")
+				continue
+			}
+			out, err := runTransform(s.Arguments, texts, outputs)
+			if err != nil {
+				fail(0, "transform: "+err.Error())
+				continue
+			}
+			success[s.ID] = true
+			outputs[s.ID], texts[s.ID] = out, string(out)
+			content := string(out)
+			if len(content) > pipelineStepContentLimit {
+				content = strings.ToValidUTF8(content[:pipelineStepContentLimit], "") + "\n[truncated]"
+			}
+			run.results = append(run.results, PipelineResult{ID: s.ID, Status: StepSucceeded, Outcome: OutcomeApplied, Dispatch: "none", Content: content})
+			continue
+		}
 		items := s.Items
+		if s.ItemsFrom != "" {
+			resolved, err := resolveItemsFrom(s.ItemsFrom, outputs)
+			if err != nil {
+				fail(0, err.Error())
+				continue
+			}
+			if len(resolved) == 0 {
+				skip(s, "not run: items_from "+s.ItemsFrom+" is empty")
+				continue
+			}
+			items = resolved
+		}
 		if len(items) == 0 {
 			items = []string{""}
 		}
+		if invocations += len(items); invocations > maxPipelineInvocations {
+			run.invalid = fmt.Sprintf("pipeline exceeds %d invocations after items_from expansion; narrow the source with a transform", maxPipelineInvocations)
+			return run, nil
+		}
 		success[s.ID] = true
+		delete(texts, s.ID)
 		iterationStart := len(run.results)
 		for i, item := range items {
 			activeIteration = i
@@ -726,6 +800,20 @@ func executePipeline(ctx context.Context, steps []PipelineStep, ret []string, ca
 				if out := pipelineOutput(response.Content); out != nil {
 					outputs[s.ID] = out
 				}
+				if len(items) > 1 {
+					if len(texts[s.ID])+len(response.Content)+1 <= maxPipelineTransformText && !textOverflow[s.ID] {
+						texts[s.ID] += response.Content + "\n"
+					} else {
+						textOverflow[s.ID] = true
+						delete(texts, s.ID)
+					}
+				} else {
+					if len(response.Content) > maxPipelineTransformText {
+						textOverflow[s.ID] = true
+					} else {
+						texts[s.ID] = response.Content
+					}
+				}
 			}
 			if response.StopTurn {
 				r := response
@@ -740,6 +828,7 @@ func executePipeline(ctx context.Context, steps []PipelineStep, ret []string, ca
 				// A failed iteration must not leave the previous iteration's output
 				// for later bindings to read as if it were current.
 				delete(outputs, s.ID)
+				delete(texts, s.ID)
 				uncertain[s.ID] = status == StepUncertain
 				unknownOutcome = unknownOutcome || uncertain[s.ID]
 				handled := slices.ContainsFunc(steps[index+1:], func(next PipelineStep) bool { return next.IfFailed == s.ID })

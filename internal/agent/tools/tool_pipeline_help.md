@@ -111,6 +111,18 @@ Example (generic program with gates and bindings):
  {"id":"look","tool":"computer","arguments":{"action":"observe","observation":"semantic"},"bindings":{"automation.window_id":"launch#/input_settle/new_window_ids/0"}}],"return":["look"]}
 ```
 
+Data steps: `"tool":"transform"` computes over earlier results and calls nothing, so it needs no permission and cannot read files, open connections or start processes. Arguments: `source` (an earlier step id, or `step#/field` into its JSON result), `op` and, per op, `pattern`, `field` or `limit`. Ops: `lines`, `filter` and `exclude` (RE2 `pattern`), `extract` (one capture group), `select` (a `field` of each object), `unique`, `sort`, `head` (`limit`), `count`, `json` (parse a text result). A text result is split into lines; a step with items contributes every iteration's text in order. The result is `{"items":[...],"count":n,"input_count":m,"source_sha256":"...","truncated":false}`, so later steps can bind `t#/count`, test it with `when` (`greater_than`/`less_than` compare numbers) or loop over it with `items_from:"t#/items"` (at most 64 scalars). Use it when a large result only matters through a subset: the full output is filtered in place and only the subset and its provenance return.
+
+Example (find files that mention a symbol, read only those, then count TODOs in them):
+```json
+{"steps":[
+ {"id":"hits","tool":"grep","arguments":{"pattern":"LegacyClient","path":"."}},
+ {"id":"files","tool":"transform","arguments":{"source":"hits","op":"extract","pattern":"^(\\S.*):$"}},
+ {"id":"unique","tool":"transform","arguments":{"source":"files#/items","op":"unique","limit":10}},
+ {"id":"read","tool":"view","arguments":{"file_path":"$item"},"items_from":"unique#/items","when":{"source":"unique#/count","greater_than":0}},
+ {"id":"todos","tool":"transform","arguments":{"source":"read","op":"filter","pattern":"TODO"}}],"return":["unique","todos"]}
+```
+
 ## help: results
 
 Desktop flow responses always include an adapter-owned `atlas_outcome` for the whole call, even if a child has no dispatch metadata. It reports `none`, `sent` or `unknown` and the actual mutation subjects; the last read's window is not the mutation target. A pending intent is unknown. A flow terminal alone never marks the entire task verified. Child outcome metadata is retained separately. The shared resend guard covers mutating desktop, browser and generic pipeline envelopes, while read-only help and observation remain available. Short UIA role names such as `Edit` normalize to `ControlType.Edit`; unknown synonyms are rejected before input. Diagnostic crops preserve the failed checkpoint and any question or permission required to continue.

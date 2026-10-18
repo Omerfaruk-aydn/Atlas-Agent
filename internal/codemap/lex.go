@@ -49,3 +49,8 @@ type lexer struct {
 	indent    int
 }
 
+func (lx *lexer) emit(kind tokenKind, text string, line int) {
+	lx.out = append(lx.out, lexToken{kind: kind, text: text, line: line, first: lx.lineStart, indent: lx.indent})
+	lx.lineStart = false
+}
+

@@ -621,3 +621,35 @@ func isCSSName(s string) bool {
 	return s != "-"
 }
 
+// classRefs records each class in a space-separated class list.
+func classRefs(f *File, list string, line int) {
+	for _, c := range strings.Fields(list) {
+		if isCSSName(c) {
+			addRef(f, Ref{Name: c, Kind: RefCSS, Line: line})
+		}
+	}
+}
+
+// selectorRefs records the classes and ids a CSS selector names.
+func selectorRefs(f *File, selector string, line int) {
+	for i := 0; i < len(selector); i++ {
+		c := selector[i]
+		if c != '.' && c != '#' {
+			continue
+		}
+		j := i + 1
+		for j < len(selector) && (selector[j] == '-' || selector[j] == '_' || selector[j] >= 'a' && selector[j] <= 'z' || selector[j] >= 'A' && selector[j] <= 'Z' || selector[j] >= '0' && selector[j] <= '9' || selector[j] >= 0x80) {
+			j++
+		}
+		name := selector[i+1 : j]
+		if isCSSName(name) {
+			kind := RefCSS
+			if c == '#' {
+				kind = RefDOM
+			}
+			addRef(f, Ref{Name: name, Kind: kind, Line: line})
+		}
+		i = j - 1
+	}
+}
+

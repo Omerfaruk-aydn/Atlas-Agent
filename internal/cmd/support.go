@@ -35,9 +35,10 @@ accepts a verified connection request. Interactive use is /support in the
 TUI. These commands cover a headless computer receiving support, a scripted
 check from the supporting side, and the relay needed between networks.
 
-On one local network a code is enough. Computers on different networks need a
-relay you operate ("atlas support relay"); a code alone cannot find a computer
-on another network, and Atlas never contacts a relay that is not configured.`,
+On one local network a code is enough. Across networks, the host can use
+Tailscale Funnel (--funnel) and share the complete support link, or both
+computers can use a relay you operate ("atlas support relay"). A bare code
+cannot discover a computer on another network.`,
 	}
 	root.AddCommand(newSupportRelayCommand(), newSupportHostCommand(), newSupportJoinCommand())
 	return root
@@ -163,6 +164,7 @@ func newSupportHostCommand() *cobra.Command {
 	c.Flags().Duration("duration", 2*time.Hour, "Session length (at most 8h)")
 	c.Flags().Bool("lan", true, "Accept a connection on the local network")
 	c.Flags().Bool("internet", false, "Accept a connection through --relay")
+	c.Flags().Bool("funnel", false, "Use installed Tailscale Funnel; share the complete support link")
 	c.Flags().String("listen", "", "Local network listen address (default: any interface, random port)")
 	return c
 }
@@ -190,6 +192,10 @@ func runSupportHost(cmd *cobra.Command, _ []string) error {
 	listen, _ := cmd.Flags().GetString("listen")
 	lan, _ := cmd.Flags().GetBool("lan")
 	internet, _ := cmd.Flags().GetBool("internet")
+	funnel, _ := cmd.Flags().GetBool("funnel")
+	if funnel && (internet || cmd.Flags().Changed("lan") && lan) {
+		return errors.New("--funnel cannot be combined with --internet or explicit --lan=true")
+	}
 	duration, _ := cmd.Flags().GetDuration("duration")
 	noDiscovery, _ := cmd.Flags().GetBool("no-discovery")
 	discovery := 0
@@ -218,7 +224,13 @@ func runSupportHost(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	defer h.Close()
-	info, err := h.Offer(support.OfferOptions{Capabilities: caps, Roots: roots, SessionDuration: duration, LAN: lan, Internet: internet})
+	opts := support.OfferOptions{Capabilities: caps, Roots: roots, SessionDuration: duration, LAN: lan, Internet: internet}
+	var info support.OfferInfo
+	if funnel {
+		info, err = h.OfferFunnel(ctx, opts)
+	} else {
+		info, err = h.Offer(opts)
+	}
 	if err != nil {
 		return err
 	}
@@ -230,6 +242,9 @@ func runSupportHost(cmd *cobra.Command, _ []string) error {
 	}
 	if info.RelayURL != "" {
 		fmt.Fprintf(out, "Internet: through %s\n", info.RelayURL)
+	}
+	if funnel {
+		fmt.Fprintf(out, "Internet support link (share privately): %s\n", info.Link)
 	}
 	fmt.Fprintln(out, "Waiting for a connection request. Ctrl+C ends support.")
 

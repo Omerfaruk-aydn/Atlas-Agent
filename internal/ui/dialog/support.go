@@ -59,7 +59,7 @@ const (
 var supportDurations = []time.Duration{time.Hour, 2 * time.Hour, 4 * time.Hour, 8 * time.Hour}
 
 // supportNetworks are the offer paths in cycle order.
-var supportNetworks = []string{"lan", "internet", "both"}
+var supportNetworks = []string{"lan", "internet", "both", "funnel"}
 
 // Support is the /support dialog. It renders snapshots of the support
 // service; offers, joins, decisions and history reads run in commands.
@@ -487,7 +487,7 @@ func (d *Support) createOffer() Action {
 		return nil
 	}
 	network := supportNetworks[d.networkIdx]
-	opts := support.OfferOptions{Capabilities: caps, SessionDuration: supportDurations[d.durationIdx], LAN: network != "internet", Internet: network != "lan"}
+	opts := support.OfferOptions{Capabilities: caps, SessionDuration: supportDurations[d.durationIdx], LAN: network == "lan" || network == "both", Internet: network == "internet" || network == "both"}
 	return d.run("offer", func(ctx context.Context) SupportDone {
 		roots, err := d.fileRoots()
 		if err != nil && slices.ContainsFunc(caps, support.IsFileCapability) {
@@ -500,7 +500,12 @@ func (d *Support) createOffer() Action {
 		if err != nil {
 			return SupportDone{Err: err}
 		}
-		info, err := h.Offer(opts)
+		var info support.OfferInfo
+		if network == "funnel" {
+			info, err = h.OfferFunnel(ctx, opts)
+		} else {
+			info, err = h.Offer(opts)
+		}
 		if err != nil {
 			return SupportDone{Err: err}
 		}
@@ -866,7 +871,7 @@ func (d *Support) setupLines(text int) []string {
 	if name == "" {
 		name = d.com.Text("this computer's name")
 	}
-	network := map[string]string{"lan": "Local network only", "internet": "Internet (through your relay)", "both": "Local network and internet"}[supportNetworks[d.networkIdx]]
+	network := map[string]string{"lan": "Local network only", "funnel": "Tailscale Funnel — internet, no VPS", "internet": "Internet (through your relay)", "both": "Local network and internet"}[supportNetworks[d.networkIdx]]
 	lines := []string{
 		d.strong(fmt.Sprintf(d.com.Text("Shown to the supporter as: %s"), name)),
 		fmt.Sprintf(d.com.Text("Connection: %s (w changes)"), d.com.Text(network)),
@@ -905,6 +910,9 @@ func (d *Support) hostLines(text int) []string {
 		}
 		if o.RelayURL != "" {
 			lines = append(lines, d.muted(fmt.Sprintf(d.com.Text("Internet relay %s: %s"), o.RelayURL, d.com.Text(relayStatusText(o.RelayStatus)))))
+		}
+		if strings.Contains(o.Link, "funnel=") {
+			lines = append(lines, d.muted(d.com.Text("Tailscale Funnel: copy the complete link with l and paste it on the supporting computer. Keep this computer awake.")))
 		}
 		if d.showQR {
 			lines = append(lines, d.qrLines(o.Link, text)...)
@@ -1050,7 +1058,7 @@ func (d *Support) connectLines(text int) []string {
 		return lines
 	}
 	lines = append(lines,
-		d.muted(d.com.Text("Same network: the code is enough (or CODE@address). Another network: both computers need the same support relay (settings).")),
+		d.muted(d.com.Text("Same network: enter the code. Tailscale Funnel: paste the complete support link; only the host needs Tailscale. Relay mode: configure the same relay on both computers.")),
 	)
 	if st.Reason != "" && st.State.Terminal() {
 		lines = append(lines, d.muted(fmt.Sprintf(d.com.Text("Last session: %s (%s)"), d.com.Text(string(st.State)), st.Reason)))

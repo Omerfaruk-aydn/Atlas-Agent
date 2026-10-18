@@ -32,6 +32,20 @@ func supportCommon(lang string) *common.Common {
 	return &common.Common{Styles: &sty, Workspace: ws}
 }
 
+func TestSupportFunnelNetworkChoice(t *testing.T) {
+	svc := support.NewService(t.TempDir(), nil, nil)
+	t.Cleanup(svc.Close)
+	d := NewSupport(supportCommon("tr"), svc)
+	d.view = supportHostSetup
+	for range 3 {
+		supportPress(t, d, "w")
+	}
+	require.Equal(t, "funnel", supportNetworks[d.networkIdx])
+	require.Contains(t, renderSupport(d), "VPS gerekmez")
+	supportPress(t, d, "w")
+	require.Equal(t, "lan", supportNetworks[d.networkIdx])
+}
+
 func renderSupport(d *Support) string {
 	scr := uv.NewScreenBuffer(110, 60)
 	d.Draw(scr, image.Rect(0, 0, 110, 60))

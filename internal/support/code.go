@@ -134,6 +134,7 @@ type Target struct {
 	Code    PairingCode
 	Relay   string
 	Address string
+	Funnel  string
 }
 
 // ParseTarget accepts a bare code, "CODE@host:port" or a join link.
@@ -148,7 +149,12 @@ func ParseTarget(input string) (Target, error) {
 		if err != nil {
 			return Target{}, err
 		}
-		return Target{Code: code, Relay: q.Get("relay"), Address: q.Get("addr")}, nil
+		if funnel := q.Get("funnel"); funnel != "" {
+			if _, err := funnelEndpoint(funnel); err != nil || q.Get("relay") != "" || q.Get("addr") != "" {
+				return Target{}, Errorf(CodePairingInvalid, "invalid or conflicting Funnel destination")
+			}
+		}
+		return Target{Code: code, Relay: q.Get("relay"), Address: q.Get("addr"), Funnel: q.Get("funnel")}, nil
 	}
 	codePart, addr, _ := strings.Cut(input, "@")
 	code, err := ParsePairingCode(codePart)

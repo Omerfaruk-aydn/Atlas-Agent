@@ -260,3 +260,30 @@ as a claim that every intermediate execution event is streamed live.
 
 The private viewer URL is local to the supporter's computer. It is not a
 public sharing link or a replacement for the authenticated `/rc` phone panel.
+# Internet support through Tailscale Funnel
+
+In `/support`, choose to receive support and press `w` until the connection
+mode is **Tailscale Funnel — internet, no VPS**. Select the permissions and
+create the offer. Tailscale must already be installed, running and signed in
+on the receiving computer; `/rc` provides its setup helpers. If Tailscale
+asks for Funnel approval, open the URL shown by Atlas and retry.
+
+Copy the **complete support link** with `l`. On the supporting computer,
+open `/support`, choose to connect to another computer and paste this link.
+A bare pairing code cannot discover a remote Funnel address. The supporting
+computer needs neither Tailscale nor the owner's relay settings.
+
+Compare the verification codes on both computers and accept on the receiving
+computer. The existing permissions, end-to-end TLS identities, one-time
+pairing, session expiry and resume protocol also apply to this transport.
+Atlas exposes only a bounded WebSocket tunnel on a loopback HTTP server,
+not the support API directly. Public HTTPS is verified normally; the inner
+support connection remains end-to-end authenticated.
+
+The support route uses its own ownership file and an available Funnel port,
+so `/rc` and `/support` can run together without resetting other routes.
+Withdrawal, expiry, session termination or Atlas exit closes the support
+route. Keep the receiving computer awake. Funnel bandwidth limits apply.
+
+Transport tests use a local HTTPS server; real two-computer internet
+acceptance still requires a live Tailscale run.

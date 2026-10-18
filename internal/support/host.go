@@ -88,6 +88,8 @@ type OfferOptions struct {
 	SessionDuration time.Duration
 	LAN             bool
 	Internet        bool
+	// Funnel uses the owner's Tailscale HTTPS route.
+	Funnel bool
 }
 
 // OfferInfo is shown to the owner while a code is valid.
@@ -238,6 +240,8 @@ type Host struct {
 	workMu    sync.Mutex
 	closed    bool
 	closeOnce sync.Once
+	funnelMu  sync.Mutex
+	funnel    *supportFunnel
 }
 
 // StartHost prepares the host identity and node API. It offers nothing
@@ -327,7 +331,7 @@ func (h *Host) Offer(o OfferOptions) (OfferInfo, error) {
 	if len(o.Capabilities) == 0 {
 		return OfferInfo{}, errors.New("choose at least one permission")
 	}
-	if !o.LAN && !o.Internet {
+	if !o.LAN && !o.Internet && !o.Funnel {
 		return OfferInfo{}, errors.New("choose local network, internet or both")
 	}
 	if o.Internet && !h.opts.Relay.Configured() {
@@ -1193,6 +1197,8 @@ func (h *Host) close() {
 	h.workMu.Lock()
 	h.closed = true
 	h.workMu.Unlock()
+	h.cancel()
+	h.stopFunnel()
 	h.mu.Lock()
 	s := h.session
 	h.mu.Unlock()

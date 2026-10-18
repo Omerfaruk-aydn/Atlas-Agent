@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/nodes"
+	"github.com/gorilla/websocket"
 	"golang.org/x/net/http2"
 )
 
@@ -34,6 +35,8 @@ const (
 
 // ControllerOptions configures the supporting computer.
 type ControllerOptions struct {
+	// FunnelDialer optionally supplies a transport for tests.
+	FunnelDialer *websocket.Dialer
 	// StateDir holds this device's identity and history; each controller
 	// needs its own.
 	StateDir string
@@ -63,7 +66,7 @@ type JoinPrompt struct {
 // addressed with it, never with a free-form name.
 type Remote struct {
 	SessionInfo
-	// Address is the LAN address, empty for relay sessions.
+	// Address is the LAN address or Funnel HTTPS base, empty for relay.
 	Address string `json:"address,omitempty"`
 }
 
@@ -388,9 +391,13 @@ func (c *Controller) relayFor(t Target) (*RelayConfig, error) {
 	return configured, nil
 }
 
-// dialJoin finds the host: an explicit address, then LAN discovery, then
-// the configured relay. Nothing reports a connection that did not happen.
+// dialJoin uses an explicit Funnel link or address, then LAN discovery,
+// then the configured relay. It reports only established transports.
 func (c *Controller) dialJoin(ctx context.Context, t Target, relay *RelayConfig) (net.Conn, string, string, error) {
+	if t.Funnel != "" {
+		conn, err := dialFunnel(ctx, t.Funnel, c.opts.FunnelDialer)
+		return conn, "funnel", t.Funnel, err
+	}
 	dial := func(addr string) (net.Conn, error) {
 		d := net.Dialer{Timeout: 10 * time.Second}
 		return d.DialContext(ctx, "tcp", addr)
@@ -537,6 +544,8 @@ func (c *Controller) resumeOnce(remote Remote, generation uint64) error {
 	var raw net.Conn
 	var err error
 	switch {
+	case remote.Network == "funnel":
+		raw, err = dialFunnel(ctx, remote.Address, c.opts.FunnelDialer)
 	case remote.Network == "relay" && relay.Configured():
 		raw, err = relayJoin(ctx, relay, RelaySlotFor(remote.SessionID, resumeToken))
 	case remote.Address != "":

@@ -334,3 +334,34 @@ var assetKinds = map[string]string{
 	".csv": "data", ".tsv": "data", ".geojson": "data", ".parquet": "data", ".wasm": "data",
 }
 
+// LanguageOf returns the language of a file: a programming, markup,
+// schema or build language, a document format, or for an asset its kind
+// (image, font, audio, video, model, document, data). It is "" for a file
+// the map does not read.
+func LanguageOf(file string) string {
+	file = strings.ReplaceAll(file, "\\", "/")
+	base := strings.ToLower(path.Base(file))
+	if lang, ok := namedFiles[base]; ok {
+		return lang
+	}
+	if strings.HasPrefix(base, "dockerfile.") || strings.HasSuffix(base, ".dockerfile") {
+		return "docker"
+	}
+	ext := path.Ext(base)
+	switch ext {
+	case ".yml", ".yaml", ".json":
+		lower := strings.ToLower(file)
+		switch {
+		case strings.Contains(lower, ".github/workflows/") && ext != ".json":
+			return "workflow"
+		case strings.Contains(base, "openapi") || strings.Contains(base, "swagger"):
+			return "openapi"
+		}
+		return ""
+	}
+	if lang, ok := extensions[ext]; ok {
+		return lang
+	}
+	return assetKinds[ext]
+}
+

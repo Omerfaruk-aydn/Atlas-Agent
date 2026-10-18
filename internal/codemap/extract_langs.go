@@ -232,3 +232,37 @@ func (x *extractor) nimTypeDecl(i int) bool {
 	return true
 }
 
+// pascalTypeDecl handles TFoo = class(TBase), record, interface and object.
+func (x *extractor) pascalTypeDecl(i int) bool {
+	t := x.toks[i]
+	if x.tok(i+1).text != "=" {
+		return false
+	}
+	k := i + 2
+	if x.kw(x.tok(k).text) == "packed" {
+		k++
+	}
+	kind := map[string]string{"class": "class", "record": "struct", "interface": "interface", "object": "class"}[x.kw(x.tok(k).text)]
+	if kind == "" {
+		return false
+	}
+	next := x.tok(k + 1)
+	if next.text == ";" || x.kw(next.text) == "of" {
+		// A forward declaration or a class reference type.
+		return true
+	}
+	x.names[i] = true
+	x.addSymbol(i, t.text, kind, "", -1)
+	if next.text == "(" {
+		if end, ok := x.match[k+1]; ok {
+			for j := k + 2; j < end; j++ {
+				if x.toks[j].kind == tIdent {
+					x.addRef(x.toks[j].text, "", RefInherit, x.toks[j].line)
+					x.names[j] = true
+				}
+			}
+		}
+	}
+	return true
+}
+

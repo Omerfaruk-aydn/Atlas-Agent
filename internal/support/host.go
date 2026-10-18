@@ -1001,8 +1001,8 @@ func (h *Host) serveH2(conn *tls.Conn, gen uint64, sessionID string) {
 	h.conns[gen] = conn
 	h.mu.Unlock()
 	ctx := context.WithValue(h.ctx, connKey{}, connInfo{generation: gen, session: sessionID})
-	srv := &http2.Server{MaxConcurrentStreams: 64, MaxReadFrameSize: 1 << 20, ReadIdleTimeout: 30 * time.Second, PingTimeout: 15 * time.Second}
-	srv.ServeConn(conn, &http2.ServeConnOpts{Context: ctx, Handler: h.handler, BaseConfig: &http.Server{ReadHeaderTimeout: 30 * time.Second}})
+	srv := &http2.Server{MaxConcurrentStreams: 64, MaxReadFrameSize: 1 << 20, ReadIdleTimeout: 30 * time.Second, PingTimeout: 15 * time.Second} //nolint:staticcheck // Custom ALPN requires serving HTTP/2 after the pairing handshake.
+	srv.ServeConn(conn, &http2.ServeConnOpts{Context: ctx, Handler: h.handler, BaseConfig: &http.Server{ReadHeaderTimeout: 30 * time.Second}})  //nolint:staticcheck // net/http.Server.Serve negotiates h2 ALPN, not the support protocol.
 	_ = conn.Close()
 	h.connClosed(gen, sessionID)
 }

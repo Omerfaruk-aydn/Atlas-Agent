@@ -98,7 +98,7 @@ type Controller struct {
 	resume    string
 	relay     *RelayConfig
 	conn      *tls.Conn
-	cc        *http2.ClientConn
+	cc        *http2.ClientConn //nolint:staticcheck // Custom ALPN upgrades an already authenticated stream in place.
 	client    *nodes.Client
 	cancel    context.CancelFunc
 	ctx       context.Context
@@ -436,8 +436,8 @@ func (c *Controller) attachLocked(tconn *tls.Conn, generation uint64) error {
 	if c.closed {
 		return Errorf(CodeSessionRevoked, "the support controller is shutting down")
 	}
-	tr := &http2.Transport{ReadIdleTimeout: 30 * time.Second, PingTimeout: 15 * time.Second}
-	cc, err := tr.NewClientConn(tconn)
+	tr := &http2.Transport{ReadIdleTimeout: 30 * time.Second, PingTimeout: 15 * time.Second} //nolint:staticcheck // Preserve HTTP/2 liveness checks on the existing custom-ALPN stream.
+	cc, err := tr.NewClientConn(tconn)                                                       //nolint:staticcheck // net/http.NewClientConn dials a new stream; pairing already authenticated this one.
 	if err != nil {
 		return err
 	}
@@ -454,7 +454,7 @@ func (c *Controller) attachLocked(tconn *tls.Conn, generation uint64) error {
 // device and the connection generation it was prepared for. A request is
 // never moved to another connection.
 type sessionTransport struct {
-	cc         *http2.ClientConn
+	cc         *http2.ClientConn //nolint:staticcheck // Requests must stay on the paired custom-ALPN stream.
 	session    string
 	target     string
 	generation uint64
@@ -475,7 +475,7 @@ func (t *sessionTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 // watch notices a dropped connection and tries to resume it within the
 // reconnect window. Requests in flight on the old connection are not
 // resent; their callers see an unknown outcome and reconcile.
-func (c *Controller) watch(cc *http2.ClientConn, generation uint64) {
+func (c *Controller) watch(cc *http2.ClientConn, generation uint64) { //nolint:staticcheck // Observe the existing paired stream rather than opening a new connection.
 	for {
 		select {
 		case <-c.ctx.Done():

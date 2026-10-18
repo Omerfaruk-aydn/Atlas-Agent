@@ -284,3 +284,30 @@ func (lx *lexer) identStart(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || strings.ContainsRune(lx.lang.identExtra, r)
 }
 
+func (lx *lexer) ident() {
+	start := lx.pos
+	for lx.pos < len(lx.src) {
+		r, size := utf8.DecodeRuneInString(lx.src[lx.pos:])
+		if r != '_' && !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune(lx.lang.identExtra, r) {
+			break
+		}
+		lx.pos += size
+	}
+	if lx.pos < len(lx.src) && strings.IndexByte(lx.lang.identSuffix, lx.src[lx.pos]) >= 0 {
+		lx.pos++
+	}
+	lx.emit(tIdent, lx.src[start:lx.pos], lx.line)
+}
+
+func (lx *lexer) number() {
+	start := lx.pos
+	for lx.pos < len(lx.src) {
+		c := lx.src[lx.pos]
+		if c != '.' && c != '_' && (c < '0' || c > '9') && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') {
+			break
+		}
+		lx.pos++
+	}
+	lx.emit(tNumber, lx.src[start:lx.pos], lx.line)
+}
+

@@ -148,3 +148,135 @@ func (lx *lexer) commentHere(marker string) bool {
 	return true
 }
 
+// stringLiteral reads a string at the current position.
+func (lx *lexer) stringLiteral() bool {
+	rest := lx.src[lx.pos:]
+	line := lx.line
+	c := rest[0]
+	switch {
+	case lx.lang.tripleQuotes && (strings.HasPrefix(rest, `"""`) || strings.HasPrefix(rest, `'''`)):
+		end := strings.Index(rest[3:], rest[:3])
+		if end < 0 {
+			end = len(rest) - 3
+		}
+		lx.consume(3+end+3, tString, rest[3:3+end], line)
+		return true
+	case lx.lang.longBrackets && strings.HasPrefix(rest, "[["):
+		end := strings.Index(rest[2:], "]]")
+		if end < 0 {
+			end = len(rest) - 2
+		}
+		lx.consume(2+end+2, tString, rest[2:2+end], line)
+		return true
+	case c == '@' && len(rest) > 1 && rest[1] == '"' && lx.lang.name == "csharp":
+		// Verbatim string: "" is a quote, backslashes are literal.
+		i := 2
+		for i < len(rest) {
+			if rest[i] == '"' {
+				if i+1 < len(rest) && rest[i+1] == '"' {
+					i += 2
+					continue
+				}
+				break
+			}
+			i++
+		}
+		lx.consume(min(i+1, len(rest)), tString, rest[2:min(i, len(rest))], line)
+		return true
+	case c == 'r' && lx.lang.name == "rust" && rawRustString(rest) > 0:
+		n := rawRustString(rest)
+		hashes := strings.Repeat("#", n-2)
+		closing := `"` + hashes
+		end := strings.Index(rest[n:], closing)
+		if end < 0 {
+			end = len(rest) - n
+		}
+		lx.consume(min(n+end+len(closing), len(rest)), tString, rest[n:n+end], line)
+		return true
+	case c == '`' && lx.lang.backtickStrings || c == '`' && lx.lang.name == "go":
+		lx.quoted('`', lx.lang.templates, line)
+		return true
+	case c == '"':
+		lx.quoted('"', false, line)
+		return true
+	case c == '\'' && lx.lang.quoteIsPunct:
+		return false
+	case c == '\'':
+		if lx.lang.lifetimes && isLifetime(rest) {
+			lx.pos++
+			return true
+		}
+		lx.quoted('\'', false, line)
+		return true
+	}
+	return false
+}
+
+// rawRustString returns the length of the opening of a raw string (r",
+// r#", r##") at the start of s, or 0.
+func rawRustString(s string) int {
+	i := 1
+	for i < len(s) && s[i] == '#' {
+		i++
+	}
+	if i < len(s) && s[i] == '"' {
+		return i + 1
+	}
+	return 0
+}
+
+// isLifetime reports whether a quote starts a lifetime ('a) or a Scala
+// symbol rather than a character literal ('a').
+func isLifetime(s string) bool {
+	i := 1
+	for i < len(s) && (s[i] == '_' || s[i] >= 'a' && s[i] <= 'z' || s[i] >= 'A' && s[i] <= 'Z' || s[i] >= '0' && s[i] <= '9') {
+		i++
+	}
+	return i > 1 && (i >= len(s) || s[i] != '\'')
+}
+
+// quoted reads a string closed by quote, honoring backslash escapes. With
+// templates, ${...} inside it is skipped as a whole, braces balanced.
+func (lx *lexer) quoted(quote byte, templates bool, line int) {
+	rest := lx.src[lx.pos:]
+	i := 1
+	depth := 0
+	for i < len(rest) {
+		c := rest[i]
+		switch {
+		case c == '\\':
+			i += 2
+			continue
+		case c == '\n':
+			if quote != '`' && depth == 0 {
+				// An unterminated string ends at the line.
+				lx.consume(i, tString, rest[1:i], line)
+				return
+			}
+			lx.line++
+		case templates && depth == 0 && c == '$' && i+1 < len(rest) && rest[i+1] == '{':
+			depth = 1
+			i += 2
+			continue
+		case depth > 0 && c == '{':
+			depth++
+		case depth > 0 && c == '}':
+			depth--
+		case depth == 0 && c == quote:
+			lx.pos += i + 1
+			lx.emit(tString, rest[1:i], line)
+			return
+		}
+		i++
+	}
+	lx.pos += len(rest)
+	lx.emit(tString, rest[1:], line)
+}
+
+// consume advances over n bytes that form one token, counting lines.
+func (lx *lexer) consume(n int, kind tokenKind, text string, line int) {
+	lx.line += strings.Count(lx.src[lx.pos:lx.pos+n], "\n")
+	lx.pos += n
+	lx.emit(kind, text, line)
+}
+

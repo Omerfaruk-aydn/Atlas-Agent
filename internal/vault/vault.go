@@ -165,6 +165,30 @@ func Sensitive(session string) bool {
 	return len(redaction.values[session]) > 0
 }
 
+// IsProtectedValue checks exact credential identity without returning any
+// credential content. It includes escaped forms and temporary fingerprints.
+// Consumers must not infer an exact match from substring-redacted text.
+func IsProtectedValue(value string) bool {
+	redaction.RLock()
+	for _, values := range redaction.values {
+		for _, secret := range values {
+			if secret == "" {
+				continue
+			}
+			encoded, _ := json.Marshal(secret)
+			if value == secret || len(encoded) > 2 && value == string(encoded[1:len(encoded)-1]) {
+				redaction.RUnlock()
+				return true
+			}
+		}
+	}
+	redaction.RUnlock()
+	temporaryRedaction.RLock()
+	defer temporaryRedaction.RUnlock()
+	_, ok := temporaryRedaction.byLength[len(value)][temporaryDigest(value)]
+	return ok
+}
+
 func Redact(session, value string) string {
 	redaction.RLock()
 	defer redaction.RUnlock()

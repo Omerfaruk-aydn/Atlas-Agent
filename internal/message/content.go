@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -58,8 +59,12 @@ type ReasoningContent struct {
 	ThoughtSignature string                             `json:"thought_signature"` // Used for google
 	ToolID           string                             `json:"tool_id"`           // Used for openrouter google models
 	ResponsesData    *openai.ResponsesReasoningMetadata `json:"responses_data"`
-	StartedAt        int64                              `json:"started_at,omitempty"`
-	FinishedAt       int64                              `json:"finished_at,omitempty"`
+	// Provider and Model identify the producer of the opaque reasoning
+	// state. Empty for records written before origins were tracked.
+	Provider   string `json:"provider,omitempty"`
+	Model      string `json:"model,omitempty"`
+	StartedAt  int64  `json:"started_at,omitempty"`
+	FinishedAt int64  `json:"finished_at,omitempty"`
 }
 
 func (tc ReasoningContent) String() string {
@@ -297,87 +302,68 @@ func (m *Message) AppendContent(delta string) {
 	}
 }
 
-func (m *Message) AppendReasoningContent(delta string) {
-	found := false
+// updateReasoning applies fn to the message's reasoning part, creating one
+// when absent and create is true. Every setter goes through here so that
+// recording one protocol field never discards another: signatures, Google
+// thought signatures and encrypted Responses state all belong to the same
+// reasoning block and must survive together.
+func (m *Message) updateReasoning(create bool, fn func(*ReasoningContent)) {
 	for i, part := range m.Parts {
 		if c, ok := part.(ReasoningContent); ok {
-			m.Parts[i] = ReasoningContent{
-				Thinking:   c.Thinking + delta,
-				Signature:  c.Signature,
-				StartedAt:  c.StartedAt,
-				FinishedAt: c.FinishedAt,
-			}
-			found = true
+			fn(&c)
+			m.Parts[i] = c
+			return
 		}
 	}
-	if !found {
-		m.Parts = append(m.Parts, ReasoningContent{
-			Thinking:  delta,
-			StartedAt: time.Now().Unix(),
-		})
+	if create {
+		var c ReasoningContent
+		fn(&c)
+		m.Parts = append(m.Parts, c)
 	}
+}
+
+func (m *Message) AppendReasoningContent(delta string) {
+	m.updateReasoning(true, func(c *ReasoningContent) {
+		if c.StartedAt == 0 && c.Thinking == "" {
+			c.StartedAt = time.Now().Unix()
+		}
+		c.Thinking += delta
+	})
 }
 
 func (m *Message) AppendThoughtSignature(signature string, toolCallID string) {
-	for i, part := range m.Parts {
-		if c, ok := part.(ReasoningContent); ok {
-			m.Parts[i] = ReasoningContent{
-				Thinking:         c.Thinking,
-				ThoughtSignature: c.ThoughtSignature + signature,
-				ToolID:           toolCallID,
-				Signature:        c.Signature,
-				StartedAt:        c.StartedAt,
-				FinishedAt:       c.FinishedAt,
-			}
-			return
-		}
-	}
-	m.Parts = append(m.Parts, ReasoningContent{ThoughtSignature: signature})
+	m.updateReasoning(true, func(c *ReasoningContent) {
+		c.ThoughtSignature += signature
+		c.ToolID = toolCallID
+	})
 }
 
 func (m *Message) AppendReasoningSignature(signature string) {
-	for i, part := range m.Parts {
-		if c, ok := part.(ReasoningContent); ok {
-			m.Parts[i] = ReasoningContent{
-				Thinking:   c.Thinking,
-				Signature:  c.Signature + signature,
-				StartedAt:  c.StartedAt,
-				FinishedAt: c.FinishedAt,
-			}
-			return
-		}
-	}
-	m.Parts = append(m.Parts, ReasoningContent{Signature: signature})
+	m.updateReasoning(true, func(c *ReasoningContent) {
+		c.Signature += signature
+	})
 }
 
 func (m *Message) SetReasoningResponsesData(data *openai.ResponsesReasoningMetadata) {
-	for i, part := range m.Parts {
-		if c, ok := part.(ReasoningContent); ok {
-			m.Parts[i] = ReasoningContent{
-				Thinking:      c.Thinking,
-				ResponsesData: data,
-				StartedAt:     c.StartedAt,
-				FinishedAt:    c.FinishedAt,
-			}
-			return
-		}
-	}
+	m.updateReasoning(false, func(c *ReasoningContent) {
+		c.ResponsesData = data
+	})
+}
+
+// SetReasoningOrigin records which provider and model produced the
+// reasoning block. Opaque reasoning state is only replayed to its producer.
+func (m *Message) SetReasoningOrigin(provider, model string) {
+	m.updateReasoning(false, func(c *ReasoningContent) {
+		c.Provider, c.Model = provider, model
+	})
 }
 
 func (m *Message) FinishThinking() {
-	for i, part := range m.Parts {
-		if c, ok := part.(ReasoningContent); ok {
-			if c.FinishedAt == 0 {
-				m.Parts[i] = ReasoningContent{
-					Thinking:   c.Thinking,
-					Signature:  c.Signature,
-					StartedAt:  c.StartedAt,
-					FinishedAt: time.Now().Unix(),
-				}
-			}
-			return
+	m.updateReasoning(false, func(c *ReasoningContent) {
+		if c.FinishedAt == 0 {
+			c.FinishedAt = time.Now().Unix()
 		}
-	}
+	})
 }
 
 func (m *Message) ThinkingDuration() time.Duration {
@@ -520,6 +506,14 @@ func PromptWithTextAttachments(prompt string, attachments []Attachment) string {
 			sb.WriteString("\n<system_info>The files below have been attached by the user, consider them in your response</system_info>\n")
 			addedAttachments = true
 		}
+		if isPastedText(content) {
+			// A long paste is the user's own message, not a file on disk;
+			// presented as a file, the agent tries to open it and fails.
+			sb.WriteString("<pasted_text note='the user pasted this as part of the message; it is not a file on disk'>\n")
+			sb.Write(content.Content)
+			sb.WriteString("\n</pasted_text>\n")
+			continue
+		}
 		if content.FilePath != "" {
 			fmt.Fprintf(&sb, "<file path='%s'>\n", content.FilePath)
 		} else {
@@ -584,7 +578,9 @@ func (m *Message) ToAIMessage() []fantasy.Message {
 			parts = append(parts, fantasy.TextPart{Text: text})
 		}
 		reasoning := m.ReasoningContent()
-		if reasoning.Thinking != "" {
+		// Models that omit thinking text still return opaque state (a
+		// signature or encrypted item) that must be echoed back.
+		if reasoning.Thinking != "" || reasoning.Signature != "" || reasoning.ThoughtSignature != "" || reasoning.ResponsesData != nil {
 			reasoningPart := fantasy.ReasoningPart{Text: reasoning.Thinking, ProviderOptions: fantasy.ProviderOptions{}}
 			if reasoning.Signature != "" {
 				reasoningPart.ProviderOptions[anthropic.Name] = &anthropic.ReasoningOptionMetadata{
@@ -650,4 +646,10 @@ func (m *Message) ToAIMessage() []fantasy.Message {
 		})
 	}
 	return messages
+}
+
+// isPastedText reports whether a is text the user pasted into the prompt,
+// which the UI turns into a "paste_<n>.txt" attachment with no directory.
+func isPastedText(a Attachment) bool {
+	return a.IsText() && strings.HasPrefix(a.FileName, "paste_") && filepath.Base(a.FilePath) == a.FilePath
 }

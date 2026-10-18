@@ -197,3 +197,14 @@ func TestResetStreamedContentEmpty(t *testing.T) {
 	msg.ResetStreamedContent()
 	require.Empty(t, msg.Parts)
 }
+
+func TestPromptWithTextAttachmentsMarksPastedText(t *testing.T) {
+	t.Parallel()
+	prompt := PromptWithTextAttachments("look", []Attachment{
+		{FileName: "paste_1.txt", FilePath: "paste_1.txt", MimeType: "text/plain", Content: []byte("pasted brief")},
+		{FileName: "main.go", FilePath: "src/main.go", MimeType: "text/plain", Content: []byte("package main")},
+	})
+	require.Contains(t, prompt, "<pasted_text note='the user pasted this as part of the message; it is not a file on disk'>\npasted brief\n</pasted_text>")
+	require.NotContains(t, prompt, "<file path='paste_1.txt'>")
+	require.Contains(t, prompt, "<file path='src/main.go'>")
+}

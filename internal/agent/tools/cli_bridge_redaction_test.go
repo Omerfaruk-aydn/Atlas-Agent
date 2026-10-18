@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,38 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCLIBridgeNativeDigestsSurvivePartialCredentialCollision(t *testing.T) {
+	t.Parallel()
+	session := "digest-" + uuid.NewString()
+	require.NoError(t, vault.Register(session, "abc"))
+	digest := strings.Repeat("0", 30) + "abc" + strings.Repeat("1", 31)
+	payload := workflowDigestFixture(t, map[string]any{"run_id": "run-" + uuid.NewString(), "profile_hash": digest, "executable": map[string]any{"sha256": digest}, "stdout": "value=abc", "output": map[string]string{"sha256": digest}})
+	var got struct {
+		ProfileHash string `json:"profile_hash"`
+		Executable  struct {
+			SHA256 string `json:"sha256"`
+		} `json:"executable"`
+		Stdout string            `json:"stdout"`
+		Output map[string]string `json:"output"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(redactCLIBridgePayload(session, payload)), &got))
+	require.Equal(t, digest, got.ProfileHash)
+	require.Equal(t, digest, got.Executable.SHA256)
+	require.Equal(t, "value=[REDACTED]", got.Stdout)
+	require.Contains(t, got.Output["sha256"], "[REDACTED]")
+	require.NoError(t, vault.Register(session, digest))
+	require.NoError(t, json.Unmarshal([]byte(redactCLIBridgePayload(session, payload)), &got))
+	require.Equal(t, "[REDACTED]", got.ProfileHash)
+	require.Equal(t, "[REDACTED]", got.Executable.SHA256)
+}
+
+func workflowDigestFixture(t *testing.T, value any) string {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	require.NoError(t, err)
+	return string(encoded)
+}
 
 func TestCLIBridgeBackgroundProtectsCapturedEnvironment(t *testing.T) {
 	// Process environment mutation requires this test to remain serial.

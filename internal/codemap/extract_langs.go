@@ -366,3 +366,34 @@ func (x *extractor) gdscriptDecl(i int) bool {
 	return false
 }
 
+// lispRef records (name args) as a call, alias/name as qualified, and
+// ->Record and Class. as instantiations.
+func (x *extractor) lispRef(i int) {
+	t := x.toks[i]
+	if x.tok(i-1).text != "(" {
+		return
+	}
+	name := t.text
+	if strings.HasPrefix(name, ".") || strings.HasPrefix(name, ":") || x.lang.notCalls[name] {
+		return
+	}
+	if _, ok := x.lang.decls[name]; ok {
+		return
+	}
+	if c := name[0]; c >= '0' && c <= '9' || len(name) > 1 && c == '-' && name[1] >= '0' && name[1] <= '9' {
+		return
+	}
+	kind := RefCall
+	if k := strings.LastIndex(name, "->"); k >= 0 && k+2 < len(name) {
+		name, kind = name[k+2:], RefNew
+	}
+	qualifier := ""
+	if k := strings.LastIndex(name, "/"); k > 0 && k < len(name)-1 {
+		qualifier, name = name[:k], name[k+1:]
+	}
+	if len(name) > 1 && strings.HasSuffix(name, ".") {
+		name, kind = strings.TrimSuffix(name, "."), RefNew
+	}
+	x.addRef(name, qualifier, kind, t.line)
+}
+

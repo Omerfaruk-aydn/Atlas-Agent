@@ -280,3 +280,7 @@ func (lx *lexer) consume(n int, kind tokenKind, text string, line int) {
 	lx.emit(kind, text, line)
 }
 
+func (lx *lexer) identStart(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || strings.ContainsRune(lx.lang.identExtra, r)
+}
+

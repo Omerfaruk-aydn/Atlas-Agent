@@ -22,6 +22,11 @@ var coreUtilsExecHandler execMiddleware = func(next interp.ExecHandlerFunc) inte
 		if len(args) == 0 {
 			return next(ctx, args)
 		}
+		if args[0] == "mv" {
+			if handled, err := coreutilsMove(ctx, args[1:]); handled {
+				return err
+			}
+		}
 		if args[0] != "sleep" {
 			return base(ctx, args)
 		}

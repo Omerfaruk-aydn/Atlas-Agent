@@ -142,3 +142,20 @@ func receiverName(expr ast.Expr) string {
 	return ""
 }
 
+// typeName returns the name and package qualifier of a named type.
+func typeName(expr ast.Expr) (string, string) {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name, ""
+	case *ast.StarExpr:
+		return typeName(t.X)
+	case *ast.SelectorExpr:
+		return t.Sel.Name, qualifierOf(t.X)
+	case *ast.IndexExpr:
+		return typeName(t.X)
+	case *ast.IndexListExpr:
+		return typeName(t.X)
+	}
+	return "", ""
+}
+

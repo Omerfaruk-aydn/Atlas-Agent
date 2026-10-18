@@ -138,3 +138,33 @@ func blankLines(s string) string {
 	return strings.Repeat("\n", strings.Count(s, "\n"))
 }
 
+type extractor struct {
+	lang  *language
+	toks  []lexToken
+	lines []string
+	file  *File
+	// match maps an opening bracket's index to its closing one.
+	match map[int]int
+	// names are the token indexes of definition names, which are not
+	// uses.
+	names map[int]bool
+	// indents holds each symbol's line indentation, for indent languages.
+	indents []int
+	starts  []int
+	// inArgs is set while the current brace scope is inside parentheses.
+	inArgs bool
+	// first is the index of this extractor's first symbol in the file,
+	// which already holds what other passes found (markup around a
+	// script).
+	first int
+	// fixedEnd marks symbols whose end is known, such as a class that is
+	// the whole file, so indentation does not reset it.
+	fixedEnd map[int]bool
+	// defined holds the names already defined, for languages that define
+	// a function over several clauses.
+	defined map[string]bool
+	// domHelpers are a script's own functions that find an element by
+	// their argument, as RefDOM for an id or "selector".
+	domHelpers map[string]string
+}
+

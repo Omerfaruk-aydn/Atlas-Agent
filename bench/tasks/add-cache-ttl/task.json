@@ -1,0 +1,6 @@
+{
+  "id": "add-cache-ttl",
+  "prompt": "Add per-entry expiry to the LRU cache in this package (cache). Add NewWithClock(capacity int, now func() time.Time) *Cache (New keeps working and uses time.Now) and SetWithTTL(key string, value any, ttl time.Duration). An entry whose ttl has elapsed (now is at or after set time + ttl) is expired: Get reports it missing and removes it, and Len does not count it. Set stores an entry that never expires, and re-setting a key replaces its value and its expiry. When inserting into a full cache, remove expired entries first and evict the least recently used live entry only if the cache is still full. Keep the existing behavior and make `go test ./...` pass.",
+  "check": ["go", "test", "-count=1", "./..."],
+  "timeout_seconds": 120
+}

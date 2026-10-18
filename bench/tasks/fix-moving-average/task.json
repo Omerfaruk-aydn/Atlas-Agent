@@ -1,0 +1,6 @@
+{
+  "id": "fix-moving-average",
+  "prompt": "The Go package in this directory (movavg) gives wrong results. Users report that Simple drops the last window of its input, and that Exponential misbehaves when the smoothing factor is a degenerate value. Find and fix the bugs, keeping the documented behavior of both functions, and make sure `go test ./...` passes.",
+  "check": ["go", "test", "-count=1", "./..."],
+  "timeout_seconds": 120
+}

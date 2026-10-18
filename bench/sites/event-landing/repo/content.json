@@ -1,0 +1,50 @@
+{
+  "event": {
+    "name": "Northwind Dev Summit 2027",
+    "tagline": "Three days of talks and workshops on building reliable software.",
+    "dates": "14-16 April 2027",
+    "venue": "Harbour Hall, Rotterdam"
+  },
+  "days": [
+    {
+      "label": "Day 1",
+      "date": "14 April",
+      "sessions": [
+        { "time": "09:30", "title": "Opening keynote: Software that lasts", "speaker": "Amara Okafor" },
+        { "time": "11:00", "title": "Property-based testing in practice", "speaker": "Jonas Lindqvist" },
+        { "time": "14:00", "title": "Designing calm interfaces", "speaker": "Mei Tanaka" }
+      ]
+    },
+    {
+      "label": "Day 2",
+      "date": "15 April",
+      "sessions": [
+        { "time": "09:30", "title": "Postmortems without blame", "speaker": "Diego Ramírez" },
+        { "time": "11:00", "title": "Accessible components from scratch", "speaker": "Mei Tanaka" },
+        { "time": "14:00", "title": "Observability for small teams", "speaker": "Fatima Zahra Bennani" }
+      ]
+    },
+    {
+      "label": "Day 3",
+      "date": "16 April",
+      "sessions": [
+        { "time": "09:30", "title": "Migrating a monolith one seam at a time", "speaker": "Liam O'Connor" },
+        { "time": "11:00", "title": "Workshop: threat modelling your API", "speaker": "Fatima Zahra Bennani" },
+        { "time": "15:00", "title": "Closing panel: what we got wrong", "speaker": "Amara Okafor" }
+      ]
+    }
+  ],
+  "speakers": [
+    { "name": "Amara Okafor", "role": "Principal Engineer", "company": "Kestrel Systems" },
+    { "name": "Jonas Lindqvist", "role": "Test Architect", "company": "Fjord Labs" },
+    { "name": "Mei Tanaka", "role": "Design Lead", "company": "Lantern UI" },
+    { "name": "Diego Ramírez", "role": "Site Reliability Engineer", "company": "Northwind" },
+    { "name": "Fatima Zahra Bennani", "role": "Security Researcher", "company": "Atlas Security" },
+    { "name": "Liam O'Connor", "role": "Staff Engineer", "company": "Copperleaf" }
+  ],
+  "tickets": [
+    { "name": "Standard", "price": 299, "summary": "All talks, lunch on every day." },
+    { "name": "Student", "price": 99, "summary": "All talks for students with a valid student card." },
+    { "name": "Team", "price": 249, "summary": "Per person, for teams of 3 to 20 people." }
+  ]
+}

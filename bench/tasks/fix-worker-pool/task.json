@@ -1,0 +1,6 @@
+{
+  "id": "fix-worker-pool",
+  "prompt": "The pool package is a small worker pool used by a job runner, and it misbehaves in production: callers sometimes crash after shutdown, Wait can return before work is done, jobs that enqueue more jobs hang, and one bad job takes the whole process down. The behavior the callers rely on is documented on the Pool methods. Make the implementation follow that documentation exactly, keeping the exported API, and make `go test ./...` pass.",
+  "check": ["go", "test", "-count=1", "./..."],
+  "timeout_seconds": 180
+}

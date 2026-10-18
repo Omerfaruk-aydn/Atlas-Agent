@@ -1,0 +1,6 @@
+{
+  "id": "fix-token-bucket",
+  "prompt": "The token bucket rate limiter in this package (bucket) lets through the wrong number of requests: fractional refill time seems to be lost, and a bucket that sat idle for a long time allows far more than its configured burst. Fix the bugs so Bucket behaves as its doc comments say, keeping the exported API, and make `go test ./...` pass.",
+  "check": ["go", "test", "-count=1", "./..."],
+  "timeout_seconds": 120
+}

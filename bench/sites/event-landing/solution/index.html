@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Northwind Dev Summit 2027</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="bar">
+      <a class="brand" href="#top" aria-label="Northwind Dev Summit, back to top">NDS<span>27</span></a>
+      <nav class="nav" aria-label="Main">
+        <button class="menu-button" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
+        <ul class="nav-links" id="nav-links">
+          <li><a href="#schedule">Schedule</a></li>
+          <li><a href="#speakers">Speakers</a></li>
+          <li><a href="#tickets">Tickets</a></li>
+          <li><a href="#register">Register</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top">
+      <p class="eyebrow">14-16 April 2027 · Harbour Hall, Rotterdam</p>
+      <h1>Northwind Dev Summit 2027</h1>
+      <p class="tagline">Three days of talks and workshops on building reliable software.</p>
+      <a class="cta" href="#tickets">Get tickets</a>
+    </section>
+
+    <section class="section" id="schedule" aria-labelledby="schedule-title">
+      <h2 id="schedule-title">Schedule</h2>
+      <div class="tabs">
+        <div role="tablist" aria-label="Conference days">
+          <button role="tab" type="button" id="tab-1" aria-selected="true" aria-controls="panel-1">Day 1</button>
+          <button role="tab" type="button" id="tab-2" aria-selected="false" aria-controls="panel-2" tabindex="-1">Day 2</button>
+          <button role="tab" type="button" id="tab-3" aria-selected="false" aria-controls="panel-3" tabindex="-1">Day 3</button>
+        </div>
+        <div role="tabpanel" id="panel-1" aria-labelledby="tab-1" tabindex="0">
+          <p class="day-date">14 April</p>
+          <ol class="sessions">
+            <li><time>09:30</time><div><h3 class="session-title">Opening keynote: Software that lasts</h3><p>Amara Okafor</p></div></li>
+            <li><time>11:00</time><div><h3 class="session-title">Property-based testing in practice</h3><p>Jonas Lindqvist</p></div></li>
+            <li><time>14:00</time><div><h3 class="session-title">Designing calm interfaces</h3><p>Mei Tanaka</p></div></li>
+          </ol>
+        </div>
+        <div role="tabpanel" id="panel-2" aria-labelledby="tab-2" tabindex="0" hidden>
+          <p class="day-date">15 April</p>
+          <ol class="sessions">
+            <li><time>09:30</time><div><h3 class="session-title">Postmortems without blame</h3><p>Diego Ramírez</p></div></li>
+            <li><time>11:00</time><div><h3 class="session-title">Accessible components from scratch</h3><p>Mei Tanaka</p></div></li>
+            <li><time>14:00</time><div><h3 class="session-title">Observability for small teams</h3><p>Fatima Zahra Bennani</p></div></li>
+          </ol>
+        </div>
+        <div role="tabpanel" id="panel-3" aria-labelledby="tab-3" tabindex="0" hidden>
+          <p class="day-date">16 April</p>
+          <ol class="sessions">
+            <li><time>09:30</time><div><h3 class="session-title">Migrating a monolith one seam at a time</h3><p>Liam O'Connor</p></div></li>
+            <li><time>11:00</time><div><h3 class="session-title">Workshop: threat modelling your API</h3><p>Fatima Zahra Bennani</p></div></li>
+            <li><time>15:00</time><div><h3 class="session-title">Closing panel: what we got wrong</h3><p>Amara Okafor</p></div></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="speakers" aria-labelledby="speakers-title">
+      <h2 id="speakers-title">Speakers</h2>
+      <ul class="grid speakers">
+        <li class="card"><span class="avatar" aria-hidden="true">AO</span><h3>Amara Okafor</h3><p>Principal Engineer</p><p class="muted">Kestrel Systems</p></li>
+        <li class="card"><span class="avatar" aria-hidden="true">JL</span><h3>Jonas Lindqvist</h3><p>Test Architect</p><p class="muted">Fjord Labs</p></li>
+        <li class="card"><span class="avatar" aria-hidden="true">MT</span><h3>Mei Tanaka</h3><p>Design Lead</p><p class="muted">Lantern UI</p></li>
+        <li class="card"><span class="avatar" aria-hidden="true">DR</span><h3>Diego Ramírez</h3><p>Site Reliability Engineer</p><p class="muted">Northwind</p></li>
+        <li class="card"><span class="avatar" aria-hidden="true">FB</span><h3>Fatima Zahra Bennani</h3><p>Security Researcher</p><p class="muted">Atlas Security</p></li>
+        <li class="card"><span class="avatar" aria-hidden="true">LO</span><h3>Liam O'Connor</h3><p>Staff Engineer</p><p class="muted">Copperleaf</p></li>
+      </ul>
+    </section>
+
+    <section class="section" id="tickets" aria-labelledby="tickets-title">
+      <h2 id="tickets-title">Tickets</h2>
+      <ul class="grid tickets">
+        <li class="card ticket"><h3>Standard</h3><p class="price">€299</p><p>All talks, lunch on every day.</p><button type="button" class="choose" data-ticket="Standard">Choose Standard</button></li>
+        <li class="card ticket featured"><h3>Student</h3><p class="price">€99</p><p>All talks for students with a valid student card.</p><button type="button" class="choose" data-ticket="Student">Choose Student</button></li>
+        <li class="card ticket"><h3>Team</h3><p class="price">€249</p><p>Per person, for teams of 3 to 20 people.</p><button type="button" class="choose" data-ticket="Team">Choose Team</button></li>
+      </ul>
+    </section>
+
+    <section class="section" id="register" aria-labelledby="register-title">
+      <h2 id="register-title">Register</h2>
+      <form class="card form" id="register-form" novalidate>
+        <div class="field">
+          <label for="name">Full name</label>
+          <input id="name" name="name" type="text" autocomplete="name" required>
+          <p class="error" id="name-error" hidden></p>
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="email" required>
+          <p class="error" id="email-error" hidden></p>
+        </div>
+        <div class="field">
+          <label for="ticket">Ticket</label>
+          <select id="ticket" name="ticket">
+            <option value="Standard">Standard</option>
+            <option value="Student">Student</option>
+            <option value="Team">Team</option>
+          </select>
+        </div>
+        <div class="field" id="team-field" hidden>
+          <label for="team-size">Team size</label>
+          <input id="team-size" name="team-size" type="number" min="3" max="20" value="3" inputmode="numeric">
+          <p class="error" id="team-size-error" hidden></p>
+        </div>
+        <p class="total" id="total" aria-live="polite">Total: €299</p>
+        <button type="submit" class="cta">Register</button>
+        <div role="status" id="form-status" class="status"></div>
+      </form>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Northwind Dev Summit · Harbour Hall, Rotterdam</p>
+  </footer>
+</body>
+</html>

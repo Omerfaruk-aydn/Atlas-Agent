@@ -1,0 +1,13 @@
+{
+  "suite": "tasks",
+  "model": "provider/model-id",
+  "repeats": 3,
+  "timeout_seconds": 600,
+  "variants": [
+    { "name": "baseline" },
+    {
+      "name": "evaluator-gate",
+      "config": { "options": { "evaluator": { "enabled": true, "max_rounds": 2 } } }
+    }
+  ]
+}

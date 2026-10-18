@@ -1,0 +1,6 @@
+{
+  "id": "event-landing-open",
+  "timeout_seconds": 300,
+  "check": ["node", "{suite}/../judges/site/judge.mjs"],
+  "prompt": "Build the web site for the conference in content.json, replacing the placeholder index.html. Make it something a good designer would be proud to ship and that a stranger could use without help.\n\nStatic files only, no build step, no frameworks, and no requests to other sites (no CDNs or web fonts). The page should let a visitor browse the schedule day by day, see the speakers, pick a ticket and register. Registration is checked in the browser and sends nothing anywhere; show the visitor what they owe for the ticket they chose, including the discount for groups, and tell them clearly when something they typed is wrong and when registration worked.\n\nIt must work well on a phone, with the keyboard and with a screen reader, in both light and dark mode, and have no errors in the browser console."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "implement-semver",
+  "prompt": "Implement Compare in the semver package (currently a stub) following Semantic Versioning 2.0.0 precedence. Compare(a, b string) (int, error) returns -1, 0 or 1 when a is lower than, equal to or higher than b. Versions look like MAJOR.MINOR.PATCH with an optional -prerelease and an optional +build suffix, and may start with a single lowercase v. Build metadata is ignored for precedence. A version with a prerelease is lower than the same version without one. Prerelease identifiers are dot separated and compared left to right: numeric identifiers compare numerically, alphanumeric ones compare by ASCII order, numeric identifiers are lower than alphanumeric ones, and when all shared identifiers are equal the version with fewer identifiers is lower. Return a non-nil error wrapping ErrInvalid for malformed input: missing or non-numeric core parts, leading zeros in a core part or in a numeric prerelease identifier, empty identifiers, or characters outside [0-9A-Za-z-] in identifiers. Make `go test ./...` pass.",
+  "check": ["go", "test", "-count=1", "./..."],
+  "timeout_seconds": 120
+}

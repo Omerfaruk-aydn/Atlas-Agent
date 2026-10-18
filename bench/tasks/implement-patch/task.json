@@ -1,0 +1,6 @@
+{
+  "id": "implement-patch",
+  "prompt": "Implement Apply in the patch package (currently a stub) exactly as its doc comment specifies. It applies a single-file unified diff to a string, including the line-offset search when the file has drifted, and reports malformed diffs and conflicts with the package's two error values. Make `go test ./...` pass; if you add tests, give them names of your own.",
+  "check": ["go", "test", "-count=1", "./..."],
+  "timeout_seconds": 240
+}

@@ -1,0 +1,10 @@
+{
+  "name": "atlas-bench-site-judge",
+  "private": true,
+  "description": "Scores a static web site built by an agent: task checks, phone layout, accessibility, console errors.",
+  "type": "module",
+  "dependencies": {
+    "axe-core": "4.14.0",
+    "playwright-core": "1.64.1"
+  }
+}

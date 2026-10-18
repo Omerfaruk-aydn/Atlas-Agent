@@ -1,0 +1,6 @@
+{
+  "id": "fix-safe-join",
+  "prompt": "A security review found that safejoin.Join, which resolves user-supplied file names inside an upload directory, can be tricked into returning paths outside the root. Fix it so it never returns a path outside root, keeping the signature and ErrEscapes, and make `go test ./...` pass. Legitimate relative names, including ones with harmless dot segments such as a/./b or a/../b, must keep working.",
+  "check": ["go", "test", "-count=1", "./..."],
+  "timeout_seconds": 120
+}

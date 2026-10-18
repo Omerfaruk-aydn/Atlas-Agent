@@ -1,0 +1,6 @@
+{
+  "id": "fix-cart-totals",
+  "prompt": "Customers report that cart totals from the cart package are wrong in several situations: some discounted carts are off by a cent, some coupon combinations give too much or too little discount, and tax on carts that mix taxable and tax-exempt items looks wrong. The pricing rules are documented on Cart.Totals and on mulDivRound. Find every place where the code departs from those rules, fix it, and make sure `go test ./...` passes.",
+  "check": ["go", "test", "-count=1", "./..."],
+  "timeout_seconds": 180
+}

@@ -1,0 +1,6 @@
+{
+  "id": "fix-csv-parser",
+  "prompt": "Parse in the csvline package splits one CSV line into fields, but it mishandles some inputs: quoted fields that contain quotes, lines that end with a separator, and malformed lines. Fix it so it follows the rules in its doc comment, keeping the existing signature and ErrUnterminatedQuote, and make `go test ./...` pass.",
+  "check": ["go", "test", "-count=1", "./..."],
+  "timeout_seconds": 120
+}

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/browser"
@@ -28,12 +29,22 @@ var captchaActions = map[string]bool{
 // captchaChain is the process-wide solver chain (offline math + optional
 // remote token farm). Image-text challenges are not solved here: the
 // challenge crop is shown to the model, which reads it with its own
-// vision. Tests replace the chain directly.
+// vision. Tests replace the chain through the synchronized setter.
 var captchaChain = captcha.Build(captcha.Options{Enabled: true})
+
+var captchaChainMu sync.RWMutex
+
+func currentCaptchaChain() *captcha.Chain {
+	captchaChainMu.RLock()
+	defer captchaChainMu.RUnlock()
+	return captchaChain
+}
 
 // SetCaptchaChain replaces the process chain (tests and runtime config).
 func SetCaptchaChain(c *captcha.Chain) {
 	if c != nil {
+		captchaChainMu.Lock()
+		defer captchaChainMu.Unlock()
 		captchaChain = c
 	}
 }
@@ -403,8 +414,8 @@ func runCaptchaSolve(ctx context.Context, sess browser.Session, params BrowserPa
 	}
 
 	// Try offline solvers first (math; remote token farm if configured).
-	if captchaChain != nil && len(captchaChain.Solvers()) > 0 {
-		if result, solveErr := captchaChain.Solve(ctx, ch, image); solveErr == nil && result.Solved && !result.Solution.IsEmpty() {
+	if chain := currentCaptchaChain(); chain != nil && len(chain.Solvers()) > 0 {
+		if result, solveErr := chain.Solve(ctx, ch, image); solveErr == nil && result.Solved && !result.Solution.IsEmpty() {
 			report := CaptchaResult{
 				Status:         "solved",
 				Kind:           string(ch.Kind),

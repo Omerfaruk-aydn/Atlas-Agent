@@ -64,8 +64,8 @@ func newCaptchaSession(url string, eval map[string]string) *captchaSession {
 
 func withCaptchaChain(t *testing.T, c *captcha.Chain) {
 	t.Helper()
-	prev := captchaChain
-	t.Cleanup(func() { captchaChain = prev })
+	prev := currentCaptchaChain()
+	t.Cleanup(func() { SetCaptchaChain(prev) })
 	SetCaptchaChain(c)
 }
 

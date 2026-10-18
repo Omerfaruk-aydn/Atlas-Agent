@@ -9,9 +9,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"log/slog"
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"time"
 
@@ -30,6 +33,7 @@ type Limits struct {
 }
 
 type Usage struct {
+	ProviderInvocations int64   `json:"provider_invocations"`
 	RepeatedFailedCalls int64   `json:"repeated_failed_calls"`
 	Tokens              int64   `json:"tokens"`
 	ToolCalls           int64   `json:"tool_calls"`
@@ -51,6 +55,10 @@ type Operation struct {
 	StartedAt       int64  `json:"started_at"`
 	FinishedAt      int64  `json:"finished_at,omitempty"`
 	BackgroundID    string `json:"background_id,omitempty"`
+	// Generation is the source generation after the operation finished.
+	// A check observed at an older generation does not verify current
+	// source.
+	Generation uint64 `json:"generation,omitempty"`
 }
 
 type TaskAccount struct {
@@ -82,6 +90,9 @@ type Workspace struct {
 }
 
 type State struct {
+	Expertise        []ExpertiseRecord            `json:"expertise,omitempty"`
+	LearnedMethods   []LearnedMethod              `json:"learned_methods,omitempty"`
+	Branches         []PatchBranch                `json:"patch_branches,omitempty"`
 	Paused           bool                         `json:"paused,omitempty"`
 	SemanticEdits    map[string]SemanticEditState `json:"semantic_edits,omitempty"`
 	Outcomes         outcome.Ledger               `json:"outcomes,omitempty"`
@@ -105,6 +116,30 @@ type State struct {
 	Failures         map[string]int               `json:"failures,omitempty"`
 	Checks           []Check                      `json:"checks,omitempty"`
 	Workspaces       []Workspace                  `json:"workspaces,omitempty"`
+	// Recovered is set when a damaged state file was quarantined. Records
+	// from before that point are unavailable, not absent.
+	Recovered *StateRecovery `json:"recovered,omitempty"`
+	// Work is the task's working memory: contract, method decisions,
+	// hypotheses, experiments, candidates and open questions.
+	Work *WorkState `json:"work,omitempty"`
+}
+
+// StateRecovery describes a quarantined, undecodable execution state.
+type StateRecovery struct {
+	QuarantinedPath string `json:"quarantined_path"`
+	Reason          string `json:"reason"`
+	RecoveredAt     int64  `json:"recovered_at"`
+}
+
+// quarantineState moves an undecodable state file aside without deleting
+// it, so it can be inspected or restored manually.
+func quarantineState(path string, cause error) (string, error) {
+	target := fmt.Sprintf("%s.corrupt-%d", path, time.Now().UnixNano())
+	if err := os.Rename(path, target); err != nil {
+		return "", err
+	}
+	slog.Warn("Quarantined undecodable execution state", "path", target, "error", cause)
+	return target, nil
 }
 
 type Store struct {
@@ -164,10 +199,25 @@ func (s *Store) withState(ctx context.Context, id string, write bool, fn func(*S
 		if len(data) > maxStateBytes {
 			return errors.New("execution state exceeds 1 MiB")
 		}
-		if err := json.Unmarshal(data, &st); err != nil {
-			return fmt.Errorf("decode execution state: %w", err)
+		decodeErr := json.Unmarshal(data, &st)
+		if decodeErr == nil && st.Version == 0 {
+			decodeErr = errors.New("missing execution state version")
 		}
-		if st.Version != 1 {
+		if decodeErr != nil {
+			// A damaged record must not lock the session out forever. It is
+			// moved aside intact for inspection and the session continues
+			// with an explicit recovery marker: earlier operation records
+			// are unavailable, so their effects must be inspected, never
+			// assumed or replayed.
+			quarantined, qErr := quarantineState(name+".json", decodeErr)
+			if qErr != nil {
+				return fmt.Errorf("decode execution state: %w (quarantine failed: %v)", decodeErr, qErr)
+			}
+			st = State{Version: 1, Tasks: map[string]TaskAccount{}, Failures: map[string]int{}, Recovered: &StateRecovery{
+				QuarantinedPath: quarantined, Reason: decodeErr.Error(), RecoveredAt: time.Now().UnixMilli(),
+			}}
+			write = true
+		} else if st.Version != 1 {
 			return errors.New("unsupported execution state version")
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -202,6 +252,11 @@ func (s *Store) withState(ctx context.Context, id string, write bool, fn func(*S
 	}
 	if st.Delivery != nil {
 		if err := st.Delivery.Validate(); err != nil {
+			return err
+		}
+	}
+	if st.Work != nil {
+		if err := st.Work.validate(); err != nil {
 			return err
 		}
 	}
@@ -245,8 +300,27 @@ func AtomicWrite(path string, data []byte) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	return os.Rename(f.Name(), path)
+	return renameRetry(f.Name(), path)
 }
+
+// renameRetry replaces path with tmp. On Windows a rename over a file that
+// another process has open (an antivirus scan, a concurrent reader) fails
+// with "access denied" for a moment; that ended a whole agent turn, so a
+// permission error is retried briefly before it is returned.
+func renameRetry(tmp, path string) error {
+	delay := 10 * time.Millisecond
+	for attempt := 0; ; attempt++ {
+		err := os.Rename(tmp, path)
+		if err == nil || runtime.GOOS != "windows" || !errors.Is(err, fs.ErrPermission) || attempt == renameAttempts-1 {
+			return err
+		}
+		time.Sleep(delay)
+		delay = min(delay*2, 400*time.Millisecond)
+	}
+}
+
+// renameAttempts bounds renameRetry to about two seconds.
+const renameAttempts = 9
 
 func (s *Store) Update(ctx context.Context, id string, fn func(*State) error) error {
 	return s.withState(ctx, id, true, fn)
@@ -390,6 +464,7 @@ func (s *Store) FinishObserved(ctx context.Context, session, id string, passed, 
 				st.Generation++
 				st.Failures = map[string]int{}
 			}
+			op.Generation = st.Generation
 			if err := s.retainVerification(ctx, session, *op, st.Checks); err != nil {
 				return err
 			}

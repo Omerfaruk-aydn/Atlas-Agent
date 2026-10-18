@@ -50,13 +50,25 @@ func SourceFingerprint(ctx context.Context, root string, excluded ...string) (st
 	}
 	var output limitedSnapshot
 	cmd.Stdout = &output
+	var paths []string
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("snapshot git files: %w", err)
+		if insideGitWorkTree(ctx, root) {
+			return "", fmt.Errorf("snapshot git files: %w", err)
+		}
+		// A project that is not a git repository still has a source tree;
+		// without this, every check that binds to the source (ui_verify,
+		// stage results, checkpoints) failed in a plain folder.
+		walked, err := walkSourceFiles(ctx, root)
+		if err != nil {
+			return "", fmt.Errorf("snapshot files: %w", err)
+		}
+		paths = walked
+	} else {
+		if output.exceeded {
+			return "", fmt.Errorf("snapshot file list exceeds limit")
+		}
+		paths = strings.Split(strings.TrimSuffix(string(output.data), "\x00"), "\x00")
 	}
-	if output.exceeded {
-		return "", fmt.Errorf("snapshot file list exceeds limit")
-	}
-	paths := strings.Split(strings.TrimSuffix(string(output.data), "\x00"), "\x00")
 	if len(paths) > 10000 {
 		return "", fmt.Errorf("snapshot exceeds 10000 files")
 	}

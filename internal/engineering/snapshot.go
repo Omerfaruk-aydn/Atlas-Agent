@@ -52,6 +52,9 @@ type WorkflowSnapshot struct {
 	Checkpoints        []Checkpoint        `json:"checkpoints"`
 	Operations         []Operation         `json:"operations"`
 	Capabilities       map[string]string   `json:"capabilities"`
+	// Work is the task's working memory projection: contract, method,
+	// hypotheses, candidates, open questions and what the agent waits for.
+	Work *WorkView `json:"work,omitempty"`
 }
 
 type WorkflowControl struct {
@@ -192,6 +195,10 @@ func (s *Store) Snapshot(ctx context.Context, root, id string, tasks []WorkflowT
 		out := WorkflowSnapshot{SessionID: id, Tasks: tasks, Usage: st.Usage, Limits: st.Limits, Paused: st.Paused, Busy: busy, Findings: findings, Checks: st.Checks, Checkpoints: checkpoints, Operations: st.Operations, Capabilities: map[string]string{"controls": "available", "terminal": "requires platform PTY; isolated PTY depends on runner", "browser": "requires enabled installed browser"}}
 		if st.Delivery != nil {
 			out.Stage = st.Delivery.CurrentStage
+		}
+		if st.Work != nil {
+			view := st.Work.View(st)
+			out.Work = &view
 		}
 		ids := make([]string, 0, len(st.RoleExecutions))
 		for key := range st.RoleExecutions {

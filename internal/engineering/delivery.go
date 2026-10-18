@@ -200,7 +200,7 @@ func (p DeliveryPlan) Validate() error {
 
 func (d DesignBrief) Validate(tasks map[string]bool) error {
 	if d.Target != "web" && d.Target != "tui" {
-		return fmt.Errorf("design target must be web or tui")
+		return fmt.Errorf(`design target must be "web" or "tui" (the kind of interface), not a description of the product; put that in audience, primary_flow and visual_direction`)
 	}
 	if !boundedText(d.Audience, 1024) || !boundedText(d.PrimaryFlow, 2048) || !boundedText(d.VisualDirection, 2048) || len(d.States) == 0 || len(d.States) > 16 || len(d.Criteria) == 0 || len(d.Criteria) > 16 || len(d.TaskIDs) == 0 || len(d.TaskIDs) > 32 || d.MinimumWidth < 20 || d.WideWidth <= d.MinimumWidth || d.WideWidth > 3840 {
 		return fmt.Errorf("invalid design brief or viewport range")

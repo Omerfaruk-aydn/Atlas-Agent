@@ -27,3 +27,6 @@ type lexToken struct {
 	indent int
 }
 
+// multiPunct are punctuation sequences kept as one token.
+var multiPunct = []string{"...", "::", "->", "=>", "?.", "<-"}
+

@@ -94,3 +94,45 @@ func isLowerStart(s string) bool {
 	return unicode.IsLower(r) || r == '_'
 }
 
+func isUpperStart(s string) bool {
+	r, _ := utf8.DecodeRuneInString(s)
+	return unicode.IsUpper(r)
+}
+
+// equationDecl handles Haskell and Elm: a signature name :: Type, and an
+// equation name args = body, whose arguments are not uses.
+func (x *extractor) equationDecl(i int) bool {
+	t := x.toks[i]
+	if !t.first || t.indent != 0 || !isLowerStart(t.text) || x.lang.notCalls[t.text] {
+		return false
+	}
+	sig := "::"
+	if x.lang.name == "elm" {
+		sig = ":"
+	}
+	if x.tok(i+1).text == sig {
+		x.names[i] = true
+		x.defineOnce(i, "function")
+		return true
+	}
+	eq := -1
+	for j := i + 1; j < len(x.toks) && x.toks[j].line == t.line; j++ {
+		s := x.toks[j].text
+		if s == "=" || s == "|" {
+			eq = j
+			break
+		}
+		if s == "::" || s == "<-" || s == "->" {
+			return false
+		}
+	}
+	if eq < 0 {
+		return false
+	}
+	for j := i; j < eq; j++ {
+		x.names[j] = true
+	}
+	x.defineOnce(i, "function")
+	return true
+}
+

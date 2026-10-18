@@ -129,3 +129,22 @@ func (lx *lexer) comment() bool {
 	return false
 }
 
+// commentHere reports whether marker starts a comment here: in a shell
+// script # does only after a space ($# is a variable), and in PHP #[ is an
+// attribute.
+func (lx *lexer) commentHere(marker string) bool {
+	if marker != "#" {
+		return true
+	}
+	switch lx.lang.name {
+	case "shell":
+		if lx.pos > 0 {
+			prev := lx.src[lx.pos-1]
+			return prev == ' ' || prev == '\t' || prev == '\n' || prev == ';'
+		}
+	case "php":
+		return !strings.HasPrefix(lx.src[lx.pos:], "#[")
+	}
+	return true
+}
+

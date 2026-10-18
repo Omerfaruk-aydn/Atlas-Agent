@@ -92,3 +92,45 @@ func extractCode(out *File, lang *language, content string) {
 	x.run()
 }
 
+// isVlang tells V from Verilog, which share the .v extension.
+func isVlang(content string) bool {
+	if strings.Contains(content, "endmodule") {
+		return false
+	}
+	for _, line := range strings.SplitN(content, "\n", 200) {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "fn ") || strings.HasPrefix(line, "pub fn ") || strings.HasPrefix(line, "struct ") {
+			return true
+		}
+	}
+	return false
+}
+
+// scriptOnly blanks everything outside <script> blocks, keeping the line
+// numbers.
+func scriptOnly(content string) string {
+	var b strings.Builder
+	rest := content
+	for {
+		start := strings.Index(rest, "<script")
+		if start < 0 {
+			b.WriteString(blankLines(rest))
+			return b.String()
+		}
+		open := strings.IndexByte(rest[start:], '>')
+		if open < 0 {
+			b.WriteString(blankLines(rest))
+			return b.String()
+		}
+		open += start + 1
+		b.WriteString(blankLines(rest[:open]))
+		end := strings.Index(rest[open:], "</script>")
+		if end < 0 {
+			b.WriteString(rest[open:])
+			return b.String()
+		}
+		b.WriteString(rest[open : open+end])
+		rest = rest[open+end:]
+	}
+}
+

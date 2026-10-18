@@ -89,3 +89,8 @@ func (x *extractor) markHeader(i int) {
 	}
 }
 
+func isLowerStart(s string) bool {
+	r, _ := utf8.DecodeRuneInString(s)
+	return unicode.IsLower(r) || r == '_'
+}
+

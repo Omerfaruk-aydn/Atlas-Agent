@@ -540,3 +540,68 @@ func (x *extractor) webRef(i int) {
 	}
 }
 
+// findDOMHelpers finds the functions that look an element up by their
+// parameter: const $ = (id) => document.getElementById(id), function
+// byId(id) { return document.getElementById(id) }.
+func (x *extractor) findDOMHelpers() map[string]string {
+	var out map[string]string
+	for i, t := range x.toks {
+		var kind string
+		switch t.text {
+		case "getElementById":
+			kind = RefDOM
+		case "querySelector", "querySelectorAll":
+			kind = "selector"
+		default:
+			continue
+		}
+		if x.tok(i+1).text != "(" || x.tok(i+2).kind != tIdent || x.tok(i+3).text != ")" {
+			continue
+		}
+		param := x.toks[i+2].text
+		// The definition is just before, on the same line or the two
+		// before it, and takes param.
+		for k := i - 1; k >= 0 && k > i-40 && x.toks[k].line >= t.line-2; k-- {
+			w := x.toks[k].text
+			if w != "const" && w != "let" && w != "var" && w != "function" || x.tok(k+1).kind != tIdent {
+				continue
+			}
+			takesParam := false
+			for j := k + 2; j < i; j++ {
+				if x.toks[j].text == param {
+					takesParam = true
+					break
+				}
+			}
+			if takesParam {
+				if out == nil {
+					out = map[string]string{}
+				}
+				out[x.toks[k+1].text] = kind
+			}
+			break
+		}
+	}
+	return out
+}
+
+// cssModule reports whether name is bound to an imported stylesheet.
+func (x *extractor) cssModule(name string) bool {
+	for _, imp := range x.file.Imports {
+		switch strings.ToLower(path.Ext(imp.Spec)) {
+		case ".css", ".scss", ".sass", ".less":
+		default:
+			continue
+		}
+		if imp.Module == name {
+			return true
+		}
+		for _, b := range imp.Bindings {
+			if b.Local == name {
+				return true
+			}
+		}
+	}
+	return false
+}
+

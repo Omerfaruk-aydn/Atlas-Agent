@@ -61,3 +61,15 @@ type eventLog struct {
 	events []string
 }
 
+func (l *eventLog) add(event string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.events = append(l.events, event)
+}
+
+func (l *eventLog) list() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.events)
+}
+

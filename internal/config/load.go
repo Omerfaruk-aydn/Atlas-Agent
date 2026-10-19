@@ -23,6 +23,7 @@ import (
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/catwalk"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/embedded"
 	powernapConfig "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-powernap/pkg/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/discover"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/env"
@@ -257,6 +258,7 @@ func (c *Config) configureProviders(ctx context.Context, store *ConfigStore, env
 	}
 
 	for _, p := range knownProviders {
+		builtInEndpoint := p.APIEndpoint
 		knownProviderNames[string(p.ID)] = true
 		config, configExists := c.Providers.Get(string(p.ID))
 		// if the user configured a known provider we need to allow it to override a couple of parameters
@@ -358,6 +360,9 @@ func (c *Config) configureProviders(ctx context.Context, store *ConfigStore, env
 		prepared.APIKey = p.APIKey
 		prepared.APIKeyTemplate = p.APIKey // Store original template for re-resolution
 		prepared.Type = p.Type
+		if !configExists || config.BaseURL == "" || config.BaseURL == builtInEndpoint {
+			p = embedded.ApplyLifecycle(p, time.Now())
+		}
 		prepared.Models = p.Models
 		prepared.ExtraHeaders = headers
 		if prepared.ExtraParams == nil {

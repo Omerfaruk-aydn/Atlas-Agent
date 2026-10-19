@@ -359,3 +359,35 @@ func (m *Map) explainLinks(b *strings.Builder, fi int) {
 	}
 }
 
+// explainPathUsers lists the links naming fi by path.
+func (m *Map) explainPathUsers(b *strings.Builder, fi int) {
+	uses := m.pathUsers(fi)
+	if len(uses) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "Named by path in (%d):\n", len(uses))
+	for _, u := range uses[:min(len(uses), maxListedLinks)] {
+		b.WriteString("  " + m.describeUse(u) + "\n")
+	}
+	if len(uses) > maxListedLinks {
+		fmt.Fprintf(b, "  … %d more\n", len(uses)-maxListedLinks)
+	}
+}
+
+// domainSymbols returns the definitions outside code named text, or
+// Container.text; a SQL name matches in any case.
+func (m *Map) domainSymbols(text string) []int {
+	var out []int
+	for id := range m.symbols {
+		if m.symDomain[id] == domainCode {
+			continue
+		}
+		s := m.symbol(id)
+		if s.Name == text || s.Container != "" && s.Container+"."+s.Name == text ||
+			m.symDomain[id] == domainSQL && strings.EqualFold(s.Name, text) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+

@@ -93,3 +93,30 @@ func (m *Map) reportMissing(fi int, l FileLink) bool {
 	return l.Kind != LinkNames && l.Kind != LinkRuns && !isTestPath(m.Files[fi].Path)
 }
 
+// linkProblem is a link to a missing file or a missing heading.
+type linkProblem struct {
+	use    pathUse
+	anchor bool
+}
+
+// linkProblems lists the links whose file or heading the map does not
+// find, optionally only those in one file.
+func (m *Map) linkProblems(only int) []linkProblem {
+	var out []linkProblem
+	for fi, targets := range m.paths {
+		if only >= 0 && fi != only {
+			continue
+		}
+		for k, t := range targets {
+			l := m.Files[fi].Links[k]
+			switch {
+			case t.brokenAnchor:
+				out = append(out, linkProblem{pathUse{fi, k}, true})
+			case len(t.files) == 0 && !t.pattern && !t.outside && !t.fixture && t.unread == "" && m.reportMissing(fi, l):
+				out = append(out, linkProblem{pathUse{fi, k}, false})
+			}
+		}
+	}
+	return out
+}
+

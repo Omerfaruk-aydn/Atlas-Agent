@@ -22,3 +22,40 @@ const (
 	domainScene = "scene"
 )
 
+var cssKinds = words("mixin keyframes placeholder")
+
+// symbolDomain returns the domain of a definition of kind in a file of
+// lang.
+func symbolDomain(lang, kind string) string {
+	switch kind {
+	case "section":
+		return domainDoc
+	case "element id":
+		return domainDOM
+	case "endpoint":
+		return domainRoute
+	case "css class", "css variable", "scss variable", "less variable":
+		return domainCSS
+	}
+	if cssKinds[kind] {
+		return domainCSS
+	}
+	switch lang {
+	case "css", "scss", "less":
+		return domainCSS
+	case "sql":
+		return domainSQL
+	case "graphql", "protobuf", "thrift", "prisma", "openapi":
+		return "schema:" + lang
+	case "terraform":
+		return domainInfra
+	case "npm", "make", "just", "taskfile", "docker", "compose", "workflow", "gitlab-ci", "pyproject", "cargo":
+		return domainTask
+	case "markdown", "rst", "asciidoc":
+		return domainDoc
+	case "godot":
+		return domainScene
+	}
+	return domainCode
+}
+

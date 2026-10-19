@@ -35,3 +35,7 @@ func (m *scriptedModel) Stream(context.Context, Call) (StreamResponse, error) {
 	}, nil
 }
 
+func (m *scriptedModel) Generate(context.Context, Call) (*Response, error) {
+	return nil, errors.New("not used")
+}
+

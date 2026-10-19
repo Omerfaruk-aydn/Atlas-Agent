@@ -55,3 +55,42 @@ func newTestWatch() *handoffWatch {
 	return &handoffWatch{baseline: map[string]bool{}, scratch: &evaluatorLedger{}}
 }
 
+// A feature finished in the turn hands off once its checks passed after
+// the last edit, the notes are current and the context is large; each
+// missing condition keeps the conversation.
+func TestFeatureHandoffWaitsForEveryCondition(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	passing := steps(editStep("1", "src/scene.ts"), bashStep("2", "npm test", 0))
+	cases := []struct {
+		name   string
+		f1Done bool
+		notes  time.Time
+		steps  []fantasy.StepResult
+		tokens int64
+		want   bool
+	}{
+		{"ready", true, now, passing, 90_000, true},
+		{"context still small", true, now, passing, 60_000, false},
+		{"no feature finished", false, now, passing, 90_000, false},
+		{"notes older than the plan", true, now.Add(-time.Hour), passing, 90_000, false},
+		{"check not run", true, now, steps(editStep("1", "src/scene.ts")), 90_000, false},
+		{"check failed", true, now, steps(editStep("1", "src/scene.ts"), bashStep("2", "npm test", 1)), 90_000, false},
+		{"edit after the check", true, now, steps(bashStep("1", "npm test", 0), editStep("2", "src/scene.ts")), 90_000, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			writeHandoffProject(t, root, tc.f1Done)
+			setPlanTime(t, root, now.Add(-time.Minute))
+			writeNotes(t, root, tc.notes)
+			w := newTestWatch()
+			require.Equal(t, tc.want, w.due(root, tc.steps, 200_000, tc.tokens))
+			if tc.want {
+				require.Equal(t, "F1", w.feature.ID)
+			}
+		})
+	}
+}
+

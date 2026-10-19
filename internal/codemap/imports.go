@@ -195,3 +195,85 @@ func (x *extractor) includeImport(k int) {
 	}
 }
 
+// jsImport reads import ... from "x", export ... from "x", require("x")
+// and import("x").
+func (x *extractor) jsImport(i int) bool {
+	t := x.toks[i]
+	switch t.text {
+	case "require":
+		if x.tok(i+1).text == "(" && x.tok(i+2).kind == tString {
+			imp := Import{Spec: x.toks[i+2].text, Line: t.line}
+			x.bindAssignment(&imp, i)
+			x.addImport(imp)
+			return true
+		}
+		return false
+	case "import", "export":
+	default:
+		return false
+	}
+	if t.text == "import" && x.tok(i+1).text == "(" {
+		if s := x.tok(i + 2); s.kind == tString {
+			x.addImport(Import{Spec: s.text, Line: t.line})
+		}
+		return true
+	}
+	if t.text == "import" && x.tok(i+1).kind == tString {
+		x.addImport(Import{Spec: x.toks[i+1].text, Line: t.line})
+		return true
+	}
+	// Find "from" before the statement ends; an export without one is a
+	// declaration, not an import.
+	end := -1
+	for j := i + 1; j < len(x.toks) && j < i+400; j++ {
+		s := x.toks[j].text
+		if s == "from" && x.tok(j+1).kind == tString {
+			end = j
+			break
+		}
+		if s == ";" || (t.text == "export" && (s == "function" || s == "class" || s == "const" || s == "let" || s == "var" || s == "=" || s == "default" && x.tok(j+1).text != "as")) {
+			return false
+		}
+	}
+	if end < 0 {
+		return false
+	}
+	imp := Import{Spec: x.toks[end+1].text, Line: t.line}
+	if t.text == "import" {
+		for j := i + 1; j < end; j++ {
+			s := x.toks[j]
+			switch {
+			case s.text == "*" && x.tok(j+1).text == "as" && x.tok(j+2).kind == tIdent:
+				imp.Module = x.toks[j+2].text
+				j += 2
+			case s.text == "{":
+				for j++; j < end && x.toks[j].text != "}"; j++ {
+					n := x.toks[j]
+					if n.kind != tIdent || n.text == "as" || n.text == "type" && x.tok(j+1).kind == tIdent || x.tok(j-1).text == "as" {
+						continue
+					}
+					local := n.text
+					if x.tok(j+1).text == "as" && x.tok(j+2).kind == tIdent {
+						local = x.toks[j+2].text
+					}
+					imp.Bindings = append(imp.Bindings, Binding{Local: local, Remote: n.text})
+				}
+			case s.kind == tIdent && s.text != "type" && s.text != "typeof":
+				imp.Bindings = append(imp.Bindings, Binding{Local: s.text, Remote: "default"})
+			}
+		}
+	}
+	x.addImport(imp)
+	return true
+}
+
+// addImport records a script's import, or for an image, a document or
+// another file that is not code, a link to it.
+func (x *extractor) addImport(imp Import) {
+	if target, ok := pathInString(imp.Spec); ok && !isCodePath(target) {
+		addLink(x.file, FileLink{Target: target, Kind: LinkLoads, Line: imp.Line})
+		return
+	}
+	x.file.Imports = append(x.file.Imports, imp)
+}
+

@@ -36,3 +36,32 @@ type cochange struct {
 	pairs   map[string]map[string]int
 }
 
+// Related returns the files that most often changed together with file,
+// strongest first, or nil without git history.
+func (m *Map) Related(ctx context.Context, file string, limit int) []Related {
+	if m.history == nil {
+		return nil
+	}
+	h := m.history.historyFor(ctx, m.Root)
+	if h == nil {
+		return nil
+	}
+	var out []Related
+	for other, together := range h.pairs[file] {
+		if together < minTogether {
+			continue
+		}
+		if _, ok := m.byPath[other]; !ok {
+			continue
+		}
+		out = append(out, Related{Path: other, Together: together, Commits: h.commits[file]})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Together != out[j].Together {
+			return out[i].Together > out[j].Together
+		}
+		return out[i].Path < out[j].Path
+	})
+	return out[:min(len(out), limit)]
+}
+

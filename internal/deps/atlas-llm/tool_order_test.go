@@ -43,3 +43,7 @@ func (m *scriptedModel) GenerateObject(context.Context, ObjectCall) (*ObjectResp
 	return nil, errors.New("not used")
 }
 
+func (m *scriptedModel) StreamObject(context.Context, ObjectCall) (ObjectStreamResponse, error) {
+	return nil, errors.New("not used")
+}
+func (m *scriptedModel) Provider() string { return "test" }

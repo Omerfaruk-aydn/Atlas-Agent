@@ -34,3 +34,8 @@ func (r *tokenReader) tok(i int) lexToken {
 	return r.toks[i]
 }
 
+// lower returns the token at i in lower case.
+func (r *tokenReader) lower(i int) string {
+	return strings.ToLower(r.tok(i).text)
+}
+

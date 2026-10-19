@@ -28,8 +28,7 @@ func TestReasoningEndSequencePreservesProtocolState(t *testing.T) {
 
 	r := m.ReasoningContent()
 	require.Equal(t, "step one and two", r.Thinking)
-	require.Equal(t, "gsig", r.ThoughtSignature)
-	require.Equal(t, "call-1", r.ToolID)
+	require.Equal(t, map[string]string{"call-1": "gsig"}, r.ToolSignatures)
 	require.Equal(t, "asig", r.Signature)
 	require.Same(t, data, r.ResponsesData)
 	require.Equal(t, "openai", r.Provider)

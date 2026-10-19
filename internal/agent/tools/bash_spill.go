@@ -31,7 +31,11 @@ const (
 	spillTailLines = 50
 	// spillSignalLines bounds the error-like lines quoted from the middle.
 	spillSignalLines = 40
-	spillLineWidth   = 400
+	// spillFirstErrorLines is how many lines after the first error-like
+	// line are shown with it: the expected and actual values, the stack
+	// or the compiler note usually follow on the next lines.
+	spillFirstErrorLines = 12
+	spillLineWidth       = 400
 	// spillKeepFiles bounds how many logs are kept per project.
 	spillKeepFiles = 50
 	spillLogDir    = ".atlas/logs"
@@ -118,6 +122,14 @@ func digestLines(text string) string {
 		}
 	}
 	omitted := len(middle)
+	if first := slices.IndexFunc(middle, signalLine.MatchString); first >= 0 {
+		end := min(first+1+spillFirstErrorLines, len(middle))
+		block := make([]string, 0, end-first)
+		for i := first; i < end; i++ {
+			block = append(block, fmt.Sprintf("%6d| %s", spillHeadLines+i+1, clipLine(middle[i])))
+		}
+		fmt.Fprintf(&b, "\n... the first error-like line and the %d lines after it:\n%s\n", end-first-1, strings.Join(block, "\n"))
+	}
 	if len(signals) > 0 {
 		shown := signals[:min(len(signals), spillSignalLines)]
 		fmt.Fprintf(&b, "\n... error-like lines from the %d omitted (%d of %d shown):\n%s\n", omitted, len(shown), len(signals), strings.Join(shown, "\n"))

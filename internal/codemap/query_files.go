@@ -35,3 +35,16 @@ func describeAsset(lang string, a *Asset) string {
 	return strings.Join(parts, ", ")
 }
 
+// pathUsers returns the links naming fi by path, ordered by file and line.
+func (m *Map) pathUsers(fi int) []pathUse {
+	uses := append([]pathUse(nil), m.pathIn[fi]...)
+	sort.SliceStable(uses, func(i, j int) bool {
+		a, b := uses[i], uses[j]
+		if a.file != b.file {
+			return m.Files[a.file].Path < m.Files[b.file].Path
+		}
+		return m.Files[a.file].Links[a.link].Line < m.Files[b.file].Links[b.link].Line
+	})
+	return uses
+}
+

@@ -790,3 +790,21 @@ func confidenceWeight(c Confidence) float64 {
 	return 0.3
 }
 
+// enclosingFinder returns a function giving the innermost symbol around a
+// line of f, the file at index fi whose first symbol has the global index
+// first, or -1-fi at the top level.
+func enclosingFinder(f *File, fi, first int) func(int) int {
+	return func(line int) int {
+		best, span := -1, 0
+		for i, s := range f.Symbols {
+			if s.Line <= line && line <= s.EndLine && (best < 0 || s.EndLine-s.Line < span) {
+				best, span = i, s.EndLine-s.Line
+			}
+		}
+		if best < 0 {
+			return -1 - fi
+		}
+		return first + best
+	}
+}
+

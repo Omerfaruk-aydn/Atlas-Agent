@@ -3,6 +3,8 @@ package backend
 import (
 	"context"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/history"
+
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/proto"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
@@ -106,7 +108,7 @@ func (b *Backend) ListSessionMessages(ctx context.Context, workspaceID, sessionI
 }
 
 // ListSessionHistory returns the history items for a session.
-func (b *Backend) ListSessionHistory(ctx context.Context, workspaceID, sessionID string) (any, error) {
+func (b *Backend) ListSessionHistory(ctx context.Context, workspaceID, sessionID string) ([]history.File, error) {
 	ws, err := b.GetWorkspace(workspaceID)
 	if err != nil {
 		return nil, err
@@ -177,4 +179,14 @@ func (b *Backend) ListAllUserMessages(ctx context.Context, workspaceID string) (
 	}
 
 	return ws.Messages.ListAllUserMessages(ctx)
+}
+
+// RenameSession changes only a session's title, leaving its usage
+// counters, todos and timestamps alone.
+func (b *Backend) RenameSession(ctx context.Context, workspaceID, sessionID, title string) error {
+	ws, err := b.GetWorkspace(workspaceID)
+	if err != nil {
+		return err
+	}
+	return ws.Sessions.Rename(ctx, sessionID, title)
 }

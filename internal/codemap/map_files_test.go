@@ -114,3 +114,72 @@ func TestMapOverviewCoversDocumentsAndAssets(t *testing.T) {
 	require.NotContains(t, ranked, "logo.png")
 }
 
+func TestMapExplainsDocumentsAndAssets(t *testing.T) {
+	t.Parallel()
+	m := buildWeb(t)
+
+	readme := m.Explain(t.Context(), "README.md")
+	require.Contains(t, readme, "L5 links to docs/guide.md#usage -> docs/guide.md at line 3")
+	require.Contains(t, readme, "L5 links to docs/guide.md#removed -> docs/guide.md (no such heading)")
+	require.Contains(t, readme, "L7 embeds public/logo.png -> public/logo.png")
+	require.Contains(t, readme, "L8 embeds docs/img/missing.png (not found)")
+	require.Contains(t, readme, "script npm.build at package.json:4")
+	require.Contains(t, readme, "function solveOrbit at src/main.js:1 [inferred]")
+
+	logo := m.Explain(t.Context(), "public/logo.png")
+	require.Contains(t, logo, "public/logo.png: image, png, 2x3,")
+	require.Contains(t, logo, "README.md:7 embeds public/logo.png")
+	require.Contains(t, m.Explain(t.Context(), "public/unused.png"), "Named by no file in the project")
+	require.Contains(t, m.Explain(t.Context(), "sun.png"), "src/main.js:8 names /textures/sun.png")
+
+	usage := m.Explain(t.Context(), "Usage")
+	require.Contains(t, usage, "section Usage: docs/guide.md:3")
+	require.Contains(t, usage, "Linked to from (1):\n  README.md:5 links to docs/guide.md#usage")
+
+	// A document naming a definition is a guess, never resolved.
+	require.Contains(t, m.Explain(t.Context(), "solveOrbit"), "README.md:10 in section Install [mention, inferred]")
+
+	callers := m.Callers("public/logo.png", 2)
+	require.Contains(t, callers, "reaches 1 places in 1 files")
+	require.Contains(t, callers, "1. README.md:7 embeds public/logo.png")
+	require.Contains(t, m.Path("README.md", "public/logo.png"), "README.md\n  -> public/logo.png")
+}
+
+func TestMapLinksStylesMarkupSQLAndScripts(t *testing.T) {
+	t.Parallel()
+	m := buildWeb(t)
+
+	card := m.Explain(t.Context(), "card")
+	require.Contains(t, card, "css class card: styles.css:1")
+	require.Contains(t, card, "index.html:5")
+	require.Contains(t, card, "src/main.js:7")
+	require.Contains(t, m.Explain(t.Context(), "orphan"), "Used by (0)")
+
+	app := m.Explain(t.Context(), "app")
+	require.Contains(t, app, "element id app: index.html:5")
+	require.Contains(t, app, "src/main.js:6 in function start")
+
+	users := m.Explain(t.Context(), "users")
+	require.Contains(t, users, "table users: db/schema.sql:1-4")
+	require.Contains(t, users, "server/users.go:4 in function listUsers")
+	require.Contains(t, m.Explain(t.Context(), "USERS"), "table users", "SQL names match in any case")
+
+	// A request under a prefix such as /api still matches the endpoint.
+	endpoint := m.Explain(t.Context(), "GET /users/{id}")
+	require.Contains(t, endpoint, "endpoint GET /users/{id}: api/openapi.yaml:4")
+	require.Contains(t, endpoint, "src/main.js:13 in function loadUser")
+
+	html := m.Explain(t.Context(), "index.html")
+	require.Contains(t, html, "styles.css -> styles.css")
+	require.Contains(t, html, "src/main.js -> src/main.js")
+
+	build := m.Explain(t.Context(), "npm.build")
+	require.Contains(t, build, "package.json:5")
+	require.Contains(t, m.Explain(t.Context(), "package.json"), "runs scripts/build.js -> scripts/build.js")
+
+	// The npm script and the function share a name; find lists both.
+	find := m.Find("build")
+	require.Contains(t, find, "function build  scripts/build.js:1")
+	require.Contains(t, find, "script npm.build  package.json:4")
+}
+

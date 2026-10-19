@@ -260,3 +260,15 @@ func (m *Map) topSymbols(fi, n int) []int {
 	return ids[:min(len(ids), n)]
 }
 
+// importers lists the files that depend on fi.
+func (m *Map) importers(fi int) []int {
+	var out []int
+	for key := range m.fileLinks {
+		if key[1] == fi {
+			out = append(out, key[0])
+		}
+	}
+	sort.Ints(out)
+	return out
+}
+

@@ -93,3 +93,19 @@ question is about text rather than code (use grep).
 The map refreshes itself on every call and re-reads only changed files,
 so it is current after your own edits.
 
+## How sure each link is
+
+Every link is labeled. Act on it accordingly:
+
+- **resolved** — through an import, the same file or the same package.
+  Trust it.
+- **inferred** — the only definition with that name in the project, in a
+  language without imports at that point, or a name written in prose.
+  Usually right; confirm when it matters.
+- **ambiguous** — several definitions match, or a method is called on a
+  value of unknown type (`receiver type unknown`). Treat it as a lead and
+  read the call site before relying on it.
+
+When a change is risky, count only resolved links as certain and open
+the files behind the others.
+

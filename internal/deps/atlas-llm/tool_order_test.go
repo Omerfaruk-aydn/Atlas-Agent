@@ -47,3 +47,7 @@ func (m *scriptedModel) StreamObject(context.Context, ObjectCall) (ObjectStreamR
 	return nil, errors.New("not used")
 }
 func (m *scriptedModel) Provider() string { return "test" }
+func (m *scriptedModel) Model() string    { return "test" }
+
+type noInput struct{}
+

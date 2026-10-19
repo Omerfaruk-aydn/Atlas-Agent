@@ -474,3 +474,29 @@ func (m *Map) findFile(text string) (int, bool) {
 	return found, found >= 0
 }
 
+// Explain describes a definition or a file and how it connects to the
+// rest: where it is, what uses it, what it uses, and for a file what it
+// imports, what imports it and what changes with it.
+func (m *Map) Explain(ctx context.Context, text string) string {
+	t, err := m.resolveTarget(text)
+	if err != nil {
+		return err.Error()
+	}
+	if t.file >= 0 {
+		return m.explainFile(ctx, t.file)
+	}
+	var b strings.Builder
+	if len(t.symbols) > 3 {
+		fmt.Fprintf(&b, "%d definitions are named %s; showing the 3 most used. Name one as path:%s or Container.%s.\n\n", len(t.symbols), text, lastName(text), lastName(text))
+	}
+	ids := append([]int(nil), t.symbols...)
+	sort.SliceStable(ids, func(i, j int) bool { return m.symbolScore[ids[i]] > m.symbolScore[ids[j]] })
+	for k, id := range ids[:min(len(ids), 3)] {
+		if k > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(m.explainSymbol(id))
+	}
+	return b.String()
+}
+

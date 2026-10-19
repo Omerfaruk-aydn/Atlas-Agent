@@ -317,3 +317,45 @@ func (m *Map) overviewProblems(b *strings.Builder) {
 	}
 }
 
+// explainLinks lists the files fi names by path and what each resolved to.
+func (m *Map) explainLinks(b *strings.Builder, fi int) {
+	f := m.Files[fi]
+	if len(f.Links) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "Names by path (%d):\n", len(f.Links))
+	for k, l := range f.Links {
+		if k == maxListedLinks {
+			fmt.Fprintf(b, "  … %d more\n", len(f.Links)-maxListedLinks)
+			break
+		}
+		t := m.paths[fi][k]
+		var where string
+		switch {
+		case t.fixture:
+			where = "(test data; not resolved)"
+		case t.outside:
+			where = "(outside the project)"
+		case t.unread != "":
+			where = "-> " + t.unread + " (not mapped)"
+		case t.pattern && len(t.files) > 0:
+			where = fmt.Sprintf("-> %s such as %s", plural(len(t.files), "file"), m.Files[t.files[0]].Path)
+		case t.pattern:
+			where = "(a computed name; matches no file)"
+		case len(t.files) == 0:
+			where = "(not found)"
+		case t.files[0] == fi:
+			where = "(this file)"
+		default:
+			where = "-> " + m.Files[t.files[0]].Path
+		}
+		switch {
+		case t.brokenAnchor:
+			where += " (no such heading)"
+		case t.section >= 0:
+			where += fmt.Sprintf(" at line %d", m.symbol(t.section).Line)
+		}
+		fmt.Fprintf(b, "  L%d %s %s %s\n", l.Line, l.Kind, l.Target, where)
+	}
+}
+

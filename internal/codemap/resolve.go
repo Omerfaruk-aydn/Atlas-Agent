@@ -808,3 +808,109 @@ func enclosingFinder(f *File, fi, first int) func(int) int {
 	}
 }
 
+// resolveRef finds the definitions a use can mean and how sure the link
+// is.
+func (m *Map) resolveRef(fi int, r Ref, from int, bound, moduleOf map[string][]int, visible map[int]bool) ([]int, Confidence) {
+	pick := func(ids []int) []int { return m.preferKind(ids, r.Kind) }
+	inFiles := func(files []int) []int {
+		var out []int
+		for _, t := range files {
+			for _, id := range m.byName[r.Name] {
+				if m.symbols[id].file == t {
+					out = append(out, id)
+				}
+			}
+		}
+		return out
+	}
+	if q := r.Qualifier; q != "" {
+		if files, ok := moduleOf[q]; ok {
+			if out := pick(inFiles(files)); len(out) > 0 {
+				return out, Resolved
+			}
+			return nil, ""
+		}
+		switch q {
+		case "this", "self", "super", "Self", "cls", "$this", "static", "parent":
+			if out := pick(inFiles([]int{fi})); len(out) > 0 {
+				return limit(out), Resolved
+			}
+			for t := range visible {
+				if out := pick(inFiles([]int{t})); len(out) == 1 {
+					return out, Inferred
+				}
+			}
+			return nil, ""
+		}
+		if ids := m.byQualified[q+"."+r.Name]; len(ids) > 0 {
+			var near []int
+			for _, id := range ids {
+				if file := m.symbols[id].file; file == fi || visible[file] {
+					near = append(near, id)
+				}
+			}
+			switch {
+			case len(near) > 0:
+				return limit(near), Resolved
+			case len(ids) == 1:
+				return ids, Inferred
+			}
+			return candidates(ids)
+		}
+		// obj.method(): the receiver's type is unknown, so the best a
+		// name can do is an inference, and only among methods: a free
+		// function is never called through a value.
+		var methods []int
+		for _, id := range m.byName[r.Name] {
+			if s := m.symbol(id); s.Kind == "method" || s.Container != "" && s.Kind != "namespace" {
+				methods = append(methods, id)
+			}
+		}
+		// Even a single match stays ambiguous: the receiver may be a type
+		// from outside the project with a method of the same name.
+		if len(methods) == 0 || len(methods) > maxCandidates {
+			return nil, ""
+		}
+		return methods, Ambiguous
+	}
+	if ids, ok := bound[r.Name]; ok {
+		return limit(pick(ids)), Resolved
+	}
+	if out := pick(inFiles([]int{fi})); len(out) > 0 {
+		return limit(out), Resolved
+	}
+	var near []int
+	for _, id := range m.byName[r.Name] {
+		if visible[m.symbols[id].file] {
+			near = append(near, id)
+		}
+	}
+	if near = pick(near); len(near) == 1 {
+		return near, Resolved
+	} else if len(near) > 1 {
+		return candidates(near)
+	}
+	if f := m.Files[fi]; explicitImports[f.Language] && (f.Language != "javascript" || len(f.Imports) > 0) {
+		// In these languages a name from another file must be imported;
+		// one that is not is a builtin or comes from a dependency. A
+		// script without imports shares globals with the page's other
+		// scripts, so it still gets inferences.
+		return nil, ""
+	}
+	ids := pick(m.byName[r.Name])
+	if len(ids) == 1 {
+		return ids, Inferred
+	}
+	return candidates(ids)
+}
+
+// explicitImports are the languages where using a definition from another
+// file takes an import (or, for Go and Java, the same package), so an
+// unqualified name that is neither local nor imported is not the project's.
+var explicitImports = map[string]bool{
+	"go": true, "typescript": true, "javascript": true, "python": true, "rust": true,
+	"java": true, "kotlin": true, "scala": true, "groovy": true, "dart": true, "zig": true,
+	"mojo": true, "haskell": true, "elm": true, "ocaml": true, "fsharp": true, "clojure": true,
+	"erlang": true, "gleam": true, "nim": true, "vlang": true, "solidity": true, "pascal": true,
+}
+

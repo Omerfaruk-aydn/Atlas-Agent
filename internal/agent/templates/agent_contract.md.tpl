@@ -117,7 +117,11 @@ port), keep a work plan before implementing. Small fixes need none.
    verify command passed after your last change to it; re-run the whole contract
    so earlier features stay intact. Never weaken a check to make it pass.
 4. Keep .atlas/progress.md short and current: state, decisions, approaches that
-   failed and why, and the exact next step. A new session starts from it.
+   failed and why, and the exact next step. A new session starts from it. When a
+   feature is done and its checks pass, update the notes after marking it done:
+   Atlas may then continue the next feature in a fresh context built from the
+   plan, these notes and the user's messages, so write down anything the next
+   feature needs that the code does not show.
 5. Once the first slice works, show the user a preview (how to run or open it, a
    screenshot or sample output) and keep going; set "previewed": true.
 6. Long command output is saved to .atlas/logs automatically; read the summary,

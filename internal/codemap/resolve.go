@@ -575,3 +575,10 @@ func (m *Map) include(dir, spec string) []int {
 	return m.bySuffix(strings.TrimSuffix(spec, path.Ext(spec)), []string{path.Ext(spec)})
 }
 
+func (m *Map) relativeOrRoot(dir, spec string) []int {
+	if out := m.lookup(path.Join(dir, spec), nil); out != nil {
+		return out
+	}
+	return m.lookup(spec, nil)
+}
+

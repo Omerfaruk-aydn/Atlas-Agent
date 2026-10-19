@@ -46,3 +46,19 @@ type cacheEntry struct {
 // reused.
 const cacheVersion = 4
 
+type cacheFile struct {
+	Version int                    `json:"version"`
+	Entries map[string]*cacheEntry `json:"entries"`
+}
+
+// Builder keeps the latest map of each project in memory, so a query
+// after a few edits re-reads only the edited files.
+type Builder struct {
+	// CacheDir holds the per-project extraction caches; empty keeps them
+	// in memory only.
+	CacheDir string
+
+	mu       sync.Mutex
+	projects map[string]*project
+}
+

@@ -272,3 +272,19 @@ func (m *Map) importers(fi int) []int {
 	return out
 }
 
+func (m *Map) dependencies(fi int) []int {
+	var out []int
+	for key := range m.fileLinks {
+		if key[0] == fi {
+			out = append(out, key[1])
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return m.fileLinks[[2]int{fi, out[i]}] > m.fileLinks[[2]int{fi, out[j]}]
+	})
+	return out
+}
+
+// entryNames are file names programs usually start from.
+var entryNames = words("main index app server cli manage __main__ program Program Main")
+

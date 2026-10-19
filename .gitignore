@@ -79,3 +79,10 @@ completions/atlas.*sh
 # interrupted publish can never leave it stageable.
 npm/cli/.npmrc
 .npmrc
+
+# Web client build output embedded by internal/webui (see web/README.md).
+internal/webui/build/*
+!internal/webui/build/.keep
+web/node_modules/
+web/test-results/
+web/playwright-report/

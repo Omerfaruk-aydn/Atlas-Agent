@@ -275,3 +275,103 @@ func (m *Map) topFileName(files []int) string {
 	return path.Base(m.Files[best].Path)
 }
 
+// louvain returns a community for each node of an undirected weighted
+// graph, maximizing modularity: repeatedly move each node to the
+// neighboring community that gains most, then merge communities into
+// nodes and repeat.
+func louvain(adj []map[int]float64) []int {
+	n := len(adj)
+	assignment := make([]int, n)
+	for i := range assignment {
+		assignment[i] = i
+	}
+	graph := adj
+	for range 10 {
+		local, moved := louvainPass(graph)
+		if !moved {
+			break
+		}
+		// Renumber and fold the graph.
+		ids := map[int]int{}
+		for _, c := range local {
+			if _, ok := ids[c]; !ok {
+				ids[c] = len(ids)
+			}
+		}
+		for i := range assignment {
+			assignment[i] = ids[local[assignment[i]]]
+		}
+		folded := make([]map[int]float64, len(ids))
+		for i := range folded {
+			folded[i] = map[int]float64{}
+		}
+		for i, edges := range graph {
+			for j, w := range edges {
+				folded[ids[local[i]]][ids[local[j]]] += w
+			}
+		}
+		if len(folded) == len(graph) {
+			break
+		}
+		graph = folded
+	}
+	return assignment
+}
+
+// louvainPass moves nodes between communities until no move improves
+// modularity, and reports whether any node moved.
+func louvainPass(adj []map[int]float64) ([]int, bool) {
+	n := len(adj)
+	community := make([]int, n)
+	degree := make([]float64, n)
+	total := make([]float64, n)
+	m2 := 0.0
+	for i, edges := range adj {
+		community[i] = i
+		for _, w := range edges {
+			degree[i] += w
+		}
+		total[i] = degree[i]
+		m2 += degree[i]
+	}
+	if m2 == 0 {
+		return community, false
+	}
+	moved := false
+	for range 20 {
+		changed := false
+		for i := range n {
+			if degree[i] == 0 {
+				continue
+			}
+			links := map[int]float64{}
+			for j, w := range adj[i] {
+				if j != i {
+					links[community[j]] += w
+				}
+			}
+			old := community[i]
+			total[old] -= degree[i]
+			best, gain := old, links[old]-total[old]*degree[i]/m2
+			keys := make([]int, 0, len(links))
+			for c := range links {
+				keys = append(keys, c)
+			}
+			sort.Ints(keys)
+			for _, c := range keys {
+				if g := links[c] - total[c]*degree[i]/m2; g > gain+1e-12 {
+					best, gain = c, g
+				}
+			}
+			community[i] = best
+			total[best] += degree[i]
+			if best != old {
+				changed, moved = true, true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return community, moved
+}

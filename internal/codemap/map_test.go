@@ -201,3 +201,15 @@ func TestBuilderRefreshesChangedFiles(t *testing.T) {
 	require.Len(t, fresh.Files[0].Symbols, 2)
 }
 
+func TestBuilderSkipsMinifiedFiles(t *testing.T) {
+	t.Parallel()
+	root := writeProject(t, map[string]string{
+		"app.js":     "function a() {}\n",
+		"vendor.js":  strings.Repeat("var a=1;", 2000),
+		"big.min.js": "x",
+	})
+	m, err := NewBuilder("").Map(t.Context(), root)
+	require.NoError(t, err)
+	require.Equal(t, []string{"vendor.js (minified)"}, m.Skipped)
+}
+

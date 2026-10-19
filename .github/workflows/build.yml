@@ -39,3 +39,19 @@ jobs:
         if: runner.os == 'Windows'
         run: go test -race -count=1 ./internal/computer ./internal/ui/model -run 'TestWindowsAutomationReadAndFixtureOCR|TestWorkflowPanelRealPTYResizeStopAndClose'
       - run: go test -race ./...
+
+  web:
+    # The web client: typecheck, unit tests and the production build that
+    # internal/webui embeds. The Go jobs above do not need it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm --prefix web ci
+      - run: npm --prefix web run typecheck
+      - run: npm --prefix web test
+      - run: npm --prefix web run build

@@ -418,3 +418,25 @@ func (b *Builder) readCache(root string) map[string]*cacheEntry {
 	return cache.Entries
 }
 
+// writeCache saves the extractions; a failure only costs a re-read next
+// time.
+func (b *Builder) writeCache(root string, entries map[string]*cacheEntry) {
+	file := b.cachePath(root)
+	if file == "" {
+		return
+	}
+	data, err := json.Marshal(cacheFile{Version: cacheVersion, Entries: entries})
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		return
+	}
+	tmp := file + ".tmp"
+	if os.WriteFile(tmp, data, 0o644) != nil {
+		return
+	}
+	if os.Rename(tmp, file) != nil {
+		_ = os.Remove(tmp)
+	}
+}

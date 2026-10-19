@@ -55,3 +55,9 @@ func toolCallPart(id, name string) StreamPart {
 	return StreamPart{Type: StreamPartTypeToolCall, ID: id, ToolCallName: name, ToolCallInput: `{}`}
 }
 
+// eventLog records what the tools did, in order.
+type eventLog struct {
+	mu     sync.Mutex
+	events []string
+}
+

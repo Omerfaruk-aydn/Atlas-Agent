@@ -59,6 +59,18 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build web client
+        # Embedded into the binary by internal/webui; `atlas-agent web`
+        # refuses to start without it.
+        run: |
+          npm --prefix web ci
+          npm --prefix web run build
+
       - name: Build all platforms
         env:
           CGO_ENABLED: '0'

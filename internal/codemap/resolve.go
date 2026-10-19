@@ -99,3 +99,10 @@ func (m *Map) symbol(i int) *Symbol {
 	return &m.Files[r.file].Symbols[r.index]
 }
 
+func (m *Map) fileOf(i int) int {
+	if i < 0 {
+		return -1 - i
+	}
+	return m.symbols[i].file
+}
+

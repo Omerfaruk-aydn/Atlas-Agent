@@ -39,3 +39,7 @@ func (m *scriptedModel) Generate(context.Context, Call) (*Response, error) {
 	return nil, errors.New("not used")
 }
 
+func (m *scriptedModel) GenerateObject(context.Context, ObjectCall) (*ObjectResponse, error) {
+	return nil, errors.New("not used")
+}
+

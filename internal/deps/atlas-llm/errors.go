@@ -60,7 +60,7 @@ type ProviderError struct {
 }
 
 func (m *ProviderError) Error() string {
-	if m.isOpenCodeFreeTierRestriction() {
+	if m.isFreeTierRestriction() {
 		return "OpenCode free-tier access denied: the server restricts this free model to OpenCode. Select a model available to external clients or use the free model in OpenCode. Retrying or signing in again will not remove this server restriction."
 	}
 	if m.Title == "" {
@@ -82,7 +82,7 @@ func (m *ProviderError) Unwrap() error {
 // condition (408, 409, 429, or any 5xx), or if the cause is a transient
 // HTTP/2 transport error.
 func (m *ProviderError) IsRetryable() bool {
-	if m.isOpenCodeFreeTierRestriction() {
+	if m.isFreeTierRestriction() {
 		return false
 	}
 	if m.TransientError {

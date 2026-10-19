@@ -30,3 +30,9 @@ type Related struct {
 	Together, Commits int
 }
 
+type cochange struct {
+	head    string
+	commits map[string]int
+	pairs   map[string]map[string]int
+}
+

@@ -329,3 +329,213 @@ func (m *Map) bySuffix(rel string, exts []string) []int {
 	return nil
 }
 
+// byDirSuffix returns the files in the one directory whose path ends in
+// rel.
+func (m *Map) byDirSuffix(rel string, lang string) []int {
+	var match string
+	for dir := range m.dirs {
+		if dir == rel || strings.HasSuffix(dir, "/"+rel) {
+			if match != "" {
+				return nil
+			}
+			match = dir
+		}
+	}
+	var out []int
+	for _, fi := range m.dirs[match] {
+		if m.Files[fi].Language == lang {
+			out = append(out, fi)
+		}
+	}
+	return out
+}
+
+// resolveImport returns the project files an import refers to, or nil for
+// an import of something outside the project.
+func (m *Map) resolveImport(fi int, imp Import, module string) []int {
+	f := m.Files[fi]
+	dir := path.Dir(f.Path)
+	spec := imp.Spec
+	if spec == "" || imp.Module == "_" && len(imp.Bindings) == 0 && f.Language == "vhdl" {
+		return nil
+	}
+	exts := sourceExts[f.Language]
+	switch f.Language {
+	case "html", "template", "markdown":
+		if found := m.findPath(fi, spec); found >= 0 && m.code[found] {
+			return []int{found}
+		}
+		return nil
+	case "css", "scss", "less":
+		return m.styleImport(fi, spec)
+	case "terraform":
+		var out []int
+		for _, t := range m.dirs[path.Clean(path.Join(dir, spec))] {
+			if m.Files[t].Language == "terraform" {
+				out = append(out, t)
+			}
+		}
+		return out
+	case "haskell", "elm":
+		return m.bySuffix(strings.ReplaceAll(spec, ".", "/"), exts)
+	case "ocaml":
+		return m.bySuffix(strings.ToLower(spec[:1])+spec[1:], exts)
+	case "clojure":
+		return m.bySuffix(strings.ReplaceAll(strings.ReplaceAll(spec, ".", "/"), "-", "_"), exts)
+	case "lisp", "erlang", "gleam", "nim", "solidity", "powershell", "pascal":
+		if strings.HasPrefix(spec, ".") || strings.Contains(spec, "/") && path.Ext(spec) != "" {
+			if out := m.lookup(path.Join(dir, spec), exts); out != nil {
+				return out
+			}
+		}
+		if f.Language == "powershell" && path.Ext(spec) == "" {
+			if out := m.lookup(path.Join(dir, spec), []string{".psm1", ".ps1"}); out != nil {
+				return out
+			}
+		}
+		if out := m.lookup(spec, exts); out != nil {
+			return out
+		}
+		return m.bySuffix(strings.TrimSuffix(strings.ReplaceAll(spec, ".", "/"), "/"+strings.TrimPrefix(path.Ext(spec), ".")), exts)
+	case "vlang":
+		return m.byDirSuffix(strings.ReplaceAll(spec, ".", "/"), "vlang")
+	case "gdscript", "godot", "taskfile", "gitlab-ci", "make", "just", "protobuf", "thrift", "openapi":
+		if found := m.findPath(fi, spec); found >= 0 {
+			return []int{found}
+		}
+		if f.Language == "taskfile" {
+			if found := m.findPath(fi, path.Join(spec, "Taskfile.yml")); found >= 0 {
+				return []int{found}
+			}
+		}
+		return nil
+	case "fsharp", "vb", "fortran", "vhdl", "verilog":
+		if files := m.namespaces[strings.TrimSuffix(spec, "::*")]; len(files) > 0 {
+			return files
+		}
+		if f.Language == "verilog" {
+			return m.include(dir, spec)
+		}
+		return nil
+	case "typescript", "javascript":
+		switch {
+		case strings.HasPrefix(spec, "."):
+			return m.lookup(path.Join(dir, spec), exts, "index")
+		case strings.HasPrefix(spec, "@/") || strings.HasPrefix(spec, "~/") || strings.HasPrefix(spec, "#/"):
+			if out := m.lookup(path.Join("src", spec[2:]), exts, "index"); out != nil {
+				return out
+			}
+			return m.lookup(spec[2:], exts, "index")
+		case strings.HasPrefix(spec, "/"):
+			return m.lookup(strings.TrimPrefix(spec, "/"), exts, "index")
+		}
+		// A bare specifier is a package, unless the project has the path
+		// itself (a baseUrl import such as src/utils).
+		if strings.Contains(spec, "/") {
+			return m.lookup(spec, exts, "index")
+		}
+		return nil
+	case "python", "mojo", "pyproject":
+		rel := spec
+		base := ""
+		if strings.HasPrefix(spec, ".") {
+			dots := len(spec) - len(strings.TrimLeft(spec, "."))
+			base = dir
+			for range dots - 1 {
+				base = path.Dir(base)
+			}
+			rel = strings.TrimLeft(spec, ".")
+		}
+		relPath := strings.ReplaceAll(rel, ".", "/")
+		var out []int
+		if base != "" || strings.HasPrefix(spec, ".") {
+			out = m.lookup(path.Join(base, relPath), exts, "__init__")
+		} else if out = m.lookup(relPath, exts, "__init__"); out == nil {
+			if out = m.bySuffix(relPath, exts); out == nil {
+				out = m.bySuffix(relPath+"/__init__", exts)
+			}
+		}
+		// from pkg import module: the names may be modules themselves.
+		for _, b := range imp.Bindings {
+			sub := path.Join(base, relPath, b.Remote)
+			if base == "" && !strings.HasPrefix(spec, ".") {
+				if found := m.bySuffix(path.Join(relPath, b.Remote), exts); found != nil {
+					out = append(out, found...)
+					continue
+				}
+			}
+			out = append(out, m.lookup(sub, exts, "__init__")...)
+		}
+		return out
+	case "java", "kotlin", "scala", "groovy":
+		rel := strings.ReplaceAll(strings.TrimSuffix(spec, ".*"), ".", "/")
+		if strings.HasSuffix(spec, ".*") {
+			return m.byDirSuffix(rel, f.Language)
+		}
+		if out := m.bySuffix(rel, exts); out != nil {
+			return out
+		}
+		// A Kotlin top-level function or a static member: the package is
+		// the directory.
+		return m.byDirSuffix(path.Dir(rel), f.Language)
+	case "csharp", "elixir", "cpp":
+		if files := m.namespaces[spec]; len(files) > 0 {
+			return files
+		}
+		if f.Language == "cpp" {
+			return m.include(dir, spec)
+		}
+		return nil
+	case "c", "objc", "glsl":
+		return m.include(dir, spec)
+	case "rust":
+		return m.rustImport(f, spec)
+	case "go":
+		if module != "" && (spec == module || strings.HasPrefix(spec, module+"/")) {
+			rel := strings.TrimPrefix(strings.TrimPrefix(spec, module), "/")
+			if rel == "" {
+				rel = "."
+			}
+			var out []int
+			for _, target := range m.dirs[rel] {
+				if m.Files[target].Language == "go" && !strings.HasSuffix(m.Files[target].Path, "_test.go") {
+					out = append(out, target)
+				}
+			}
+			return out
+		}
+		return nil
+	case "php":
+		if strings.Contains(spec, "\\") {
+			return m.bySuffix(strings.ReplaceAll(spec, "\\", "/"), exts)
+		}
+		return m.relativeOrRoot(dir, spec)
+	case "ruby", "crystal":
+		if strings.HasPrefix(spec, ".") {
+			return m.lookup(path.Join(dir, spec), exts)
+		}
+		return m.bySuffix(spec, exts)
+	case "lua":
+		rel := strings.ReplaceAll(spec, ".", "/")
+		if out := m.bySuffix(rel, exts); out != nil {
+			return out
+		}
+		return m.bySuffix(rel+"/init", exts)
+	case "perl":
+		return m.bySuffix(strings.ReplaceAll(spec, "::", "/"), exts)
+	case "dart":
+		if rest, ok := strings.CutPrefix(spec, "package:"); ok {
+			if _, file, ok := strings.Cut(rest, "/"); ok {
+				return m.lookup(path.Join("lib", file), nil)
+			}
+			return nil
+		}
+		return m.relativeOrRoot(dir, spec)
+	case "shell", "zig", "r", "julia":
+		if strings.Contains(spec, ".") || strings.Contains(spec, "/") {
+			return m.relativeOrRoot(dir, spec)
+		}
+	}
+	return nil
+}
+

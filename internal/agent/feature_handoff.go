@@ -60,3 +60,25 @@ type handoffWatch struct {
 	feature workplan.Feature
 }
 
+// newHandoffWatch prepares the watch for a turn, or returns nil when a
+// handoff cannot happen in it.
+func (a *sessionAgent) newHandoffWatch(sessionID string) *handoffWatch {
+	if a.isSubAgent || a.engineering == nil || a.workingDir == "" || a.disableAutoSummarize.Get() ||
+		!a.completionGateActive() || !a.workPlanOptions().FeatureHandoffEnabled() {
+		return nil
+	}
+	plan, _, err := workplan.Load(a.projectRoot(sessionID))
+	if err != nil || plan == nil || len(plan.Open()) == 0 {
+		return nil
+	}
+	baseline := map[string]bool{}
+	for _, id := range plan.DoneIDs() {
+		baseline[id] = true
+	}
+	ledger := a.evaluatorLedgerFor(sessionID)
+	ledger.mu.Lock()
+	scratch := &evaluatorLedger{root: ledger.root, seq: ledger.seq, lastEdit: ledger.lastEdit, runs: maps.Clone(ledger.runs), noImages: true}
+	ledger.mu.Unlock()
+	return &handoffWatch{baseline: baseline, scratch: scratch}
+}
+

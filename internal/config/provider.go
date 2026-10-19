@@ -149,6 +149,9 @@ func Providers(cfg *Config) ([]catwalk.Provider, error) {
 		providerList = slices.DeleteFunc(providerList, func(p catwalk.Provider) bool {
 			return catwalk.UnavailableProviderReason(p.Type, p.ID) != ""
 		})
+		for i := range providerList {
+			providerList[i] = providerList[i].SelectableAt(time.Now())
+		}
 		providerErr = catwalkErr
 	})
 	return providerList, providerErr
@@ -159,6 +162,7 @@ func Providers(cfg *Config) ([]catwalk.Provider, error) {
 // provider (e.g. Hyper after OAuth) so that all callers of Providers()
 // see the updated entry without needing to reset sync.Once.
 func UpdateProviderInList(provider catwalk.Provider) {
+	provider = provider.SelectableAt(time.Now())
 	for i, p := range providerList {
 		if p.ID == provider.ID {
 			providerList[i] = provider

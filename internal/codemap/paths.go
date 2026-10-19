@@ -35,3 +35,37 @@ type pathUse struct{ file, link int }
 // maxPatternMatches bounds what one ${...} path reaches.
 const maxPatternMatches = 200
 
+// resolvePaths resolves every FileLink. A link between two code files is
+// also a dependency, weaker than an import.
+func (m *Map) resolvePaths() {
+	m.paths = make([][]pathTarget, len(m.Files))
+	m.pathIn = map[int][]pathUse{}
+	m.anchorIn = map[int][]pathUse{}
+	for fi, f := range m.Files {
+		m.paths[fi] = make([]pathTarget, len(f.Links))
+		fixtures := isTestPath(f.Path)
+		for k, l := range f.Links {
+			if fixtures && l.Kind == LinkNames {
+				// A test names files of the trees it builds, not the
+				// project's own.
+				m.paths[fi][k] = pathTarget{section: -1, fixture: true}
+				continue
+			}
+			t := m.resolvePath(fi, l.Target)
+			m.paths[fi][k] = t
+			for _, target := range t.files {
+				if target == fi {
+					continue
+				}
+				m.pathIn[target] = append(m.pathIn[target], pathUse{fi, k})
+				if m.code[fi] && m.code[target] && !t.pattern {
+					m.fileLinks[[2]int{fi, target}] += 0.5
+				}
+			}
+			if t.section >= 0 {
+				m.anchorIn[t.section] = append(m.anchorIn[t.section], pathUse{fi, k})
+			}
+		}
+	}
+}
+

@@ -465,3 +465,43 @@ func extractDockerfile(out *File, content string) {
 	}
 }
 
+func extractCompose(out *File, content string) {
+	root := yamlRoot(content)
+	services := yamlGet(root, "services")
+	if services == nil {
+		return
+	}
+	for k := 0; k+1 < len(services.Content); k += 2 {
+		key, body := services.Content[k], services.Content[k+1]
+		sig := key.Value + ":"
+		if img := yamlGet(body, "image"); img != nil {
+			sig += " " + img.Value
+		}
+		addTask(out, key.Value, "service", toolCompose, key.Line, yamlEnd(body), sig)
+		yamlNames(yamlGet(body, "depends_on"), func(name string, line int) { taskRef(out, name, toolCompose, line) })
+		if ext := yamlGet(body, "extends"); ext != nil {
+			if s := yamlGet(ext, "service"); s != nil {
+				taskRef(out, s.Value, toolCompose, s.Line)
+			}
+		}
+		if build := yamlGet(body, "build"); build != nil {
+			ctx, file, line := build.Value, "Dockerfile", build.Line
+			if build.Kind == yaml.MappingNode {
+				ctx = "."
+				if c := yamlGet(build, "context"); c != nil {
+					ctx, line = c.Value, c.Line
+				}
+				if d := yamlGet(build, "dockerfile"); d != nil {
+					file, line = d.Value, d.Line
+				}
+			}
+			if ctx != "" && !hasScheme(ctx) {
+				addLink(out, FileLink{Target: path.Join(ctx, file), Kind: LinkRuns, Line: line})
+			}
+		}
+		for _, field := range []string{"command", "entrypoint"} {
+			yamlCommands(out, yamlGet(body, field))
+		}
+	}
+}
+

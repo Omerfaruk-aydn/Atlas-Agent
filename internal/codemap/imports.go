@@ -127,3 +127,56 @@ func (x *extractor) importAt(i int) bool {
 	return x.moreImports(i)
 }
 
+// stringAfter returns the string at k, or inside ( at k.
+func (x *extractor) stringAfter(k int) lexToken {
+	if x.tok(k).text == "(" {
+		k++
+	}
+	return x.tok(k)
+}
+
+// dottedImport reads a.b.C (joined by sep) at k and records it, binding
+// the last name when bind is set. A trailing * or a {A, B} group binds
+// nothing or each name in it.
+func (x *extractor) dottedImport(k int, sep string, bind bool) {
+	if x.tok(k).text == "static" {
+		k++
+	}
+	line := x.tok(k).line
+	var parts []string
+	for x.tok(k).kind == tIdent {
+		parts = append(parts, x.toks[k].text)
+		if x.tok(k+1).text != sep || x.tok(k+1).line != line {
+			k++
+			break
+		}
+		k += 2
+	}
+	if len(parts) == 0 {
+		return
+	}
+	imp := Import{Spec: strings.Join(parts, sep), Line: line}
+	switch {
+	case x.tok(k).text == "*" || x.tok(k).text == "_":
+		imp.Spec += sep + "*"
+	case x.tok(k).text == "{" && x.tok(k).line == line:
+		for j := k + 1; j < len(x.toks) && x.toks[j].text != "}"; j++ {
+			if x.toks[j].kind == tIdent && x.tok(j-1).text != "as" && x.tok(j-1).text != "=>" {
+				local := x.toks[j].text
+				if a := x.tok(j + 1).text; (a == "as" || a == "=>") && x.tok(j+2).kind == tIdent {
+					local = x.toks[j+2].text
+				}
+				imp.Bindings = append(imp.Bindings, Binding{Local: local, Remote: x.toks[j].text})
+			}
+		}
+	case bind:
+		local := parts[len(parts)-1]
+		if x.tok(k).text == "as" && x.tok(k+1).kind == tIdent {
+			local = x.toks[k+1].text
+		}
+		imp.Bindings = []Binding{{Local: local, Remote: parts[len(parts)-1]}}
+		imp.Module = local
+	}
+	x.file.Imports = append(x.file.Imports, imp)
+}
+

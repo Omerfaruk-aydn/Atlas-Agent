@@ -1677,15 +1677,35 @@ func (a *agent) processStepStream(ctx context.Context, stream StreamResponse, op
 	// Semaphores for controlling parallelism.
 	parallelSem := make(chan struct{}, 5)
 	var sequentialMu sync.Mutex
+	// inFlight counts parallel tools still running. A sequential tool
+	// waits for them, so a read issued before an edit in the same step
+	// never sees the edited file, and parallel tools issued after a
+	// sequential one start only once it has finished: the effects follow
+	// the order the model called the tools in.
+	var inFlight sync.WaitGroup
+
+	// The result callback stores messages and updates shared turn state;
+	// tools run in parallel, their callbacks one at a time.
+	var resultMu sync.Mutex
+	onToolResult := opts.OnToolResult
+	if onToolResult != nil {
+		onToolResult = func(result ToolResultContent) error {
+			resultMu.Lock()
+			defer resultMu.Unlock()
+			return opts.OnToolResult(result)
+		}
+	}
 
 	// Single coordinator goroutine that dispatches tools.
 	toolExecutionWg.Go(func() {
 		for req := range toolChan {
 			if req.parallel {
 				parallelSem <- struct{}{}
+				inFlight.Add(1)
 				toolExecutionWg.Go(func() {
+					defer inFlight.Done()
 					defer func() { <-parallelSem }()
-					result, isCriticalError := a.executeSingleTool(ctx, toolMap, execProviderToolMap, req.toolCall, opts.OnToolResult)
+					result, isCriticalError := a.executeSingleTool(ctx, toolMap, execProviderToolMap, req.toolCall, onToolResult)
 					toolStateMu.Lock()
 					toolResults = append(toolResults, result)
 					if isCriticalError && toolExecutionErr == nil {
@@ -1696,8 +1716,9 @@ func (a *agent) processStepStream(ctx context.Context, stream StreamResponse, op
 					toolStateMu.Unlock()
 				})
 			} else {
+				inFlight.Wait()
 				sequentialMu.Lock()
-				result, isCriticalError := a.executeSingleTool(ctx, toolMap, execProviderToolMap, req.toolCall, opts.OnToolResult)
+				result, isCriticalError := a.executeSingleTool(ctx, toolMap, execProviderToolMap, req.toolCall, onToolResult)
 				toolStateMu.Lock()
 				toolResults = append(toolResults, result)
 				if isCriticalError && toolExecutionErr == nil {

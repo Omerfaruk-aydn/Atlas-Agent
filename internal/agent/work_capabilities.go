@@ -26,7 +26,7 @@ func workCapabilityNames(st engineering.State, palette []fantasy.AgentTool) []st
 	case "research":
 		names = append(names, "web_search", "web_fetch", "source_memory")
 	default:
-		names = append(names, "context_select", "project_map", "impact_analysis")
+		names = append(names, "code_map", "context_select", "project_map", "impact_analysis")
 	}
 	if n := len(st.Work.Methods); n > 0 {
 		switch st.Work.Methods[n-1].Method {

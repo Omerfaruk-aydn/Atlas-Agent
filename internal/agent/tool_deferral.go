@@ -80,6 +80,11 @@ func (a *sessionAgent) beginToolDeferral(ctx context.Context, call SessionAgentC
 	if pendingOperations {
 		d.pinned = append(d.pinned, "workflow")
 	}
+	if a.workingDir != "" && workTier(ctx, a.engineering, engineering.GetScope(ctx, call.SessionID).SessionID) != engineering.TierDirect {
+		// Work on code beyond a direct answer starts by finding its way
+		// around the project, so the map is at hand without a search.
+		d.pinned = append(d.pinned, tools.CodeMapToolName)
+	}
 	return d
 }
 

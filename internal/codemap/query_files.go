@@ -120,3 +120,10 @@ func (m *Map) linkProblems(only int) []linkProblem {
 	return out
 }
 
+func (m *Map) describeProblem(p linkProblem) string {
+	if p.anchor {
+		return m.describeUse(p.use) + " (no such heading)"
+	}
+	return m.describeUse(p.use) + " (not found)"
+}
+

@@ -213,3 +213,36 @@ func TestBuilderSkipsMinifiedFiles(t *testing.T) {
 	require.Equal(t, []string{"vendor.js (minified)"}, m.Skipped)
 }
 
+func TestParseHistoryCountsSharedCommits(t *testing.T) {
+	t.Parallel()
+	log := "\x1e\na.go\na_test.go\n\x1e\na.go\na_test.go\nREADME.md\n\x1e\na.go\nb.go\n\x1e\n" + strings.Repeat("x.go\n", 50)
+	h := parseHistory("head", log)
+	require.Equal(t, 3, h.commits["a.go"])
+	require.Equal(t, 2, h.pairs["a.go"]["a_test.go"])
+	require.Equal(t, 1, h.pairs["a.go"]["b.go"])
+	require.Zero(t, h.commits["README.md"], "only source files count")
+	require.Zero(t, h.commits["x.go"], "a sweeping commit says nothing")
+}
+
+func TestLouvainSeparatesClusters(t *testing.T) {
+	t.Parallel()
+	adj := make([]map[int]float64, 8)
+	for i := range adj {
+		adj[i] = map[int]float64{}
+	}
+	link := func(a, b int, w float64) { adj[a][b] += w; adj[b][a] += w }
+	for _, group := range [][]int{{0, 1, 2, 3}, {4, 5, 6, 7}} {
+		for i := range group {
+			for j := i + 1; j < len(group); j++ {
+				link(group[i], group[j], 1)
+			}
+		}
+	}
+	link(3, 4, 0.1)
+	c := louvain(adj)
+	require.Equal(t, c[0], c[1])
+	require.Equal(t, c[0], c[3])
+	require.Equal(t, c[4], c[7])
+	require.NotEqual(t, c[0], c[4])
+}
+

@@ -17,7 +17,7 @@ func TestSpecialistSkillsAndTemplateResourcesAreEmbedded(t *testing.T) {
 	for _, skill := range all {
 		names[skill.Name] = true
 	}
-	for _, name := range []string{"design-system", "visual-quality", "motion-design", "desktop-automation", "browser-automation", "office-documents", "office-presentations", "data-analysis", "artifact-templates", "mcp-integration", "team-operations", "security-evidence", "patch-review", "technical-diagrams", "research-evidence", "animated-mascots", "remote-it-support"} {
+	for _, name := range []string{"design-system", "visual-quality", "motion-design", "desktop-automation", "browser-automation", "office-documents", "office-presentations", "data-analysis", "artifact-templates", "mcp-integration", "team-operations", "security-evidence", "patch-review", "technical-diagrams", "research-evidence", "animated-mascots", "remote-it-support", "codebase-map"} {
 		require.True(t, names[name], name)
 	}
 	catalog, err := BuiltinFS().ReadFile("builtin/artifact-templates/TEMPLATES.md")

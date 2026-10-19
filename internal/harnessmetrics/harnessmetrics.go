@@ -48,6 +48,7 @@ const (
 	NudgeFollowed      Kind = "nudge_followed"
 	LoopStopped        Kind = "loop_stopped"
 	Compaction         Kind = "compaction"
+	FeatureHandoff     Kind = "feature_handoff"
 	OutputSpilled      Kind = "output_spilled"
 	RecipeLearned      Kind = "recipe_learned"
 
@@ -280,6 +281,7 @@ func Format(s Summary, since time.Time) string {
 
 	section("\nContext and loops")
 	line("compactions", count(Compaction))
+	line("handoffs after a finished feature", count(FeatureHandoff))
 	line("turns stopped for looping", count(LoopStopped))
 	line("long outputs saved to logs", count(OutputSpilled))
 	line("recipes learned", count(RecipeLearned))

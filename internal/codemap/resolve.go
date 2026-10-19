@@ -657,3 +657,111 @@ func (m *Map) implicitScope(fi int) []int {
 	return out
 }
 
+// resolveRefs links each use in a file to the definitions it can mean.
+func (m *Map) resolveRefs(fi int) {
+	f := m.Files[fi]
+	enclosing := enclosingFinder(f, fi, m.firstSymbol[fi])
+	visible := map[int]bool{}
+	bound := map[string][]int{}    // local name -> definitions
+	moduleOf := map[string][]int{} // module alias -> files
+	for k, imp := range f.Imports {
+		targets := m.imports[fi][k]
+		if imp.Module == "" && len(imp.Bindings) == 0 {
+			// Only an import that names nothing brings the module's
+			// names into scope: #include, using, a.*, from x import *, a
+			// Go dot import. pkg.Name and named imports are handled
+			// below.
+			for _, t := range targets {
+				visible[t] = true
+			}
+		}
+		if imp.Module != "" {
+			// Kept for an external module too, with no files: pkg.Name
+			// then refers outside the project, not to a namesake here.
+			moduleOf[imp.Module] = append(moduleOf[imp.Module], targets...)
+		}
+		for _, b := range imp.Bindings {
+			for _, t := range targets {
+				for _, id := range m.byName[b.Remote] {
+					if m.symbols[id].file == t {
+						bound[b.Local] = appendUnique(bound[b.Local], id)
+					}
+				}
+				if b.Remote == "default" {
+					// A default import: the target's definition with the
+					// local name, else its exported ones.
+					for _, id := range m.byName[b.Local] {
+						if m.symbols[id].file == t {
+							bound[b.Local] = appendUnique(bound[b.Local], id)
+						}
+					}
+				}
+			}
+		}
+	}
+	for _, t := range m.implicitScope(fi) {
+		visible[t] = true
+	}
+	cssModules := map[string][]int{}
+	for k, imp := range f.Imports {
+		switch strings.ToLower(path.Ext(imp.Spec)) {
+		case ".css", ".scss", ".sass", ".less":
+		default:
+			continue
+		}
+		if imp.Module != "" {
+			cssModules[imp.Module] = m.imports[fi][k]
+		}
+		for _, b := range imp.Bindings {
+			cssModules[b.Local] = m.imports[fi][k]
+		}
+	}
+	near := map[string]map[int]bool{}
+	for _, r := range f.Refs {
+		from := enclosing(r.Line)
+		var targets []int
+		var confidence Confidence
+		if domain := refDomain(f.Language, r.Kind); domain != domainCode {
+			if near[domain] == nil {
+				near[domain] = m.nearFiles(fi, domain)
+			}
+			targets, confidence = m.resolveDomainRef(fi, r, domain, near[domain], cssModules)
+		} else {
+			targets, confidence = m.resolveRef(fi, r, from, bound, moduleOf, visible)
+			if r.Kind == RefMention {
+				if len(targets) == 0 && r.Qualifier != "" {
+					// pkg.Func in prose: the qualifier may name a package
+					// the map does not see as a container.
+					bare := r
+					bare.Qualifier = ""
+					targets, confidence = m.resolveRef(fi, bare, from, bound, moduleOf, visible)
+				}
+				if confidence == Resolved {
+					// A document never imports what it names.
+					confidence = Inferred
+				}
+				if !m.mentionHolds(r, targets, confidence) {
+					continue
+				}
+			}
+		}
+		if len(targets) == 0 {
+			continue
+		}
+		for _, to := range targets {
+			if to == from && r.Kind != RefCall {
+				continue
+			}
+			id := len(m.links)
+			m.links = append(m.links, Link{From: from, To: to, Kind: r.Kind, Confidence: confidence, Candidates: len(targets), File: fi, Line: r.Line})
+			m.out[from] = append(m.out[from], id)
+			m.in[to] = append(m.in[to], id)
+			// An ambiguous use says nothing certain about which file
+			// depends on which, so only the others weigh in.
+			if target := m.symbols[to].file; target != fi && confidence != Ambiguous && m.code[fi] && m.code[target] {
+				m.fileLinks[[2]int{fi, target}] += confidenceWeight(confidence)
+			}
+		}
+	}
+}
+

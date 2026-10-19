@@ -328,7 +328,7 @@ Providers are *added* by editing the config file, by asking the agent (`atlas_co
 | `atlas-agent session rename <id> <title>` | Rename a session. |
 | `atlas-agent session tag <id> [tags...]` | Tag a session. |
 | `atlas-agent session compact <id>` | Summarize a session to free context. |
-| `atlas-agent session rewind <id> <message-id>` | Fork a session just before a message, restoring files to that point. |
+| `atlas-agent session rewind <id> <message-id>` | Fork a session at a message, restoring files to before it. |
 | `atlas-agent session diff <id1> <id2>` | Compare two sessions. |
 | `atlas-agent session export <id>` | Export a session (for sharing or archiving). |
 | `atlas-agent session models <id>` | Which models a session used. |
@@ -1051,9 +1051,9 @@ token usage, and cost; `session_search` (tool) and `atlas-agent session search` 
 all of them in a workspace. Subagent runs are child sessions, so `atlas-agent session tree` shows
 what a delegated task actually did.
 
-**Rewind** (F2) steps a session back to just before a chosen message of yours: a new session holds
-the conversation up to that point, the files the agent changed are restored, and the message is put
-back in the editor to send again or change. Useful when a turn went somewhere you did not want and
+**Rewind** (F2) steps a session back to a chosen message of yours: a new session holds the
+conversation up to and including that message, and the files the agent changed from there on are
+restored. Nothing runs until you send the next message. Useful when a turn went somewhere you did not want and
 you would rather not carry it in the context. Changes made through shell commands are not tracked
 and are not undone.
 

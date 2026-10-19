@@ -162,8 +162,7 @@ func NewWriteTool(
 					// Log error but don't fail the operation
 					return fantasy.ToolResponse{}, fmt.Errorf("error creating file history: %w", err)
 				}
-			}
-			if file.Content != oldContent {
+			} else if file.Content != oldContent {
 				// User manually changed the content outside of chat; store an
 				// intermediate version with no message association.
 				_, err = files.CreateVersion(ctx, sessionID, filePath, oldContent, "")

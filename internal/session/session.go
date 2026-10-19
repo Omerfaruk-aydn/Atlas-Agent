@@ -86,8 +86,8 @@ type Service interface {
 	CreateTaskSession(ctx context.Context, toolCallID, parentSessionID, title string) (Session, error)
 	// CreateChild creates a new, ordinarily-addressable session (random ID,
 	// not the fixed toolCallID/title-session IDs CreateTaskSession and
-	// CreateTitleSession use) linked to parentSessionID. Used by rewind to
-	// fork a session at a checkpoint without disturbing the original.
+	// CreateTitleSession use) linked to parentSessionID. Child sessions are
+	// left out of the session list.
 	CreateChild(ctx context.Context, parentSessionID, title string) (Session, error)
 	// ListByParent returns every session whose ParentSessionID equals
 	// parentSessionID, ordered oldest first.

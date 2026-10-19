@@ -78,7 +78,8 @@ func (r *RewindItem) SetHideInfo(v bool) {
 
 // InfoText returns the secondary text shown on the right of the item.
 func (r *RewindItem) InfoText() string {
-	return r.t.RelativeTime(time.Unix(r.CreatedAt/1000, 0))
+	// Message timestamps are Unix seconds.
+	return r.t.RelativeTime(time.Unix(r.CreatedAt, 0))
 }
 
 func (r *RewindItem) preview() string {
@@ -108,10 +109,12 @@ func (r *RewindItem) Render(width int) string {
 
 // rewindItems converts a slice of user [message.Message]s into
 // [list.FilterableItem]s for the rewind checkpoint picker, oldest first.
+// messages come newest first, as ListUserMessages returns them, so the
+// last item is the latest message and moving up goes back in time.
 func rewindItems(t *styles.Styles, messages []message.Message) []list.FilterableItem {
 	items := make([]list.FilterableItem, len(messages))
 	for i, m := range messages {
-		items[i] = &RewindItem{Versioned: list.NewVersioned(), Message: m, t: t}
+		items[len(messages)-1-i] = &RewindItem{Versioned: list.NewVersioned(), Message: m, t: t}
 	}
 	return items
 }

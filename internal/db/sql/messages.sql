@@ -4,10 +4,12 @@ FROM messages
 WHERE id = ? LIMIT 1;
 
 -- name: ListMessagesBySession :many
+-- created_at has one-second resolution; rowid keeps insertion order
+-- among messages created in the same second.
 SELECT *
 FROM messages
 WHERE session_id = ?
-ORDER BY created_at ASC;
+ORDER BY created_at ASC, rowid ASC;
 
 -- name: CreateMessage :one
 INSERT INTO messages (
@@ -46,17 +48,17 @@ WHERE session_id = ?;
 SELECT *
 FROM messages
 WHERE session_id = ? AND role = 'user'
-ORDER BY created_at DESC;
+ORDER BY created_at DESC, rowid DESC;
 
 -- name: ListAllUserMessages :many
 SELECT *
 FROM messages
 WHERE role = 'user'
-ORDER BY created_at DESC;
+ORDER BY created_at DESC, rowid DESC;
 
 -- name: GetLastAssistantMessageBySession :one
 SELECT *
 FROM messages
 WHERE session_id = ? AND role = 'assistant' AND is_summary_message = 0
-ORDER BY created_at DESC
+ORDER BY created_at DESC, rowid DESC
 LIMIT 1;

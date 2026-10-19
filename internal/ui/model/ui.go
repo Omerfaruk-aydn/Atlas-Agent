@@ -2387,6 +2387,12 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 	case dialog.ActionRewindApplied:
 		m.dialog.CloseDialog(dialog.RewindID)
 		cmds = append(cmds, m.loadSession(msg.Result.Session.ID))
+		// The fork ends just before the chosen message; offer it again.
+		m.textarea.SetValue(msg.Prompt)
+		if m.focus != uiFocusEditor {
+			m.focus = uiFocusEditor
+			cmds = append(cmds, m.textarea.Focus())
+		}
 		cmds = append(cmds, util.ReportInfo(fmt.Sprintf(
 			m.com.Text("Rewound: %d file(s) restored, %d deleted"),
 			msg.Result.FilesWritten, msg.Result.FilesDeleted,

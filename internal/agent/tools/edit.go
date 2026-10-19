@@ -291,8 +291,7 @@ func commitFileChange(edit editContext, sessionID, filePath, oldContent, newCont
 		if err != nil {
 			return fmt.Errorf("error creating file history: %w", err)
 		}
-	}
-	if file.Content != oldContent {
+	} else if file.Content != oldContent {
 		// User manually changed the content outside of chat; store an
 		// intermediate version with no message association, since it
 		// reflects drift that predates this tool call rather than content

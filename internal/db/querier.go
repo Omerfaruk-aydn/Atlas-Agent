@@ -39,6 +39,8 @@ type Querier interface {
 	ListFilesByPath(ctx context.Context, path string) ([]File, error)
 	ListFilesBySession(ctx context.Context, sessionID string) ([]File, error)
 	ListLatestSessionFiles(ctx context.Context, sessionID string) ([]File, error)
+	// created_at has one-second resolution; rowid keeps insertion order
+	// among messages created in the same second.
 	ListMessagesBySession(ctx context.Context, sessionID string) ([]Message, error)
 	ListNewFiles(ctx context.Context) ([]File, error)
 	ListSessionReadFiles(ctx context.Context, sessionID string) ([]ReadFile, error)

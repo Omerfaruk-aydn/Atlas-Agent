@@ -52,11 +52,13 @@ type ActionOpenFileDiff struct {
 }
 
 // ActionRewindApplied is a message indicating a rewind was applied
-// successfully: a new forked session was created and the working
-// directory's files were restored to their state as of the chosen
-// checkpoint message.
+// successfully: a new forked session was created with the conversation
+// before the chosen message, and the working directory's files were
+// restored to their state at that point. Prompt is the chosen message's
+// text, for the editor, so it can be sent again or changed.
 type ActionRewindApplied struct {
 	Result rewind.Result
+	Prompt string
 }
 
 // ActionSelectModel is a message indicating a model has been selected.

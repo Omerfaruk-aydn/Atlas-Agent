@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -392,17 +393,28 @@ func (s SemanticEditServices) apply(ctx context.Context, meta semanticPlanRecord
 			return fail(err)
 		}
 	}
+	// History records each touched file before and after the plan, the way
+	// edit and write do, so a rewind restores the files this message
+	// changed and deletes the ones it created.
+	var historyTargets []string
 	if s.History != nil {
 		for _, change := range plan.Changes {
-			before, hash, err := lsputil.ReadEditSource(ctx, plan.Root, change.Path)
-			if hash == "missing" && err == nil {
-				continue
-			}
-			if err != nil {
-				return fail(err)
-			}
-			if _, err := s.History.CreateVersion(ctx, GetSessionFromContext(ctx), change.Path, string(before), GetMessageFromContext(ctx)); err != nil {
-				return fail(err)
+			for _, target := range []string{change.Path, change.Destination} {
+				if target == "" || slices.Contains(historyTargets, target) {
+					continue
+				}
+				before, hash, err := lsputil.ReadEditSource(ctx, plan.Root, target)
+				missing := hash == "missing" && err == nil
+				if err != nil {
+					if target == change.Destination {
+						continue
+					}
+					return fail(err)
+				}
+				if err := recordFileBefore(ctx, s.History, GetSessionFromContext(ctx), historyPath(plan.Root, target), string(before), !missing, GetMessageFromContext(ctx)); err != nil {
+					return fail(err)
+				}
+				historyTargets = append(historyTargets, target)
 			}
 		}
 	}
@@ -447,6 +459,17 @@ func (s SemanticEditServices) apply(ctx context.Context, meta semanticPlanRecord
 		return withMutation(fantasy.NewTextErrorResponse(fmt.Sprintf("edit journal needs reconciliation: %v", markErr))), nil
 	}
 	meta.Status = result.Status
+	for _, target := range historyTargets {
+		after, hash, err := lsputil.ReadEditSource(cleanup, plan.Root, target)
+		if err != nil || hash == "missing" {
+			// History has no record of a deletion; the file keeps its
+			// last recorded content.
+			continue
+		}
+		if err := recordFileAfter(cleanup, s.History, GetSessionFromContext(ctx), historyPath(plan.Root, target), string(after), GetMessageFromContext(ctx)); err != nil {
+			slog.Error("Failed to record file history after semantic edit", "path", target, "error", err)
+		}
+	}
 	if s.Tracker != nil {
 		for _, path := range append(result.Applied, result.Restored...) {
 			s.Tracker.RecordRead(cleanup, GetSessionFromContext(ctx), path)

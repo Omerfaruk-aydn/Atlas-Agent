@@ -60,3 +60,36 @@ endpoint `/users/{id}`, an image path to the image. A heading named
 Skip the map when you already know the exact file and line, or the
 question is about text rather than code (use grep).
 
+## The procedure
+
+1. **Orient.** `code_map {action: "overview"}` lists languages by kind,
+   subsystems (code files grouped by how they use each other), entry
+   points and the most depended-on files with their main definitions;
+   then the documents, the assets (largest, and those no file names) and
+   broken links. Raise `budget` (up to 8000) for a large project; the
+   default is about 2000 tokens. Call it once per task, not every turn.
+2. **Locate.** `find` matches definition and file names, exact names
+   first: functions and types, but also headings, CSS classes, element
+   ids, tables, scripts and jobs. Query names you expect, not sentences:
+   `solveKepler`, `Orbit`, `auth`, `btn-primary`, `users`.
+3. **Understand one thing.** `explain` accepts a name, `Container.Name`
+   (`Orbit.step`, `npm.build`, `make.test`), `path:Name`
+   (`src/app.ts:main`) when a name is defined more than once, or a file
+   path. For a definition it returns the location and signature, who uses
+   it, what it uses, and the `view` call to read it. For a document it
+   lists its sections, every link and image with what it resolved to, and
+   the code it mentions. For an asset it gives its size and dimensions and
+   each place that names it.
+4. **Read before you edit.** Open the lines `explain` points to with
+   `view`. The map shows signatures and links, not bodies.
+5. **Measure the blast radius.** Before changing behavior, run `callers`
+   (`depth` 1-5, default 2). Each level is what the previous one reaches.
+   For a file, an image or a heading the first level is every link that
+   names it. Every caller you change must be read and, when it has tests,
+   checked.
+6. **Trace a connection.** `path` gives the shortest chain of uses between
+   two definitions or files, in either direction.
+
+The map refreshes itself on every call and re-reads only changed files,
+so it is current after your own edits.
+

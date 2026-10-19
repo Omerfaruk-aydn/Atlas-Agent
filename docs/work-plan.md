@@ -127,6 +127,31 @@ not a replacement for it. When an evaluator model is configured, it reviews the
 code once the contract holds, and with the turn's latest screenshots it also
 judges what the user will see.
 
+## Handoff after a finished feature
+
+Once a feature is finished, the conversation that built it is mostly spent:
+file contents, command output, failed attempts. Carrying it into the next
+feature resends it on every step and brings a compaction sooner, and a
+compaction is a model's summary that can drop what matters. So at a feature
+boundary Atlas replaces the conversation with a handoff assembled from the
+record, with no model call: the user's messages verbatim, the progress
+notes, the files changed for the request, the background jobs still running
+and the next open feature. The plan itself is shown with every request.
+
+A handoff happens mid-turn only when all of these hold:
+
+- a feature was marked done during the turn and at least one is still open;
+- every check the contract requires ran after the last code change and
+  passed;
+- `.atlas/progress.md` was written at or after the last change to the plan,
+  so the notes describe the finished feature;
+- at least 40% of the context window is in use;
+- the user's request was recorded, so it can be carried over verbatim.
+
+Otherwise the work continues in the same context, and the usual compaction
+applies when the context fills up. A hook that denies compaction denies the
+handoff too.
+
 ## Options
 
 Everything above is on by default. Each follow-up can be turned off:
@@ -139,7 +164,8 @@ Everything above is on by default. Each follow-up can be turned off:
       "prove_checks": false,
       "checkpoints": false,
       "breaker": false,
-      "learn_recipes": false
+      "learn_recipes": false,
+      "feature_handoff": false
     }
   }
 }

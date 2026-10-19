@@ -256,3 +256,61 @@ func appendUnique(list []int, v int) []int {
 	return append(list, v)
 }
 
+// sourceExts are the extensions an import of each language can resolve
+// to.
+var sourceExts = map[string][]string{
+	"typescript": {".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".vue", ".svelte"},
+	"javascript": {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".vue", ".svelte"},
+	"python":     {".py", ".pyi"},
+	"java":       {".java", ".kt"},
+	"kotlin":     {".kt", ".java"},
+	"scala":      {".scala"},
+	"groovy":     {".groovy", ".java"},
+	"php":        {".php"},
+	"ruby":       {".rb"},
+	"lua":        {".lua"},
+	"perl":       {".pm", ".pl"},
+	"dart":       {".dart"},
+	"rust":       {".rs"},
+	"mojo":       {".mojo", ".py"},
+	"pyproject":  {".py"},
+	"crystal":    {".cr"},
+	"haskell":    {".hs", ".lhs"},
+	"elm":        {".elm"},
+	"ocaml":      {".ml", ".mli"},
+	"clojure":    {".clj", ".cljs", ".cljc"},
+	"lisp":       {".el", ".lisp", ".lsp", ".scm", ".ss", ".rkt"},
+	"erlang":     {".erl", ".hrl"},
+	"gleam":      {".gleam"},
+	"nim":        {".nim"},
+	"solidity":   {".sol"},
+	"powershell": {".ps1", ".psm1"},
+	"pascal":     {".pas", ".pp"},
+	"gdscript":   {".gd"},
+	"godot":      {".gd", ".cs"},
+	"scss":       {".scss", ".sass", ".css"},
+	"less":       {".less", ".css"},
+	"css":        {".css"},
+}
+
+// lookup returns the files at p, trying each extension and index file.
+func (m *Map) lookup(p string, exts []string, indexes ...string) []int {
+	p = path.Clean(p)
+	if fi, ok := m.byPath[p]; ok {
+		return []int{fi}
+	}
+	for _, ext := range exts {
+		if fi, ok := m.byPath[p+ext]; ok {
+			return []int{fi}
+		}
+	}
+	for _, index := range indexes {
+		for _, ext := range exts {
+			if fi, ok := m.byPath[p+"/"+index+ext]; ok {
+				return []int{fi}
+			}
+		}
+	}
+	return nil
+}
+

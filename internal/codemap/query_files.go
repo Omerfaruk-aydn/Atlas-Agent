@@ -252,3 +252,68 @@ func (m *Map) explainMentions(b *strings.Builder, fi int) {
 	}
 }
 
+// overviewAssets summarizes images, fonts, media, models and data: counts,
+// total size, the largest, and those nothing names.
+func (m *Map) overviewAssets(b *strings.Builder) {
+	var assets []int
+	kinds := map[string]int{}
+	var total int64
+	for fi, f := range m.Files {
+		if f.Asset == nil {
+			continue
+		}
+		assets = append(assets, fi)
+		kinds[f.Language]++
+		total += f.Asset.Bytes
+	}
+	if len(assets) == 0 {
+		return
+	}
+	names := make([]string, 0, len(kinds))
+	for k := range kinds {
+		names = append(names, k)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		if kinds[names[i]] != kinds[names[j]] {
+			return kinds[names[i]] > kinds[names[j]]
+		}
+		return names[i] < names[j]
+	})
+	parts := make([]string, len(names))
+	for i, k := range names {
+		parts[i] = fmt.Sprintf("%s %d", k, kinds[k])
+	}
+	fmt.Fprintf(b, "\nAssets: %s, %s (%s).\n", plural(len(assets), "file"), formatBytes(total), strings.Join(parts, ", "))
+	sort.SliceStable(assets, func(i, j int) bool { return m.Files[assets[i]].Asset.Bytes > m.Files[assets[j]].Asset.Bytes })
+	var largest []string
+	for _, fi := range assets[:min(len(assets), maxListedAssets)] {
+		f := m.Files[fi]
+		largest = append(largest, fmt.Sprintf("%s (%s)", f.Path, describeAsset(f.Language, f.Asset)))
+	}
+	b.WriteString("  Largest: " + strings.Join(largest, "; ") + "\n")
+	if unused := m.unusedAssets(); len(unused) > 0 {
+		fmt.Fprintf(b, "  Named by no file (%d; may still be loaded by a computed name or a directory listing): %s\n", len(unused), m.pathList(unused, maxListedAssets))
+	}
+}
+
+// overviewProblems lists links whose target the map does not find.
+func (m *Map) overviewProblems(b *strings.Builder) {
+	problems := m.linkProblems(-1)
+	if len(problems) == 0 {
+		return
+	}
+	anchors := 0
+	for _, p := range problems {
+		if p.anchor {
+			anchors++
+		}
+	}
+	fmt.Fprintf(b, "\nBroken links: %d to missing files, %d to missing headings (a target may be generated or served from elsewhere):\n", len(problems)-anchors, anchors)
+	for _, p := range problems[:min(len(problems), maxListedProblems)] {
+		b.WriteString("  " + m.describeProblem(p) + "\n")
+	}
+	if rest := len(problems) - maxListedProblems; rest > 0 {
+		fmt.Fprintf(b, "  … %d more\n", rest)
+	}
+}
+

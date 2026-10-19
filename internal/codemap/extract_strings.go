@@ -62,3 +62,7 @@ func scanString(f *File, s string, line int) {
 	}
 }
 
+// markupRe finds a tag with attributes, or an element that is opened and
+// closed, as in HTML a script builds: `<p class="kicker">${x}</p>`.
+var markupRe = regexp.MustCompile(`<[A-Za-z][\w-]*\s+[\w:@.-]+\s*=\s*["'{$]|<([A-Za-z][\w-]*)[^<>]*>[^<]*</[A-Za-z]`)
+

@@ -78,3 +78,161 @@ func NewBuilder(cacheDir string) *Builder {
 	return &Builder{CacheDir: cacheDir, projects: map[string]*project{}}
 }
 
+// Map returns the current map of the project at root, re-reading only the
+// files that changed since the last call.
+func (b *Builder) Map(ctx context.Context, root string) (*Map, error) {
+	root, err := filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+	b.mu.Lock()
+	p := b.projects[root]
+	if p == nil {
+		p = &project{}
+		b.projects[root] = p
+	}
+	b.mu.Unlock()
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.loaded {
+		p.entries = b.readCache(root)
+		p.loaded = true
+	}
+	listed, others, truncated, err := listFiles(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	type statted struct {
+		path string
+		info fs.FileInfo
+	}
+	var files []statted
+	var stamp strings.Builder
+	for _, rel := range listed {
+		info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		files = append(files, statted{rel, info})
+		stamp.WriteString(rel)
+		stamp.WriteString(" " + strconv.FormatInt(info.Size(), 10) + " " + strconv.FormatInt(info.ModTime().UnixNano(), 10) + "\n")
+	}
+	for _, rel := range others {
+		stamp.WriteString(rel + "\n")
+	}
+	if p.current != nil && p.stamp == stamp.String() {
+		return p.current, nil
+	}
+
+	var skipped []string
+	result := make([]*File, len(files))
+	var work []int
+	for i, f := range files {
+		limit := int64(maxFileBytes)
+		switch category := Category(LanguageOf(f.path)); {
+		case category == CategoryAsset:
+			limit = -1
+		case LanguageOf(f.path) == "notebook":
+			limit = 16 * maxFileBytes
+		}
+		if limit >= 0 && f.info.Size() > limit {
+			skipped = append(skipped, f.path+" (larger than "+formatBytes(limit)+")")
+			continue
+		}
+		if e := p.entries[f.path]; e != nil && e.Size == f.info.Size() && e.ModTime == f.info.ModTime().UnixNano() {
+			file := e.File
+			result[i] = &file
+			continue
+		}
+		work = append(work, i)
+	}
+	var mu sync.Mutex
+	changed := false
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for range max(1, min(runtime.NumCPU(), 8)) {
+		wg.Go(func() {
+			for i := range jobs {
+				f := files[i]
+				full := filepath.Join(root, filepath.FromSlash(f.path))
+				if Category(LanguageOf(f.path)) == CategoryAsset {
+					head, err := readHead(full, f.path)
+					if err != nil {
+						continue
+					}
+					extracted := ExtractAsset(f.path, head, f.info.Size())
+					mu.Lock()
+					p.entries[f.path] = &cacheEntry{Size: f.info.Size(), ModTime: f.info.ModTime().UnixNano(), File: extracted}
+					result[i] = &extracted
+					changed = true
+					mu.Unlock()
+					continue
+				}
+				data, err := os.ReadFile(full)
+				if err != nil || bytes.IndexByte(data, 0) >= 0 {
+					continue
+				}
+				content := string(data)
+				if Category(LanguageOf(f.path)) == CategoryCode && LanguageOf(f.path) != "notebook" && minified(content) {
+					mu.Lock()
+					skipped = append(skipped, f.path+" (minified)")
+					mu.Unlock()
+					continue
+				}
+				hash := Hash(content)
+				mu.Lock()
+				e := p.entries[f.path]
+				mu.Unlock()
+				var extracted File
+				if e != nil && e.File.Hash == hash {
+					extracted = e.File
+				} else {
+					extracted = Extract(f.path, content)
+				}
+				mu.Lock()
+				p.entries[f.path] = &cacheEntry{Size: f.info.Size(), ModTime: f.info.ModTime().UnixNano(), File: extracted}
+				result[i] = &extracted
+				changed = true
+				mu.Unlock()
+			}
+		})
+	}
+	for _, i := range work {
+		if ctx.Err() != nil {
+			break
+		}
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	kept := make([]*File, 0, len(result))
+	present := map[string]bool{}
+	for _, f := range result {
+		if f != nil {
+			kept = append(kept, f)
+			present[f.Path] = true
+		}
+	}
+	for rel := range p.entries {
+		if !present[rel] {
+			delete(p.entries, rel)
+			changed = true
+		}
+	}
+	if changed {
+		b.writeCache(root, p.entries)
+	}
+	sort.Strings(skipped)
+	m := newMap(root, kept, goModule(root), others)
+	m.Truncated = truncated
+	m.Skipped = skipped
+	m.history = p
+	p.current, p.stamp = m, stamp.String()
+	return m, nil
+}
+

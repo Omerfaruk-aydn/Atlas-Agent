@@ -765,3 +765,28 @@ func (m *Map) resolveRefs(fi int) {
 	}
 }
 
+// mentionHolds says whether a name in prose is worth a link. One that
+// matches several definitions says nothing about which; a plain word such
+// as `install` or `path` only means a definition when it is the project's
+// one top-level definition of that name, not a method that shares it.
+func (m *Map) mentionHolds(r Ref, targets []int, confidence Confidence) bool {
+	if confidence == Ambiguous || len(targets) != 1 {
+		return false
+	}
+	if r.Qualifier != "" || distinctive(r.Name) {
+		return true
+	}
+	s := m.symbol(targets[0])
+	return s.Container == "" && s.Kind != "method" && s.Exported
+}
+
+func confidenceWeight(c Confidence) float64 {
+	switch c {
+	case Resolved:
+		return 1
+	case Inferred:
+		return 0.6
+	}
+	return 0.3
+}
+

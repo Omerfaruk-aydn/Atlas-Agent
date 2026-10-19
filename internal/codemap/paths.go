@@ -225,3 +225,13 @@ func (m *Map) existsUnread(fi int, p string) (string, bool) {
 	return "", false
 }
 
+// commonPrefix counts the leading directories two paths share.
+func commonPrefix(a, b string) int {
+	as, bs := strings.Split(a, "/"), strings.Split(b, "/")
+	n := 0
+	for n < len(as) && n < len(bs) && as[n] == bs[n] {
+		n++
+	}
+	return n
+}
+

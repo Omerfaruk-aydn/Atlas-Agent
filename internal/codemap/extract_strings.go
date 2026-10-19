@@ -24,3 +24,41 @@ var linkableExts = func() map[string]bool {
 	return out
 }()
 
+// stringAt records what a string literal names, unless it is the module
+// of an import just read.
+func (x *extractor) stringAt(i int) {
+	t := x.toks[i]
+	imports := x.file.Imports
+	for _, imp := range imports[max(0, len(imports)-3):] {
+		if imp.Line <= t.line && t.line-imp.Line < 30 && strings.TrimPrefix(imp.Spec, "./") == strings.TrimPrefix(t.text, "./") {
+			return
+		}
+	}
+	scanString(x.file, t.text, t.line)
+}
+
+// scanString records the file path, the tables of a query or the endpoint
+// a string at line holds.
+func scanString(f *File, s string, line int) {
+	if len(s) < 2 || len(s) > 20000 {
+		return
+	}
+	if target, ok := pathInString(s); ok {
+		addLink(f, FileLink{Target: target, Kind: LinkNames, Line: line})
+		return
+	}
+	if markupRe.MatchString(s) {
+		scanEmbeddedMarkup(f, s, line)
+		return
+	}
+	if sqlLike(s) {
+		for _, t := range sqlNames(s) {
+			addRef(f, Ref{Name: t.name, Kind: RefTable, Line: line + strings.Count(s[:t.at], "\n")})
+		}
+		return
+	}
+	if route, ok := routeOf(s); ok {
+		addRef(f, Ref{Name: route, Kind: RefRoute, Line: line})
+	}
+}
+

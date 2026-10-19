@@ -207,3 +207,32 @@ func testDirs(tests []string) []string {
 	return dirs[:min(len(dirs), 5)]
 }
 
+// filesByRank orders files by importance, then rank, then path.
+func (m *Map) filesByRank() []int {
+	order := make([]int, len(m.Files))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		a, b := order[i], order[j]
+		if m.fileScore[a] != m.fileScore[b] {
+			return m.fileScore[a] > m.fileScore[b]
+		}
+		if m.fileRank[a] != m.fileRank[b] {
+			return m.fileRank[a] > m.fileRank[b]
+		}
+		return m.Files[a].Path < m.Files[b].Path
+	})
+	return order
+}
+
+func (m *Map) topFiles(files []int, n int) []string {
+	sorted := append([]int(nil), files...)
+	sort.SliceStable(sorted, func(i, j int) bool { return m.fileRank[sorted[i]] > m.fileRank[sorted[j]] })
+	var out []string
+	for _, fi := range sorted[:min(len(sorted), n)] {
+		out = append(out, m.Files[fi].Path)
+	}
+	return out
+}
+

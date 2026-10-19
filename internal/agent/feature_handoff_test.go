@@ -222,3 +222,25 @@ func TestHandOffSavesTheHandoffAsTheSummary(t *testing.T) {
 	require.Contains(t, msgs[0].Content().Text, "Continue with feature F2")
 }
 
+// Without a recorded user request there is nothing trustworthy to carry
+// over, so the handoff refuses and the conversation stays.
+func TestHandOffRefusesWithoutTheUserRequest(t *testing.T) {
+	t.Parallel()
+	env := testEnv(t)
+	writeHandoffProject(t, env.workingDir, true)
+	a := NewSessionAgent(SessionAgentOptions{
+		LargeModel:  Model{CatwalkCfg: testCatwalkModel()},
+		SmallModel:  Model{CatwalkCfg: testCatwalkModel()},
+		IsYolo:      true,
+		Sessions:    env.sessions,
+		Messages:    env.messages,
+		WorkingDir:  env.workingDir,
+		Engineering: engineering.NewStore(t.TempDir()),
+	}).(*sessionAgent)
+	sess, err := env.sessions.Create(t.Context(), "solar")
+	require.NoError(t, err)
+	require.Error(t, a.handOff(t.Context(), sess.ID, workplan.Feature{ID: "F1"}, nil))
+	saved, err := env.sessions.Get(t.Context(), sess.ID)
+	require.NoError(t, err)
+	require.Empty(t, saved.SummaryMessageID)
+}

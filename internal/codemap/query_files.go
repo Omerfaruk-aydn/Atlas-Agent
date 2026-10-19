@@ -85,3 +85,11 @@ func (m *Map) referrers(fi int) []int {
 	return out
 }
 
+// reportMissing says whether a link whose target is not in the project is
+// worth reporting. A path-like string in code may well be a file the
+// program writes, and a test names files that do not exist on purpose.
+func (m *Map) reportMissing(fi int, l FileLink) bool {
+	// A command runs in a working directory the map does not know.
+	return l.Kind != LinkNames && l.Kind != LinkRuns && !isTestPath(m.Files[fi].Path)
+}
+

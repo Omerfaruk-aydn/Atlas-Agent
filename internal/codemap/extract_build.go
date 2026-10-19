@@ -505,3 +505,35 @@ func extractCompose(out *File, content string) {
 	}
 }
 
+func extractWorkflow(out *File, content string) {
+	root := yamlRoot(content)
+	jobs := yamlGet(root, "jobs")
+	if jobs == nil {
+		return
+	}
+	for k := 0; k+1 < len(jobs.Content); k += 2 {
+		key, body := jobs.Content[k], jobs.Content[k+1]
+		sig := key.Value + ":"
+		if name := yamlGet(body, "name"); name != nil {
+			sig += " " + name.Value
+		}
+		addTask(out, key.Value, "job", toolJob, key.Line, yamlEnd(body), sig)
+		yamlNames(yamlGet(body, "needs"), func(name string, line int) { taskRef(out, name, toolJob, line) })
+		if steps := yamlGet(body, "steps"); steps != nil {
+			for _, step := range steps.Content {
+				if run := yamlGet(step, "run"); run != nil {
+					for j, cmd := range strings.Split(run.Value, "\n") {
+						line := run.Line + j
+						if run.Style == yaml.LiteralStyle || run.Style == yaml.FoldedStyle {
+							line++
+						}
+						scanCommand(out, cmd, line)
+					}
+				}
+			}
+		}
+	}
+}
+
+var gitlabReserved = words("stages variables include default workflow image services before_script after_script cache")
+

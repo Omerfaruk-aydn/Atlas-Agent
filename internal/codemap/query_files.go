@@ -221,3 +221,34 @@ func (m *Map) codeMentions(fi int) int {
 	return len(seen)
 }
 
+// explainMentions lists the code definitions a document names, each with
+// the first line naming it.
+func (m *Map) explainMentions(b *strings.Builder, fi int) {
+	first := map[int]Link{}
+	var order []int
+	for _, l := range m.links {
+		if l.File != fi || !m.code[m.symbols[l.To].file] {
+			continue
+		}
+		if prev, ok := first[l.To]; !ok {
+			order = append(order, l.To)
+			first[l.To] = l
+		} else if l.Line < prev.Line {
+			first[l.To] = l
+		}
+	}
+	if len(order) == 0 {
+		return
+	}
+	sort.SliceStable(order, func(i, j int) bool { return first[order[i]].Line < first[order[j]].Line })
+	fmt.Fprintf(b, "Mentions in the code (%d):\n", len(order))
+	for _, id := range order[:min(len(order), maxListedLinks)] {
+		s := m.symbol(id)
+		l := first[id]
+		fmt.Fprintf(b, "  L%d %s %s at %s:%d [%s]\n", l.Line, s.Kind, qualifiedName(s), m.Files[m.symbols[id].file].Path, s.Line, l.Confidence)
+	}
+	if len(order) > maxListedLinks {
+		fmt.Fprintf(b, "  … %d more\n", len(order)-maxListedLinks)
+	}
+}
+

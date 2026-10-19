@@ -168,3 +168,5 @@ func isCodePath(p string) bool {
 	return Category(LanguageOf(p)) == CategoryCode
 }
 
+var sqlStarts = words("select insert update delete with create alter drop merge replace upsert truncate")
+

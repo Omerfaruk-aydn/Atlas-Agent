@@ -120,3 +120,33 @@ func refKey(domain string, r Ref) string {
 	return r.Name
 }
 
+// nearFiles returns the files whose definitions a use in fi resolves to
+// first: those a page and its scripts share for classes and element ids,
+// the imported ones for a schema, the same directory for tasks and
+// infrastructure, which are scoped by it.
+func (m *Map) nearFiles(fi int, domain string) map[int]bool {
+	near := map[int]bool{fi: true}
+	imported := func(f int) {
+		for _, targets := range m.imports[f] {
+			for _, t := range targets {
+				near[t] = true
+			}
+		}
+	}
+	switch {
+	case domain == domainCSS || domain == domainDOM:
+		imported(fi)
+		for _, page := range m.importedBy[fi] {
+			near[page] = true
+			imported(page)
+		}
+	case strings.HasPrefix(domain, "schema:"):
+		imported(fi)
+	case domain == domainTask || domain == domainInfra:
+		for _, f := range m.dirs[path.Dir(m.Files[fi].Path)] {
+			near[f] = true
+		}
+	}
+	return near
+}
+

@@ -312,3 +312,88 @@ func yamlCommands(out *File, n *yaml.Node) {
 	}
 }
 
+// yamlNames calls fn for a scalar or each scalar of a sequence, or each
+// key of a mapping.
+func yamlNames(n *yaml.Node, fn func(name string, line int)) {
+	if n == nil {
+		return
+	}
+	switch n.Kind {
+	case yaml.ScalarNode:
+		fn(n.Value, n.Line)
+	case yaml.SequenceNode:
+		for _, c := range n.Content {
+			switch c.Kind {
+			case yaml.ScalarNode:
+				fn(c.Value, c.Line)
+			case yaml.MappingNode:
+				for k := 0; k+1 < len(c.Content); k += 2 {
+					if v := c.Content[k+1]; v.Kind == yaml.ScalarNode && (c.Content[k].Value == "job" || c.Content[k].Value == "task") {
+						fn(v.Value, v.Line)
+					}
+				}
+			}
+		}
+	case yaml.MappingNode:
+		for k := 0; k+1 < len(n.Content); k += 2 {
+			fn(n.Content[k].Value, n.Content[k].Line)
+		}
+	}
+}
+
+func extractTaskfile(out *File, content string) {
+	root := yamlRoot(content)
+	if root == nil {
+		return
+	}
+	if includes := yamlGet(root, "includes"); includes != nil {
+		for k := 0; k+1 < len(includes.Content); k += 2 {
+			v := includes.Content[k+1]
+			spec := v.Value
+			if v.Kind == yaml.MappingNode {
+				if t := yamlGet(v, "taskfile"); t != nil {
+					spec = t.Value
+				}
+			}
+			if spec != "" {
+				out.Imports = append(out.Imports, Import{Spec: spec, Line: v.Line})
+			}
+		}
+	}
+	tasks := yamlGet(root, "tasks")
+	if tasks == nil {
+		return
+	}
+	for k := 0; k+1 < len(tasks.Content); k += 2 {
+		key, body := tasks.Content[k], tasks.Content[k+1]
+		sig := key.Value + ":"
+		if d := yamlGet(body, "desc"); d != nil {
+			sig += " " + d.Value
+		}
+		addTask(out, key.Value, "task", toolTask, key.Line, yamlEnd(body), sig)
+		yamlNames(yamlGet(body, "deps"), func(name string, line int) { taskRef(out, name, toolTask, line) })
+		cmds := yamlGet(body, "cmds")
+		if cmds == nil {
+			if body.Kind == yaml.SequenceNode || body.Kind == yaml.ScalarNode {
+				cmds = body
+			}
+		}
+		if cmds == nil {
+			continue
+		}
+		for _, c := range append([]*yaml.Node{cmds}, cmds.Content...) {
+			switch c.Kind {
+			case yaml.ScalarNode:
+				scanCommand(out, c.Value, c.Line)
+			case yaml.MappingNode:
+				if t := yamlGet(c, "task"); t != nil {
+					taskRef(out, t.Value, toolTask, t.Line)
+				}
+				if t := yamlGet(c, "cmd"); t != nil {
+					scanCommand(out, t.Value, t.Line)
+				}
+			}
+		}
+	}
+}
+

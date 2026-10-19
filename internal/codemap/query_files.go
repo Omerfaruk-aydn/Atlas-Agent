@@ -391,3 +391,12 @@ func (m *Map) domainSymbols(text string) []int {
 	return out
 }
 
+// enclosingSymbol returns the innermost definition of fi around line, or
+// -1.
+func (m *Map) enclosingSymbol(fi, line int) int {
+	id := enclosingFinder(m.Files[fi], fi, m.firstSymbol[fi])(line)
+	if id < 0 {
+		return -1
+	}
+	return id
+}

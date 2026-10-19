@@ -108,3 +108,23 @@ func svgLinks(out *File, s string) {
 	}
 }
 
+// gltfLinks records the buffers and textures a glTF model loads.
+func gltfLinks(out *File, s string) {
+	lines := newLineIndex(s)
+	for _, m := range gltfURIRe.FindAllStringSubmatchIndex(s, -1) {
+		if target := s[m[2]:m[3]]; !hasScheme(target) {
+			addLink(out, FileLink{Target: target, Kind: LinkLoads, Line: lines.at(m[2])})
+		}
+	}
+}
+
+// formatBytes writes a size the way people read it.
+func formatBytes(n int64) string {
+	switch {
+	case n >= 1<<20:
+		return strconv.FormatFloat(float64(n)/(1<<20), 'f', 1, 64) + " MB"
+	case n >= 1<<10:
+		return strconv.FormatInt((n+512)>>10, 10) + " KB"
+	}
+	return strconv.FormatInt(n, 10) + " B"
+}

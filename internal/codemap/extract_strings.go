@@ -170,3 +170,32 @@ func isCodePath(p string) bool {
 
 var sqlStarts = words("select insert update delete with create alter drop merge replace upsert truncate")
 
+// sqlLike reports whether s is a query: it starts, after comments, with a
+// statement keyword followed by more words.
+func sqlLike(s string) bool {
+	t := strings.TrimSpace(stripSQLComments(s))
+	if len(t) < 10 {
+		return false
+	}
+	end := strings.IndexAny(t, " \t\r\n(")
+	if end <= 0 {
+		return false
+	}
+	return sqlStarts[strings.ToLower(t[:end])]
+}
+
+// stripSQLComments drops leading -- comment lines, keeping the newlines.
+func stripSQLComments(s string) string {
+	for {
+		t := strings.TrimLeft(s, " \t\r\n")
+		if !strings.HasPrefix(t, "--") {
+			return s
+		}
+		nl := strings.IndexByte(t, '\n')
+		if nl < 0 {
+			return ""
+		}
+		s = t[nl:]
+	}
+}
+

@@ -81,3 +81,21 @@ type Map struct {
 // symbolRef locates a symbol: Files[file].Symbols[index].
 type symbolRef struct{ file, index int }
 
+// Link is a use of a definition.
+type Link struct {
+	// From is the symbol the use is in, or -1-file for a use at the top
+	// level of a file.
+	From       int
+	To         int
+	Kind       string
+	Confidence Confidence
+	// Candidates is how many definitions an ambiguous use matched.
+	Candidates int
+	File, Line int
+}
+
+func (m *Map) symbol(i int) *Symbol {
+	r := m.symbols[i]
+	return &m.Files[r.file].Symbols[r.index]
+}
+

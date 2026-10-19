@@ -98,3 +98,13 @@ func cssPixels(v string) int {
 	return int(f + 0.5)
 }
 
+// svgLinks records the images an SVG embeds.
+func svgLinks(out *File, s string) {
+	lines := newLineIndex(s)
+	for _, m := range svgHrefRe.FindAllStringSubmatchIndex(s, -1) {
+		if target := s[m[2]:m[3]]; !hasScheme(target) {
+			addLink(out, FileLink{Target: target, Kind: LinkEmbeds, Line: lines.at(m[2])})
+		}
+	}
+}
+

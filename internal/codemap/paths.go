@@ -235,3 +235,46 @@ func commonPrefix(a, b string) int {
 	return n
 }
 
+// matchPattern returns the files a path with ${...} parts can be: each
+// part any one name.
+func (m *Map) matchPattern(p string) []int {
+	literal := strings.Trim(stripTemplates(p), "x./")
+	if len(strings.TrimSuffix(literal, path.Ext(literal))) < 2 {
+		// ${name}.png says too little to be worth linking.
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString(`(?:^|/)`)
+	rest := strings.TrimLeft(path.Clean(p), "./")
+	for {
+		start := strings.Index(rest, "${")
+		if start < 0 {
+			b.WriteString(regexp.QuoteMeta(rest))
+			break
+		}
+		end := strings.IndexByte(rest[start:], '}')
+		if end < 0 {
+			return nil
+		}
+		b.WriteString(regexp.QuoteMeta(rest[:start]))
+		b.WriteString(`[^/]+`)
+		rest = rest[start+end+1:]
+	}
+	b.WriteString(`$`)
+	re, err := regexp.Compile(b.String())
+	if err != nil {
+		return nil
+	}
+	ext := strings.ToLower(path.Ext(p))
+	var out []int
+	for fi, f := range m.Files {
+		if strings.ToLower(path.Ext(f.Path)) == ext && re.MatchString(f.Path) {
+			out = append(out, fi)
+			if len(out) == maxPatternMatches {
+				break
+			}
+		}
+	}
+	return out
+}
+

@@ -79,7 +79,7 @@ func adapterType(model Model, providerCfg config.ProviderConfig) catwalk.Type {
 		return catwalk.TypeGoogle
 	}
 	if providerCfg.ID == string(catwalk.InferenceProviderOpenCodeGo) || providerCfg.ID == string(catwalk.InferenceProviderOpenCodeZen) {
-		return opencodeModelType(providerCfg.ID, model.CatwalkCfg.ID)
+		return gatewayModelType(providerCfg.ID, model.CatwalkCfg.ID)
 	}
 	if providerCfg.ID == string(catwalk.InferenceProviderCopilot) && copilotResponsesModels[model.CatwalkCfg.ID] {
 		return catwalk.TypeOpenAI

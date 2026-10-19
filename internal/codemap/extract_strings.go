@@ -123,3 +123,28 @@ func hasScheme(s string) bool {
 	return true
 }
 
+// pathInString returns the file path s holds, without its query or
+// fragment: one ending in an extension the map links, written without
+// spaces, possibly with ${...} for a part chosen at run time.
+func pathInString(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	if len(s) < 3 || len(s) > 300 || hasScheme(s) || strings.ContainsAny(s, " \t\r\n\"'<>|*?%\\") && !strings.Contains(s, "${") {
+		return "", false
+	}
+	clean := s
+	if k := strings.IndexAny(clean, "?#"); k >= 0 {
+		clean = clean[:k]
+	}
+	if strings.ContainsAny(stripTemplates(clean), "{}$ \t") {
+		return "", false
+	}
+	ext := strings.ToLower(path.Ext(clean))
+	if !linkableExts[ext] {
+		return "", false
+	}
+	if base := path.Base(clean); len(base) <= len(ext) {
+		return "", false
+	}
+	return clean, true
+}
+

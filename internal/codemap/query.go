@@ -393,3 +393,10 @@ func (m *Map) Find(text string) string {
 	return b.String()
 }
 
+// describe is one line for a definition: kind, name, place, signature.
+func (m *Map) describe(id int) string {
+	s := m.symbol(id)
+	f := m.Files[m.symbols[id].file]
+	return fmt.Sprintf("%s %s  %s:%d  %s", s.Kind, qualifiedName(s), f.Path, s.Line, s.Signature)
+}
+

@@ -115,8 +115,11 @@ var copilotResponsesModels = map[string]bool{
 	"gpt-6-luna":    true,
 }
 
-// opencodeModelType follows the gateway's per-model protocol routing.
-func opencodeModelType(providerID, modelID string) catwalk.Type {
+// gatewayModelType follows the gateway's per-model protocol routing.
+func gatewayModelType(providerID, modelID string) catwalk.Type {
+	if strings.HasPrefix(modelID, "minimax-m3.1-flash") {
+		return catwalk.TypeOpenAICompat
+	}
 	if strings.HasPrefix(modelID, "claude-") ||
 		slices.Contains([]string{"qwen3.8-flash", "qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus"}, modelID) ||
 		providerID == string(catwalk.InferenceProviderOpenCodeGo) &&
@@ -622,9 +625,9 @@ func resolveProviderOptions(model Model, providerCfg config.ProviderConfig) (opt
 		if !hasReasoningEffort && shouldSetEffort {
 			mergedOptions["reasoning_effort"] = reasoningEffort
 		}
-		if openai.IsResponsesModel(model.CatwalkCfg.ID) || providerCfg.ID == string(catwalk.InferenceProviderMetaAPI) ||
+		if openai.IsResponsesModel(model.CatwalkCfg.ID) || providerCfg.ID == string(catwalk.InferenceProviderMetaAPI) || providerCfg.ID == "perplexity-agent" ||
 			(providerCfg.ID == string(catwalk.InferenceProviderOpenCodeGo) || providerCfg.ID == string(catwalk.InferenceProviderOpenCodeZen)) {
-			if openai.IsResponsesReasoningModel(model.CatwalkCfg.ID) {
+			if openai.IsResponsesReasoningModel(model.CatwalkCfg.ID) && providerCfg.ID != "perplexity-agent" {
 				mergedOptions["reasoning_summary"] = "auto"
 				mergedOptions["include"] = []openai.IncludeType{openai.IncludeReasoningEncryptedContent}
 			}
@@ -738,7 +741,8 @@ func resolveProviderOptions(model Model, providerCfg config.ProviderConfig) (opt
 				// MiniMax models use the "thinking" parameter instead of
 				// "reasoning_effort". Other models on these providers still
 				// use the standard field.
-				if !strings.HasPrefix(strings.ToLower(model.CatwalkCfg.ID), "minimax") {
+				if !strings.HasPrefix(strings.ToLower(model.CatwalkCfg.ID), "minimax") ||
+					strings.HasPrefix(strings.ToLower(model.CatwalkCfg.ID), "minimax-m3.1-flash") {
 					mergedOptions["reasoning_effort"] = reasoningEffort
 				}
 			default:
@@ -1865,7 +1869,7 @@ func (c *coordinator) buildOpenaiProvider(providerID, baseURL, apiKey string, he
 		// downstream could tell one from another.
 		openai.WithName(providerID),
 	}
-	if providerID == string(catwalk.InferenceProviderOpenCodeGo) || providerID == string(catwalk.InferenceProviderOpenCodeZen) || providerID == string(catwalk.InferenceProviderMetaAPI) {
+	if providerID == string(catwalk.InferenceProviderOpenCodeGo) || providerID == string(catwalk.InferenceProviderOpenCodeZen) || providerID == string(catwalk.InferenceProviderMetaAPI) || providerID == "perplexity-agent" {
 		opts = append(opts, openai.WithResponsesAPIFunc(func(string) bool { return true }))
 	}
 	if c.cfg.Config().Options.Debug {
@@ -2206,7 +2210,7 @@ func (c *coordinator) buildProvider(providerCfg config.ProviderConfig, model con
 		headers = make(map[string]string)
 	}
 	if providerCfg.ID == string(catwalk.InferenceProviderOpenCodeGo) || providerCfg.ID == string(catwalk.InferenceProviderOpenCodeZen) {
-		headers = openCodeHeaders(headers)
+		headers = gatewayHeaders(headers)
 	}
 
 	// handle special headers for anthropic
@@ -2220,7 +2224,7 @@ func (c *coordinator) buildProvider(providerCfg config.ProviderConfig, model con
 
 	apiKey, _ := c.cfg.Resolve(c.pickAPIKey(providerCfg))
 	baseURL, _ := c.cfg.Resolve(providerCfg.BaseURL)
-	useCLI, err := useOpenCodeCLI(providerCfg, model.Model, baseURL)
+	useCLI, err := useNativeCLI(providerCfg, model.Model, baseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -2230,16 +2234,23 @@ func (c *coordinator) buildProvider(providerCfg config.ProviderConfig, model con
 
 	switch providerCfg.ID {
 	case string(catwalk.InferenceProviderOpenCodeGo), string(catwalk.InferenceProviderOpenCodeZen):
-		switch opencodeModelType(providerCfg.ID, model.Model) {
+		protocol := gatewayModelType(providerCfg.ID, model.Model)
+		var canonical bool
+		baseURL, canonical = gatewayAPIBase(providerCfg.ID, baseURL, protocol)
+		switch protocol {
 		case catwalk.TypeAnthropic:
 			baseURL = strings.TrimSuffix(baseURL, "/v1")
 			return c.buildAnthropicProvider(baseURL, apiKey, headers, providerCfg.ID)
 		case catwalk.TypeOpenAI:
 			return c.buildOpenaiProvider(providerCfg.ID, baseURL, apiKey, headers)
 		case catwalk.TypeGoogle:
+			apiVersion := "v1"
+			if canonical {
+				apiVersion = "v1beta"
+			}
 			opts := []google.Option{
 				google.WithBaseURL(strings.TrimSuffix(baseURL, "/v1")),
-				google.WithAPIVersion("v1"),
+				google.WithAPIVersion(apiVersion),
 				google.WithGeminiAPIKey(apiKey),
 				google.WithHeaders(headers),
 				google.WithName(providerCfg.ID),

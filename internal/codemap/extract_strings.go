@@ -199,3 +199,9 @@ func stripSQLComments(s string) string {
 	}
 }
 
+var (
+	sqlTableRe = regexp.MustCompile(`(?is)\b(from|join|into|update|references|table)\s+(?:only\s+|if\s+(?:not\s+)?exists\s+)?([A-Za-z_"\x60\[][\w."\x60\[\]$]*)`)
+	sqlQueryRe = regexp.MustCompile(`(?m)^\s*--\s*name:\s*(\w+)`)
+	sqlNotName = words("select lateral set values unnest only where on as with recursive exists not the a an each row statement")
+)
+

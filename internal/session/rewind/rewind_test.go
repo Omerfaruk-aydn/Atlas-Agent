@@ -64,7 +64,7 @@ func readFile(t *testing.T, path string) string {
 
 // The usual shape of a session: each user message is answered by an
 // assistant message whose tools change files.
-func TestForkAtGoesBackToJustBeforeTheMessage(t *testing.T) {
+func TestForkAtEndsWithTheMessage(t *testing.T) {
 	h := newHarness(t)
 	ctx := t.Context()
 	workDir := t.TempDir()
@@ -98,7 +98,7 @@ func TestForkAtGoesBackToJustBeforeTheMessage(t *testing.T) {
 	result, err := h.rewind.ForkAt(ctx, src.ID, u2.ID)
 	require.NoError(t, err)
 
-	require.Equal(t, []string{"edit a", "edited a"}, texts(t, h, result.Session.ID), "the fork ends with the answer before the chosen message")
+	require.Equal(t, []string{"edit a", "edited a", "create b and edit a again"}, texts(t, h, result.Session.ID), "the fork ends with the chosen message")
 	require.Equal(t, "a-after-1", readFile(t, aPath))
 	_, err = os.Stat(bPath)
 	require.True(t, os.IsNotExist(err), "b.txt was created by the chosen turn")
@@ -212,5 +212,34 @@ func TestForkPreservesMessageOrder(t *testing.T) {
 	require.Equal(t, append(want, "last"), texts(t, h, src.ID))
 	result, err := h.rewind.ForkAt(ctx, src.ID, last.ID)
 	require.NoError(t, err)
-	require.Equal(t, want, texts(t, h, result.Session.ID))
+	require.Equal(t, append(want, "last"), texts(t, h, result.Session.ID))
+}
+
+// Copying a message must not add a second finish mark: rewinding a fork
+// again would otherwise pile them up.
+func TestForkCopiesMessagesWithoutExtraFinishMarks(t *testing.T) {
+	h := newHarness(t)
+	ctx := t.Context()
+
+	src, err := h.sessions.Create(ctx, "original")
+	require.NoError(t, err)
+	h.say(t, src.ID, message.User, "first")
+	h.say(t, src.ID, message.Assistant, "answer")
+	last := h.say(t, src.ID, message.User, "second")
+
+	fork, err := h.rewind.ForkAt(ctx, src.ID, last.ID)
+	require.NoError(t, err)
+	copied, err := h.messages.List(ctx, fork.Session.ID)
+	require.NoError(t, err)
+	again, err := h.rewind.ForkAt(ctx, fork.Session.ID, copied[1].ID)
+	require.NoError(t, err)
+	twice, err := h.messages.List(ctx, again.Session.ID)
+	require.NoError(t, err)
+	finishes := 0
+	for _, part := range twice[0].Parts {
+		if _, ok := part.(message.Finish); ok {
+			finishes++
+		}
+	}
+	require.Equal(t, 1, finishes)
 }

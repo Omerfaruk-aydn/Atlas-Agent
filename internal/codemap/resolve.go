@@ -78,3 +78,6 @@ type Map struct {
 	folders map[string]bool
 }
 
+// symbolRef locates a symbol: Files[file].Symbols[index].
+type symbolRef struct{ file, index int }
+

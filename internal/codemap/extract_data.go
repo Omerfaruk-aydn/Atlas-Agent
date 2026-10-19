@@ -61,3 +61,7 @@ func (r *tokenReader) define(i int, name, kind, container string, end int) int {
 	return len(r.out.Symbols) - 1
 }
 
+func (r *tokenReader) ref(name, qualifier, kind string, line int) {
+	addRef(r.out, Ref{Name: name, Qualifier: qualifier, Kind: kind, Line: line})
+}
+

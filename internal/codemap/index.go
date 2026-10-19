@@ -333,3 +333,12 @@ var dependencyDirs = map[string]bool{
 	".turbo": true, ".cache": true, ".gradle": true, "DerivedData": true, "site-packages": true,
 }
 
+func inDependencyDir(rel string) bool {
+	for _, part := range strings.Split(rel, "/") {
+		if dependencyDirs[part] {
+			return true
+		}
+	}
+	return false
+}
+

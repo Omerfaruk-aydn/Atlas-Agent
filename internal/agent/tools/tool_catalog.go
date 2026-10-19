@@ -65,7 +65,7 @@ var toolCategoryByName = map[string]string{
 	"agent": "agents", "delegate": "agents", "orchestrate": "agents", "debate": "agents", "vibe": "agents",
 	"todos": "planning", "goal": "planning", "requirement_trace": "planning", "exit_plan_mode": "planning", "question": "planning",
 	"memory": "memory", "facts": "memory", "session_search": "memory", "context_select": "memory",
-	"code_query": "code", "project_map": "code", "dead_code": "code", "type_hierarchy": "code", "import_graph": "code",
+	"code_query": "code", "code_map": "code", "project_map": "code", "dead_code": "code", "type_hierarchy": "code", "import_graph": "code",
 	"impact_analysis": "code", "code_metrics": "code", "api_surface": "code", "anti_pattern_scan": "code", "todo_scan": "code",
 	"verify": "testing", "test_select": "testing", "mutation_test": "testing", "test_run": "testing", "coverage_report": "testing",
 	"lint_run": "testing", "bug_reproduce": "testing", "repro_minimize": "testing", "benchmark_compare": "testing",
@@ -305,8 +305,8 @@ func IntentTools(text string) []string {
 	if desktopApp && !codeDiscussion {
 		add("computer", "tool_pipeline")
 	}
-	if strings.Contains(folded, "projenin harita") || strings.Contains(folded, "project map") {
-		add("project_map")
+	if strings.Contains(folded, "projenin harita") || strings.Contains(folded, "project map") || strings.Contains(folded, "code map") || strings.Contains(folded, "kod harita") {
+		add("code_map", "project_map")
 	}
 	if strings.Contains(folded, "oturum gecmis") || strings.Contains(folded, "session history") {
 		add("session_search")

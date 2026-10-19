@@ -53,6 +53,7 @@ var toolHints = map[string]string{
 	"git_log":                 "read commit history",
 	"git_status":              "see changed files",
 	"github_pr_view":          "read a GitHub pull request",
+	"code_map":                "code, docs, assets: overview, definitions, who uses what",
 	"impact_analysis":         "Go: transitive callers of a function",
 	"import_graph":            "Go: package dependencies and import cycles",
 	"inspect_file":            "look inside archives, SQLite databases, notebooks",

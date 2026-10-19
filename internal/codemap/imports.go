@@ -352,3 +352,64 @@ func (x *extractor) pythonImport(i int) bool {
 	return false
 }
 
+// pythonModule reads a dotted module name with leading dots for relative
+// imports.
+func (x *extractor) pythonModule(k, line int) (Import, int) {
+	var b strings.Builder
+	for x.tok(k).line == line {
+		s := x.tok(k)
+		switch {
+		case s.text == "." || s.text == "...":
+			b.WriteString(s.text)
+		case s.kind == tIdent && s.text != "import" && s.text != "as":
+			b.WriteString(s.text)
+		default:
+			return Import{Spec: b.String(), Line: line}, k
+		}
+		k++
+	}
+	return Import{Spec: b.String(), Line: line}, k
+}
+
+// rustUse reads use a::b::{c, d as e}; and binds the leaf names.
+func (x *extractor) rustUse(k int) {
+	line := x.tok(k).line
+	var prefix []string
+	for x.tok(k).kind == tIdent && x.tok(k+1).text == "::" {
+		prefix = append(prefix, x.toks[k].text)
+		k += 2
+	}
+	imp := Import{Spec: strings.Join(prefix, "::"), Line: line}
+	leaf := func(j int) {
+		name := x.toks[j].text
+		local := name
+		if x.tok(j+1).text == "as" && x.tok(j+2).kind == tIdent {
+			local = x.toks[j+2].text
+		}
+		if name == "self" {
+			if len(prefix) == 0 {
+				return
+			}
+			name = prefix[len(prefix)-1]
+			local = name
+		}
+		imp.Bindings = append(imp.Bindings, Binding{Local: local, Remote: name})
+	}
+	switch t := x.tok(k); {
+	case t.text == "{":
+		for j := k + 1; j < len(x.toks) && x.toks[j].text != "}" && x.toks[j].text != ";"; j++ {
+			if x.toks[j].kind == tIdent && x.toks[j].text != "as" && x.tok(j+1).text != "::" && x.tok(j-1).text != "as" {
+				leaf(j)
+			}
+		}
+	case t.kind == tIdent:
+		leaf(k)
+		if imp.Spec == "" {
+			imp.Spec = t.text
+		}
+	case t.text == "*":
+		imp.Spec += "::*"
+	}
+	x.file.Imports = append(x.file.Imports, imp)
+}
+

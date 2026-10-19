@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/notify"
@@ -43,6 +45,12 @@ func (b *Backend) SendMessage(workspaceID string, msg proto.AgentMessage) error 
 		Attachments: proto.AttachmentsToMessage(msg.Attachments),
 	}); err != nil {
 		return err
+	}
+
+	// A retry of a request whose acknowledgement was lost carries the same
+	// RunID. Accept it without dispatching a second run.
+	if msg.RunID != "" && !ws.claimRunID(msg.RunID, time.Now()) {
+		return ErrRunAlreadyAccepted
 	}
 
 	accept := ws.AgentCoordinator.BeginAccepted(msg.SessionID)
@@ -190,6 +198,39 @@ func (b *Backend) SummarizeSession(ctx context.Context, workspaceID, sessionID s
 	}
 
 	return ws.AgentCoordinator.Summarize(ctx, sessionID)
+}
+
+// SetGoal puts the session into an autonomous run towards goal. An empty
+// goal ends the run and forgets the goal.
+func (b *Backend) SetGoal(ctx context.Context, workspaceID, sessionID, goal string) error {
+	ws, err := b.GetWorkspace(workspaceID)
+	if err != nil {
+		return err
+	}
+
+	if ws.AgentCoordinator == nil {
+		return ErrAgentNotInitialized
+	}
+
+	if strings.TrimSpace(goal) == "" {
+		return ws.AgentCoordinator.ClearGoal(ctx, sessionID)
+	}
+	return ws.AgentCoordinator.StartGoal(ctx, sessionID, goal)
+}
+
+// GoalStatus reports the autonomous run of the session, if there is one.
+func (b *Backend) GoalStatus(workspaceID, sessionID string) (proto.AgentGoalStatus, error) {
+	ws, err := b.GetWorkspace(workspaceID)
+	if err != nil {
+		return proto.AgentGoalStatus{}, err
+	}
+
+	if ws.AgentCoordinator == nil {
+		return proto.AgentGoalStatus{}, nil
+	}
+
+	goal, used, budget, ok := ws.AgentCoordinator.GoalStatus(sessionID)
+	return proto.AgentGoalStatus{Active: ok, Goal: goal, Used: used, Budget: budget}, nil
 }
 
 // QueuedPrompts returns the number of queued prompts for the session.

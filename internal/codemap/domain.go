@@ -59,3 +59,24 @@ func symbolDomain(lang, kind string) string {
 	return domainCode
 }
 
+// domainKey is how a definition is looked up within its domain.
+func domainKey(domain string, s *Symbol) string {
+	switch domain {
+	case domainCSS:
+		switch s.Kind {
+		case "keyframes", "mixin", "function":
+			return "@" + s.Kind + ":" + s.Name
+		}
+	case domainSQL:
+		return strings.ToLower(s.Name)
+	case domainTask:
+		return s.Container + "." + s.Name
+	case domainRoute:
+		_, p, _ := strings.Cut(s.Name, " ")
+		if route, ok := normRoute(p); ok {
+			return route
+		}
+	}
+	return s.Name
+}
+

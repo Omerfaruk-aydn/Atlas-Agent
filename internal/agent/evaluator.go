@@ -149,6 +149,9 @@ type evaluatorLedger struct {
 	// images are the latest screenshots the agent took, for the visual
 	// review; already within provider limits.
 	images []fantasy.FilePart
+	// noImages skips keeping screenshots, for a ledger that only judges
+	// the contract.
+	noImages bool
 
 	// baselines hold each file's content before the request's first edit
 	// of it, keyed by absolute path, for the diff guard and the corpus.
@@ -388,6 +391,9 @@ func (l *evaluatorLedger) record(steps []fantasy.StepResult) {
 // visual review. Images are repaired to provider limits when kept, so a
 // review never fails on an oversized one.
 func (l *evaluatorLedger) keepImage(result fantasy.ToolResultOutputContent) {
+	if l.noImages {
+		return
+	}
 	media, ok := fantasy.AsToolResultOutputType[fantasy.ToolResultOutputContentMedia](result)
 	if !ok || !strings.HasPrefix(media.MediaType, "image/") {
 		return

@@ -94,3 +94,44 @@ func buildPolyglot(t *testing.T) *Map {
 	return m
 }
 
+func TestMapResolvesThroughImportsAndScope(t *testing.T) {
+	t.Parallel()
+	m := buildPolyglot(t)
+	var paths []string
+	for _, f := range m.Files {
+		paths = append(paths, f.Path)
+	}
+	require.Equal(t, []string{"cmd/main.go", "pkg/a/a.go", "pkg/a/b.go", "py/physics.py", "py/sim.py", "src/app.ts", "src/orbit.ts", "src/util.ts"}, paths, "dependencies and build output are not mapped")
+
+	solve := m.Explain(t.Context(), "solveKepler")
+	require.Contains(t, solve, "function solveKepler: src/orbit.ts:1-3")
+	require.Contains(t, solve, "Used by (1: 1 resolved)")
+	require.Contains(t, solve, "src/orbit.ts:7 in method Orbit.step [call, resolved]")
+
+	orbit := m.Explain(t.Context(), "Orbit")
+	require.Contains(t, orbit, "src/app.ts:5 in function main [new, resolved]")
+
+	// A call through a value of unknown type is never more than a guess.
+	step := m.Explain(t.Context(), "Orbit.step")
+	require.Contains(t, step, "src/app.ts:6 in function main [call, ambiguous, receiver type unknown]")
+
+	// helper is defined twice; the call resolves to the file's own.
+	helper := m.Explain(t.Context(), "src/app.ts:helper")
+	require.Contains(t, helper, "src/app.ts:8 in function main [call, resolved]")
+	require.Contains(t, m.Explain(t.Context(), "src/util.ts:helper"), "Used by (0)")
+
+	// A module from a dependency is not linked to anything in the project.
+	require.NotContains(t, m.Explain(t.Context(), "src/app.ts"), "Vector3")
+	require.Contains(t, m.Explain(t.Context(), "src/app.ts"), "three (outside the project)")
+
+	integrate := m.Explain(t.Context(), "integrate")
+	require.Contains(t, integrate, "py/sim.py:4 in function run [call, resolved]")
+
+	a := m.Explain(t.Context(), "A")
+	require.Contains(t, a, "cmd/main.go:10 in function main [call, resolved]")
+	b := m.Explain(t.Context(), "B")
+	require.Contains(t, b, "pkg/a/a.go:3 in function A [call, resolved]", "same package, no import needed")
+	// The builtin append is not the package's function of that name.
+	require.Contains(t, m.Explain(t.Context(), "pkg/a/b.go:append"), "Used by (0)")
+}
+

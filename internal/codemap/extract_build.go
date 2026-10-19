@@ -537,3 +537,50 @@ func extractWorkflow(out *File, content string) {
 
 var gitlabReserved = words("stages variables include default workflow image services before_script after_script cache")
 
+func extractGitLabCI(out *File, content string) {
+	root := yamlRoot(content)
+	if root == nil {
+		return
+	}
+	for k := 0; k+1 < len(root.Content); k += 2 {
+		key, body := root.Content[k], root.Content[k+1]
+		if key.Value == "include" {
+			yamlNames(body, func(name string, line int) {
+				if strings.Contains(name, ".") {
+					out.Imports = append(out.Imports, Import{Spec: strings.TrimPrefix(name, "/"), Line: line})
+				}
+			})
+			for _, c := range body.Content {
+				if l := yamlGet(c, "local"); l != nil {
+					out.Imports = append(out.Imports, Import{Spec: strings.TrimPrefix(l.Value, "/"), Line: l.Line})
+				}
+			}
+			if l := yamlGet(body, "local"); l != nil {
+				out.Imports = append(out.Imports, Import{Spec: strings.TrimPrefix(l.Value, "/"), Line: l.Line})
+			}
+			continue
+		}
+		if gitlabReserved[key.Value] || body.Kind != yaml.MappingNode {
+			continue
+		}
+		kind := "job"
+		if strings.HasPrefix(key.Value, ".") {
+			kind = "template"
+		}
+		addTask(out, key.Value, kind, toolJob, key.Line, yamlEnd(body), key.Value+":")
+		for _, field := range []string{"needs", "dependencies", "extends"} {
+			yamlNames(yamlGet(body, field), func(name string, line int) { taskRef(out, name, toolJob, line) })
+		}
+		for _, field := range []string{"script", "before_script", "after_script"} {
+			yamlCommands(out, yamlGet(body, field))
+		}
+	}
+}
+
+var (
+	tomlSectionRe = regexp.MustCompile(`^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*$`)
+	tomlScriptRe  = regexp.MustCompile(`^\s*"?([\w.-]+)"?\s*=\s*["']([\w.]+):([\w.]+)["']`)
+	tomlPathRe    = regexp.MustCompile(`^\s*path\s*=\s*["']([^"']+)["']`)
+	tomlNameRe    = regexp.MustCompile(`^\s*name\s*=\s*["']([^"']+)["']`)
+)
+

@@ -43,3 +43,11 @@ func setPlanTime(t *testing.T, root string, at time.Time) {
 	require.NoError(t, os.Chtimes(path, at, at))
 }
 
+func testCatwalkModel() catwalk.Model {
+	return catwalk.Model{ContextWindow: 200_000, DefaultMaxTokens: 10_000}
+}
+
+func messageParams(text string) message.CreateMessageParams {
+	return message.CreateMessageParams{Role: message.User, Parts: []message.ContentPart{message.TextContent{Text: text}}}
+}
+

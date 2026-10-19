@@ -73,3 +73,31 @@ func readJobOutput(root, session, id string, started time.Time, stdout, stderr s
 	return view
 }
 
+// writeJobLog saves the full output of job id, replacing the previous copy,
+// and returns its path relative to root. The name starts with the job's
+// start time, so the logs are pruned with the command logs, oldest first.
+func writeJobLog(root, id string, started time.Time, stdout, stderr string) (string, error) {
+	dir := filepath.Join(root, filepath.FromSlash(spillLogDir))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	name := fmt.Sprintf("cmd-%s-job-%s.log", started.Format("20060102-150405"), safeJobID(id))
+	content := stdout
+	if stderr != "" {
+		content += "\n--- stderr ---\n" + stderr
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		return "", err
+	}
+	pruneSpills(dir)
+	return spillLogDir + "/" + name, nil
+}
+
+func safeJobID(id string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '-' || r == '_' || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z') || ('0' <= r && r <= '9') {
+			return r
+		}
+		return '_'
+	}, id)
+}

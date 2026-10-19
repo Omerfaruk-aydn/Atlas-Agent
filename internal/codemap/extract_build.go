@@ -52,3 +52,10 @@ func extractBuild(out *File, content string) {
 	}
 }
 
+func addTask(out *File, name, kind, tool string, line, end int, sig string) {
+	if name == "" || len(out.Symbols) >= maxSymbolsPerFile {
+		return
+	}
+	out.Symbols = append(out.Symbols, Symbol{Name: name, Kind: kind, Container: tool, Line: line, EndLine: max(line, end), Signature: clipSignature(sig), Exported: true})
+}
+

@@ -351,7 +351,7 @@ func runJobOutputTool(t *testing.T, ctx context.Context, params JobOutputParams)
 	input, err := json.Marshal(params)
 	require.NoError(t, err)
 
-	resp, err := NewJobOutputTool().Run(ctx, fantasy.ToolCall{
+	resp, err := NewJobOutputTool("").Run(ctx, fantasy.ToolCall{
 		ID:    "test-call",
 		Name:  JobOutputToolName,
 		Input: string(input),

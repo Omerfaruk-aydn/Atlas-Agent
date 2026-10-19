@@ -64,7 +64,10 @@ func jobWaitSeconds(requested int) int {
 	return requested
 }
 
-func NewJobOutputTool() fantasy.AgentTool {
+// NewJobOutputTool reads background jobs. workingDir is the project
+// directory, where the full output of a job read more than once is kept;
+// empty returns the whole output on every read.
+func NewJobOutputTool(workingDir string) fantasy.AgentTool {
 	return fantasy.NewAgentTool(
 		JobOutputToolName,
 		jobOutputDescription,
@@ -98,13 +101,22 @@ func NewJobOutputTool() fantasy.AgentTool {
 			}
 
 			stdout, stderr, done, err := bgShell.GetOutput()
+			view := readJobOutput(workingDir, GetSessionFromContext(ctx), params.ShellID, bgShell.StartedAt, stdout, stderr, done)
 
 			var outputParts []string
-			if stdout != "" {
-				outputParts = append(outputParts, stdout)
+			if view.note != "" {
+				outputParts = append(outputParts, view.note)
+				// What is new since the last read can still be long; the
+				// log holds all of it, so the model gets the digest.
+				if len(view.stdout)+len(view.stderr) > spillThreshold {
+					view.stdout, view.stderr = digestLines(view.stdout), digestLines(view.stderr)
+				}
 			}
-			if stderr != "" {
-				outputParts = append(outputParts, stderr)
+			if view.stdout != "" {
+				outputParts = append(outputParts, view.stdout)
+			}
+			if strings.TrimSpace(view.stderr) != "" {
+				outputParts = append(outputParts, view.stderr)
 			}
 
 			status := "running"

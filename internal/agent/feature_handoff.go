@@ -46,3 +46,17 @@ const (
 	handoffMaxFiles    = 60
 )
 
+// handoffWatch follows one turn for a feature boundary.
+type handoffWatch struct {
+	// baseline holds the features done when the turn started; only a
+	// feature finished during the turn hands off.
+	baseline map[string]bool
+	// scratch replays the turn's steps on a copy of the evaluator ledger,
+	// so the contract can be checked mid-turn without touching the ledger
+	// the completion gate reads at the end of the turn.
+	scratch *evaluatorLedger
+	seen    int
+	// feature is the finished feature that triggered the handoff.
+	feature workplan.Feature
+}
+

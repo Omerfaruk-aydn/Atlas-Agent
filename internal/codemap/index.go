@@ -394,3 +394,27 @@ func goModule(root string) string {
 	return ""
 }
 
+func (b *Builder) cachePath(root string) string {
+	if b.CacheDir == "" {
+		return ""
+	}
+	return filepath.Join(b.CacheDir, Hash(strings.ToLower(root))+".json")
+}
+
+func (b *Builder) readCache(root string) map[string]*cacheEntry {
+	entries := map[string]*cacheEntry{}
+	file := b.cachePath(root)
+	if file == "" {
+		return entries
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return entries
+	}
+	var cache cacheFile
+	if json.Unmarshal(data, &cache) != nil || cache.Version != cacheVersion || cache.Entries == nil {
+		return entries
+	}
+	return cache.Entries
+}
+

@@ -69,3 +69,119 @@ func (m *Map) resolvePaths() {
 	}
 }
 
+// resolvePath finds the file a path written in fi means.
+func (m *Map) resolvePath(fi int, target string) pathTarget {
+	t := pathTarget{section: -1}
+	file, frag, _ := strings.Cut(target, "#")
+	if q := strings.IndexByte(file, '?'); q >= 0 {
+		file = file[:q]
+	}
+	if decoded, err := url.PathUnescape(file); err == nil {
+		file = decoded
+	}
+	t.anchor = frag
+	// direction-%d.png and frame_{index}.png are names computed like
+	// ${...} ones.
+	file = placeholders(file)
+	if isDrivePath(file) {
+		// D:/project/src/x.go: a link to the project's own file through
+		// the author's disk, or to somewhere else on it.
+		rel, ok := m.projectRelative(file)
+		if !ok {
+			t.outside = true
+			return t
+		}
+		file = "/" + rel
+	}
+	switch {
+	case file == "":
+		t.files = []int{fi}
+	case strings.Contains(file, "${"):
+		t.pattern = true
+		t.files = m.matchPattern(file)
+	case strings.ContainsAny(file, "*?["):
+		t.pattern = true
+		t.files = m.matchGlob(fi, file)
+	default:
+		if found := m.findPath(fi, file); found >= 0 {
+			t.files = []int{found}
+		} else if under := m.underDir(fi, file); len(under) > 0 {
+			// A directory: everything in it.
+			t.pattern = true
+			t.files = under
+		} else if p, ok := m.existsUnread(fi, file); ok {
+			t.unread = p
+		}
+	}
+	if frag != "" && len(t.files) == 1 {
+		if target := m.Files[t.files[0]]; Category(target.Language) == CategoryDoc {
+			t.section = m.sectionBySlug(t.files[0], frag)
+			t.brokenAnchor = t.section < 0
+		}
+	}
+	return t
+}
+
+// findPath finds a file by a path relative to the referring file, to the
+// project, or to a web root (public, static), else by a unique ending.
+func (m *Map) findPath(fi int, p string) int {
+	p = strings.ReplaceAll(p, "\\", "/")
+	dir := path.Dir(m.Files[fi].Path)
+	cands := pathCandidates(dir, p)
+	if cands == nil {
+		return -1
+	}
+	try := func(c string) int {
+		if i, ok := m.byPath[c]; ok {
+			return i
+		}
+		return -1
+	}
+	for _, c := range cands {
+		if i := try(c); i >= 0 {
+			return i
+		}
+	}
+	if path.Ext(p) == "" {
+		for _, ext := range []string{".md", ".mdx", ".tsx", ".ts", ".jsx", ".js", ".vue", ".svelte", ".html", ".rst", ".adoc"} {
+			for _, c := range cands {
+				if i := try(c + ext); i >= 0 {
+					return i
+				}
+			}
+		}
+	}
+	// By its ending: images/sun.png matches public/textures/images/sun.png
+	// when it is the only file that ends so, or the nearest.
+	var parts []string
+	for _, s := range strings.Split(path.Clean(p), "/") {
+		if s != ".." && s != "." && s != "" {
+			parts = append(parts, s)
+		}
+	}
+	if len(parts) == 0 {
+		return -1
+	}
+	matches := m.pathSuffix[strings.Join(parts, "/")]
+	switch len(matches) {
+	case 0:
+		return -1
+	case 1:
+		return matches[0]
+	}
+	best, bestScore, tie := -1, -1, false
+	for _, c := range matches {
+		score := commonPrefix(dir, path.Dir(m.Files[c].Path))
+		switch {
+		case score > bestScore:
+			best, bestScore, tie = c, score, false
+		case score == bestScore:
+			tie = true
+		}
+	}
+	if tie {
+		return -1
+	}
+	return best
+}
+

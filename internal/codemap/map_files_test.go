@@ -95,3 +95,22 @@ func buildWeb(t *testing.T) *Map {
 	return m
 }
 
+func TestMapOverviewCoversDocumentsAndAssets(t *testing.T) {
+	t.Parallel()
+	m := buildWeb(t)
+	overview := m.Overview(0)
+	require.Contains(t, overview, "code: javascript 2, css 1, go 1, html 1, npm 1, openapi 1, sql 1; docs: markdown 2; assets: image 3")
+	require.Contains(t, overview, "Documents: 2 files, 4 sections.")
+	require.Contains(t, overview, "README.md: # Solar: 2 sections, mentions 2 definitions")
+	require.Contains(t, overview, "Assets: 3 files")
+	require.Contains(t, overview, "public/textures/sun.png (image, png, 8x4,")
+	require.Contains(t, overview, "Named by no file (1; may still be loaded by a computed name or a directory listing): public/unused.png")
+	require.Contains(t, overview, "README.md:5 links to docs/guide.md#removed (no such heading)")
+	require.Contains(t, overview, "README.md:8 embeds docs/img/missing.png (not found)")
+
+	// Only code is ranked; documents and assets have their own sections.
+	ranked := overview[:strings.Index(overview, "Documents:")]
+	require.NotContains(t, ranked, "README.md")
+	require.NotContains(t, ranked, "logo.png")
+}
+

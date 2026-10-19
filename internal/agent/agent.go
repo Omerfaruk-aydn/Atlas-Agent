@@ -1206,6 +1206,9 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	var stepPalette []fantasy.AgentTool
 	var pinnedContext []string
 	var shouldSummarize bool
+	// handoff watches the turn for a finished feature; see feature_handoff.go.
+	handoff := a.newHandoffWatch(call.SessionID)
+	var shouldHandoff bool
 	sanitizedToolCalls := make(map[string]bool)
 	// Don't send MaxOutputTokens if 0 — some providers (e.g. LM Studio) reject it
 	var maxOutputTokens *int64
@@ -1642,6 +1645,15 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				return true
 			},
 			func(steps []fantasy.StepResult) bool {
+				cw := int64(largeModel.CatwalkCfg.ContextWindow)
+				tokens := currentSession.CompletionTokens + currentSession.PromptTokens
+				if !handoff.due(a.projectRoot(call.SessionID), steps, cw, tokens) {
+					return false
+				}
+				shouldHandoff = true
+				return true
+			},
+			func(steps []fantasy.StepResult) bool {
 				if !hasRepeatedToolCalls(steps, loopDetectionWindowSize, loopDetectionMaxRepeats) {
 					return false
 				}
@@ -1803,6 +1815,23 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 
 	if shouldSummarize && a.preCompactDenied(genCtx, call.SessionID) {
 		shouldSummarize = false
+	}
+	if shouldHandoff && (shouldSummarize || a.preCompactDenied(genCtx, call.SessionID)) {
+		// A compaction due at the same step replaces the conversation
+		// anyway; a hook that denies compaction denies a handoff too.
+		shouldHandoff = false
+	}
+
+	if shouldHandoff {
+		if handoffErr := a.handOff(genCtx, call.SessionID, handoff.feature, handoff.scratch.files); handoffErr != nil {
+			// The conversation is intact; the work goes on in it.
+			slog.Warn("Feature handoff failed; continuing in the current context", "session_id", call.SessionID, "error", handoffErr)
+		}
+		if len(currentAssistant.ToolCalls()) > 0 {
+			existing, _ := a.messageQueue.Get(call.SessionID)
+			call.Prompt = summaryResumeAfterTurn(call.Prompt, result)
+			a.messageQueue.Set(call.SessionID, append(existing, call))
+		}
 	}
 
 	if shouldSummarize {

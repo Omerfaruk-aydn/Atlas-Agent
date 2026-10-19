@@ -892,3 +892,77 @@ func (m *Map) symbolChain(start []int, goal map[int]bool, mode string) []int {
 	return nil
 }
 
+// filePath connects two files, or a file and a definition's file, over
+// file dependencies.
+func (m *Map) filePath(from, to target, fromText, toText string) string {
+	files := func(t target) []int {
+		if t.file >= 0 {
+			return []int{t.file}
+		}
+		var out []int
+		for _, id := range t.symbols {
+			out = appendUnique(out, m.symbols[id].file)
+		}
+		return out
+	}
+	goal := map[int]bool{}
+	for _, fi := range files(to) {
+		goal[fi] = true
+	}
+	adj := map[int][]int{}
+	for key := range m.fileLinks {
+		adj[key[0]] = append(adj[key[0]], key[1])
+	}
+	// Documents and assets are reached by path, by import or by mention.
+	for target, uses := range m.pathIn {
+		for _, u := range uses {
+			if !m.code[u.file] || !m.code[target] {
+				adj[u.file] = appendUnique(adj[u.file], target)
+			}
+		}
+	}
+	for target, users := range m.importedBy {
+		if !m.code[target] {
+			for _, u := range users {
+				adj[u] = appendUnique(adj[u], target)
+			}
+		}
+	}
+	for _, l := range m.links {
+		if target := m.symbols[l.To].file; !m.code[l.File] && target != l.File {
+			adj[l.File] = appendUnique(adj[l.File], target)
+		}
+	}
+	prev := map[int]int{}
+	var frontier []int
+	for _, fi := range files(from) {
+		prev[fi] = -1
+		frontier = append(frontier, fi)
+		if goal[fi] {
+			return fmt.Sprintf("%s and %s are in the same file.", fromText, toText)
+		}
+	}
+	for range maxPathDepth {
+		var next []int
+		for _, fi := range frontier {
+			deps := adj[fi]
+			sort.Ints(deps)
+			for _, d := range deps {
+				if _, ok := prev[d]; ok {
+					continue
+				}
+				prev[d] = fi
+				if goal[d] {
+					var chain []string
+					for k := d; k >= 0; k = prev[k] {
+						chain = append([]string{m.Files[k].Path}, chain...)
+					}
+					return fmt.Sprintf("%s depends on %s through:\n  %s", fromText, toText, strings.Join(chain, "\n  -> "))
+				}
+				next = append(next, d)
+			}
+		}
+		frontier = next
+	}
+	return fmt.Sprintf("%s does not depend on %s within %d files in the map.", fromText, toText, maxPathDepth)
+}

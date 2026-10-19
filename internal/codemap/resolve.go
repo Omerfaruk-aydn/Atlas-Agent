@@ -314,3 +314,18 @@ func (m *Map) lookup(p string, exts []string, indexes ...string) []int {
 	return nil
 }
 
+// bySuffix returns the files whose path, without extension, ends in rel
+// and whose extension is one of exts; only a unique match counts.
+func (m *Map) bySuffix(rel string, exts []string) []int {
+	var out []int
+	for _, fi := range m.suffixes[strings.Trim(rel, "/")] {
+		if slices.Contains(exts, path.Ext(m.Files[fi].Path)) {
+			out = append(out, fi)
+		}
+	}
+	if len(out) == 1 {
+		return out
+	}
+	return nil
+}
+

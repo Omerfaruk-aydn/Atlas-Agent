@@ -200,3 +200,24 @@ func (m *Map) countKind(fi int, kind string) int {
 	return n
 }
 
+// firstSection is a document's title: its first heading.
+func (m *Map) firstSection(fi int) string {
+	for _, s := range m.Files[fi].Symbols {
+		if s.Kind == "section" {
+			return s.Signature
+		}
+	}
+	return ""
+}
+
+// codeMentions counts the distinct code definitions a file links to.
+func (m *Map) codeMentions(fi int) int {
+	seen := map[int]bool{}
+	for _, l := range m.links {
+		if l.File == fi && m.code[m.symbols[l.To].file] {
+			seen[l.To] = true
+		}
+	}
+	return len(seen)
+}
+

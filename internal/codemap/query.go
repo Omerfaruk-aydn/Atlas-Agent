@@ -400,3 +400,16 @@ func (m *Map) describe(id int) string {
 	return fmt.Sprintf("%s %s  %s:%d  %s", s.Kind, qualifiedName(s), f.Path, s.Line, s.Signature)
 }
 
+func qualifiedName(s *Symbol) string {
+	if s.Container != "" {
+		return s.Container + "." + s.Name
+	}
+	return s.Name
+}
+
+// target is what a query names: definitions or a file.
+type target struct {
+	symbols []int
+	file    int
+}
+

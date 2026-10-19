@@ -507,3 +507,132 @@ func lastName(text string) string {
 	return text
 }
 
+func (m *Map) explainSymbol(id int) string {
+	s := m.symbol(id)
+	fi := m.symbols[id].file
+	f := m.Files[fi]
+	var b strings.Builder
+	visibility := ""
+	if s.Exported {
+		visibility = ", exported"
+	}
+	fmt.Fprintf(&b, "%s %s: %s:%d-%d (%s%s)\n  %s\n", s.Kind, qualifiedName(s), f.Path, s.Line, s.EndLine, f.Language, visibility, s.Signature)
+	if label := m.subsystem(fi); label != "" {
+		fmt.Fprintf(&b, "Subsystem: %s\n", label)
+	}
+	if anchors := m.anchorIn[id]; len(anchors) > 0 {
+		fmt.Fprintf(&b, "Linked to from (%d):\n", len(anchors))
+		for _, u := range anchors[:min(len(anchors), maxListedLinks)] {
+			b.WriteString("  " + m.describeUse(u) + "\n")
+		}
+	}
+	in := m.in[id]
+	if len(in) > 0 || len(m.anchorIn[id]) == 0 {
+		fmt.Fprintf(&b, "Used by (%d%s):\n", len(in), confidenceSummary(m.links, in))
+	}
+	if len(in) == 0 && len(m.anchorIn[id]) == 0 {
+		b.WriteString("  nothing the map found; it may be an entry point, called through reflection, a callback or a framework, or unused\n")
+	}
+	for _, lid := range sortLinks(m.links, in)[:min(len(in), maxListedLinks)] {
+		l := m.links[lid]
+		fmt.Fprintf(&b, "  %s:%d in %s [%s]\n", m.Files[l.File].Path, l.Line, m.placeName(l.From), linkLabel(l))
+	}
+	if len(in) > maxListedLinks {
+		fmt.Fprintf(&b, "  … %d more\n", len(in)-maxListedLinks)
+	}
+	out := m.out[id]
+	if len(out) > 0 {
+		distinct := map[int]bool{}
+		for _, lid := range out {
+			distinct[m.links[lid].To] = true
+		}
+		fmt.Fprintf(&b, "Uses (%d):\n", len(distinct))
+		seen := map[int]bool{}
+		listed := 0
+		for _, lid := range sortLinks(m.links, out) {
+			l := m.links[lid]
+			if seen[l.To] {
+				continue
+			}
+			seen[l.To] = true
+			if listed == maxListedLinks {
+				b.WriteString("  …\n")
+				break
+			}
+			t := m.symbol(l.To)
+			fmt.Fprintf(&b, "  %s %s at %s:%d [%s]\n", t.Kind, qualifiedName(t), m.Files[m.symbols[l.To].file].Path, t.Line, linkLabel(l))
+			listed++
+		}
+	}
+	fmt.Fprintf(&b, "Read it: view %s offset %d limit %d\n", f.Path, max(0, s.Line-1), min(max(s.EndLine-s.Line+1, 1), 400))
+	return b.String()
+}
+
+func (m *Map) explainFile(ctx context.Context, fi int) string {
+	f := m.Files[fi]
+	var b strings.Builder
+	if f.Asset != nil {
+		fmt.Fprintf(&b, "%s: %s\n", f.Path, describeAsset(f.Language, f.Asset))
+	} else {
+		fmt.Fprintf(&b, "%s: %s, %d lines", f.Path, f.Language, f.Lines)
+		if label := m.subsystem(fi); label != "" {
+			fmt.Fprintf(&b, ", subsystem %s", label)
+		}
+		b.WriteString("\n")
+	}
+	if len(f.Symbols) > 0 {
+		fmt.Fprintf(&b, "Defines (%d):\n", len(f.Symbols))
+		for k, s := range f.Symbols {
+			if k == 40 {
+				fmt.Fprintf(&b, "  … %d more\n", len(f.Symbols)-40)
+				break
+			}
+			id := m.firstSymbol[fi] + k
+			fmt.Fprintf(&b, "  L%d-%d %s %s (used %s)\n", s.Line, s.EndLine, s.Kind, qualifiedName(&f.Symbols[k]), plural(len(m.in[id])+len(m.anchorIn[id]), "time"))
+		}
+	}
+	if len(f.Imports) > 0 {
+		b.WriteString("Imports:\n")
+		for k, imp := range f.Imports {
+			if k == 30 {
+				b.WriteString("  …\n")
+				break
+			}
+			targets := m.imports[fi][k]
+			switch {
+			case len(targets) == 0:
+				fmt.Fprintf(&b, "  %s (outside the project)\n", imp.Spec)
+			default:
+				var paths []string
+				for _, t := range targets[:min(len(targets), 4)] {
+					paths = append(paths, m.Files[t].Path)
+				}
+				if len(targets) > 4 {
+					paths = append(paths, fmt.Sprintf("+%d", len(targets)-4))
+				}
+				fmt.Fprintf(&b, "  %s -> %s\n", imp.Spec, strings.Join(paths, ", "))
+			}
+		}
+	}
+	m.explainLinks(&b, fi)
+	if !m.code[fi] {
+		m.explainMentions(&b, fi)
+	}
+	if users := m.referrers(fi); len(users) > 0 {
+		fmt.Fprintf(&b, "Used by %s: %s\n", plural(len(users), "file"), m.pathList(users, 15))
+	} else if f.Asset != nil {
+		b.WriteString("Named by no file in the project; it may be loaded by a computed name, a directory listing or from outside, or be unused.\n")
+	}
+	m.explainPathUsers(&b, fi)
+	if deps := m.dependencies(fi); len(deps) > 0 {
+		fmt.Fprintf(&b, "Depends most on: %s\n", m.pathList(deps, 8))
+	}
+	if related := m.Related(ctx, f.Path, 6); len(related) > 0 {
+		b.WriteString("Changes together with (git history):\n")
+		for _, r := range related {
+			fmt.Fprintf(&b, "  %s (%d of the %d commits that changed this file)\n", r.Path, r.Together, r.Commits)
+		}
+	}
+	return b.String()
+}
+

@@ -54,3 +54,11 @@ func ExtractAsset(file string, head []byte, size int64) File {
 	return out
 }
 
+var (
+	svgTagRe   = regexp.MustCompile(`(?s)<svg\b[^>]*>`)
+	svgAttrRe  = regexp.MustCompile(`\b(width|height|viewBox)\s*=\s*["']([^"']+)["']`)
+	svgHrefRe  = regexp.MustCompile(`(?:xlink:)?href\s*=\s*["']([^"'#][^"']*)["']`)
+	gltfURIRe  = regexp.MustCompile(`"uri"\s*:\s*"([^"]+)"`)
+	cssLengths = regexp.MustCompile(`^\s*([0-9.]+)\s*(px)?\s*$`)
+)
+

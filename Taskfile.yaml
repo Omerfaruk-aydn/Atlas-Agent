@@ -66,6 +66,60 @@ tasks:
     generates:
       - Atlas-Agent{{exeExt}}
 
+  web:install:
+    desc: Install the web client's dependencies (needs Node.js 20+)
+    dir: web
+    cmds:
+      - npm ci
+
+  web:build:
+    desc: Build the web client into internal/webui/build for embedding
+    dir: web
+    cmds:
+      - npm run build
+    sources:
+      - src/**/*
+      - index.html
+      - package.json
+      - vite.config.ts
+    generates:
+      - ../internal/webui/build/index.html
+
+  web:test:
+    desc: Typecheck and unit-test the web client
+    dir: web
+    cmds:
+      - npm run typecheck
+      - npm test
+
+  web:e2e:
+    desc: Browser end-to-end tests against the real binary (builds dist/dev/atlas-web-dev{{exeExt}} first)
+    deps: [build:web-dev]
+    dir: web
+    cmds:
+      - npx playwright test
+
+  web:dev:
+    desc: Vite dev server proxying to `atlas-agent web --port 7788 --dev-origin http://localhost:5173`
+    dir: web
+    cmds:
+      - npm run dev
+
+  build:web:
+    desc: Build the binary with the web client embedded
+    cmds:
+      - task: web:build
+      - task: build
+
+  build:web-dev:
+    desc: Build the Windows development binary dist/dev/atlas-web-dev.exe with the web client
+    vars:
+      COMMIT:
+        sh: git rev-parse --short HEAD
+    cmds:
+      - task: web:build
+      - go build -trimpath -ldflags "-X github.com/Omerfaruk-aydn/Atlas-Agent/internal/version.Version=v0.17.1-web.dev -X github.com/Omerfaruk-aydn/Atlas-Agent/internal/version.Commit={{.COMMIT}}" -o dist/dev/atlas-web-dev{{exeExt}} .
+
   run:
     desc: Run build
     cmds:

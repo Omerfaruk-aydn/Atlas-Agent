@@ -411,3 +411,52 @@ return M
 	require.Contains(t, refsOf(f), "call physics.integrate")
 }
 
+func TestExtractGo(t *testing.T) {
+	t.Parallel()
+	src := `package sim
+
+import (
+	"fmt"
+	phys "example.com/app/physics"
+)
+
+type Orbit struct {
+	phys.Body
+	steps int
+}
+
+type Stepper interface {
+	Step(dt float64)
+}
+
+func (o *Orbit) Step(dt float64) {
+	phys.Integrate(o, dt)
+	fmt.Println(o.steps)
+}
+
+func New() *Orbit {
+	return &Orbit{}
+}
+`
+	f := Extract("sim/orbit.go", src)
+	require.Equal(t, []string{"struct Orbit 8-11", "interface Stepper 13-15", "method Orbit.Step 17-20", "function New 22-24"}, symbolsOf(f))
+	require.Equal(t, []string{"fmt as fmt", "example.com/app/physics as phys"}, importsOf(f))
+	refs := refsOf(f)
+	for _, want := range []string{"inherit phys.Body", "call phys.Integrate", "call fmt.Println", "new Orbit"} {
+		require.Contains(t, refs, want)
+	}
+}
+
+// Comments and strings never produce definitions or uses.
+func TestExtractIgnoresCommentsAndStrings(t *testing.T) {
+	t.Parallel()
+	src := `/* function fake() { call(); } /* not nested in C */
+const s = "function alsoFake() {}";
+// realCall();
+int real(void) { return 1; }
+`
+	f := Extract("x.c", src)
+	require.Equal(t, []string{"function real 4-4"}, symbolsOf(f))
+	require.Empty(t, f.Refs)
+}
+

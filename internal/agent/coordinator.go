@@ -2328,6 +2328,7 @@ func (c *coordinator) BeginAccepted(sessionID string) *AcceptedRun {
 }
 
 func (c *coordinator) Cancel(sessionID string) {
+	slog.Info("Canceling the session's turn", "session_id", sessionID)
 	c.currentAgent.Cancel(sessionID)
 	c.recordInteractionCancel(sessionID)
 	// A canceled task must not keep a password the user supplied for it.

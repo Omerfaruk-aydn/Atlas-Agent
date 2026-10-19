@@ -217,3 +217,18 @@ func kebabCase(s string) string {
 	return b.String()
 }
 
+// routeCandidates returns the endpoints a requested path matches, also
+// when the request adds a prefix such as /api/v1.
+func (m *Map) routeCandidates(route string) []int {
+	idx := m.byDomain[domainRoute]
+	if ids := idx[route]; len(ids) > 0 {
+		return ids
+	}
+	segs := strings.Split(strings.TrimPrefix(route, "/"), "/")
+	for k := 1; k <= 3 && k < len(segs); k++ {
+		if ids := idx["/"+strings.Join(segs[k:], "/")]; len(ids) > 0 {
+			return ids
+		}
+	}
+	return nil
+}

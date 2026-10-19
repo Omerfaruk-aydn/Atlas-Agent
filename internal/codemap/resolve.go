@@ -249,3 +249,10 @@ func (m *Map) markNested() {
 	}
 }
 
+func appendUnique(list []int, v int) []int {
+	if slices.Contains(list, v) {
+		return list
+	}
+	return append(list, v)
+}
+

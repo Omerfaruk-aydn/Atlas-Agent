@@ -185,3 +185,43 @@ func (m *Map) findPath(fi int, p string) int {
 	return best
 }
 
+// pathCandidates lists, cleaned and inside the project, the paths p
+// written in a file of dir can mean: relative to dir, to the project, or
+// to a web root (public, static). It is nil for a package path (~pkg).
+func pathCandidates(dir, p string) []string {
+	var cands []string
+	switch {
+	case strings.HasPrefix(p, "res://"):
+		cands = []string{strings.TrimPrefix(p, "res://")}
+	case strings.HasPrefix(p, "/"):
+		r := strings.TrimPrefix(p, "/")
+		cands = []string{r, "public/" + r, "static/" + r, "src/" + r, "assets/" + r, "app/" + r, path.Join(dir, r)}
+	case strings.HasPrefix(p, "@/") || strings.HasPrefix(p, "~/"):
+		r := p[2:]
+		cands = []string{"src/" + r, r}
+	case strings.HasPrefix(p, "~"):
+		// A package in node_modules.
+		return nil
+	default:
+		cands = []string{path.Join(dir, p), p, "public/" + p, "static/" + p, "src/" + p, "assets/" + p}
+	}
+	out := cands[:0]
+	for _, c := range cands {
+		if c = path.Clean(c); c != ".." && !strings.HasPrefix(c, "../") {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// existsUnread reports whether p, written in fi, names a project file
+// the map does not read, or a directory.
+func (m *Map) existsUnread(fi int, p string) (string, bool) {
+	for _, c := range pathCandidates(path.Dir(m.Files[fi].Path), strings.ReplaceAll(p, "\\", "/")) {
+		if m.others[c] || m.folders[c] || c == "." {
+			return c, true
+		}
+	}
+	return "", false
+}
+

@@ -413,3 +413,64 @@ type target struct {
 	file    int
 }
 
+// resolveTarget finds what text names: a file path, path:Name, a
+// Container.Name or a Name. An ambiguous text returns an error listing the
+// candidates.
+func (m *Map) resolveTarget(text string) (target, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return target{file: -1}, fmt.Errorf("name a definition or a file")
+	}
+	if fi, ok := m.findFile(text); ok {
+		return target{file: fi}, nil
+	}
+	if file, name, ok := strings.Cut(text, ":"); ok && LanguageOf(file) != "" {
+		fi, found := m.findFile(file)
+		if !found {
+			return target{file: -1}, fmt.Errorf("no mapped file %s", file)
+		}
+		var ids []int
+		for _, id := range m.byName[name] {
+			if m.symbols[id].file == fi {
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) == 0 {
+			return target{file: -1}, fmt.Errorf("%s defines nothing named %s", m.Files[fi].Path, name)
+		}
+		return target{symbols: ids, file: -1}, nil
+	}
+	ids := m.byQualified[text]
+	if len(ids) == 0 {
+		ids = m.byName[text]
+	}
+	// Definitions outside code (a CSS class, a table, a heading, a script)
+	// are indexed by domain; a query names them as written.
+	ids = append(append([]int(nil), ids...), m.domainSymbols(text)...)
+	if len(ids) == 0 {
+		return target{file: -1}, fmt.Errorf("nothing named %s in the map; try find", text)
+	}
+	return target{symbols: ids, file: -1}, nil
+}
+
+// findFile finds a file by path or by a unique path suffix.
+func (m *Map) findFile(text string) (int, bool) {
+	text = strings.TrimPrefix(path.Clean(strings.ReplaceAll(text, "\\", "/")), "./")
+	if fi, ok := m.byPath[text]; ok {
+		return fi, true
+	}
+	if LanguageOf(text) == "" {
+		return -1, false
+	}
+	found := -1
+	for fi, f := range m.Files {
+		if strings.HasSuffix(f.Path, "/"+text) {
+			if found >= 0 {
+				return -1, false
+			}
+			found = fi
+		}
+	}
+	return found, found >= 0
+}
+

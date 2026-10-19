@@ -203,3 +203,13 @@ func (a *sessionAgent) handOff(ctx context.Context, sessionID string, finished w
 	return nil
 }
 
+// handoffInput is what a handoff is built from.
+type handoffInput struct {
+	finished workplan.Feature
+	plan     *workplan.Plan
+	progress string
+	turns    []engineering.UserTurn
+	changed  []string
+	jobs     []shell.BackgroundShellInfo
+}
+

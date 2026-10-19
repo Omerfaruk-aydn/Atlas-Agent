@@ -302,7 +302,7 @@ func TestOpenCodeModelProtocols(t *testing.T) {
 		{"opencode-zen", "minimax-m3", catwalk.TypeOpenAICompat},
 		{"opencode-go", "mimo-v2.6-pro", catwalk.TypeOpenAICompat},
 	} {
-		require.Equal(t, tc.want, opencodeModelType(tc.provider, tc.model), tc.model)
+		require.Equal(t, tc.want, gatewayModelType(tc.provider, tc.model), tc.model)
 	}
 	model := Model{
 		CatwalkCfg: catwalk.Model{ID: "claude-sonnet-5-5", CanReason: true, ReasoningLevels: []string{"high"}},

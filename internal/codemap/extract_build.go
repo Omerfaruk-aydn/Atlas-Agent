@@ -397,3 +397,71 @@ func extractTaskfile(out *File, content string) {
 	}
 }
 
+func extractDockerfile(out *File, content string) {
+	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	current := -1
+	for i := 0; i < len(lines); i++ {
+		n := i + 1
+		line := strings.TrimSpace(lines[i])
+		for strings.HasSuffix(line, "\\") && i+1 < len(lines) {
+			i++
+			line = strings.TrimSuffix(line, "\\") + " " + strings.TrimSpace(lines[i])
+		}
+		if line == "" || line[0] == '#' {
+			continue
+		}
+		fields := strings.Fields(line)
+		instr := strings.ToUpper(fields[0])
+		args := fields[1:]
+		if current >= 0 {
+			out.Symbols[current].EndLine = i + 1
+		}
+		switch instr {
+		case "FROM":
+			var image string
+			for _, a := range args {
+				if !strings.HasPrefix(a, "--") {
+					image = a
+					break
+				}
+			}
+			taskRef(out, image, toolDocker, n)
+			for k, a := range args {
+				if strings.EqualFold(a, "as") && k+1 < len(args) {
+					addTask(out, args[k+1], "stage", toolDocker, n, n, line)
+					current = len(out.Symbols) - 1
+				}
+			}
+		case "COPY", "ADD":
+			var sources []string
+			from := false
+			for _, a := range args {
+				if v, ok := strings.CutPrefix(a, "--from="); ok {
+					taskRef(out, v, toolDocker, n)
+					from = true
+					continue
+				}
+				if !strings.HasPrefix(a, "--") {
+					sources = append(sources, strings.Trim(a, `[]",`))
+				}
+			}
+			if len(sources) > 1 && !from {
+				for _, s := range sources[:len(sources)-1] {
+					if path.Ext(s) != "" && LanguageOf(s) != "" && !strings.ContainsAny(s, "*$") {
+						addLink(out, FileLink{Target: strings.TrimPrefix(s, "./"), Kind: LinkIncludes, Line: n})
+					}
+				}
+			}
+		case "RUN", "CMD", "ENTRYPOINT":
+			cmd := strings.Join(args, " ")
+			if strings.HasPrefix(cmd, "[") {
+				var parts []string
+				if json.Unmarshal([]byte(cmd), &parts) == nil {
+					cmd = strings.Join(parts, " ")
+				}
+			}
+			scanCommand(out, cmd, n)
+		}
+	}
+}
+

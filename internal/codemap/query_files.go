@@ -48,3 +48,40 @@ func (m *Map) pathUsers(fi int) []pathUse {
 	return uses
 }
 
+// describeUse is one line for a link naming a file: where and how.
+func (m *Map) describeUse(u pathUse) string {
+	f := m.Files[u.file]
+	l := f.Links[u.link]
+	return fmt.Sprintf("%s:%d %s %s", f.Path, l.Line, l.Kind, l.Target)
+}
+
+// referrers lists every file that depends on fi: by import, by use of its
+// definitions or by naming its path.
+func (m *Map) referrers(fi int) []int {
+	seen := map[int]bool{}
+	var out []int
+	add := func(f int) {
+		if f != fi && !seen[f] {
+			seen[f] = true
+			out = append(out, f)
+		}
+	}
+	for _, f := range m.importers(fi) {
+		add(f)
+	}
+	for _, f := range m.importedBy[fi] {
+		add(f)
+	}
+	for _, u := range m.pathIn[fi] {
+		add(u.file)
+	}
+	first := m.firstSymbol[fi]
+	for k := range m.Files[fi].Symbols {
+		for _, lid := range m.in[first+k] {
+			add(m.links[lid].File)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return m.Files[out[i]].Path < m.Files[out[j]].Path })
+	return out
+}
+

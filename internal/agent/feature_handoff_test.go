@@ -134,3 +134,30 @@ func TestFeatureHandoffReplaysEachStepOnce(t *testing.T) {
 	require.Equal(t, 2, w.scratch.seq)
 }
 
+func TestHandoffTextCarriesTheRecordAndTheNextFeature(t *testing.T) {
+	t.Parallel()
+	plan, err := workplan.Parse([]byte(strings.Replace(handoffPlan, "%s", "true", 1)))
+	require.NoError(t, err)
+	text := handoffText(handoffInput{
+		finished: workplan.Feature{ID: "F1", Title: "Scene"},
+		plan:     plan,
+		progress: "F1 done.\nNext: F2.",
+		turns: []engineering.UserTurn{
+			{Seq: 1, Kind: "request", Text: "build a solar system\nwith real scale"},
+			{Seq: 2, Kind: "continuation", Text: "devam et"},
+			{Seq: 3, Kind: "follow_up", Text: "make Saturn's rings visible"},
+		},
+		changed: []string{"src/scene.ts", "index.html"},
+		jobs:    []shell.BackgroundShellInfo{{ID: "007", Command: "npm run dev", StartedAt: time.Date(2026, 10, 18, 9, 30, 0, 0, time.UTC)}},
+	})
+	require.Contains(t, text, "Feature F1 (Scene) is done")
+	require.Contains(t, text, "1. build a solar system\n   with real scale")
+	require.Contains(t, text, "3. make Saturn's rings visible")
+	require.NotContains(t, text, "devam et", "a bare continue carries no requirement")
+	require.Contains(t, text, "F1 done.\nNext: F2.")
+	require.Less(t, strings.Index(text, "- index.html"), strings.Index(text, "- src/scene.ts"))
+	require.Contains(t, text, "- 007: npm run dev")
+	require.Contains(t, text, "Continue with feature F2: Orbits. Acceptance: planets move along their orbits")
+	require.Contains(t, text, "View a file before you edit it")
+}
+

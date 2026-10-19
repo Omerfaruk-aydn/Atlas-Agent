@@ -24,3 +24,40 @@ type CodeMapParams struct {
 	Budget int    `json:"budget,omitempty" description:"For overview: about how many tokens to spend, default 2000, at most 8000."`
 }
 
+// NewCodeMapTool maps the code under workingDir. builder keeps the map
+// between calls, so a query after an edit re-reads only the edited files.
+func NewCodeMapTool(workingDir string, builder *codemap.Builder) fantasy.AgentTool {
+	return fantasy.NewParallelAgentTool(CodeMapToolName, codeMapDescription, func(ctx context.Context, p CodeMapParams, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		action := strings.ToLower(strings.TrimSpace(p.Action))
+		if action == "" {
+			action = "overview"
+		}
+		query := strings.TrimSpace(p.Query)
+		if action != "overview" && query == "" {
+			return fantasy.NewTextErrorResponse(action + " needs a query: a definition name, Container.Name, path:Name or a file path"), nil
+		}
+		if action == "path" && strings.TrimSpace(p.To) == "" {
+			return fantasy.NewTextErrorResponse("path needs to: the definition or file to reach"), nil
+		}
+		m, err := builder.Map(ctx, workingDir)
+		if err != nil {
+			return fantasy.NewTextErrorResponse("cannot map the project: " + err.Error()), nil
+		}
+		var out string
+		switch action {
+		case "overview":
+			out = m.Overview(p.Budget)
+		case "find":
+			out = m.Find(query)
+		case "explain":
+			out = m.Explain(ctx, query)
+		case "callers":
+			out = m.Callers(query, p.Depth)
+		case "path":
+			out = m.Path(query, strings.TrimSpace(p.To))
+		default:
+			return fantasy.NewTextErrorResponse("unknown action " + p.Action + "; use overview, find, explain, callers or path"), nil
+		}
+		return fantasy.NewTextResponse(out), nil
+	})
+}

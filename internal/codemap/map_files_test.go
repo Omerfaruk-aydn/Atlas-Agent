@@ -183,3 +183,40 @@ func TestMapLinksStylesMarkupSQLAndScripts(t *testing.T) {
 	require.Contains(t, find, "script npm.build  package.json:4")
 }
 
+// An embed directive names files, globs and directories; a link through the
+// author's absolute path to the project resolves, one elsewhere is not a
+// broken link.
+func TestMapResolvesEmbedsAndAbsolutePaths(t *testing.T) {
+	t.Parallel()
+	files := map[string]string{
+		"go.mod":                   "module example.com/x\n",
+		"ui/ui.go":                 "package ui\n\nimport \"embed\"\n\n//go:embed logo.svg\nvar logo string\n\n//go:embed static/*.css templates\nvar files embed.FS\n",
+		"ui/logo.svg":              `<svg width="10" height="10"></svg>`,
+		"ui/static/app.css":        ".app {}\n",
+		"ui/templates/page.html":   "<p>hi</p>\n",
+		"ui/templates/part/x.html": "<p>x</p>\n",
+	}
+	root := writeProject(t, files)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "settings.json"), []byte("{}"), 0o644))
+	notes := "See [theirs](Q:/elsewhere/ui.go), [ours](" + filepath.ToSlash(root) + "/ui/ui.go), " +
+		"[the settings](settings.json), [the templates](" + filepath.ToSlash(root) + "/ui/templates/) and [gone](gone.json).\n"
+	require.NoError(t, os.WriteFile(filepath.Join(root, "notes.md"), []byte(notes), 0o644))
+	m, err := NewBuilder(t.TempDir()).Map(t.Context(), root)
+	require.NoError(t, err)
+
+	ui := m.Explain(t.Context(), "ui/ui.go")
+	require.Contains(t, ui, "L5 embeds ./logo.svg -> ui/logo.svg")
+	require.Contains(t, ui, "L8 embeds ./static/*.css -> 1 file such as ui/static/app.css")
+	require.Contains(t, ui, "L8 embeds ./templates -> 2 files such as ui/templates/page.html")
+	require.Contains(t, m.Explain(t.Context(), "ui/logo.svg"), "ui/ui.go:5 embeds ./logo.svg")
+
+	doc := m.Explain(t.Context(), "notes.md")
+	require.Contains(t, doc, "links to Q:/elsewhere/ui.go (outside the project)")
+	require.Contains(t, doc, "/ui/ui.go -> ui/ui.go")
+	require.Contains(t, doc, "links to settings.json -> settings.json (not mapped)")
+	require.Contains(t, doc, "/ui/templates/ -> 2 files such as ui/templates/page.html")
+	overview := m.Overview(0)
+	require.Contains(t, overview, "Broken links: 1 to missing files")
+	require.Contains(t, overview, "notes.md:1 links to gone.json (not found)")
+	require.NotContains(t, overview, "Named by no file")
+}

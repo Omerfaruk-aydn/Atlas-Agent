@@ -342,3 +342,22 @@ func inDependencyDir(rel string) bool {
 	return false
 }
 
+// gitFiles lists tracked and untracked, not ignored files.
+func gitFiles(ctx context.Context, root string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out, err := gitCommand(ctx, root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	seen := map[string]bool{}
+	for _, rel := range strings.Split(string(out), "\x00") {
+		if rel != "" && !seen[rel] {
+			seen[rel] = true
+			files = append(files, rel)
+		}
+	}
+	return files, nil
+}
+

@@ -326,3 +326,25 @@ func (m *Map) projectRelative(p string) (string, bool) {
 	return p[len(root):], true
 }
 
+// matchGlob returns the files a glob relative to fi's directory matches,
+// with the files under a matching directory, as go:embed reads it.
+func (m *Map) matchGlob(fi int, glob string) []int {
+	full := path.Clean(path.Join(path.Dir(m.Files[fi].Path), glob))
+	if _, err := path.Match(full, ""); err != nil {
+		return nil
+	}
+	var out []int
+	for k, f := range m.Files {
+		for p := f.Path; p != "." && p != "/"; p = path.Dir(p) {
+			if ok, _ := path.Match(full, p); ok {
+				out = append(out, k)
+				break
+			}
+		}
+		if len(out) == maxPatternMatches {
+			break
+		}
+	}
+	return out
+}
+

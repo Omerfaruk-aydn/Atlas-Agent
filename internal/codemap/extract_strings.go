@@ -97,3 +97,29 @@ func addLink(f *File, l FileLink) {
 	}
 }
 
+// hasScheme reports whether s is a URL of another place: a web address,
+// inline data, an email.
+func hasScheme(s string) bool {
+	lower := strings.ToLower(s)
+	if strings.HasPrefix(lower, "//") {
+		return true
+	}
+	colon := strings.Index(lower, ":")
+	if colon <= 0 || colon > 12 {
+		return false
+	}
+	scheme := lower[:colon]
+	if scheme == "res" || len(scheme) == 1 {
+		// res:// is a Godot project path, C: a drive.
+		return false
+	}
+	for _, r := range scheme {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '+', r == '-', r == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}
+

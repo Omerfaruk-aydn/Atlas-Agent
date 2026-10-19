@@ -82,3 +82,43 @@ func (a *sessionAgent) newHandoffWatch(sessionID string) *handoffWatch {
 	return &handoffWatch{baseline: baseline, scratch: scratch}
 }
 
+// due reports whether the turn has reached a feature boundary that can hand
+// off. It is called after every step with the steps so far.
+func (w *handoffWatch) due(root string, steps []fantasy.StepResult, contextWindow, tokens int64) bool {
+	if w == nil {
+		return false
+	}
+	if contextWindow <= 0 || float64(tokens) < featureHandoffAt*float64(contextWindow) {
+		return false
+	}
+	plan, _, err := workplan.Load(root)
+	if err != nil || plan == nil || len(plan.Open()) == 0 {
+		return false
+	}
+	finished, ok := w.finishedFeature(plan)
+	if !ok || !notesCurrent(root) {
+		return false
+	}
+	// The cheap conditions hold; replay the steps not yet seen.
+	if w.seen < len(steps) {
+		w.scratch.record(steps[w.seen:])
+		w.seen = len(steps)
+	}
+	requirements := plan.Requirements()
+	if len(requirements) == 0 || len(w.scratch.contractGaps(requirements)) > 0 {
+		return false
+	}
+	w.feature = finished
+	return true
+}
+
+// finishedFeature returns the latest feature marked done during the turn.
+func (w *handoffWatch) finishedFeature(plan *workplan.Plan) (workplan.Feature, bool) {
+	for _, feature := range slices.Backward(plan.Features) {
+		if feature.Done && !w.baseline[feature.ID] {
+			return feature, true
+		}
+	}
+	return workplan.Feature{}, false
+}
+

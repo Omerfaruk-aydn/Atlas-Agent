@@ -348,3 +348,26 @@ func (m *Map) matchGlob(fi int, glob string) []int {
 	return out
 }
 
+// underDir returns the files under a directory named relative to fi.
+func (m *Map) underDir(fi int, dir string) []int {
+	for _, c := range pathCandidates(path.Dir(m.Files[fi].Path), strings.ReplaceAll(dir, "\\", "/")) {
+		if c == "." || !m.folders[c] {
+			continue
+		}
+		prefix := c + "/"
+		var out []int
+		for k, f := range m.Files {
+			if strings.HasPrefix(f.Path, prefix) {
+				out = append(out, k)
+				if len(out) == maxPatternMatches {
+					break
+				}
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	return nil
+}
+

@@ -37,3 +37,9 @@ func writeNotes(t *testing.T, root string, at time.Time) {
 	require.NoError(t, os.Chtimes(path, at, at))
 }
 
+func setPlanTime(t *testing.T, root string, at time.Time) {
+	t.Helper()
+	path := filepath.Join(root, workplan.Dir, workplan.PlanFile)
+	require.NoError(t, os.Chtimes(path, at, at))
+}
+

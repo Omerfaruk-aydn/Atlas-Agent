@@ -81,3 +81,37 @@ func (r *tokenReader) statementEnd(k int) int {
 	return len(r.toks) - 1
 }
 
+var (
+	sqlObjects   = words("table view function procedure trigger index type schema sequence domain policy")
+	sqlModifiers = words("or replace temp temporary unlogged global local materialized unique virtual external recursive constraint definer security algorithm sql")
+	sqlNotCalls  = words("values in exists any all key check unique primary foreign default not null references as on using over filter within array row cast table index returns returning into select")
+	// sqlBuiltins are functions every database provides; a call of one is
+	// not a use of the project's own.
+	sqlBuiltins = words("count sum avg min max coalesce nullif greatest least now lower upper length char_length substring substr " +
+		"concat concat_ws trim ltrim rtrim replace round floor ceil ceiling abs power sqrt mod random extract date_trunc date_part " +
+		"to_char to_date to_timestamp to_number age interval current_date current_timestamp localtimestamp position strpos " +
+		"json_build_object jsonb_build_object json_agg jsonb_agg array_agg string_agg row_number rank dense_rank lag lead " +
+		"first_value last_value ntile nextval currval setval gen_random_uuid uuid_generate_v4 ifnull isnull iif datediff " +
+		"dateadd getdate strftime julianday datetime date time format left right split_part regexp_replace unnest generate_series")
+)
+
+// sqlName reads a possibly quoted, possibly schema-qualified name at k and
+// returns it in lower case with the index after it.
+func (r *tokenReader) sqlName(k int) (string, int) {
+	name := ""
+	for {
+		t := r.tok(k)
+		if t.kind != tIdent && t.kind != tString {
+			break
+		}
+		name = t.text
+		r.names[k] = true
+		k++
+		if r.tok(k).text != "." {
+			break
+		}
+		k++
+	}
+	return sqlIdent(name), k
+}
+

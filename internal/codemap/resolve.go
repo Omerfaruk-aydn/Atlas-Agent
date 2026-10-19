@@ -106,3 +106,146 @@ func (m *Map) fileOf(i int) int {
 	return m.symbols[i].file
 }
 
+// newMap indexes files and resolves every import and use. others are the
+// paths of the project's files the map does not read.
+func newMap(root string, files []*File, module string, others []string) *Map {
+	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	m := &Map{
+		Root: root, Files: files, byPath: map[string]int{}, byName: map[string][]int{},
+		byQualified: map[string][]int{}, namespaces: map[string][]int{}, suffixes: map[string][]int{},
+		dirs: map[string][]int{}, in: map[int][]int{}, out: map[int][]int{}, fileLinks: map[[2]int]float64{},
+		byDomain: map[string]map[string][]int{}, pathSuffix: map[string][]int{}, importedBy: map[int][]int{},
+		others: make(map[string]bool, len(others)), folders: map[string]bool{},
+	}
+	addFolders := func(p string) {
+		for d := path.Dir(p); d != "." && d != "/" && !m.folders[d]; d = path.Dir(d) {
+			m.folders[d] = true
+		}
+	}
+	for _, p := range others {
+		m.others[p] = true
+		addFolders(p)
+	}
+	for _, f := range files {
+		addFolders(f.Path)
+	}
+	m.firstSymbol = make([]int, len(files))
+	m.code = make([]bool, len(files))
+	for fi, f := range files {
+		m.firstSymbol[fi] = len(m.symbols)
+		m.byPath[f.Path] = fi
+		m.code[fi] = Category(f.Language) == CategoryCode
+		dir := path.Dir(f.Path)
+		m.dirs[dir] = append(m.dirs[dir], fi)
+		parts := strings.Split(f.Path, "/")
+		for k := range parts {
+			key := strings.Join(parts[k:], "/")
+			m.pathSuffix[key] = append(m.pathSuffix[key], fi)
+		}
+		if m.code[fi] {
+			parts := strings.Split(strings.TrimSuffix(f.Path, path.Ext(f.Path)), "/")
+			for k := range parts {
+				key := strings.Join(parts[k:], "/")
+				m.suffixes[key] = append(m.suffixes[key], fi)
+			}
+		}
+		folds := languages[f.Language] != nil && languages[f.Language].caseInsensitive
+		for si := range f.Symbols {
+			s := &f.Symbols[si]
+			id := len(m.symbols)
+			m.symbols = append(m.symbols, symbolRef{fi, si})
+			domain := symbolDomain(f.Language, s.Kind)
+			m.symDomain = append(m.symDomain, domain)
+			if domain != domainCode {
+				idx := m.byDomain[domain]
+				if idx == nil {
+					idx = map[string][]int{}
+					m.byDomain[domain] = idx
+				}
+				key := domainKey(domain, s)
+				idx[key] = append(idx[key], id)
+				if s.Container != "" && domain != domainTask {
+					idx[s.Container+"."+key] = append(idx[s.Container+"."+key], id)
+				}
+				continue
+			}
+			names := []string{s.Name}
+			if folds && strings.ToLower(s.Name) != s.Name {
+				// Uses in these languages are written in lower case.
+				names = append(names, strings.ToLower(s.Name))
+			}
+			for _, name := range names {
+				m.byName[name] = append(m.byName[name], id)
+				if s.Container != "" {
+					container := s.Container
+					if folds {
+						container = strings.ToLower(container)
+					}
+					m.byQualified[container+"."+name] = append(m.byQualified[container+"."+name], id)
+				}
+				if s.Kind == "namespace" {
+					m.namespaces[name] = appendUnique(m.namespaces[name], fi)
+				}
+			}
+		}
+	}
+	m.markNested()
+	m.imports = make([][][]int, len(files))
+	for fi, f := range files {
+		m.imports[fi] = make([][]int, len(f.Imports))
+		for k, imp := range f.Imports {
+			m.imports[fi][k] = m.resolveImport(fi, imp, module)
+			for _, t := range m.imports[fi][k] {
+				if t != fi {
+					m.importedBy[t] = appendUnique(m.importedBy[t], fi)
+				}
+			}
+			// An import of one file is a dependency on it. An import of a
+			// package or namespace spanning several files is not one on
+			// each of them; the uses of its definitions say which.
+			if targets := m.imports[fi][k]; len(targets) == 1 && targets[0] != fi && m.code[fi] {
+				m.fileLinks[[2]int{fi, targets[0]}]++
+			}
+		}
+	}
+	m.resolvePaths()
+	for fi := range files {
+		m.resolveRefs(fi)
+	}
+	m.rank()
+	m.cluster()
+	return m
+}
+
+// markNested marks the definitions that lie inside a function or method.
+func (m *Map) markNested() {
+	m.nested = make([]bool, len(m.symbols))
+	for fi, f := range m.Files {
+		order := make([]int, len(f.Symbols))
+		for i := range order {
+			order[i] = i
+		}
+		sort.SliceStable(order, func(a, b int) bool {
+			sa, sb := f.Symbols[order[a]], f.Symbols[order[b]]
+			if sa.Line != sb.Line {
+				return sa.Line < sb.Line
+			}
+			return sa.EndLine > sb.EndLine
+		})
+		var open []int
+		for _, i := range order {
+			s := f.Symbols[i]
+			for len(open) > 0 && f.Symbols[open[len(open)-1]].EndLine < s.Line {
+				open = open[:len(open)-1]
+			}
+			for _, o := range open {
+				if k := f.Symbols[o].Kind; (k == "function" || k == "method") && f.Symbols[o].EndLine > f.Symbols[o].Line {
+					m.nested[m.firstSymbol[fi]+i] = true
+					break
+				}
+			}
+			open = append(open, i)
+		}
+	}
+}
+

@@ -236,3 +236,27 @@ func (m *Map) topFiles(files []int, n int) []string {
 	return out
 }
 
+// topSymbols returns a file's most used top-level definitions.
+func (m *Map) topSymbols(fi, n int) []int {
+	first := m.firstSymbol[fi]
+	var ids []int
+	for k, s := range m.Files[fi].Symbols {
+		if s.Kind == "namespace" || s.Kind == "impl" || m.nested[first+k] {
+			continue
+		}
+		ids = append(ids, first+k)
+	}
+	sort.SliceStable(ids, func(i, j int) bool {
+		a, b := m.symbolScore[ids[i]], m.symbolScore[ids[j]]
+		if a != b {
+			return a > b
+		}
+		sa, sb := m.symbol(ids[i]), m.symbol(ids[j])
+		if sa.Exported != sb.Exported {
+			return sa.Exported
+		}
+		return sa.Line < sb.Line
+	})
+	return ids[:min(len(ids), n)]
+}
+

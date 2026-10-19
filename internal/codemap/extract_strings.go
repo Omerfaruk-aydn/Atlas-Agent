@@ -227,3 +227,57 @@ func sqlNames(s string) []sqlName {
 	return out
 }
 
+// sqlIdent normalizes a possibly quoted, possibly schema-qualified name to
+// its lower-case last part.
+func sqlIdent(s string) string {
+	s = strings.Trim(s, ".")
+	if k := strings.LastIndex(s, "."); k >= 0 {
+		s = s[k+1:]
+	}
+	s = strings.Trim(s, "\"`[]")
+	if len(s) < 2 {
+		return ""
+	}
+	return strings.ToLower(s)
+}
+
+// routeOf returns the endpoint path a string requests, with parameters
+// written {}: /users/${id} and /users/:id become /users/{}.
+func routeOf(s string) (string, bool) {
+	if !strings.HasPrefix(s, "/") || strings.HasPrefix(s, "//") || len(s) > 200 || strings.ContainsAny(s, " \t\r\n\"'<>") {
+		return "", false
+	}
+	if k := strings.IndexAny(s, "?#"); k >= 0 {
+		s = s[:k]
+	}
+	if path.Ext(stripTemplates(s)) != "" {
+		return "", false
+	}
+	return normRoute(s)
+}
+
+// normRoute writes a path's parameters as {} and reports whether it has a
+// named segment.
+func normRoute(p string) (string, bool) {
+	var segs []string
+	named := false
+	for _, seg := range strings.Split(p, "/") {
+		switch {
+		case seg == "":
+			continue
+		case strings.HasPrefix(seg, ":") || strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") || strings.HasPrefix(seg, "${") || strings.HasPrefix(seg, "[") && strings.HasSuffix(seg, "]"):
+			seg = "{}"
+		default:
+			if strings.Contains(seg, "${") {
+				seg = "{}"
+			} else {
+				named = true
+			}
+		}
+		segs = append(segs, seg)
+	}
+	if !named || len(segs) > 12 {
+		return "", false
+	}
+	return "/" + strings.Join(segs, "/"), true
+}

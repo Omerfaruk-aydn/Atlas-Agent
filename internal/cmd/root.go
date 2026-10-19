@@ -16,8 +16,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/appenv"
@@ -49,12 +51,14 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/version"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workspace"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var clientHost string
 
 func init() {
 	rootCmd.PersistentFlags().StringP("cwd", "c", "", "Current working directory")
+	cwdFlag = rootCmd.PersistentFlags().Lookup("cwd")
 	rootCmd.PersistentFlags().StringP("data-dir", "D", "", "Custom atlas data directory")
 	rootCmd.PersistentFlags().String("profile", "", "Usage profile: economical, research, implementation, review, ci or a configured profile")
 	rootCmd.PersistentFlags().BoolP("debug", "d", false, "Debug")
@@ -241,10 +245,93 @@ func supportsProgressBar() bool {
 }
 
 // useClientServer returns true when the client/server architecture is
-// enabled via the ATLAS_AGENT_CLIENT_SERVER environment variable.
+// enabled via the ATLAS_AGENT_CLIENT_SERVER environment variable. When the
+// variable is unset it also returns true if the shared server is already
+// hosting this directory -- for instance because the web UI opened it --
+// so the terminal joins that live workspace instead of running a second
+// agent over the same session database. Setting the variable to 0 keeps
+// the in-process mode regardless.
 func useClientServer() bool {
-	v, _ := strconv.ParseBool(appenv.Get("CLIENT_SERVER"))
-	return v
+	if v, ok := appenv.Lookup("CLIENT_SERVER"); ok {
+		on, _ := strconv.ParseBool(v)
+		return on
+	}
+	return sharedServerHostsCwd()
+}
+
+var (
+	sharedServerOnce   sync.Once
+	sharedServerJoined bool
+	// cwdFlag is the root --cwd flag, captured in init so the shared-server
+	// probe can read it without a package-level reference to rootCmd.
+	cwdFlag *pflag.Flag
+)
+
+// sharedServerHostsCwd reports, once per process, whether the default
+// server is running and already has a workspace for the working
+// directory. It only probes a local socket or pipe and gives up quickly,
+// so a machine without a server pays a single stat.
+func sharedServerHostsCwd() bool {
+	sharedServerOnce.Do(func() {
+		if clientHost != server.DefaultHost() {
+			return
+		}
+		hostURL, err := server.ParseHostURL(clientHost)
+		if err != nil || (hostURL.Scheme != "unix" && hostURL.Scheme != "npipe") {
+			return
+		}
+		if _, err := os.Stat(hostURL.Host); err != nil {
+			return
+		}
+		cwd := ""
+		if cwdFlag != nil {
+			cwd = cwdFlag.Value.String()
+		}
+		if cwd == "" {
+			cwd, err = os.Getwd()
+			if err != nil {
+				return
+			}
+		}
+		c, err := client.NewClient(cwd, hostURL.Scheme, hostURL.Host)
+		if err != nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 750*time.Millisecond)
+		defer cancel()
+		workspaces, err := c.ListWorkspaces(ctx)
+		if err != nil {
+			return
+		}
+		for _, ws := range workspaces {
+			if sameDirectory(ws.Path, cwd) {
+				slog.Info("Joining the shared server that already hosts this directory", "path", cwd)
+				sharedServerJoined = true
+				return
+			}
+		}
+	})
+	return sharedServerJoined
+}
+
+// sameDirectory compares two directory paths after resolving symlinks,
+// ignoring case where the filesystem does.
+func sameDirectory(a, b string) bool {
+	resolve := func(p string) string {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return filepath.Clean(p)
+		}
+		if r, err := filepath.EvalSymlinks(abs); err == nil {
+			return r
+		}
+		return abs
+	}
+	ra, rb := resolve(a), resolve(b)
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		return strings.EqualFold(ra, rb)
+	}
+	return ra == rb
 }
 
 // setupWorkspaceWithProgressBar wraps setupWorkspace with an optional
@@ -888,8 +975,8 @@ func startDetachedServer(cmd *cobra.Command, hostURL *url.URL) error {
 	}
 
 	// Use context.Background() so the parent's context cancellation does not
-	// kill the spawned server. detachProcess (Setsid on !windows,
-	// DETACHED_PROCESS on windows) is what truly detaches the child from
+	// kill the spawned server. detachProcess (Setsid on !windows, a hidden
+	// console of its own on windows) is what truly detaches the child from
 	// this process's lifetime.
 	c := exec.CommandContext(context.Background(), exe, cmdArgs...)
 	stdoutPath := filepath.Join(chDir, "stdout.log")

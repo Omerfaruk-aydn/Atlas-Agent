@@ -368,3 +368,46 @@ function deploy {
 	}
 }
 
+func TestExtractEndLanguages(t *testing.T) {
+	t.Parallel()
+	ruby := `require_relative "physics"
+
+module Sim
+  class Orbit < Body
+    def step(dt)
+      integrate(self, dt)
+    end
+
+    def reset!
+      @t = 0
+    end
+  end
+end
+`
+	f := Extract("lib/orbit.rb", ruby)
+	require.Equal(t, []string{"namespace Sim 3-13", "class Sim.Orbit 4-12", "method Orbit.step 5-7", "method Orbit.reset! 9-11"}, symbolsOf(f))
+	require.Equal(t, []string{"./physics"}, importsOf(f))
+
+	lua := `local physics = require("physics")
+local M = {}
+
+function M.step(body, dt)
+  physics.integrate(body, dt)
+end
+
+local function clamp(x)
+  return x
+end
+
+M.reset = function(body)
+  body.t = 0
+end
+
+return M
+`
+	f = Extract("orbit.lua", lua)
+	require.Equal(t, []string{"function M.step 4-6", "function clamp 8-10", "function M.reset 12-14"}, symbolsOf(f))
+	require.Equal(t, []string{"physics as physics"}, importsOf(f))
+	require.Contains(t, refsOf(f), "call physics.integrate")
+}
+

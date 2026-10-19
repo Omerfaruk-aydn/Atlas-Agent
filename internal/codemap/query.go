@@ -790,3 +790,105 @@ func (m *Map) Callers(text string, depth int) string {
 	return header + ":\n" + b.String()
 }
 
+// Path finds how one definition or file connects to another: a chain of
+// uses from the first to the second, else from the second to the first,
+// else ignoring direction.
+func (m *Map) Path(fromText, toText string) string {
+	from, err := m.resolveTarget(fromText)
+	if err != nil {
+		return err.Error()
+	}
+	to, err := m.resolveTarget(toText)
+	if err != nil {
+		return err.Error()
+	}
+	if from.file >= 0 || to.file >= 0 {
+		return m.filePath(from, to, fromText, toText)
+	}
+	goal := map[int]bool{}
+	for _, id := range to.symbols {
+		goal[id] = true
+	}
+	for _, mode := range []string{"forward", "backward", "either"} {
+		if chain := m.symbolChain(from.symbols, goal, mode); chain != nil {
+			var b strings.Builder
+			switch mode {
+			case "forward":
+				fmt.Fprintf(&b, "%s reaches %s in %d steps:\n", fromText, toText, len(chain))
+			case "backward":
+				fmt.Fprintf(&b, "%s does not reach %s, but %s reaches %s in %d steps:\n", fromText, toText, toText, fromText, len(chain))
+			default:
+				fmt.Fprintf(&b, "%s and %s connect through shared uses in %d steps (directions vary):\n", fromText, toText, len(chain))
+			}
+			for _, lid := range chain {
+				l := m.links[lid]
+				fmt.Fprintf(&b, "  %s -> %s at %s:%d [%s]\n", m.placeName(l.From), qualifiedName(m.symbol(l.To)), m.Files[l.File].Path, l.Line, linkLabel(l))
+			}
+			return b.String()
+		}
+	}
+	return fmt.Sprintf("No chain of uses within %d steps connects %s and %s in the map.", maxPathDepth, fromText, toText)
+}
+
+// symbolChain searches breadth-first from start for a goal symbol and
+// returns the links of the shortest chain.
+func (m *Map) symbolChain(start []int, goal map[int]bool, mode string) []int {
+	type step struct{ node, link, prev int }
+	var steps []step
+	seen := map[int]bool{}
+	var frontier []int
+	for _, id := range start {
+		if goal[id] {
+			return []int{}
+		}
+		seen[id] = true
+		steps = append(steps, step{id, -1, -1})
+		frontier = append(frontier, len(steps)-1)
+	}
+	for range maxPathDepth {
+		var next []int
+		for _, si := range frontier {
+			node := steps[si].node
+			var candidates []struct{ to, link int }
+			if mode == "forward" || mode == "either" {
+				for _, lid := range m.out[node] {
+					candidates = append(candidates, struct{ to, link int }{m.links[lid].To, lid})
+				}
+			}
+			if mode == "backward" || mode == "either" {
+				for _, lid := range m.in[node] {
+					if f := m.links[lid].From; f >= 0 {
+						candidates = append(candidates, struct{ to, link int }{f, lid})
+					}
+				}
+			}
+			for _, c := range candidates {
+				if seen[c.to] {
+					continue
+				}
+				seen[c.to] = true
+				steps = append(steps, step{c.to, c.link, si})
+				if goal[c.to] {
+					var chain []int
+					for k := len(steps) - 1; steps[k].link >= 0; k = steps[k].prev {
+						chain = append(chain, steps[k].link)
+					}
+					if mode == "backward" {
+						return chain
+					}
+					for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
+						chain[i], chain[j] = chain[j], chain[i]
+					}
+					return chain
+				}
+				next = append(next, len(steps)-1)
+			}
+		}
+		if len(next) == 0 {
+			return nil
+		}
+		frontier = next
+	}
+	return nil
+}
+

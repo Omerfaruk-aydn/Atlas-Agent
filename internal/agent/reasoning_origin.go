@@ -85,7 +85,7 @@ func (o reasoningOrigin) accepts(m message.Message) bool {
 	if provider == "" && model == "" {
 		// Nothing identifies the producer: dropping opaque state is safe
 		// for every provider, replaying a foreign signature is not.
-		return reasoning.Signature == "" && reasoning.ThoughtSignature == "" && reasoning.ResponsesData == nil
+		return reasoning.Signature == "" && reasoning.ThoughtSignature == "" && len(reasoning.ToolSignatures) == 0 && reasoning.ResponsesData == nil
 	}
 	return provider == o.Provider && model == o.Model
 }

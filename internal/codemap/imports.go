@@ -295,3 +295,60 @@ func (x *extractor) bindAssignment(imp *Import, i int) {
 	}
 }
 
+// pythonImport reads import a.b [as c], d and from x import a [as b].
+func (x *extractor) pythonImport(i int) bool {
+	t := x.toks[i]
+	if !t.first {
+		return false
+	}
+	switch t.text {
+	case "import":
+		k := i + 1
+		for {
+			imp, next := x.pythonModule(k, t.line)
+			if imp.Spec == "" {
+				return true
+			}
+			parts := strings.Split(imp.Spec, ".")
+			local := parts[len(parts)-1]
+			if x.tok(next).text == "as" && x.tok(next+1).kind == tIdent {
+				local = x.toks[next+1].text
+				next += 2
+			}
+			imp.Module = local
+			x.file.Imports = append(x.file.Imports, imp)
+			if x.tok(next).text != "," {
+				return true
+			}
+			k = next + 1
+		}
+	case "from":
+		imp, k := x.pythonModule(i+1, t.line)
+		if x.tok(k).text != "import" {
+			return true
+		}
+		depth := 0
+		for j := k + 1; j < len(x.toks); j++ {
+			s := x.toks[j]
+			if s.text == "(" {
+				depth++
+				continue
+			}
+			if s.text == ")" || s.first && depth == 0 {
+				break
+			}
+			if s.kind != tIdent || s.text == "as" || x.tok(j-1).text == "as" {
+				continue
+			}
+			local := s.text
+			if x.tok(j+1).text == "as" && x.tok(j+2).kind == tIdent {
+				local = x.toks[j+2].text
+			}
+			imp.Bindings = append(imp.Bindings, Binding{Local: local, Remote: s.text})
+		}
+		x.file.Imports = append(x.file.Imports, imp)
+		return true
+	}
+	return false
+}
+

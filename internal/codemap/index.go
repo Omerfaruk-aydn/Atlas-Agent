@@ -62,3 +62,19 @@ type Builder struct {
 	projects map[string]*project
 }
 
+type project struct {
+	mu      sync.Mutex
+	entries map[string]*cacheEntry
+	loaded  bool
+	current *Map
+	stamp   string
+
+	historyMu sync.Mutex
+	history   *cochange
+}
+
+// NewBuilder returns a builder that caches extractions under cacheDir.
+func NewBuilder(cacheDir string) *Builder {
+	return &Builder{CacheDir: cacheDir, projects: map[string]*project{}}
+}
+

@@ -246,3 +246,9 @@ func TestLouvainSeparatesClusters(t *testing.T) {
 	require.NotEqual(t, c[0], c[4])
 }
 
+func TestEmptyProject(t *testing.T) {
+	t.Parallel()
+	m, err := NewBuilder("").Map(context.Background(), t.TempDir())
+	require.NoError(t, err)
+	require.Contains(t, m.Overview(0), "No source files found.")
+}

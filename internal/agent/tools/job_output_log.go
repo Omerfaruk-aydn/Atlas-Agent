@@ -38,3 +38,38 @@ type jobOutputView struct {
 	note string
 }
 
+// readJobOutput returns the output of job id since the previous read in
+// session and advances the cursor. root is the project directory; without
+// one, or when the log cannot be written, the whole output is returned.
+func readJobOutput(root, session, id string, started time.Time, stdout, stderr string, done bool) jobOutputView {
+	key := session + "\x00" + id
+	jobCursorsMu.Lock()
+	cursor := jobCursors[key]
+	if done {
+		// A finished job is not read for new output again; a later read
+		// returns everything once more.
+		delete(jobCursors, key)
+	} else {
+		jobCursors[key] = jobCursor{stdout: len(stdout), stderr: len(stderr)}
+	}
+	jobCursorsMu.Unlock()
+
+	full := jobOutputView{stdout: stdout, stderr: stderr}
+	// Output only grows; a shorter one means the buffer was replaced, so
+	// it is shown whole.
+	if root == "" || (cursor.stdout == 0 && cursor.stderr == 0) || cursor.stdout > len(stdout) || cursor.stderr > len(stderr) {
+		return full
+	}
+	rel, err := writeJobLog(root, id, started, stdout, stderr)
+	if err != nil {
+		return full
+	}
+	earlier := strings.Count(stdout[:cursor.stdout], "\n") + strings.Count(stderr[:cursor.stderr], "\n")
+	view := jobOutputView{stdout: stdout[cursor.stdout:], stderr: stderr[cursor.stderr:]}
+	view.note = fmt.Sprintf("[Output since your last read of this job. The %d lines before it were returned earlier; the full output is in %s.]", earlier, rel)
+	if view.stdout == "" && view.stderr == "" {
+		view.note = fmt.Sprintf("[No new output since your last read of this job. The full output (%d lines) is in %s.]", earlier, rel)
+	}
+	return view
+}
+

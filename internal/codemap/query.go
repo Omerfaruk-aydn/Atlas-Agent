@@ -288,3 +288,44 @@ func (m *Map) dependencies(fi int) []int {
 // entryNames are file names programs usually start from.
 var entryNames = words("main index app server cli manage __main__ program Program Main")
 
+// entryPoints are where the program starts: files defining main, or named
+// like an entry point that nothing imports. Without either, the files that
+// depend on others but nothing depends on.
+func (m *Map) entryPoints() []string {
+	used := map[int]bool{}
+	uses := map[int]float64{}
+	for key, w := range m.fileLinks {
+		used[key[1]] = true
+		uses[key[0]] += w
+	}
+	var out []int
+	for fi, f := range m.Files {
+		if isTestPath(f.Path) || !m.code[fi] {
+			continue
+		}
+		base := strings.TrimSuffix(path.Base(f.Path), path.Ext(f.Path))
+		definesMain := slices.ContainsFunc(f.Symbols, func(s Symbol) bool { return s.Name == "main" && s.Kind == "function" })
+		if definesMain || entryNames[base] && !used[fi] {
+			out = append(out, fi)
+		}
+	}
+	if len(out) == 0 {
+		for fi, f := range m.Files {
+			if !used[fi] && uses[fi] > 0 && !isTestPath(f.Path) && m.code[fi] {
+				out = append(out, fi)
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return uses[out[i]] > uses[out[j]] })
+	var names []string
+	for _, fi := range out[:min(len(out), 8)] {
+		names = append(names, m.Files[fi].Path)
+	}
+	return names
+}
+
+func isTestPath(p string) bool {
+	lower := strings.ToLower(p)
+	return strings.Contains(lower, "test") || strings.Contains(lower, "spec") || strings.Contains(lower, "__tests__")
+}
+

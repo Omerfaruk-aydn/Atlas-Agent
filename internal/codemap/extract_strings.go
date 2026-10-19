@@ -66,3 +66,34 @@ func scanString(f *File, s string, line int) {
 // closed, as in HTML a script builds: `<p class="kicker">${x}</p>`.
 var markupRe = regexp.MustCompile(`<[A-Za-z][\w-]*\s+[\w:@.-]+\s*=\s*["'{$]|<([A-Za-z][\w-]*)[^<>]*>[^<]*</[A-Za-z]`)
 
+// scanEmbeddedMarkup reads HTML written in a string at line: the classes,
+// components and files its tags use, at their own lines. The ids it
+// gives elements are not recorded as definitions: the string is built at
+// run time, and the code around it is still being read.
+func scanEmbeddedMarkup(f *File, s string, line int) {
+	var m File
+	scanMarkup(&m, s, markupHTML)
+	shift := line - 1
+	for _, r := range m.Refs {
+		r.Line += shift
+		addRef(f, r)
+	}
+	for _, l := range m.Links {
+		l.Line += shift
+		addLink(f, l)
+	}
+}
+
+// addLink records a link unless the same one is already recorded at the
+// same line.
+func addLink(f *File, l FileLink) {
+	for k := len(f.Links) - 1; k >= 0 && k >= len(f.Links)-8; k-- {
+		if f.Links[k].Line == l.Line && f.Links[k].Target == l.Target {
+			return
+		}
+	}
+	if len(f.Links) < maxRefsPerFile {
+		f.Links = append(f.Links, l)
+	}
+}
+

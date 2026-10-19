@@ -65,3 +65,19 @@ func (r *tokenReader) ref(name, qualifier, kind string, line int) {
 	addRef(r.out, Ref{Name: name, Qualifier: qualifier, Kind: kind, Line: line})
 }
 
+// statementEnd returns the index of the ; ending the statement at k,
+// skipping bracketed parts.
+func (r *tokenReader) statementEnd(k int) int {
+	for j := k; j < len(r.toks); j++ {
+		switch r.toks[j].text {
+		case ";":
+			return j
+		case "(", "[", "{":
+			if e, ok := r.match[j]; ok {
+				j = e
+			}
+		}
+	}
+	return len(r.toks) - 1
+}
+

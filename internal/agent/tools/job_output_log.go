@@ -30,3 +30,11 @@ var (
 	jobCursors   = map[string]jobCursor{}
 )
 
+// jobOutputView is what one read of a job returns.
+type jobOutputView struct {
+	stdout, stderr string
+	// note says what earlier reads returned and where the full output is;
+	// empty on a first read.
+	note string
+}
+

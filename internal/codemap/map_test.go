@@ -171,3 +171,33 @@ func TestMapOverviewAndFind(t *testing.T) {
 	require.Contains(t, both, "function helper: src/util.ts:1-1")
 }
 
+// A second call reuses the map; an edit re-reads only that file and a new
+// builder starts from the saved cache.
+func TestBuilderRefreshesChangedFiles(t *testing.T) {
+	t.Parallel()
+	root := writeProject(t, map[string]string{"a.py": "def one():\n    pass\n"})
+	cache := t.TempDir()
+	b := NewBuilder(cache)
+	first, err := b.Map(t.Context(), root)
+	require.NoError(t, err)
+	again, err := b.Map(t.Context(), root)
+	require.NoError(t, err)
+	require.Same(t, first, again)
+
+	file := filepath.Join(root, "a.py")
+	require.NoError(t, os.WriteFile(file, []byte("def one():\n    pass\n\ndef two():\n    one()\n"), 0o644))
+	later := time.Now().Add(2 * time.Second)
+	require.NoError(t, os.Chtimes(file, later, later))
+	updated, err := b.Map(t.Context(), root)
+	require.NoError(t, err)
+	require.NotSame(t, first, updated)
+	require.Contains(t, updated.Explain(t.Context(), "one"), "a.py:5 in function two [call, resolved]")
+
+	entries, err := os.ReadDir(cache)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	fresh, err := NewBuilder(cache).Map(t.Context(), root)
+	require.NoError(t, err)
+	require.Len(t, fresh.Files[0].Symbols, 2)
+}
+

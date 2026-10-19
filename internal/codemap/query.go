@@ -329,3 +329,67 @@ func isTestPath(p string) bool {
 	return strings.Contains(lower, "test") || strings.Contains(lower, "spec") || strings.Contains(lower, "__tests__")
 }
 
+// Find lists definitions and files whose name matches text: exact names
+// first, then prefixes, then substrings.
+func (m *Map) Find(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "Give a name or part of one to find."
+	}
+	lower := strings.ToLower(text)
+	type hit struct {
+		id   int
+		tier int
+	}
+	var hits []hit
+	for id := range m.symbols {
+		s := m.symbol(id)
+		name := strings.ToLower(s.Name)
+		qualified := strings.ToLower(s.Container + "." + s.Name)
+		tier := -1
+		switch {
+		case s.Name == text || s.Container+"."+s.Name == text:
+			tier = 0
+		case name == lower || qualified == lower:
+			tier = 1
+		case strings.HasPrefix(name, lower):
+			tier = 2
+		case strings.Contains(name, lower) || strings.Contains(qualified, lower):
+			tier = 3
+		}
+		if tier >= 0 {
+			hits = append(hits, hit{id, tier})
+		}
+	}
+	sort.SliceStable(hits, func(i, j int) bool {
+		if hits[i].tier != hits[j].tier {
+			return hits[i].tier < hits[j].tier
+		}
+		return m.symbolScore[hits[i].id] > m.symbolScore[hits[j].id]
+	})
+	var b strings.Builder
+	for _, h := range hits[:min(len(hits), maxFindResults)] {
+		b.WriteString(m.describe(h.id) + "\n")
+	}
+	if len(hits) > maxFindResults {
+		fmt.Fprintf(&b, "… %d more; use a longer name.\n", len(hits)-maxFindResults)
+	}
+	var files []string
+	for _, f := range m.Files {
+		if strings.Contains(strings.ToLower(f.Path), lower) {
+			files = append(files, f.Path)
+		}
+	}
+	if len(files) > 0 {
+		fmt.Fprintf(&b, "Files: %s", strings.Join(files[:min(len(files), 15)], ", "))
+		if len(files) > 15 {
+			fmt.Fprintf(&b, " … %d more", len(files)-15)
+		}
+		b.WriteString("\n")
+	}
+	if b.Len() == 0 {
+		return fmt.Sprintf("Nothing named like %q in the map. It may be defined in a dependency, generated at runtime, or in a language construct the map does not read; grep for it.", text)
+	}
+	return b.String()
+}
+

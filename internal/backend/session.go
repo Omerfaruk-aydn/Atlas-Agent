@@ -136,7 +136,7 @@ func (b *Backend) DeleteSession(ctx context.Context, workspaceID, sessionID stri
 }
 
 // RewindPreviewSession reports how many files rewinding sourceSessionID to
-// just before upToMessageID would write/delete, without applying anything.
+// upToMessageID would write/delete, without applying anything.
 func (b *Backend) RewindPreviewSession(ctx context.Context, workspaceID, sourceSessionID, upToMessageID string) (int, int, error) {
 	ws, err := b.GetWorkspace(workspaceID)
 	if err != nil {
@@ -147,8 +147,8 @@ func (b *Backend) RewindPreviewSession(ctx context.Context, workspaceID, sourceS
 	return svc.Preview(ctx, sourceSessionID, upToMessageID)
 }
 
-// RewindSession forks sourceSessionID just before upToMessageID and
-// restores the workspace's files to their state at that point.
+// RewindSession forks sourceSessionID at upToMessageID (inclusive) and
+// restores the workspace's files to their state before it.
 func (b *Backend) RewindSession(ctx context.Context, workspaceID, sourceSessionID, upToMessageID string) (rewind.Result, error) {
 	ws, err := b.GetWorkspace(workspaceID)
 	if err != nil {

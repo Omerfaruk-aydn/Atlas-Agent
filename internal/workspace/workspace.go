@@ -172,11 +172,10 @@ type Workspace interface {
 	// for the given checkpoint, without applying anything. Used to show an
 	// accurate confirmation before the (hard to reverse) RewindTo call.
 	RewindPreview(ctx context.Context, sourceSessionID, upToMessageID string) (filesToWrite, filesToDelete int, err error)
-	// RewindTo forks sourceSessionID just before upToMessageID: the new
-	// session gets a copy of the messages before it, so that message can
-	// be sent again or changed, and the working directory's files are
-	// restored to their content at that point. sourceSessionID is never
-	// modified or deleted.
+	// RewindTo forks sourceSessionID at upToMessageID: the new session
+	// gets a copy of the messages up to and including it, and the working
+	// directory's files are restored to their content before it. Nothing
+	// is run. sourceSessionID is never modified or deleted.
 	RewindTo(ctx context.Context, sourceSessionID, upToMessageID string) (rewind.Result, error)
 	CreateAgentToolSessionID(messageID, toolCallID string) string
 	ParseAgentToolSessionID(sessionID string) (messageID string, toolCallID string, ok bool)

@@ -29,9 +29,8 @@ type Session struct {
 	AttachedClients  int     `json:"attached_clients"`
 }
 
-// RewindRequest is the body of a rewind request: fork the session just
-// before UpToMessageID, a user message. The field keeps its name for
-// compatibility between client and server versions.
+// RewindRequest is the body of a rewind request: fork the session at
+// UpToMessageID (inclusive), a user message.
 type RewindRequest struct {
 	UpToMessageID string `json:"up_to_message_id"`
 }

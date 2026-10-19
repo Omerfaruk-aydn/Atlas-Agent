@@ -278,3 +278,30 @@ func (m *Map) matchPattern(p string) []int {
 	return out
 }
 
+// placeholderRe matches a printf verb or a {name} format field in a path.
+var placeholderRe = regexp.MustCompile(`%[-+# 0]*\d*(?:\.\d+)?[dsvqxXfg]|\{[A-Za-z_]?\w*(?::[^{}/]*)?\}`)
+
+// placeholders rewrites printf verbs and {name} fields as ${x}, leaving
+// ${...} as it is.
+func placeholders(p string) string {
+	if !strings.ContainsAny(p, "%{") {
+		return p
+	}
+	locs := placeholderRe.FindAllStringIndex(p, -1)
+	if locs == nil {
+		return p
+	}
+	var b strings.Builder
+	last := 0
+	for _, l := range locs {
+		if p[l[0]] == '{' && l[0] > 0 && p[l[0]-1] == '$' {
+			continue
+		}
+		b.WriteString(p[last:l[0]])
+		b.WriteString("${x}")
+		last = l[1]
+	}
+	b.WriteString(p[last:])
+	return b.String()
+}
+

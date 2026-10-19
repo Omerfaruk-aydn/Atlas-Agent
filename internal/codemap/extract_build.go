@@ -124,3 +124,64 @@ func scanCommand(out *File, cmd string, line int) {
 	}
 }
 
+// jsonWalk calls fn for every string value of a JSON document with the
+// keys (and array indexes) leading to it and the line it ends on.
+func jsonWalk(content string, fn func(keys []string, value string, line int)) {
+	dec := json.NewDecoder(strings.NewReader(content))
+	dec.UseNumber()
+	lines := newLineIndex(content)
+	var walk func(keys []string, depth int) bool
+	walk = func(keys []string, depth int) bool {
+		tok, err := dec.Token()
+		if err != nil || depth > 64 {
+			return false
+		}
+		switch v := tok.(type) {
+		case json.Delim:
+			switch v {
+			case '{':
+				for dec.More() {
+					kt, err := dec.Token()
+					if err != nil {
+						return false
+					}
+					k, _ := kt.(string)
+					if !walk(append(keys, k), depth+1) {
+						return false
+					}
+				}
+			case '[':
+				for idx := 0; dec.More(); idx++ {
+					if !walk(append(keys, strconv.Itoa(idx)), depth+1) {
+						return false
+					}
+				}
+			}
+			_, err := dec.Token()
+			return err == nil
+		case string:
+			fn(keys, v, lines.at(int(dec.InputOffset())-1))
+		}
+		return true
+	}
+	walk(nil, 0)
+}
+
+func extractPackageJSON(out *File, content string) {
+	entries := words("main module types typings browser bin exports source unpkg jsdelivr")
+	jsonWalk(content, func(keys []string, value string, line int) {
+		if len(keys) == 0 {
+			return
+		}
+		switch {
+		case len(keys) == 2 && keys[0] == "scripts":
+			addTask(out, keys[1], "script", toolNpm, line, line, keys[1]+": "+value)
+			scanCommand(out, value, line)
+		case entries[keys[0]] && (strings.HasPrefix(value, "./") || strings.Contains(value, "/") || path.Ext(value) != ""):
+			if !hasScheme(value) && path.Ext(value) != "" {
+				addLink(out, FileLink{Target: strings.TrimPrefix(value, "./"), Kind: LinkEntry, Line: line})
+			}
+		}
+	})
+}
+

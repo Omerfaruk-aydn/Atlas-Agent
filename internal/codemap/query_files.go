@@ -127,3 +127,66 @@ func (m *Map) describeProblem(p linkProblem) string {
 	return m.describeUse(p.use) + " (not found)"
 }
 
+// unusedAssets lists the assets no file names by path or imports.
+func (m *Map) unusedAssets() []int {
+	var out []int
+	for fi, f := range m.Files {
+		if f.Asset == nil || len(m.pathIn[fi]) > 0 || len(m.importedBy[fi]) > 0 {
+			continue
+		}
+		out = append(out, fi)
+	}
+	return out
+}
+
+// overviewDocs summarizes the documentation: the most linked documents
+// with their size in sections.
+func (m *Map) overviewDocs(b *strings.Builder) {
+	var docs []int
+	sections := 0
+	for fi, f := range m.Files {
+		if Category(f.Language) != CategoryDoc {
+			continue
+		}
+		docs = append(docs, fi)
+		sections += m.countKind(fi, "section")
+	}
+	if len(docs) == 0 {
+		return
+	}
+	inbound := func(fi int) int { return len(m.referrers(fi)) }
+	counts := make(map[int]int, len(docs))
+	for _, fi := range docs {
+		counts[fi] = inbound(fi)
+	}
+	sort.SliceStable(docs, func(i, j int) bool {
+		a, b := docs[i], docs[j]
+		if counts[a] != counts[b] {
+			return counts[a] > counts[b]
+		}
+		if da, db := strings.Count(m.Files[a].Path, "/"), strings.Count(m.Files[b].Path, "/"); da != db {
+			return da < db
+		}
+		return m.Files[a].Path < m.Files[b].Path
+	})
+	fmt.Fprintf(b, "\nDocuments: %s, %s.\n", plural(len(docs), "file"), plural(sections, "section"))
+	for _, fi := range docs[:min(len(docs), maxOverviewDocs)] {
+		f := m.Files[fi]
+		detail := []string{plural(m.countKind(fi, "section"), "section")}
+		if n := counts[fi]; n > 0 {
+			detail = append(detail, "named by "+plural(n, "file"))
+		}
+		if n := m.codeMentions(fi); n > 0 {
+			detail = append(detail, "mentions "+plural(n, "definition"))
+		}
+		title := ""
+		if s := m.firstSection(fi); s != "" {
+			title = " " + s + ":"
+		}
+		fmt.Fprintf(b, "  %s:%s %s\n", f.Path, title, strings.Join(detail, ", "))
+	}
+	if rest := len(docs) - maxOverviewDocs; rest > 0 {
+		fmt.Fprintf(b, "  … %d more\n", rest)
+	}
+}
+

@@ -413,3 +413,36 @@ func (x *extractor) rustUse(k int) {
 	x.file.Imports = append(x.file.Imports, imp)
 }
 
+// phpImport reads use A\B\C [as D]; and require/include "file".
+func (x *extractor) phpImport(i int) bool {
+	t := x.toks[i]
+	switch t.text {
+	case "use":
+		if !t.first {
+			return false
+		}
+		k := i + 1
+		var parts []string
+		for x.tok(k).kind == tIdent && x.tok(k).text != "as" || x.tok(k).text == "\\" {
+			if x.toks[k].kind == tIdent {
+				parts = append(parts, x.toks[k].text)
+			}
+			k++
+		}
+		if len(parts) == 0 {
+			return false
+		}
+		local := parts[len(parts)-1]
+		if x.tok(k).text == "as" && x.tok(k+1).kind == tIdent {
+			local = x.toks[k+1].text
+		}
+		x.file.Imports = append(x.file.Imports, Import{Spec: strings.Join(parts, "\\"), Line: t.line, Bindings: []Binding{{Local: local, Remote: parts[len(parts)-1]}}})
+		return true
+	case "require", "require_once", "include", "include_once":
+		if s := x.stringAfter(i + 1); s.kind == tString {
+			x.file.Imports = append(x.file.Imports, Import{Spec: s.text, Line: t.line})
+			return true
+		}
+	}
+	return false
+}

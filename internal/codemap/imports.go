@@ -277,3 +277,21 @@ func (x *extractor) addImport(imp Import) {
 	x.file.Imports = append(x.file.Imports, imp)
 }
 
+// bindAssignment reads what require(...) is assigned to: const X = or
+// const {a, b: c} =.
+func (x *extractor) bindAssignment(imp *Import, i int) {
+	if x.tok(i-1).text != "=" {
+		return
+	}
+	switch target := x.tok(i - 2); {
+	case target.kind == tIdent:
+		imp.Module = target.text
+	case target.text == "}":
+		for j := i - 3; j >= 0 && j > i-64 && x.toks[j].text != "{"; j-- {
+			if x.toks[j].kind == tIdent {
+				imp.Bindings = append(imp.Bindings, Binding{Local: x.toks[j].text, Remote: x.toks[j].text})
+			}
+		}
+	}
+}
+

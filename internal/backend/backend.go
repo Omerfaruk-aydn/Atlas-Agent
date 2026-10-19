@@ -198,6 +198,11 @@ type Workspace struct {
 	closing bool
 	runWG   sync.WaitGroup
 
+	// runIDsMu guards runIDs, the RunIDs accepted recently, which makes
+	// a retried prompt idempotent (see claimRunID).
+	runIDsMu sync.Mutex
+	runIDs   map[string]time.Time
+
 	// clientsMu guards clients. It is held only briefly (no IO).
 	clientsMu sync.Mutex
 	// clients tracks each client's claim on this workspace. Refcount

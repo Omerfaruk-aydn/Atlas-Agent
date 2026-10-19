@@ -371,3 +371,35 @@ func (m *Map) underDir(fi int, dir string) []int {
 	return nil
 }
 
+// sectionBySlug returns the heading of a document an anchor names, or -1.
+func (m *Map) sectionBySlug(fi int, anchor string) int {
+	anchor = strings.ToLower(anchor)
+	seen := map[string]int{}
+	for k, s := range m.Files[fi].Symbols {
+		if s.Kind != "section" {
+			continue
+		}
+		base := slug(s.Signature)
+		id := base
+		if n := seen[base]; n > 0 {
+			id = base + "-" + itoa(n)
+		}
+		seen[base]++
+		if id == anchor || strings.ToLower(base) == anchor && seen[base] == 1 {
+			return m.firstSymbol[fi] + k
+		}
+	}
+	return -1
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b []byte
+	for n > 0 {
+		b = append([]byte{byte('0' + n%10)}, b...)
+		n /= 10
+	}
+	return string(b)
+}

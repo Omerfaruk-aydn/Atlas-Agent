@@ -124,3 +124,144 @@ func abs(v float64) float64 {
 	return v
 }
 
+// cluster groups files into subsystems with the Louvain method over the
+// undirected dependency graph. Files with no dependencies join the
+// subsystem most common in their directory, or one of their own.
+func (m *Map) cluster() {
+	n := len(m.Files)
+	m.community = make([]int, n)
+	for i := range m.community {
+		m.community[i] = -1
+	}
+	if n == 0 {
+		return
+	}
+	adj := make([]map[int]float64, n)
+	for i := range adj {
+		adj[i] = map[int]float64{}
+	}
+	for key, w := range m.fileLinks {
+		a, b := key[0], key[1]
+		adj[a][b] += w
+		adj[b][a] += w
+	}
+	// Files in one directory usually belong together; a weak chain
+	// between them pulls a package into one group without overriding
+	// what the uses say.
+	for _, files := range m.dirs {
+		var code []int
+		for _, f := range files {
+			if m.code[f] {
+				code = append(code, f)
+			}
+		}
+		for k := 1; k < len(code); k++ {
+			a, b := code[k-1], code[k]
+			if len(adj[a]) > 0 || len(adj[b]) > 0 {
+				adj[a][b] += 0.5
+				adj[b][a] += 0.5
+			}
+		}
+	}
+	assignment := louvain(adj)
+	// Number communities by size, largest first, and give isolated files
+	// a community by directory.
+	groups := map[int][]int{}
+	for i, c := range assignment {
+		if len(adj[i]) == 0 {
+			continue
+		}
+		groups[c] = append(groups[c], i)
+	}
+	byDir := map[string]map[int]int{}
+	for c, files := range groups {
+		for _, fi := range files {
+			dir := path.Dir(m.Files[fi].Path)
+			if byDir[dir] == nil {
+				byDir[dir] = map[int]int{}
+			}
+			byDir[dir][c]++
+		}
+	}
+	nextID := len(assignment)
+	dirGroup := map[string]int{}
+	for i := range m.Files {
+		if len(adj[i]) > 0 || !m.code[i] {
+			continue
+		}
+		dir := path.Dir(m.Files[i].Path)
+		best, count := -1, 0
+		for c, k := range byDir[dir] {
+			if k > count || k == count && c < best {
+				best, count = c, k
+			}
+		}
+		if best < 0 {
+			if id, ok := dirGroup[dir]; ok {
+				best = id
+			} else {
+				best = nextID
+				dirGroup[dir] = best
+				nextID++
+			}
+		}
+		groups[best] = append(groups[best], i)
+	}
+	type pending struct {
+		files  []int
+		weight float64
+	}
+	var all []pending
+	for _, files := range groups {
+		sort.Ints(files)
+		w := 0.0
+		for _, fi := range files {
+			w += m.fileRank[fi]
+		}
+		all = append(all, pending{files, w})
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].weight != all[j].weight {
+			return all[i].weight > all[j].weight
+		}
+		return all[i].files[0] < all[j].files[0]
+	})
+	labels := map[string]int{}
+	for id, g := range all {
+		label := m.commonDir(g.files)
+		labels[label]++
+		if labels[label] > 1 {
+			label += " (" + m.topFileName(g.files) + ")"
+		}
+		m.communities = append(m.communities, community{Label: label, Files: g.files, Weight: g.weight})
+		for _, fi := range g.files {
+			m.community[fi] = id
+		}
+	}
+}
+
+// commonDir labels a group of files by the directory most of them are
+// in, with how many other directories the group spans.
+func (m *Map) commonDir(files []int) string {
+	counts := map[string]int{}
+	for _, fi := range files {
+		counts[path.Dir(m.Files[fi].Path)]++
+	}
+	best := ""
+	for dir, k := range counts {
+		if best == "" || k > counts[best] || k == counts[best] && dir < best {
+			best = dir
+		}
+	}
+	if best == "." {
+		best = "(root)"
+	}
+	if others := len(counts) - 1; others > 0 {
+		if others == 1 {
+			return best + " +1 dir"
+		}
+		return fmt.Sprintf("%s +%d dirs", best, others)
+	}
+	return best
+}
+

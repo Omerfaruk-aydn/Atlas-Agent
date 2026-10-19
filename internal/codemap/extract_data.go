@@ -39,3 +39,25 @@ func (r *tokenReader) lower(i int) string {
 	return strings.ToLower(r.tok(i).text)
 }
 
+func (r *tokenReader) signature(line int) string {
+	if line < 1 || line > len(r.lines) {
+		return ""
+	}
+	return clipSignature(r.lines[line-1])
+}
+
+// define records a symbol named at token i that ends at token end.
+func (r *tokenReader) define(i int, name, kind, container string, end int) int {
+	if len(r.out.Symbols) >= maxSymbolsPerFile {
+		return -1
+	}
+	line := r.tok(i).line
+	endLine := line
+	if end >= 0 && end < len(r.toks) {
+		endLine = r.toks[end].line
+	}
+	r.names[i] = true
+	r.out.Symbols = append(r.out.Symbols, Symbol{Name: name, Kind: kind, Container: container, Line: line, EndLine: max(line, endLine), Signature: r.signature(line), Exported: true})
+	return len(r.out.Symbols) - 1
+}
+

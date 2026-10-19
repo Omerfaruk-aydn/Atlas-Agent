@@ -22,3 +22,15 @@ type tokenReader struct {
 	names map[int]bool
 }
 
+func newTokenReader(out *File, content, lang string) *tokenReader {
+	toks := lex(content, languages[lang])
+	return &tokenReader{toks: toks, match: matchBrackets(toks), lines: strings.Split(content, "\n"), out: out, names: map[int]bool{}}
+}
+
+func (r *tokenReader) tok(i int) lexToken {
+	if i < 0 || i >= len(r.toks) {
+		return lexToken{kind: tPunct}
+	}
+	return r.toks[i]
+}
+

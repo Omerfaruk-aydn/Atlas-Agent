@@ -914,3 +914,7 @@ var explicitImports = map[string]bool{
 	"erlang": true, "gleam": true, "nim": true, "vlang": true, "solidity": true, "pascal": true,
 }
 
+func limit(ids []int) []int {
+	return ids[:min(len(ids), maxCandidates)]
+}
+

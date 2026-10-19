@@ -288,3 +288,27 @@ func extractMakefile(out *File, content string, just bool) {
 	}
 }
 
+// yamlRoot parses a YAML document and returns its top mapping.
+func yamlRoot(content string) *yaml.Node {
+	var doc yaml.Node
+	if yaml.Unmarshal([]byte(content), &doc) != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil
+	}
+	return doc.Content[0]
+}
+
+// yamlCommands scans every string under n as a command.
+func yamlCommands(out *File, n *yaml.Node) {
+	if n == nil {
+		return
+	}
+	switch n.Kind {
+	case yaml.ScalarNode:
+		scanCommand(out, n.Value, n.Line)
+	case yaml.SequenceNode, yaml.MappingNode:
+		for _, c := range n.Content {
+			yamlCommands(out, c)
+		}
+	}
+}
+

@@ -190,3 +190,101 @@ var (
 	justRuleRe = regexp.MustCompile(`^@?([A-Za-z_][\w-]*)(?:\s+[^:=]*)?:(?:[^=]|$)(.*)$`)
 )
 
+// extractMakefile reads make or just rules: targets, their prerequisites
+// and their recipes.
+func extractMakefile(out *File, content string, just bool) {
+	tool := toolMake
+	if just {
+		tool = toolJust
+	}
+	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	current := -1
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		n := i + 1
+		for strings.HasSuffix(line, "\\") && i+1 < len(lines) {
+			i++
+			line = strings.TrimSuffix(line, "\\") + " " + lines[i]
+		}
+		if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		if line[0] == '\t' || just && (line[0] == ' ') {
+			if current >= 0 {
+				out.Symbols[current].EndLine = i + 1
+				scanCommand(out, strings.TrimLeft(strings.TrimSpace(line), "@-+"), n)
+			}
+			continue
+		}
+		current = -1
+		trimmed := strings.TrimSpace(line)
+		if !just {
+			if f := strings.Fields(trimmed); len(f) > 1 && (f[0] == "include" || f[0] == "-include" || f[0] == "sinclude") {
+				for _, spec := range f[1:] {
+					if !strings.Contains(spec, "$") {
+						out.Imports = append(out.Imports, Import{Spec: spec, Line: n})
+					}
+				}
+				continue
+			}
+			m := makeRuleRe.FindStringSubmatch(line)
+			if m == nil {
+				continue
+			}
+			prereqs := m[3]
+			if k := strings.IndexByte(prereqs, ';'); k >= 0 {
+				scanCommand(out, prereqs[k+1:], n)
+				prereqs = prereqs[:k]
+			}
+			if k := strings.IndexByte(prereqs, '|'); k >= 0 {
+				prereqs = prereqs[:k] + " " + prereqs[k+1:]
+			}
+			first := -1
+			for _, target := range strings.Fields(m[1]) {
+				if strings.HasPrefix(target, ".") && strings.ToUpper(target) == target || strings.ContainsAny(target, "%$") {
+					continue
+				}
+				addTask(out, target, "target", tool, n, n, trimmed)
+				if first < 0 {
+					first = len(out.Symbols) - 1
+				}
+			}
+			if first < 0 {
+				continue
+			}
+			current = len(out.Symbols) - 1
+			for _, p := range strings.Fields(prereqs) {
+				if strings.Contains(p, "$") {
+					continue
+				}
+				if path.Ext(p) != "" || strings.Contains(p, "/") {
+					if LanguageOf(p) != "" {
+						addLink(out, FileLink{Target: p, Kind: LinkNames, Line: n})
+					}
+					continue
+				}
+				taskRef(out, p, tool, n)
+			}
+			continue
+		}
+		if strings.Contains(trimmed, ":=") || strings.HasPrefix(trimmed, "set ") || strings.HasPrefix(trimmed, "export ") || strings.HasPrefix(trimmed, "import ") || strings.HasPrefix(trimmed, "mod ") || strings.HasPrefix(trimmed, "alias ") {
+			if f := strings.Fields(trimmed); len(f) > 1 && (f[0] == "import" || f[0] == "mod") {
+				out.Imports = append(out.Imports, Import{Spec: strings.Trim(f[len(f)-1], `"'?`), Line: n})
+			}
+			continue
+		}
+		m := justRuleRe.FindStringSubmatch(trimmed)
+		if m == nil {
+			continue
+		}
+		addTask(out, m[1], "recipe", tool, n, n, trimmed)
+		current = len(out.Symbols) - 1
+		for _, dep := range strings.Fields(m[2]) {
+			dep = strings.TrimLeft(strings.Trim(dep, "()"), "&")
+			if isCSSName(dep) {
+				taskRef(out, dep, tool, n)
+			}
+		}
+	}
+}
+

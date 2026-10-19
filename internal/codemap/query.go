@@ -160,3 +160,24 @@ func (m *Map) Overview(budget int) string {
 	return b.String()
 }
 
+// usedBy says how many files depend on fi, tests counted apart.
+func (m *Map) usedBy(fi int) string {
+	code, tests := 0, 0
+	for _, user := range m.importers(fi) {
+		if isTestPath(m.Files[user].Path) {
+			tests++
+		} else {
+			code++
+		}
+	}
+	switch {
+	case code == 0 && tests == 0:
+		return ""
+	case tests == 0:
+		return ", used by " + plural(code, "file")
+	case code == 0:
+		return ", used by " + plural(tests, "test file")
+	}
+	return ", used by " + plural(code, "file") + " and " + plural(tests, "test file")
+}
+

@@ -275,3 +275,21 @@ func handoffText(in handoffInput) string {
 	return b.String()
 }
 
+// runningJobs lists the background jobs still running in the project.
+func runningJobs(root string) []shell.BackgroundShellInfo {
+	var out []shell.BackgroundShellInfo
+	for _, job := range shell.GetBackgroundShellManager().ListInfo() {
+		if job.Done || !withinRoot(root, job.WorkingDir) {
+			continue
+		}
+		out = append(out, job)
+	}
+	slices.SortFunc(out, func(a, b shell.BackgroundShellInfo) int { return a.StartedAt.Compare(b.StartedAt) })
+	return out
+}
+
+// withinRoot reports whether dir is root or inside it.
+func withinRoot(root, dir string) bool {
+	rel, err := filepath.Rel(root, dir)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}

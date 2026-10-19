@@ -122,3 +122,84 @@ func (w *handoffWatch) finishedFeature(plan *workplan.Plan) (workplan.Feature, b
 	return workplan.Feature{}, false
 }
 
+// notesCurrent reports whether the progress notes were written at or after
+// the last change to the plan, so they describe the finished feature.
+func notesCurrent(root string) bool {
+	planInfo, err := os.Stat(filepath.Join(root, workplan.Dir, workplan.PlanFile))
+	if err != nil {
+		return false
+	}
+	notesInfo, err := os.Stat(filepath.Join(root, workplan.Dir, workplan.ProgressFile))
+	if err != nil {
+		return false
+	}
+	return !notesInfo.ModTime().Before(planInfo.ModTime())
+}
+
+// handOff replaces the conversation with a handoff for the next feature.
+// It saves the handoff as the session's summary, the same way a compaction
+// does, so the next request starts from it.
+// scratchFiles are the files edited in the turn so far, which the ledger
+// records only when the turn ends.
+func (a *sessionAgent) handOff(ctx context.Context, sessionID string, finished workplan.Feature, scratchFiles []string) error {
+	root := a.projectRoot(sessionID)
+	plan, progress, err := workplan.Load(root)
+	if err != nil || plan == nil {
+		return fmt.Errorf("read work plan: %w", err)
+	}
+	state, err := a.engineering.Read(ctx, engineering.GetScope(ctx, sessionID).SessionID)
+	if err != nil {
+		return err
+	}
+	if state.Work == nil || len(state.Work.Turns) == 0 {
+		return fmt.Errorf("no recorded user request to hand off")
+	}
+	ledger := a.evaluatorLedgerFor(sessionID)
+	ledger.mu.Lock()
+	changed := slices.Clone(ledger.files)
+	ledger.mu.Unlock()
+	for _, path := range scratchFiles {
+		if !slices.Contains(changed, path) {
+			changed = append(changed, path)
+		}
+	}
+	currentSession, err := a.sessions.Get(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	text := handoffText(handoffInput{
+		finished: finished,
+		plan:     plan,
+		progress: progress,
+		turns:    state.Work.Turns,
+		changed:  changed,
+		jobs:     runningJobs(root),
+	})
+	large := a.largeModel.Get()
+	summary, err := a.messages.Create(ctx, sessionID, message.CreateMessageParams{
+		Role:             message.Assistant,
+		Model:            large.ModelCfg.Model,
+		Provider:         large.ModelCfg.Provider,
+		IsSummaryMessage: true,
+	})
+	if err != nil {
+		return err
+	}
+	summary.AppendContent(text)
+	summary.AddFinish(message.FinishReasonEndTurn, "", "")
+	if err := a.messages.Update(ctx, summary); err != nil {
+		return err
+	}
+	a.recordHarness(harnessmetrics.FeatureHandoff, sessionID, nil)
+	a.markCompacted(sessionID)
+	currentSession.SummaryMessageID = summary.ID
+	currentSession.PromptTokens = 0
+	currentSession.CompletionTokens = int64(len(text) / 4)
+	currentSession.EstimatedUsage = true
+	if _, err := a.sessions.Save(ctx, currentSession); err != nil {
+		return err
+	}
+	slog.Info("Handed off to a fresh context after a finished feature", "session_id", sessionID, "feature", finished.ID)
+	return nil
+}
+

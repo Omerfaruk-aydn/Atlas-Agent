@@ -55,6 +55,20 @@ func TestSpillSavesFullOutputAndShowsTheFailure(t *testing.T) {
 	require.Equal(t, full, string(saved), "the log holds the complete output")
 }
 
+// The first failure comes with the lines after it, where test runners and
+// compilers put the details.
+func TestSpillShowsTheLinesAfterTheFirstFailure(t *testing.T) {
+	t.Parallel()
+
+	lines := strings.Split(noisyOutput(2000, 0), "\n")
+	lines[1199] = "FAIL src/cart.test.ts > checkout total"
+	lines[1200] = "AssertionError: expected 90 to be 100"
+	lines[1201] = "  at src/cart.test.ts:42:18"
+	out, _ := spillOutput(t.TempDir(), strings.Join(lines, "\n"), "")
+	require.Contains(t, out, "the first error-like line and the 12 lines after it")
+	require.Contains(t, out, "  1202|   at src/cart.test.ts:42:18", "a detail line that is not error-like is kept")
+}
+
 func TestSpillKeepsStderrSeparate(t *testing.T) {
 	t.Parallel()
 

@@ -584,3 +584,33 @@ var (
 	tomlNameRe    = regexp.MustCompile(`^\s*name\s*=\s*["']([^"']+)["']`)
 )
 
+// extractToml reads the scripts of pyproject.toml and the targets of
+// Cargo.toml.
+func extractToml(out *File, content string) {
+	section := ""
+	pending := ""
+	for i, line := range strings.Split(content, "\n") {
+		n := i + 1
+		if m := tomlSectionRe.FindStringSubmatch(line); m != nil {
+			section, pending = m[1], ""
+			continue
+		}
+		switch section {
+		case "project.scripts", "project.gui-scripts", "tool.poetry.scripts", "project.entry-points.console_scripts":
+			if m := tomlScriptRe.FindStringSubmatch(line); m != nil {
+				addTask(out, m[1], "script", toolPython, n, n, strings.TrimSpace(line))
+				out.Imports = append(out.Imports, Import{Spec: m[2], Line: n, Bindings: []Binding{{Local: m[3], Remote: m[3]}}})
+				addRef(out, Ref{Name: m[3], Kind: RefCall, Line: n})
+				addLink(out, FileLink{Target: strings.ReplaceAll(m[2], ".", "/") + ".py", Kind: LinkEntry, Line: n})
+			}
+		case "lib", "bin", "example", "test", "bench":
+			if m := tomlNameRe.FindStringSubmatch(line); m != nil && section != "lib" {
+				pending = m[1]
+				addTask(out, pending, "binary", toolCargo, n, n, strings.TrimSpace(line))
+			}
+			if m := tomlPathRe.FindStringSubmatch(line); m != nil {
+				addLink(out, FileLink{Target: m[1], Kind: LinkEntry, Line: n})
+			}
+		}
+	}
+}

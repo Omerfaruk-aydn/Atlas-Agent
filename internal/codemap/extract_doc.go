@@ -410,3 +410,80 @@ var (
 	rstHeadChars   = "=-~^\"'`#*+:._"
 )
 
+func extractRST(out *File, lines []string) {
+	styles := map[string]int{}
+	code := false
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		n := i + 1
+		t := strings.TrimSpace(line)
+		if code {
+			if t != "" && line[0] != ' ' && line[0] != '\t' {
+				code = false
+			} else {
+				codeExample(out, line, n, "")
+				continue
+			}
+		}
+		if i+1 < len(lines) && t != "" && !isRSTRule(t) && isRSTRule(strings.TrimSpace(lines[i+1])) && len(strings.TrimSpace(lines[i+1])) >= utf8.RuneCountInString(t) {
+			over := i > 0 && isRSTRule(strings.TrimSpace(lines[i-1]))
+			style := lines[i+1][:1]
+			if over {
+				style += "o"
+			}
+			if _, ok := styles[style]; !ok {
+				styles[style] = len(styles) + 1
+			}
+			addSection(out, t, styles[style], n)
+			i++
+			continue
+		}
+		if m := rstDirectiveRe.FindStringSubmatch(line); m != nil {
+			kind := LinkEmbeds
+			if m[1] == "include" || m[1] == "literalinclude" || m[1] == "csv-table" || m[1] == "raw" {
+				kind = LinkIncludes
+			}
+			docLink(out, m[2], kind, n)
+			continue
+		}
+		if strings.HasPrefix(t, ".. code") || strings.HasSuffix(t, "::") && !strings.HasPrefix(t, "..") {
+			code = true
+		}
+		if m := rstFileOptRe.FindStringSubmatch(line); m != nil {
+			docLink(out, m[1], LinkIncludes, n)
+			continue
+		}
+		rest := line
+		for _, m := range rstDocRoleRe.FindAllStringSubmatch(rest, -1) {
+			target := m[1]
+			if m[2] != "" {
+				target = m[2]
+			}
+			if path.Ext(target) == "" {
+				target += ".rst"
+			}
+			docLink(out, strings.TrimPrefix(target, "/"), LinkLinks, n)
+		}
+		rest = rstDocRoleRe.ReplaceAllString(rest, " ")
+		for _, m := range rstRefLinkRe.FindAllStringSubmatch(rest, -1) {
+			docLink(out, m[1], LinkLinks, n)
+		}
+		rest = rstRefLinkRe.ReplaceAllString(rest, " ")
+		for _, m := range rstAPIRoleRe.FindAllStringSubmatch(rest, -1) {
+			target := m[1]
+			if m[2] != "" {
+				target = m[2]
+			}
+			name, qualifier := splitChain(strings.TrimPrefix(strings.TrimPrefix(target, "~"), "."))
+			if name != "" {
+				mention(out, name, qualifier, n)
+			}
+		}
+		rest = rstAPIRoleRe.ReplaceAllString(rest, " ")
+		for _, m := range rstLiteralRe.FindAllStringSubmatch(rest, -1) {
+			codeSpan(out, m[1], n)
+		}
+		prose(out, rstLiteralRe.ReplaceAllString(rest, " "), n)
+	}
+}
+

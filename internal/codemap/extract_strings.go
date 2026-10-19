@@ -205,3 +205,25 @@ var (
 	sqlNotName = words("select lateral set values unnest only where on as with recursive exists not the a an each row statement")
 )
 
+type sqlName struct {
+	name string
+	at   int
+}
+
+// sqlNames returns the tables and named queries a query string uses, in
+// lower case: SQL names are case-insensitive.
+func sqlNames(s string) []sqlName {
+	var out []sqlName
+	for _, m := range sqlQueryRe.FindAllStringSubmatchIndex(s, -1) {
+		// A query generated from a named query (sqlc's -- name: GetUser).
+		out = append(out, sqlName{strings.ToLower(s[m[2]:m[3]]), m[2]})
+	}
+	for _, m := range sqlTableRe.FindAllStringSubmatchIndex(s, -1) {
+		name := sqlIdent(s[m[4]:m[5]])
+		if name != "" && !sqlNotName[name] {
+			out = append(out, sqlName{name, m[4]})
+		}
+	}
+	return out
+}
+

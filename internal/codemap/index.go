@@ -257,3 +257,16 @@ func readHead(full, rel string) ([]byte, error) {
 	return buf[:read], nil
 }
 
+// minified reports whether content is a bundle or minified file, whose
+// lines are far longer than written code.
+func minified(content string) bool {
+	if len(content) < 4096 {
+		return false
+	}
+	lines := strings.Count(content, "\n") + 1
+	return len(content)/lines > 500
+}
+
+// maxOtherFiles bounds how many files the map knows of only by name.
+const maxOtherFiles = 50000
+

@@ -65,3 +65,55 @@ func (m *Map) Related(ctx context.Context, file string, limit int) []Related {
 	return out[:min(len(out), limit)]
 }
 
+// historyFor reads the history at the current HEAD, reusing the last read
+// while HEAD has not moved.
+func (p *project) historyFor(ctx context.Context, root string) *cochange {
+	p.historyMu.Lock()
+	defer p.historyMu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	out, err := gitCommand(ctx, root, "rev-parse", "HEAD")
+	if err != nil {
+		return nil
+	}
+	head := strings.TrimSpace(string(out))
+	if p.history != nil && p.history.head == head {
+		return p.history
+	}
+	log, err := gitCommand(ctx, root, "log", "--no-merges", "--relative", "-n", strconv.Itoa(historyCommits), "--name-only", "--pretty=format:%x1e")
+	if err != nil {
+		return nil
+	}
+	p.history = parseHistory(head, string(log))
+	return p.history
+}
+
+// parseHistory counts, from git log output with each commit started by
+// \x1e, how often each file and each pair of files changed.
+func parseHistory(head, log string) *cochange {
+	h := &cochange{head: head, commits: map[string]int{}, pairs: map[string]map[string]int{}}
+	for _, commit := range strings.Split(log, "\x1e") {
+		var files []string
+		for _, line := range strings.Split(commit, "\n") {
+			if line = strings.TrimSpace(line); line != "" && Category(LanguageOf(line)) == CategoryCode {
+				files = append(files, line)
+			}
+		}
+		if len(files) == 0 || len(files) > maxCommitFiles {
+			continue
+		}
+		for _, a := range files {
+			h.commits[a]++
+			for _, b := range files {
+				if a == b {
+					continue
+				}
+				if h.pairs[a] == nil {
+					h.pairs[a] = map[string]int{}
+				}
+				h.pairs[a][b]++
+			}
+		}
+	}
+	return h
+}

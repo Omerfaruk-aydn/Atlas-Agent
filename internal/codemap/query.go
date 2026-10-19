@@ -684,3 +684,109 @@ func sortLinks(links []Link, ids []int) []int {
 	return out
 }
 
+func confidenceSummary(links []Link, ids []int) string {
+	counts := map[Confidence]int{}
+	for _, id := range ids {
+		counts[links[id].Confidence]++
+	}
+	var parts []string
+	for _, c := range []Confidence{Resolved, Inferred, Ambiguous} {
+		if counts[c] > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", counts[c], c))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return ": " + strings.Join(parts, ", ")
+}
+
+// Callers lists what would be affected by changing a definition: its
+// users, their users, up to depth levels.
+func (m *Map) Callers(text string, depth int) string {
+	t, err := m.resolveTarget(text)
+	if err != nil {
+		return err.Error()
+	}
+	if depth <= 0 {
+		depth = 2
+	}
+	depth = min(depth, 5)
+	start := t.symbols
+	if t.file >= 0 {
+		for k := range m.Files[t.file].Symbols {
+			start = append(start, m.firstSymbol[t.file]+k)
+		}
+	}
+	var b strings.Builder
+	seen := map[int]bool{}
+	for _, id := range start {
+		seen[id] = true
+	}
+	frontier := start
+	lines := 0
+	uncertain := 0
+	files := map[int]bool{}
+	// Links by path reach a file or a heading without a definition in
+	// between: what names it is a first level, and the definitions around
+	// those lines are where the next level starts.
+	var named []pathUse
+	if t.file >= 0 {
+		named = append(named, m.pathUsers(t.file)...)
+	}
+	for _, id := range t.symbols {
+		named = append(named, m.anchorIn[id]...)
+	}
+	var fromPaths []int
+	for _, u := range named {
+		files[u.file] = true
+		if lines < maxCallerLines {
+			fmt.Fprintf(&b, "1. %s\n", m.describeUse(u))
+		}
+		lines++
+		if id := m.enclosingSymbol(u.file, m.Files[u.file].Links[u.link].Line); id >= 0 && !seen[id] {
+			seen[id] = true
+			fromPaths = append(fromPaths, id)
+		}
+	}
+	for level := 1; level <= depth && (len(frontier) > 0 || len(fromPaths) > 0); level++ {
+		if level == 2 {
+			frontier = append(frontier, fromPaths...)
+		}
+		var next []int
+		for _, id := range frontier {
+			for _, lid := range sortLinks(m.links, m.in[id]) {
+				l := m.links[lid]
+				files[l.File] = true
+				if l.Confidence != Resolved {
+					uncertain++
+				}
+				key := l.From
+				if seen[key] && key >= 0 {
+					continue
+				}
+				seen[key] = true
+				if lines < maxCallerLines {
+					fmt.Fprintf(&b, "%s%d. %s:%d in %s -> %s [%s]\n", strings.Repeat("  ", level-1), level, m.Files[l.File].Path, l.Line, m.placeName(l.From), qualifiedName(m.symbol(id)), linkLabel(l))
+				}
+				lines++
+				if key >= 0 {
+					next = append(next, key)
+				}
+			}
+		}
+		frontier = next
+	}
+	header := fmt.Sprintf("Changing %s reaches %d places in %d files within %d levels", text, lines, len(files), depth)
+	if uncertain > 0 {
+		header += fmt.Sprintf(" (%d links are inferred or ambiguous: check them)", uncertain)
+	}
+	if lines == 0 {
+		return header + ".\nNothing the map found uses it; it may still be reached through reflection, callbacks, configuration or a framework."
+	}
+	if lines > maxCallerLines {
+		fmt.Fprintf(&b, "… %d more\n", lines-maxCallerLines)
+	}
+	return header + ":\n" + b.String()
+}
+

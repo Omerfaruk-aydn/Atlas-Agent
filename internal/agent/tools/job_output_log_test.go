@@ -63,3 +63,16 @@ func TestJobOutputWithoutLogReturnsEverything(t *testing.T) {
 	require.Empty(t, view.note)
 }
 
+// Each session reads a job from its own cursor: a sub-agent's reads do not
+// hide output from the parent.
+func TestJobOutputCursorsArePerSession(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	id := "job-" + t.Name()
+	started := time.Now()
+	readJobOutput(root, "child", id, started, "a\n", "", false)
+	readJobOutput(root, "child", id, started, "a\nb\n", "", false)
+	parent := readJobOutput(root, "parent", id, started, "a\nb\n", "", false)
+	require.Equal(t, "a\nb\n", parent.stdout)
+	require.Empty(t, parent.note)
+}

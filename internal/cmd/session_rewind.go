@@ -13,11 +13,11 @@ var sessionRewindApply bool
 
 var sessionRewindCmd = &cobra.Command{
 	Use:   "rewind <id> <message-id>",
-	Short: "Fork a session just before an earlier message and restore files to that point",
-	Long: "Fork a session just before a chosen user message: the new session gets a copy of the " +
-		"source session's messages before that one, so it can be sent again or changed, and the working " +
-		"directory's files are restored to their content at that point. The source session is never " +
-		"modified or deleted. " +
+	Short: "Fork a session at an earlier message and restore files to before it",
+	Long: "Fork a session at a chosen user message: the new session gets a copy of the source " +
+		"session's messages up to and including that one, and the working directory's files are " +
+		"restored to their content before it. Nothing is run. The source session is never modified " +
+		"or deleted. " +
 		"Restoring files is hard to reverse, so this only previews what would change (files written and " +
 		"deleted) unless --apply is given. ID can be a UUID, full hash, or hash prefix.",
 	Args: cobra.ExactArgs(2),

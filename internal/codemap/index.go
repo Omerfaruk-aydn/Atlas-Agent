@@ -236,3 +236,24 @@ func (b *Builder) Map(ctx context.Context, root string) (*Map, error) {
 	return m, nil
 }
 
+// readHead reads the first bytes of an asset: all of a text format that
+// links other files (SVG, glTF), the header of anything else.
+func readHead(full, rel string) ([]byte, error) {
+	f, err := os.Open(full)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	n := assetHeaderBytes
+	switch strings.ToLower(filepath.Ext(rel)) {
+	case ".svg", ".gltf":
+		n = maxFileBytes
+	}
+	buf := make([]byte, n)
+	read, err := io.ReadFull(f, buf)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	return buf[:read], nil
+}
+

@@ -35,3 +35,10 @@ var generatedDirs = map[string]bool{
 	"Pods": true, "DerivedData": true, ".dart_tool": true, "_build": true, "deps": true, "zig-cache": true, "zig-out": true,
 }
 
+// cacheEntry is a file's extraction and the stat it was read at.
+type cacheEntry struct {
+	Size    int64 `json:"size"`
+	ModTime int64 `json:"mod_time"`
+	File    File  `json:"file"`
+}
+

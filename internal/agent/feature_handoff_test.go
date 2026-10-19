@@ -94,3 +94,43 @@ func TestFeatureHandoffWaitsForEveryCondition(t *testing.T) {
 	}
 }
 
+// A feature that was already done when the turn started, or a plan with
+// nothing left to do, never hands off.
+func TestFeatureHandoffNeedsANewlyFinishedFeatureAndWorkLeft(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	root := t.TempDir()
+	writeHandoffProject(t, root, true)
+	setPlanTime(t, root, now.Add(-time.Minute))
+	writeNotes(t, root, now)
+	passing := steps(editStep("1", "src/scene.ts"), bashStep("2", "npm test", 0))
+
+	w := newTestWatch()
+	w.baseline["F1"] = true
+	require.False(t, w.due(root, passing, 200_000, 90_000))
+
+	writeWorkPlan(t, root, `{"verify":[{"name":"unit","command":"npm test"}],"features":[{"id":"F1","title":"Scene","done":true}]}`)
+	setPlanTime(t, root, now.Add(-time.Minute))
+	require.False(t, newTestWatch().due(root, passing, 200_000, 90_000))
+}
+
+// Steps are replayed on the scratch ledger once each, however often the
+// watch is asked, and only once the cheap conditions hold.
+func TestFeatureHandoffReplaysEachStepOnce(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	root := t.TempDir()
+	writeHandoffProject(t, root, true)
+	setPlanTime(t, root, now.Add(-time.Minute))
+	writeNotes(t, root, now)
+	w := newTestWatch()
+	turn := append(steps(editStep("1", "src/a.ts")), steps(editStep("2", "src/b.ts"))...)
+	require.False(t, w.due(root, turn, 200_000, 1_000), "a small context returns before any replay")
+	require.Zero(t, w.seen)
+	require.False(t, w.due(root, turn[:1], 200_000, 90_000), "npm test has not run")
+	require.False(t, w.due(root, turn, 200_000, 90_000))
+	require.False(t, w.due(root, turn, 200_000, 90_000))
+	require.Equal(t, []string{"src/a.ts", "src/b.ts"}, w.scratch.files)
+	require.Equal(t, 2, w.scratch.seq)
+}
+

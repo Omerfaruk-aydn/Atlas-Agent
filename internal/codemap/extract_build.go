@@ -59,3 +59,9 @@ func addTask(out *File, name, kind, tool string, line, end int, sig string) {
 	out.Symbols = append(out.Symbols, Symbol{Name: name, Kind: kind, Container: tool, Line: line, EndLine: max(line, end), Signature: clipSignature(sig), Exported: true})
 }
 
+func taskRef(out *File, name, tool string, line int) {
+	if name != "" && !strings.ContainsAny(name, "$/ ") {
+		addRef(out, Ref{Name: name, Qualifier: tool, Kind: RefTask, Line: line})
+	}
+}
+

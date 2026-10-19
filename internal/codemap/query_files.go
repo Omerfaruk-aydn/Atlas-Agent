@@ -190,3 +190,13 @@ func (m *Map) overviewDocs(b *strings.Builder) {
 	}
 }
 
+func (m *Map) countKind(fi int, kind string) int {
+	n := 0
+	for _, s := range m.Files[fi].Symbols {
+		if s.Kind == kind {
+			n++
+		}
+	}
+	return n
+}
+

@@ -1,6 +1,7 @@
 package antigravity
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -28,7 +29,7 @@ func TestToolSignatureAndAttachmentsSurviveRoundTrip(t *testing.T) {
 		}
 	}
 	require.NotNil(t, signature)
-	require.Equal(t, "signature", signature.Signature)
+	require.Equal(t, "b64:c2lnbmF0dXJl", signature.Signature, "signatures are kept as base64 text")
 	require.Equal(t, "call-1", tool.ToolCallID)
 	require.Equal(t, tool.ToolCallID, signature.ToolID)
 	_, contents, warnings := toGeminiPrompt(fantasy.Prompt{
@@ -80,6 +81,69 @@ func TestStreamPreservesSignedToolCall(t *testing.T) {
 	}
 	require.Equal(t, "tool-id", toolID)
 	require.NotNil(t, signature)
-	require.Equal(t, "sig", signature.Signature)
+	raw, ok := google.DecodeSignature(signature.Signature)
+	require.True(t, ok)
+	require.Equal(t, "sig", string(raw))
 	require.Equal(t, toolID, signature.ToolID)
+}
+
+// A real signature is binary. Saving it with the message as JSON and
+// reading it back must send Gemini the same bytes, and each tool call must
+// get its own signature.
+func TestBinarySignatureSurvivesSavingTheMessage(t *testing.T) {
+	t.Parallel()
+	raw := []byte{0x0a, 0xff, 0xfe, 0x80, 0x12, 0x00, 0xc3}
+	encoded := base64.StdEncoding.EncodeToString(raw)
+	var response generateContentResponse
+	require.NoError(t, json.Unmarshal([]byte(`{"candidates":[{"content":{"role":"model","parts":[`+
+		`{"text":"thinking","thought":true,"thoughtSignature":"`+encoded+`"},`+
+		`{"thoughtSignature":"`+encoded+`","functionCall":{"id":"call-1","name":"read","args":{}}},`+
+		`{"functionCall":{"id":"call-2","name":"read","args":{}}}]},"finishReason":"STOP"}]}`), &response))
+	got, err := mapResponse(response, nil)
+	require.NoError(t, err)
+
+	var parts []fantasy.MessagePart
+	for _, content := range got.Content {
+		switch content := content.(type) {
+		case fantasy.ReasoningContent:
+			metadata := content.ProviderMetadata[google.Name].(*google.ReasoningMetadata)
+			// Round-trip the signature through JSON, as saving the message
+			// does; raw bytes would come back with U+FFFD in them.
+			saved, err := json.Marshal(metadata.Signature)
+			require.NoError(t, err)
+			loaded := google.ReasoningMetadata{ToolID: metadata.ToolID}
+			require.NoError(t, json.Unmarshal(saved, &loaded.Signature))
+			parts = append(parts, fantasy.ReasoningPart{Text: content.Text, ProviderOptions: fantasy.ProviderOptions{google.Name: &loaded}})
+		case fantasy.ToolCallContent:
+			parts = append(parts, fantasy.ToolCallPart{ToolCallID: content.ToolCallID, ToolName: content.ToolName, Input: content.Input})
+		}
+	}
+	_, contents, _ := toGeminiPrompt(fantasy.Prompt{{Role: fantasy.MessageRoleAssistant, Content: parts}})
+	wire, err := json.Marshal(contents)
+	require.NoError(t, err)
+	var sent []map[string]any
+	require.NoError(t, json.Unmarshal(wire, &sent))
+	model := sent[0]["parts"].([]any)
+	require.Len(t, model, 3)
+	require.Equal(t, encoded, model[0].(map[string]any)["thoughtSignature"])
+	require.Equal(t, encoded, model[1].(map[string]any)["thoughtSignature"])
+	require.NotContains(t, model[2].(map[string]any), "thoughtSignature", "only the first call carried a signature")
+}
+
+// A signature saved before the base64 encoding lost its bytes; it is not
+// sent as is, which Gemini rejects as corrupted.
+func TestCorruptedLegacySignatureIsNotSent(t *testing.T) {
+	t.Parallel()
+	// What JSON made of binary bytes: invalid UTF-8 became U+FFFD.
+	legacy := &google.ReasoningMetadata{Signature: "\n��", ToolID: "call-1"}
+	thought := &google.ReasoningMetadata{Signature: legacy.Signature}
+	_, contents, _ := toGeminiPrompt(fantasy.Prompt{{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{
+		fantasy.ReasoningPart{Text: "thinking", ProviderOptions: fantasy.ProviderOptions{google.Name: thought}},
+		fantasy.ReasoningPart{ProviderOptions: fantasy.ProviderOptions{google.Name: legacy}},
+		fantasy.ToolCallPart{ToolCallID: "call-1", ToolName: "read", Input: "{}"},
+	}}})
+	require.Empty(t, contents[0].Parts[0].ThoughtSignature, "a lost thought signature is left out")
+	skip, err := base64.URLEncoding.DecodeString("skip_thought_signature_validator")
+	require.NoError(t, err)
+	require.Equal(t, skip, contents[0].Parts[1].ThoughtSignature, "a function call gets the skip value")
 }

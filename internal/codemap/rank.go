@@ -265,3 +265,13 @@ func (m *Map) commonDir(files []int) string {
 	return best
 }
 
+func (m *Map) topFileName(files []int) string {
+	best := files[0]
+	for _, fi := range files {
+		if m.fileRank[fi] > m.fileRank[best] {
+			best = fi
+		}
+	}
+	return path.Base(m.Files[best].Path)
+}
+

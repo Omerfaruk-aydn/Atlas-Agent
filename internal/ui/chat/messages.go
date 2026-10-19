@@ -348,6 +348,11 @@ func (a *AssistantInfoItem) renderContent(width int) string {
 	finishTime := time.Unix(finishData.Time, 0)
 	duration := finishTime.Sub(a.lastUserMessageTime)
 	infoMsg := a.sty.Messages.AssistantInfoDuration.Render(fmt.Sprintf(a.sty.Text("in %s"), duration))
+	if duration < 0 {
+		// A message copied by a rewind keeps its finish time while the
+		// copied prompt is newer; there is no duration to show.
+		infoMsg = ""
+	}
 	icon := a.sty.Messages.AssistantInfoIcon.Render(styles.ModelIcon)
 	model := a.cfg.GetModel(a.message.Provider, a.message.Model)
 	if model == nil {
@@ -359,7 +364,7 @@ func (a *AssistantInfoItem) renderContent(width int) string {
 		providerName = providerConfig.Name
 	}
 	provider := a.sty.Messages.AssistantInfoProvider.Render(fmt.Sprintf(a.sty.Text("via %s"), providerName))
-	assistant := fmt.Sprintf("%s %s %s %s", icon, modelFormatted, provider, infoMsg)
+	assistant := strings.TrimSpace(fmt.Sprintf("%s %s %s %s", icon, modelFormatted, provider, infoMsg))
 	return common.Section(a.sty, assistant, width)
 }
 

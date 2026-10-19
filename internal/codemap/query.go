@@ -667,3 +667,20 @@ func linkLabel(l Link) string {
 	return label
 }
 
+// sortLinks orders links resolved first, then by file and line.
+func sortLinks(links []Link, ids []int) []int {
+	out := append([]int(nil), ids...)
+	order := map[Confidence]int{Resolved: 0, Inferred: 1, Ambiguous: 2}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := links[out[i]], links[out[j]]
+		if order[a.Confidence] != order[b.Confidence] {
+			return order[a.Confidence] < order[b.Confidence]
+		}
+		if a.File != b.File {
+			return a.File < b.File
+		}
+		return a.Line < b.Line
+	})
+	return out
+}
+

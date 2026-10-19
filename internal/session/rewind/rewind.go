@@ -26,23 +26,24 @@ type Result struct {
 	FilesDeleted int
 }
 
-// Service forks a session just before a chosen user message and restores
-// the working directory's files to their state at that point.
+// Service forks a session at a chosen user message and restores the
+// working directory's files to their state before it.
 type Service interface {
 	// Preview reports how many files ForkAt would write and delete for the
 	// given checkpoint, without creating a session or touching any file on
 	// disk. Files already in their restored state are not counted. Used to
 	// show an accurate confirmation before the (hard to reverse) apply.
-	Preview(ctx context.Context, sourceSessionID, beforeMessageID string) (filesToWrite, filesToDelete int, err error)
+	Preview(ctx context.Context, sourceSessionID, messageID string) (filesToWrite, filesToDelete int, err error)
 
 	// ForkAt creates a new session containing a copy of sourceSessionID's
-	// messages before beforeMessageID, so the user can send that message
-	// again or a different one, and restores the working directory's files
-	// to their content at that point. The file history up to that point is
-	// carried over, so the new session can be rewound in turn.
-	// sourceSessionID itself is never modified or deleted: this is
-	// non-destructive by design.
-	ForkAt(ctx context.Context, sourceSessionID, beforeMessageID string) (Result, error)
+	// messages up to and including messageID, so the conversation ends
+	// with that message, and restores the working directory's files to
+	// their content before it: what the agent changed in answer to it and
+	// later is undone. Nothing is run; the user decides what to send next.
+	// The file history up to that point is carried over, so the new session
+	// can be rewound in turn. sourceSessionID itself is never modified or
+	// deleted: this is non-destructive by design.
+	ForkAt(ctx context.Context, sourceSessionID, messageID string) (Result, error)
 }
 
 type service struct {
@@ -55,10 +56,10 @@ func NewService(sessions session.Service, messages message.Service, files histor
 	return &service{sessions: sessions, messages: messages, files: files}
 }
 
-// resolveBefore returns the ordered messages in sourceSessionID before
-// beforeMessageID and the resolved file state at that point. Shared by
+// resolve returns the ordered messages in sourceSessionID up to and
+// including messageID and the resolved file state before it. Shared by
 // Preview (read-only) and ForkAt (applies the result).
-func (s *service) resolveBefore(ctx context.Context, sourceSessionID, beforeMessageID string) ([]message.Message, []history.ResolvedFile, error) {
+func (s *service) resolve(ctx context.Context, sourceSessionID, messageID string) ([]message.Message, []history.ResolvedFile, error) {
 	// message.Service.List flushes nothing itself; callers that need the
 	// latest debounced state must flush first (mirrors the session-switch
 	// read pattern documented on message.Service).
@@ -73,18 +74,19 @@ func (s *service) resolveBefore(ctx context.Context, sourceSessionID, beforeMess
 
 	targetIdx := -1
 	for i, m := range all {
-		if m.ID == beforeMessageID {
+		if m.ID == messageID {
 			targetIdx = i
 			break
 		}
 	}
 	if targetIdx == -1 {
-		return nil, nil, fmt.Errorf("rewind: message %q not found in session %q", beforeMessageID, sourceSessionID)
+		return nil, nil, fmt.Errorf("rewind: message %q not found in session %q", messageID, sourceSessionID)
 	}
-	kept := all[:targetIdx]
+	kept := all[:targetIdx+1]
 
-	ids := make([]string, len(kept))
-	for i, m := range kept {
+	before := all[:targetIdx]
+	ids := make([]string, len(before))
+	for i, m := range before {
 		ids[i] = m.ID
 	}
 	resolved, err := s.files.ResolveAsOf(ctx, sourceSessionID, ids)
@@ -95,8 +97,8 @@ func (s *service) resolveBefore(ctx context.Context, sourceSessionID, beforeMess
 	return kept, resolved, nil
 }
 
-func (s *service) Preview(ctx context.Context, sourceSessionID, beforeMessageID string) (int, int, error) {
-	_, resolved, err := s.resolveBefore(ctx, sourceSessionID, beforeMessageID)
+func (s *service) Preview(ctx context.Context, sourceSessionID, messageID string) (int, int, error) {
+	_, resolved, err := s.resolve(ctx, sourceSessionID, messageID)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -112,13 +114,13 @@ func (s *service) Preview(ctx context.Context, sourceSessionID, beforeMessageID 
 	return written, deleted, nil
 }
 
-func (s *service) ForkAt(ctx context.Context, sourceSessionID, beforeMessageID string) (Result, error) {
+func (s *service) ForkAt(ctx context.Context, sourceSessionID, messageID string) (Result, error) {
 	source, err := s.sessions.Get(ctx, sourceSessionID)
 	if err != nil {
 		return Result{}, fmt.Errorf("rewind: loading source session: %w", err)
 	}
 
-	kept, resolved, err := s.resolveBefore(ctx, sourceSessionID, beforeMessageID)
+	kept, resolved, err := s.resolve(ctx, sourceSessionID, messageID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -168,7 +170,7 @@ func (s *service) copyHistory(ctx context.Context, source, fork session.Session,
 	for _, m := range kept {
 		copied, err := s.messages.Create(ctx, fork.ID, message.CreateMessageParams{
 			Role:             m.Role,
-			Parts:            m.Parts,
+			Parts:            copyParts(m),
 			Model:            m.Model,
 			Provider:         m.Provider,
 			IsSummaryMessage: m.IsSummaryMessage,
@@ -217,6 +219,22 @@ func (s *service) copyHistory(ctx context.Context, source, fork session.Session,
 		fork = saved
 	}
 	return fork, nil
+}
+
+// copyParts returns m's parts for a copy. Create adds a finish mark to
+// every message but an assistant's, so the one m already has is left out
+// rather than doubled on each rewind.
+func copyParts(m message.Message) []message.ContentPart {
+	if m.Role == message.Assistant {
+		return m.Parts
+	}
+	parts := make([]message.ContentPart, 0, len(m.Parts))
+	for _, part := range m.Parts {
+		if _, finish := part.(message.Finish); !finish {
+			parts = append(parts, part)
+		}
+	}
+	return parts
 }
 
 type fileChange int

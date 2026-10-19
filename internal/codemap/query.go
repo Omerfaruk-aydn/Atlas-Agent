@@ -656,3 +656,14 @@ func (m *Map) placeName(from int) string {
 	return s.Kind + " " + qualifiedName(s)
 }
 
+func linkLabel(l Link) string {
+	label := l.Kind + ", " + string(l.Confidence)
+	switch {
+	case l.Confidence == Ambiguous && l.Candidates == 1:
+		label += ", receiver type unknown"
+	case l.Confidence == Ambiguous:
+		label += fmt.Sprintf(" among %d", l.Candidates)
+	}
+	return label
+}
+

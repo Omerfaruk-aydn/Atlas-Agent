@@ -180,3 +180,18 @@ func (x *extractor) dottedImport(k int, sep string, bind bool) {
 	x.file.Imports = append(x.file.Imports, imp)
 }
 
+// includeImport reads "file.h" or <file.h> at k.
+func (x *extractor) includeImport(k int) {
+	t := x.tok(k)
+	switch {
+	case t.kind == tString:
+		x.file.Imports = append(x.file.Imports, Import{Spec: t.text, Line: t.line})
+	case t.text == "<":
+		var b strings.Builder
+		for j := k + 1; j < len(x.toks) && j < k+32 && x.toks[j].text != ">" && x.toks[j].line == t.line; j++ {
+			b.WriteString(x.toks[j].text)
+		}
+		x.file.Imports = append(x.file.Imports, Import{Spec: "<" + b.String() + ">", Line: t.line})
+	}
+}
+

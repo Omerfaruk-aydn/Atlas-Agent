@@ -51,3 +51,7 @@ func messageParams(text string) message.CreateMessageParams {
 	return message.CreateMessageParams{Role: message.User, Parts: []message.ContentPart{message.TextContent{Text: text}}}
 }
 
+func newTestWatch() *handoffWatch {
+	return &handoffWatch{baseline: map[string]bool{}, scratch: &evaluatorLedger{}}
+}
+

@@ -23,6 +23,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/prompt"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools/mcp"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/codemap"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/credentials"
@@ -175,8 +176,10 @@ type coordinator struct {
 	automationCancel context.CancelFunc
 	automationDone   chan struct{}
 	engineering      *engineering.Store
-	cfg              *config.ConfigStore
-	sessions         session.Service
+	// codeMap keeps each project's code map between calls.
+	codeMap  *codemap.Builder
+	cfg      *config.ConfigStore
+	sessions session.Service
 	// goalRuns holds the autonomous run for each session working
 	// towards a goal (see goal.go). Absent means the session is
 	// taking turns the ordinary way, one per prompt.
@@ -300,6 +303,7 @@ func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, 
 		interactive:  opts.Interactive,
 		credentials:  credentials.Load(filepath.Join(opts.Config.Config().Options.DataDirectory, credentials.StateFileName)),
 		engineering:  engineering.NewStore(opts.Config.Config().Options.DataDirectory),
+		codeMap:      codemap.NewBuilder(filepath.Join(opts.Config.Config().Options.DataDirectory, "codemap")),
 		teams:        teams.NewRegistry(),
 		goalRuns:     csync.NewMap[string, *goalRun](),
 		goalJudge:    csync.NewValue(ptrBox[Model]{}),
@@ -1111,7 +1115,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		tools.NewMigrationRehearseTool(c.cfg.WorkingDir(), c.permissions),
 		tools.NewAtlasConfigTool(c.permissions, c.cfg, c.cfg.WorkingDir()),
 		tools.NewAtlasLogsTool(logFile),
-		tools.NewJobOutputTool(),
+		tools.NewJobOutputTool(c.cfg.WorkingDir()),
 		tools.NewJobKillTool(),
 		tools.NewDownloadTool(c.permissions, c.cfg.WorkingDir(), nil, urlPolicy(c.cfg), pathPolicy, c.cfg.Config().Options.MaxDownloadBytes),
 		tools.NewEditTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy),
@@ -1346,6 +1350,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 			graphProviders = append(graphProviders, tools.NewLSPGraphProvider(c.cfg.WorkingDir(), c.lspManager))
 		}
 		allTools = append(allTools, tools.NewProjectMapTool(c.cfg.WorkingDir(), c.engineering, graphProviders...),
+			tools.NewCodeMapTool(c.cfg.WorkingDir(), c.codeMap),
 			tools.NewDesignSystemTool(c.cfg.WorkingDir(), tools.DesignServices{Invoke: invoke, Permissions: c.permissions}),
 			tools.NewStressJourneyTool(c.cfg.WorkingDir(), c.engineering, invoke),
 			tools.NewTimeLabTool(c.cfg.WorkingDir(), c.engineering, invoke),

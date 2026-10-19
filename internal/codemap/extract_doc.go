@@ -28,3 +28,17 @@ func extractDoc(out *File, content string) {
 	finishSections(out)
 }
 
+// addSection records a heading. Its signature is the heading written the
+// Markdown way, # per level, which also keeps an explicit {#anchor}.
+func addSection(out *File, title string, level, line int) {
+	title = strings.TrimSpace(title)
+	name := cleanHeading(title)
+	if name == "" || len(out.Symbols) >= maxSymbolsPerFile {
+		return
+	}
+	out.Symbols = append(out.Symbols, Symbol{
+		Name: name, Kind: "section", Line: line, EndLine: line,
+		Signature: clipSignature(strings.Repeat("#", level) + " " + title),
+	})
+}
+

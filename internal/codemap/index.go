@@ -270,3 +270,66 @@ func minified(content string) bool {
 // maxOtherFiles bounds how many files the map knows of only by name.
 const maxOtherFiles = 50000
 
+// listFiles returns the files under root the map reads, and the names of
+// the others, which links may still point at; all slash-separated and
+// relative. Inside a git work tree it asks git, which applies every
+// ignore rule; elsewhere it walks the folder, skipping generated ones.
+func listFiles(ctx context.Context, root string) (out, others []string, truncated bool, err error) {
+	keep := func(rel string) {
+		switch {
+		case inDependencyDir(rel):
+		case LanguageOf(rel) != "":
+			out = append(out, rel)
+		case len(others) < maxOtherFiles:
+			others = append(others, rel)
+		}
+	}
+	if listed, gitErr := gitFiles(ctx, root); gitErr == nil {
+		for _, rel := range listed {
+			keep(rel)
+		}
+	} else {
+		err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				if p == root {
+					return err
+				}
+				return nil
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if d.IsDir() {
+				if p != root && (generatedDirs[d.Name()] || strings.HasPrefix(d.Name(), ".") && d.Name() != ".github") {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if rel, err := filepath.Rel(root, p); err == nil {
+				keep(filepath.ToSlash(rel))
+			}
+			if len(out) > maxFiles*2 {
+				return fs.SkipAll
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, nil, false, err
+		}
+	}
+	sort.Strings(out)
+	truncated = len(out) > maxFiles
+	if truncated {
+		out = out[:maxFiles]
+	}
+	return out, others, truncated, nil
+}
+
+// dependencyDirs hold installed packages and caches. Git lists them when a
+// project forgets to ignore them, but they are not the project's code.
+var dependencyDirs = map[string]bool{
+	"node_modules": true, "bower_components": true, ".venv": true, "venv": true, "__pycache__": true,
+	".atlas": true, "Pods": true, ".dart_tool": true, ".next": true, ".nuxt": true, ".svelte-kit": true,
+	".turbo": true, ".cache": true, ".gradle": true, "DerivedData": true, "site-packages": true,
+}
+

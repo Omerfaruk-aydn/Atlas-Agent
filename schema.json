@@ -2041,6 +2041,11 @@
           "type": "boolean",
           "description": "Save the commands that verified the work to project memory.",
           "default": true
+        },
+        "feature_handoff": {
+          "type": "boolean",
+          "description": "When a feature is finished, its checks pass and the progress notes are updated, continue the next feature in a fresh context built from the plan, the progress notes and the user's messages instead of carrying the whole conversation.",
+          "default": true
         }
       },
       "additionalProperties": false,

@@ -845,6 +845,10 @@ type WorkPlan struct {
 	Checkpoints  *bool `json:"checkpoints,omitempty" jsonschema:"description=Record a git checkpoint whenever the contract holds\\, so a check that breaks later comes with the files changed since it last passed.,default=true"`
 	Breaker      *bool `json:"breaker,omitempty" jsonschema:"description=After features are finished\\, ask for an adversarial pass that tries to break them.,default=true"`
 	LearnRecipes *bool `json:"learn_recipes,omitempty" jsonschema:"description=Save the commands that verified the work to project memory.,default=true"`
+	// FeatureHandoff starts the next feature from the plan and progress
+	// notes once a feature is finished and checked, instead of carrying the
+	// whole conversation that built it.
+	FeatureHandoff *bool `json:"feature_handoff,omitempty" jsonschema:"description=When a feature is finished\\, its checks pass and the progress notes are updated\\, continue the next feature in a fresh context built from the plan\\, the progress notes and the user's messages instead of carrying the whole conversation.,default=true"`
 }
 
 func defaultOn(b *bool) bool { return b == nil || *b }
@@ -863,6 +867,10 @@ func (w *WorkPlan) BreakerEnabled() bool { return w == nil || defaultOn(w.Breake
 
 // LearnRecipesEnabled reports whether verified commands are remembered.
 func (w *WorkPlan) LearnRecipesEnabled() bool { return w == nil || defaultOn(w.LearnRecipes) }
+
+// FeatureHandoffEnabled reports whether a finished feature hands the work
+// to a fresh context.
+func (w *WorkPlan) FeatureHandoffEnabled() bool { return w == nil || defaultOn(w.FeatureHandoff) }
 
 // Harness holds the harness options. See Options.Harness. A nil Harness
 // keeps every option on.

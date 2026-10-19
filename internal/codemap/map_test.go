@@ -135,3 +135,39 @@ func TestMapResolvesThroughImportsAndScope(t *testing.T) {
 	require.Contains(t, m.Explain(t.Context(), "pkg/a/b.go:append"), "Used by (0)")
 }
 
+func TestMapCallersAndPath(t *testing.T) {
+	t.Parallel()
+	m := buildPolyglot(t)
+	callers := m.Callers("solveKepler", 2)
+	require.Contains(t, callers, "1. src/orbit.ts:7 in method Orbit.step -> solveKepler [call, resolved]")
+	require.Contains(t, callers, "  2. src/app.ts:6 in function main -> Orbit.step [call, ambiguous, receiver type unknown]")
+	require.Contains(t, callers, "inferred or ambiguous")
+
+	path := m.Path("src/app.ts:main", "solveKepler")
+	require.Contains(t, path, "reaches solveKepler in 2 steps")
+	require.Less(t, strings.Index(path, "-> step"), strings.Index(path, "-> solveKepler"))
+
+	require.Contains(t, m.Path("cmd/main.go", "pkg/a/b.go"), "cmd/main.go\n  -> pkg/a/a.go\n  -> pkg/a/b.go")
+	require.Contains(t, m.Path("solveKepler", "integrate"), "No chain")
+}
+
+func TestMapOverviewAndFind(t *testing.T) {
+	t.Parallel()
+	m := buildPolyglot(t)
+	overview := m.Overview(0)
+	require.Contains(t, overview, "8 files (go 3, typescript 3, python 2)")
+	require.Contains(t, overview, "Entry points: ")
+	require.Contains(t, overview, "cmd/main.go")
+	require.Contains(t, overview, "src/orbit.ts (typescript, 10 lines, used by 1 file)")
+	require.Contains(t, overview, "export function solveKepler(m: number, e: number): number {")
+
+	found := m.Find("step")
+	require.Contains(t, found, "method Orbit.step  src/orbit.ts:6")
+	require.Contains(t, found, "function step  src/util.ts:2")
+	require.Contains(t, m.Find("nothing_like_this"), "Nothing named like")
+	require.Contains(t, m.Explain(t.Context(), "missing"), "nothing named missing")
+	both := m.Explain(t.Context(), "helper")
+	require.Contains(t, both, "function helper: src/app.ts:11-11")
+	require.Contains(t, both, "function helper: src/util.ts:1-1")
+}
+

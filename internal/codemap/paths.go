@@ -32,3 +32,6 @@ type pathTarget struct {
 // pathUse locates a link: Files[file].Links[link].
 type pathUse struct{ file, link int }
 
+// maxPatternMatches bounds what one ${...} path reaches.
+const maxPatternMatches = 200
+

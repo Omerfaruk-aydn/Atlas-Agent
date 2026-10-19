@@ -224,3 +224,77 @@ func pascalCase(s string) string {
 	return b.String()
 }
 
+type attr struct {
+	name, value string
+	// at is the offset of the value.
+	at int
+	// braced values are {expressions}.
+	braced bool
+}
+
+// parseAttrs reads a tag's attributes; offset is where s starts in the
+// file. With braces, a value may be a {expression}.
+func parseAttrs(s string, offset int, braces bool) []attr {
+	var out []attr
+	i := 0
+	for i < len(s) {
+		for i < len(s) && strings.ContainsRune(" \t\r\n/", rune(s[i])) {
+			i++
+		}
+		if i >= len(s) {
+			break
+		}
+		if braces && s[i] == '{' {
+			// {spread} or a shorthand {name}.
+			end := matchBrace(s, i)
+			out = append(out, attr{name: "{}", value: s[i+1 : max(i+1, end)], at: offset + i + 1, braced: true})
+			i = end + 1
+			continue
+		}
+		start := i
+		for i < len(s) && !strings.ContainsRune(" \t\r\n=/>", rune(s[i])) {
+			i++
+		}
+		if i == start {
+			i++
+			continue
+		}
+		a := attr{name: s[start:i]}
+		j := i
+		for j < len(s) && (s[j] == ' ' || s[j] == '\t') {
+			j++
+		}
+		if j < len(s) && s[j] == '=' {
+			j++
+			for j < len(s) && (s[j] == ' ' || s[j] == '\t') {
+				j++
+			}
+			if j < len(s) {
+				switch c := s[j]; {
+				case c == '"' || c == '\'':
+					end := strings.IndexByte(s[j+1:], c)
+					if end < 0 {
+						end = len(s) - j - 1
+					}
+					a.value, a.at = s[j+1:j+1+end], offset+j+1
+					j += end + 2
+				case c == '{' && braces:
+					end := matchBrace(s, j)
+					a.value, a.at, a.braced = s[j+1:max(j+1, end)], offset+j+1, true
+					j = end + 1
+				default:
+					end := j
+					for end < len(s) && !strings.ContainsRune(" \t\r\n>", rune(s[end])) {
+						end++
+					}
+					a.value, a.at = s[j:end], offset+j
+					j = end
+				}
+			}
+			i = j
+		}
+		out = append(out, a)
+	}
+	return out
+}
+

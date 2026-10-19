@@ -125,3 +125,33 @@ func TestToolCallsTakeEffectInCallOrder(t *testing.T) {
 	require.Equal(t, []string{"r1", "r2", "e1", "r3"}, ids)
 }
 
+// Tools run in parallel but their result callbacks never overlap, so the
+// callback can update shared turn state without its own locking.
+func TestParallelToolResultCallbacksDoNotOverlap(t *testing.T) {
+	t.Parallel()
+	log := &eventLog{}
+	model := &scriptedModel{calls: []StreamPart{
+		toolCallPart("r1", "read"),
+		toolCallPart("r2", "read"),
+		toolCallPart("r3", "read"),
+	}}
+	var active, most atomic.Int32
+	agent := NewAgent(model, WithTools(orderTools(log)...))
+	_, err := agent.Stream(t.Context(), AgentStreamCall{
+		Prompt: "go",
+		OnToolResult: func(ToolResultContent) error {
+			n := active.Add(1)
+			defer active.Add(-1)
+			for {
+				m := most.Load()
+				if n <= m || most.CompareAndSwap(m, n) {
+					break
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+			return nil
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, int32(1), most.Load())
+}

@@ -42,3 +42,7 @@ type cacheEntry struct {
 	File    File  `json:"file"`
 }
 
+// cacheVersion changes when extraction changes, so old caches are not
+// reused.
+const cacheVersion = 4
+

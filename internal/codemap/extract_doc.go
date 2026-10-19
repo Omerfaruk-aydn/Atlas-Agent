@@ -487,3 +487,59 @@ func extractRST(out *File, lines []string) {
 	}
 }
 
+func isRSTRule(t string) bool {
+	if len(t) < 3 || !strings.ContainsRune(rstHeadChars, rune(t[0])) {
+		return false
+	}
+	return strings.Trim(t, t[:1]) == ""
+}
+
+var (
+	adocHeadingRe = regexp.MustCompile(`^(={1,6}|#{1,6})\s+(\S.*)$`)
+	adocMacroRe   = regexp.MustCompile(`\b(image|include|link|xref|video|audio)::?([^\[\s]+)\[`)
+	adocCodeRe    = regexp.MustCompile("`([^`]+)`|\\+([^+]+)\\+")
+)
+
+func extractAsciiDoc(out *File, lines []string) {
+	block := ""
+	for i, line := range lines {
+		n := i + 1
+		t := strings.TrimSpace(line)
+		if t == "----" || t == "...." || t == "```" {
+			switch block {
+			case t:
+				block = ""
+			case "":
+				block = t
+			}
+			continue
+		}
+		if block != "" {
+			codeExample(out, line, n, "")
+			continue
+		}
+		if m := adocHeadingRe.FindStringSubmatch(line); m != nil {
+			addSection(out, m[2], len(m[1]), n)
+			continue
+		}
+		for _, m := range adocMacroRe.FindAllStringSubmatch(line, -1) {
+			kind := LinkLinks
+			switch m[1] {
+			case "image", "video", "audio":
+				kind = LinkEmbeds
+			case "include":
+				kind = LinkIncludes
+			}
+			target := m[2]
+			if m[1] == "xref" && path.Ext(strings.SplitN(target, "#", 2)[0]) == "" && !strings.Contains(target, "#") {
+				target = "#" + target
+			}
+			docLink(out, target, kind, n)
+		}
+		rest := adocMacroRe.ReplaceAllString(line, " ")
+		for _, m := range adocCodeRe.FindAllStringSubmatch(rest, -1) {
+			codeSpan(out, m[1]+m[2], n)
+		}
+		prose(out, adocCodeRe.ReplaceAllString(rest, " "), n)
+	}
+}

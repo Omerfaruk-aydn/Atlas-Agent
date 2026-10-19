@@ -460,3 +460,22 @@ int real(void) { return 1; }
 	require.Empty(t, f.Refs)
 }
 
+// A single-file component is a component symbol spanning the file; its
+// script is parsed as code and its template's expressions are uses.
+func TestExtractVueComponent(t *testing.T) {
+	t.Parallel()
+	src := `<template>
+  <div @click="onClick()">{{ format(x) }}</div>
+</template>
+<script setup lang="ts">
+import { format } from "./format";
+function onClick() {
+  format(1);
+}
+</script>
+`
+	f := Extract("App.vue", src)
+	require.Equal(t, []string{"function onClick 6-8", "component App 1-10"}, symbolsOf(f))
+	require.Equal(t, []string{"./format format"}, importsOf(f))
+	require.Equal(t, []string{"call format", "call onClick", "call format"}, refsOf(f))
+}

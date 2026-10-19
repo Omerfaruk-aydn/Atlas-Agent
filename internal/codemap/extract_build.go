@@ -185,3 +185,8 @@ func extractPackageJSON(out *File, content string) {
 	})
 }
 
+var (
+	makeRuleRe = regexp.MustCompile(`^([^\s:=#][^:=#]*?)\s*(::?)(?:[^=]|$)(.*)$`)
+	justRuleRe = regexp.MustCompile(`^@?([A-Za-z_][\w-]*)(?:\s+[^:=]*)?:(?:[^=]|$)(.*)$`)
+)
+

@@ -181,3 +181,29 @@ func (m *Map) usedBy(fi int) string {
 	return ", used by " + plural(code, "file") + " and " + plural(tests, "test file")
 }
 
+func plural(n int, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return fmt.Sprintf("%d %ss", n, word)
+}
+
+// testDirs names the directories holding test files, most first.
+func testDirs(tests []string) []string {
+	counts := map[string]int{}
+	for _, t := range tests {
+		counts[path.Dir(t)]++
+	}
+	dirs := make([]string, 0, len(counts))
+	for d := range counts {
+		dirs = append(dirs, d)
+	}
+	sort.Slice(dirs, func(i, j int) bool {
+		if counts[dirs[i]] != counts[dirs[j]] {
+			return counts[dirs[i]] > counts[dirs[j]]
+		}
+		return dirs[i] < dirs[j]
+	})
+	return dirs[:min(len(dirs), 5)]
+}
+

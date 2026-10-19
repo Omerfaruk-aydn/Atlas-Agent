@@ -148,3 +148,23 @@ func pathInString(s string) (string, bool) {
 	return clean, true
 }
 
+// stripTemplates removes ${...} parts.
+func stripTemplates(s string) string {
+	for {
+		start := strings.Index(s, "${")
+		if start < 0 {
+			return s
+		}
+		end := strings.IndexByte(s[start:], '}')
+		if end < 0 {
+			return s
+		}
+		s = s[:start] + "x" + s[start+end+1:]
+	}
+}
+
+// isCodePath reports whether a path names a file the map reads as code.
+func isCodePath(p string) bool {
+	return Category(LanguageOf(p)) == CategoryCode
+}
+

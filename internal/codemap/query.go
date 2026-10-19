@@ -636,3 +636,23 @@ func (m *Map) explainFile(ctx context.Context, fi int) string {
 	return b.String()
 }
 
+func (m *Map) pathList(files []int, n int) string {
+	var out []string
+	for _, fi := range files[:min(len(files), n)] {
+		out = append(out, m.Files[fi].Path)
+	}
+	if len(files) > n {
+		out = append(out, fmt.Sprintf("… %d more", len(files)-n))
+	}
+	return strings.Join(out, ", ")
+}
+
+// placeName names where a use is: a definition or a file's top level.
+func (m *Map) placeName(from int) string {
+	if from < 0 {
+		return "top level"
+	}
+	s := m.symbol(from)
+	return s.Kind + " " + qualifiedName(s)
+}
+

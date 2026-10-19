@@ -54,11 +54,15 @@ type ContentPart interface {
 }
 
 type ReasoningContent struct {
-	Thinking         string                             `json:"thinking"`
-	Signature        string                             `json:"signature"`
-	ThoughtSignature string                             `json:"thought_signature"` // Used for google
-	ToolID           string                             `json:"tool_id"`           // Used for openrouter google models
-	ResponsesData    *openai.ResponsesReasoningMetadata `json:"responses_data"`
+	Thinking         string `json:"thinking"`
+	Signature        string `json:"signature"`
+	ThoughtSignature string `json:"thought_signature"` // Used for google
+	ToolID           string `json:"tool_id"`           // Used for openrouter google models
+	// ToolSignatures holds Google thought signatures that belong to a tool
+	// call, by tool call ID. A step can carry one for its thinking and one
+	// for its first tool call; each must go back with its own part.
+	ToolSignatures map[string]string                  `json:"tool_signatures,omitempty"`
+	ResponsesData  *openai.ResponsesReasoningMetadata `json:"responses_data"`
 	// Provider and Model identify the producer of the opaque reasoning
 	// state. Empty for records written before origins were tracked.
 	Provider   string `json:"provider,omitempty"`
@@ -331,10 +335,19 @@ func (m *Message) AppendReasoningContent(delta string) {
 	})
 }
 
+// AppendThoughtSignature records a Google thought signature. A signature
+// is opaque and arrives whole, so a later one for the same part replaces
+// it; joining two would corrupt both.
 func (m *Message) AppendThoughtSignature(signature string, toolCallID string) {
 	m.updateReasoning(true, func(c *ReasoningContent) {
-		c.ThoughtSignature += signature
-		c.ToolID = toolCallID
+		if toolCallID == "" {
+			c.ThoughtSignature = signature
+			return
+		}
+		if c.ToolSignatures == nil {
+			c.ToolSignatures = map[string]string{}
+		}
+		c.ToolSignatures[toolCallID] = signature
 	})
 }
 
@@ -597,6 +610,15 @@ func (m *Message) ToAIMessage() []fantasy.Message {
 				}
 			}
 			parts = append(parts, reasoningPart)
+		}
+		// Each tool call's signature goes back as its own reasoning part,
+		// in the order of the calls.
+		for _, call := range m.ToolCalls() {
+			if signature := reasoning.ToolSignatures[call.ID]; signature != "" {
+				parts = append(parts, fantasy.ReasoningPart{ProviderOptions: fantasy.ProviderOptions{
+					google.Name: &google.ReasoningMetadata{Signature: signature, ToolID: call.ID},
+				}})
+			}
 		}
 		for _, call := range m.ToolCalls() {
 			parts = append(parts, fantasy.ToolCallPart{

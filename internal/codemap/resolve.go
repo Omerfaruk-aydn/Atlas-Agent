@@ -918,3 +918,37 @@ func limit(ids []int) []int {
 	return ids[:min(len(ids), maxCandidates)]
 }
 
+// candidates returns ids as an ambiguous match, or nothing when there are
+// too many to mean anything.
+func candidates(ids []int) ([]int, Confidence) {
+	if len(ids) == 0 || len(ids) > maxCandidates {
+		return nil, ""
+	}
+	return ids, Ambiguous
+}
+
+// preferKind keeps the definitions that fit the kind of use, when any do:
+// a base type is a class or interface, a call is a function or a class.
+func (m *Map) preferKind(ids []int, kind string) []int {
+	var out []int
+	for _, id := range ids {
+		k := m.symbol(id).Kind
+		switch kind {
+		case RefInherit, RefNew, RefUse:
+			if classLike[k] && k != "namespace" || k == "type" || k == "function" && kind == RefUse {
+				out = append(out, id)
+			}
+		default:
+			if k != "namespace" && k != "impl" {
+				out = append(out, id)
+			}
+		}
+	}
+	if len(out) == 0 && kind == RefCall {
+		return nil
+	}
+	if len(out) == 0 {
+		return ids
+	}
+	return out
+}

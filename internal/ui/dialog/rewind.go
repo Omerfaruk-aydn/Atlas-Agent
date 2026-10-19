@@ -31,11 +31,11 @@ const (
 	rewindModeApplying
 )
 
-// Rewind lets the user go back to just before an earlier user message:
-// the session is forked with the conversation before it and the working
-// directory's files are restored to their state at that point. The fork is
-// non-destructive: the current session is never modified, only copied up
-// to the chosen point.
+// Rewind lets the user go back to an earlier user message: the session is
+// forked with the conversation up to and including it, and the working
+// directory's files are restored to their state before it. Nothing is run;
+// the user decides what to send next. The fork is non-destructive: the
+// current session is never modified, only copied up to the chosen point.
 type Rewind struct {
 	com  *common.Common
 	help help.Model
@@ -46,9 +46,6 @@ type Rewind struct {
 	sourceTitle   string
 	targetID      string
 	targetPreview string
-	// targetText is the chosen message's full text, put back in the
-	// editor once the rewind is applied.
-	targetText string
 
 	previewLoading bool
 	previewErr     error
@@ -181,7 +178,7 @@ func (r *Rewind) HandleMsg(msg tea.Msg) Action {
 			r.applyErr = msg.err
 			return nil
 		}
-		return ActionRewindApplied{Result: msg.result, Prompt: r.targetText}
+		return ActionRewindApplied{Result: msg.result}
 	}
 	return nil
 }
@@ -215,7 +212,6 @@ func (r *Rewind) handlePickingKey(msg tea.KeyPressMsg) Action {
 		}
 		r.targetID = ri.Message.ID
 		r.targetPreview = ri.preview()
-		r.targetText = ri.Content().Text
 		r.mode = rewindModeConfirming
 		r.previewLoading = true
 		r.previewErr = nil
@@ -300,7 +296,7 @@ func (r *Rewind) confirmMessage() string {
 		return fmt.Sprintf("Rewind failed: %v\n\nPress y to retry, n to go back.", r.applyErr)
 	}
 	return fmt.Sprintf(
-		"Rewind to before: %q\n\nThis creates a new session (\"Rewind: %s\") with the conversation before that message and puts the message back in the editor. %d file(s) are restored to their content at that point and %d file(s) created after it are deleted. The current session is not changed.\n\nConfirm? (y/n)",
+		"Rewind to: %q\n\nThis creates a new session (\"Rewind: %s\") where the conversation ends with that message; nothing is run until you send something. %d file(s) are restored to their content before that message and %d file(s) created after it are deleted. The current session is not changed.\n\nConfirm? (y/n)",
 		r.targetPreview, r.sourceTitle, r.filesToWrite, r.filesToDelete,
 	)
 }

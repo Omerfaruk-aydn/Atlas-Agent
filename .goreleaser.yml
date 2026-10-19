@@ -29,6 +29,7 @@ snapshot:
 before:
   hooks:
     - go mod tidy
+    - sh -c 'npm --prefix web ci && npm --prefix web run build'
     - rm -rf completions
     - mkdir completions
     - rm -rf manpages

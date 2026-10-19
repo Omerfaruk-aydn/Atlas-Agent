@@ -2002,7 +2002,11 @@ func (c *ProviderConfig) TestConnectionContext(ctx context.Context, resolver Var
 		case catwalk.InferenceProviderOpenRouter:
 			testURL = baseURL + "/credits"
 		case catwalk.InferenceProviderOpenCodeGo:
-			testURL = strings.Replace(baseURL, "/go", "", 1) + "/models"
+			if strings.Contains(baseURL, "/inference/go/") {
+				testURL = baseURL + "/models"
+			} else {
+				testURL = strings.Replace(baseURL, "/go", "", 1) + "/models"
+			}
 		default:
 			testURL = baseURL + "/models"
 		}

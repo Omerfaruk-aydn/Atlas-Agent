@@ -64,3 +64,22 @@ var (
 	godotNodeRe     = regexp.MustCompile(`name="([^"]+)"`)
 )
 
+// extractGodot reads a Godot scene or resource: the scripts it attaches
+// and the scenes, textures and sounds it loads.
+func extractGodot(out *File, content string) {
+	for i, line := range strings.Split(content, "\n") {
+		for _, m := range godotResourceRe.FindAllStringSubmatch(line, -1) {
+			target := m[1]
+			if strings.HasSuffix(target, ".gd") || strings.HasSuffix(target, ".cs") {
+				out.Imports = append(out.Imports, Import{Spec: target, Line: i + 1})
+				continue
+			}
+			addLink(out, FileLink{Target: target, Kind: LinkLoads, Line: i + 1})
+		}
+		if strings.HasPrefix(line, "[node ") {
+			if name := godotNodeRe.FindStringSubmatch(line); name != nil {
+				out.Symbols = append(out.Symbols, Symbol{Name: name[1], Kind: "node", Line: i + 1, EndLine: i + 1, Signature: clipSignature(line), Exported: true})
+			}
+		}
+	}
+}

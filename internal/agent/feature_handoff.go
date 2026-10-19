@@ -213,3 +213,65 @@ type handoffInput struct {
 	jobs     []shell.BackgroundShellInfo
 }
 
+// handoffText builds the message that replaces the conversation.
+func handoffText(in handoffInput) string {
+	var b strings.Builder
+	open := in.plan.Open()
+	fmt.Fprintf(&b, "# Handoff after feature %s\n\n", in.finished.ID)
+	fmt.Fprintf(&b, "Feature %s (%s) is done and every check the contract requires passed after the last change. ", in.finished.ID, in.finished.Title)
+	b.WriteString("The conversation that built it was replaced by this handoff so the next feature starts with a clean context. ")
+	b.WriteString("Nothing here was summarized by a model: it is assembled from the work plan, the progress notes and the user's messages. ")
+	fmt.Fprintf(&b, "The work plan (%s/%s) and its open features are shown with every request.\n\n", workplan.Dir, workplan.PlanFile)
+	b.WriteString("You no longer remember the contents of any file or the output of any command. View a file before you edit it.\n")
+
+	b.WriteString("\n## The user's messages, verbatim\n\n")
+	for _, turn := range in.turns {
+		if turn.Kind == "continuation" {
+			continue
+		}
+		text := strings.TrimSpace(turn.Text)
+		if len(text) > handoffMaxTurnText {
+			text = strings.ToValidUTF8(text[:handoffMaxTurnText], "") + " [truncated]"
+		}
+		fmt.Fprintf(&b, "%d. %s\n", turn.Seq, strings.ReplaceAll(text, "\n", "\n   "))
+	}
+
+	if notes := strings.TrimSpace(in.progress); notes != "" {
+		if len(notes) > handoffMaxProgress {
+			notes = "[earlier notes omitted]\n" + strings.ToValidUTF8(notes[len(notes)-handoffMaxProgress:], "")
+		}
+		fmt.Fprintf(&b, "\n## Progress notes (%s/%s)\n\n%s\n", workplan.Dir, workplan.ProgressFile, notes)
+	}
+
+	if len(in.changed) > 0 {
+		files := slices.Sorted(slices.Values(in.changed))
+		b.WriteString("\n## Files changed for this request\n\n")
+		for _, path := range files[:min(len(files), handoffMaxFiles)] {
+			b.WriteString("- " + path + "\n")
+		}
+		if len(files) > handoffMaxFiles {
+			fmt.Fprintf(&b, "- and %d more\n", len(files)-handoffMaxFiles)
+		}
+	}
+
+	if len(in.jobs) > 0 {
+		b.WriteString("\n## Background jobs still running\n\n")
+		for _, job := range in.jobs {
+			fmt.Fprintf(&b, "- %s: %s (started %s)\n", job.ID, job.Command, job.StartedAt.Format(time.TimeOnly))
+		}
+		b.WriteString("Read them with job_output and stop the ones you no longer need with job_kill.\n")
+	}
+
+	b.WriteString("\n## Next\n\n")
+	if len(open) > 0 {
+		next := open[0]
+		fmt.Fprintf(&b, "Continue with feature %s: %s.", next.ID, next.Title)
+		if acceptance := strings.TrimSpace(next.Acceptance); acceptance != "" {
+			b.WriteString(" Acceptance: " + acceptance)
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("If the progress notes name a different next step, follow the notes. Keep them current as you work.\n")
+	return b.String()
+}
+

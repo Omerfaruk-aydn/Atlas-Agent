@@ -150,3 +150,70 @@ func (m *Map) nearFiles(fi int, domain string) map[int]bool {
 	return near
 }
 
+// resolveDomainRef finds the definitions a use outside code can mean.
+func (m *Map) resolveDomainRef(fi int, r Ref, domain string, near map[int]bool, cssModules map[string][]int) ([]int, Confidence) {
+	idx := m.byDomain[domain]
+	var ids []int
+	if domain == domainRoute {
+		ids = m.routeCandidates(r.Name)
+	} else {
+		ids = idx[refKey(domain, r)]
+	}
+	if domain == domainCSS && r.Qualifier != "" && !strings.HasPrefix(r.Qualifier, "@") {
+		// styles.button: a class of the CSS module bound to styles, also
+		// written styles.primaryButton for .primary-button.
+		files, ok := cssModules[r.Qualifier]
+		if !ok {
+			return nil, ""
+		}
+		var out []int
+		for _, id := range append(append([]int(nil), ids...), idx[kebabCase(r.Name)]...) {
+			for _, f := range files {
+				if m.symbols[id].file == f {
+					out = appendUnique(out, id)
+				}
+			}
+		}
+		if len(out) == 0 {
+			return nil, ""
+		}
+		return limit(out), Resolved
+	}
+	if len(ids) == 0 {
+		return nil, ""
+	}
+	var local []int
+	for _, id := range ids {
+		if near[m.symbols[id].file] {
+			local = append(local, id)
+		}
+	}
+	if len(local) > 0 {
+		return limit(local), Resolved
+	}
+	if domain == domainInfra {
+		// var.x and module.y mean the module's own.
+		return nil, ""
+	}
+	if len(ids) == 1 {
+		return ids, Inferred
+	}
+	return candidates(ids)
+}
+
+// kebabCase turns primaryButton into primary-button.
+func kebabCase(s string) string {
+	var b strings.Builder
+	for i, r := range s {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				b.WriteByte('-')
+			}
+			b.WriteRune(r + 'a' - 'A')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+

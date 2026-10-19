@@ -34,7 +34,7 @@ func TestFirstPromptFeedbackEndsOnSubmissionErrorOrCancellation(t *testing.T) {
 		warmCaches(m, false)
 		m.sendMessage("hello")
 		if cancel {
-			m.doCancelAgent()
+			m.doCancelAgent("test")
 		} else {
 			m.Update(agentRunSubmittedMsg{sessionID: "s1", previewID: m.firstPrompt.user.ID, err: errors.New("Upload failed")})
 		}

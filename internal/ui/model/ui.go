@@ -1956,6 +1956,13 @@ func (m *UI) appendSessionMessage(msg message.Message) tea.Cmd {
 		// message already exists, skip
 		return nil
 	}
+	// A message loaded with the session can arrive again as a late
+	// created event, as the copies a rewind makes do. One with only tool
+	// calls has no item of its own, so check the loaded messages too, or
+	// its tools would be appended to the end of the chat a second time.
+	if slices.ContainsFunc(m.sessionMessages, func(loaded message.Message) bool { return loaded.ID == msg.ID }) {
+		return nil
+	}
 	m.reconcileFirstPrompt(msg)
 	m.sessionMessages = append(m.sessionMessages, msg)
 
@@ -2387,12 +2394,6 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 	case dialog.ActionRewindApplied:
 		m.dialog.CloseDialog(dialog.RewindID)
 		cmds = append(cmds, m.loadSession(msg.Result.Session.ID))
-		// The fork ends just before the chosen message; offer it again.
-		m.textarea.SetValue(msg.Prompt)
-		if m.focus != uiFocusEditor {
-			m.focus = uiFocusEditor
-			cmds = append(cmds, m.textarea.Focus())
-		}
 		cmds = append(cmds, util.ReportInfo(fmt.Sprintf(
 			m.com.Text("Rewound: %d file(s) restored, %d deleted"),
 			msg.Result.FilesWritten, msg.Result.FilesDeleted,
@@ -5301,7 +5302,7 @@ func (m *UI) cancelAgent() tea.Cmd {
 	if m.isCanceling {
 		// Second escape press — actually cancel.
 		m.isCanceling = false
-		return m.doCancelAgent()
+		return m.doCancelAgent("esc")
 	}
 
 	// Queued prompts pending: esc clears the queue. Decide from the cached
@@ -5335,12 +5336,14 @@ func (m *UI) interruptAgent() tea.Cmd {
 		return nil
 	}
 	m.isCanceling = false
-	return m.doCancelAgent()
+	return m.doCancelAgent("ctrl+c")
 }
 
 // doCancelAgent performs the actual cancellation shared by cancelAgent's
-// second escape press and interruptAgent's single ctrl+c press.
-func (m *UI) doCancelAgent() tea.Cmd {
+// second escape press and interruptAgent's single ctrl+c press. via names
+// the gesture, for the log.
+func (m *UI) doCancelAgent(via string) tea.Cmd {
+	slog.Info("Turn canceled from the UI", "session_id", m.session.ID, "via", via)
 	m.clearFirstPromptPreview()
 	// Cancel a running bang command if one is in progress.
 	if m.bangCancel != nil {
@@ -5401,7 +5404,7 @@ func (m *UI) interruptWithCorrection() tea.Cmd {
 	}
 
 	sessionID := m.session.ID
-	cmds := []tea.Cmd{m.doCancelAgent()}
+	cmds := []tea.Cmd{m.doCancelAgent("interrupt with correction")}
 	cmds = append(cmds, func() tea.Msg {
 		msgs, err := m.com.Workspace.ListMessages(context.Background(), sessionID)
 		if err != nil || len(msgs) == 0 {

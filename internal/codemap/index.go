@@ -361,3 +361,36 @@ func gitFiles(ctx context.Context, root string) ([]string, error) {
 	return files, nil
 }
 
+// gitCommand runs git in root without inheriting GIT_ variables, which
+// could point it at another repository.
+func gitCommand(ctx context.Context, root string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", root}, args...)...)
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(entry, "GIT_") {
+			cmd.Env = append(cmd.Env, entry)
+		}
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, errors.New(strings.TrimSpace(err.Error() + ": " + stderr.String()))
+	}
+	return out, nil
+}
+
+// goModule reads the module path from root's go.mod.
+func goModule(root string) string {
+	data, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[0] == "module" {
+			return strings.Trim(fields[1], `"`)
+		}
+	}
+	return ""
+}
+

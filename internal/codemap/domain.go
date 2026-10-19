@@ -80,3 +80,43 @@ func domainKey(domain string, s *Symbol) string {
 	return s.Name
 }
 
+// refDomain returns the domain a use of kind in a file of lang looks in.
+func refDomain(lang, kind string) string {
+	switch kind {
+	case RefCSS:
+		return domainCSS
+	case RefDOM:
+		return domainDOM
+	case RefTable:
+		return domainSQL
+	case RefTask:
+		return domainTask
+	case RefInfra:
+		return domainInfra
+	case RefRoute:
+		return domainRoute
+	case RefMention:
+		return domainCode
+	}
+	switch lang {
+	case "graphql", "protobuf", "thrift", "prisma", "openapi":
+		return "schema:" + lang
+	}
+	return domainCode
+}
+
+// refKey is how a use is looked up within its domain.
+func refKey(domain string, r Ref) string {
+	switch domain {
+	case domainCSS:
+		if strings.HasPrefix(r.Qualifier, "@") {
+			return r.Qualifier + ":" + r.Name
+		}
+	case domainSQL:
+		return strings.ToLower(r.Name)
+	case domainTask:
+		return r.Qualifier + "." + r.Name
+	}
+	return r.Name
+}
+

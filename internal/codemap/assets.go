@@ -62,3 +62,39 @@ var (
 	cssLengths = regexp.MustCompile(`^\s*([0-9.]+)\s*(px)?\s*$`)
 )
 
+// svgSize reads an SVG's width and height, or its viewBox.
+func svgSize(head []byte) (int, int) {
+	tag := svgTagRe.Find(head)
+	if tag == nil {
+		return 0, 0
+	}
+	var w, h int
+	var box []string
+	for _, m := range svgAttrRe.FindAllSubmatch(tag, -1) {
+		v := string(m[2])
+		switch string(m[1]) {
+		case "width":
+			w = cssPixels(v)
+		case "height":
+			h = cssPixels(v)
+		case "viewBox":
+			box = strings.Fields(strings.ReplaceAll(v, ",", " "))
+		}
+	}
+	if (w == 0 || h == 0) && len(box) == 4 {
+		bw, _ := strconv.ParseFloat(box[2], 64)
+		bh, _ := strconv.ParseFloat(box[3], 64)
+		w, h = int(bw+0.5), int(bh+0.5)
+	}
+	return w, h
+}
+
+func cssPixels(v string) int {
+	m := cssLengths.FindStringSubmatch(v)
+	if m == nil {
+		return 0
+	}
+	f, _ := strconv.ParseFloat(m[1], 64)
+	return int(f + 0.5)
+}
+

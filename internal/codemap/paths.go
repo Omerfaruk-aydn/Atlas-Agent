@@ -305,3 +305,24 @@ func placeholders(p string) string {
 	return b.String()
 }
 
+// isDrivePath reports whether p is an absolute Windows path, C:/x or C:\x.
+func isDrivePath(p string) bool {
+	return len(p) >= 3 && p[1] == ':' && (p[2] == '/' || p[2] == '\\') &&
+		(p[0] >= 'a' && p[0] <= 'z' || p[0] >= 'A' && p[0] <= 'Z')
+}
+
+// projectRelative turns an absolute path inside the project into one
+// relative to its root.
+func (m *Map) projectRelative(p string) (string, bool) {
+	root := m.Root
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
+	root = strings.TrimSuffix(strings.ReplaceAll(root, "\\", "/"), "/") + "/"
+	p = strings.ReplaceAll(p, "\\", "/")
+	if len(p) < len(root) || !strings.EqualFold(p[:len(root)], root) {
+		return "", false
+	}
+	return p[len(root):], true
+}
+

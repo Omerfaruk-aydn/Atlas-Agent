@@ -539,3 +539,39 @@ func (m *Map) resolveImport(fi int, imp Import, module string) []int {
 	return nil
 }
 
+// styleImport resolves @import and @use: a relative path, a Sass partial
+// (_name.scss) or an index; a package (~pkg, pkg/x) is outside.
+func (m *Map) styleImport(fi int, spec string) []int {
+	if hasScheme(spec) || strings.HasPrefix(spec, "~") || strings.HasPrefix(spec, "sass:") {
+		return nil
+	}
+	dir := path.Dir(m.Files[fi].Path)
+	exts := sourceExts[m.Files[fi].Language]
+	base := path.Join(dir, spec)
+	partial := path.Join(path.Dir(base), "_"+path.Base(base))
+	for _, c := range []string{base, partial, path.Join(base, "_index"), path.Join(base, "index")} {
+		if out := m.lookup(c, exts); out != nil {
+			return out
+		}
+	}
+	if strings.HasPrefix(spec, "/") {
+		if found := m.findPath(fi, spec); found >= 0 {
+			return []int{found}
+		}
+	}
+	return nil
+}
+
+// include resolves a C or C++ include: next to the file, then anywhere in
+// the project if the name is unique.
+func (m *Map) include(dir, spec string) []int {
+	spec = strings.Trim(spec, "<>")
+	if out := m.lookup(path.Join(dir, spec), nil); out != nil {
+		return out
+	}
+	if out := m.lookup(spec, nil); out != nil {
+		return out
+	}
+	return m.bySuffix(strings.TrimSuffix(spec, path.Ext(spec)), []string{path.Ext(spec)})
+}
+

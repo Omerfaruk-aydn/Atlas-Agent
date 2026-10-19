@@ -578,6 +578,38 @@ func (c *Client) AgentSummarizeSession(ctx context.Context, id string, sessionID
 	return nil
 }
 
+// SetAgentGoal puts a session into an autonomous run towards goal. An empty
+// goal ends the run.
+func (c *Client) SetAgentGoal(ctx context.Context, id string, sessionID string, goal string) error {
+	body := jsonBody(proto.AgentGoalRequest{Goal: goal})
+	rsp, err := c.post(ctx, fmt.Sprintf("/workspaces/%s/agent/sessions/%s/goal", id, sessionID), nil, body, http.Header{"Content-Type": []string{"application/json"}})
+	if err != nil {
+		return fmt.Errorf("failed to set session goal: %w", err)
+	}
+	defer rsp.Body.Close()
+	if rsp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to set session goal: status code %d", rsp.StatusCode)
+	}
+	return nil
+}
+
+// GetAgentGoal reports the autonomous run of a session.
+func (c *Client) GetAgentGoal(ctx context.Context, id string, sessionID string) (proto.AgentGoalStatus, error) {
+	var status proto.AgentGoalStatus
+	rsp, err := c.get(ctx, fmt.Sprintf("/workspaces/%s/agent/sessions/%s/goal", id, sessionID), nil, nil)
+	if err != nil {
+		return status, fmt.Errorf("failed to get session goal: %w", err)
+	}
+	defer rsp.Body.Close()
+	if rsp.StatusCode != http.StatusOK {
+		return status, fmt.Errorf("failed to get session goal: status code %d", rsp.StatusCode)
+	}
+	if err := json.NewDecoder(rsp.Body).Decode(&status); err != nil {
+		return status, fmt.Errorf("failed to decode session goal: %w", err)
+	}
+	return status, nil
+}
+
 // InitiateAgentProcessing triggers agent initialization on the server.
 func (c *Client) InitiateAgentProcessing(ctx context.Context, id string, interactive bool) error {
 	body := jsonBody(proto.AgentInitRequest{Interactive: interactive})

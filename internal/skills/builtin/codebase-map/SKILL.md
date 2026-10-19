@@ -109,3 +109,28 @@ Every link is labeled. Act on it accordingly:
 When a change is risky, count only resolved links as certain and open
 the files behind the others.
 
+## What it cannot see
+
+The map reads the code without building or running it. It misses calls
+through reflection, callbacks stored in variables, dependency injection,
+generated code, string-based dispatch, file names built at run time
+(beyond a simple `${name}` template), classes or ids assembled from
+strings, and in Ruby and Elixir calls written without parentheses.
+Definitions inside dependencies are not linked. It measures assets but
+does not look at them: `view` an image to see what it shows. So:
+
+- "Used by (0)" or "named by no file" means nothing the map found, not
+  that nothing uses it. Before deleting, also grep for the name and the
+  file's base name, including in config, templates and strings; an asset
+  may be served to clients or loaded from a directory listing.
+- A broken link may point at a file the build generates or a server
+  provides. Check before "fixing" it.
+- For type-exact answers in one language, `code_query` asks the language
+  server when one is configured; prefer it for overloads and interface
+  implementations.
+
+## Reporting
+
+When you describe the structure of a project or the impact of a change to
+the user, say what you read and what came from the map, and mention any
+ambiguous links you did not confirm.

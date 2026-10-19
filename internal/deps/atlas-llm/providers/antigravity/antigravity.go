@@ -461,11 +461,11 @@ func toGeminiPrompt(prompt fantasy.Prompt) (*geminiContent, []geminiContent, []f
 
 		case fantasy.MessageRoleAssistant:
 			var parts []geminiPart
-			signatures := make(map[string][]byte)
+			signatures := make(map[string]string)
 			for _, part := range msg.Content {
 				if reasoning, ok := fantasy.AsMessagePart[fantasy.ReasoningPart](part); ok {
 					if metadata := google.GetReasoningMetadata(reasoning.ProviderOptions); metadata != nil {
-						signatures[metadata.ToolID] = []byte(metadata.Signature)
+						signatures[metadata.ToolID] = metadata.Signature
 					}
 				}
 			}
@@ -475,13 +475,13 @@ func toGeminiPrompt(prompt fantasy.Prompt) (*geminiContent, []geminiContent, []f
 					if reasoning, ok := fantasy.AsMessagePart[fantasy.ReasoningPart](part); ok && reasoning.Text != "" {
 						metadata := google.GetReasoningMetadata(reasoning.ProviderOptions)
 						if metadata != nil && metadata.ToolID == "" {
-							parts = append(parts, geminiPart{Text: reasoning.Text, Thought: true, ThoughtSignature: []byte(metadata.Signature)})
+							parts = append(parts, geminiPart{Text: reasoning.Text, Thought: true, ThoughtSignature: google.PartSignature(metadata.Signature)})
 							delete(signatures, "")
 						}
 					}
 				case fantasy.ContentTypeText:
 					if t, ok := fantasy.AsMessagePart[fantasy.TextPart](part); ok && t.Text != "" {
-						parts = append(parts, geminiPart{Text: t.Text, ThoughtSignature: signatures[""]})
+						parts = append(parts, geminiPart{Text: t.Text, ThoughtSignature: google.PartSignature(signatures[""])})
 						delete(signatures, "")
 					}
 				case fantasy.ContentTypeToolCall:
@@ -495,7 +495,7 @@ func toGeminiPrompt(prompt fantasy.Prompt) (*geminiContent, []geminiContent, []f
 					}
 					parts = append(parts, geminiPart{
 						FunctionCall:     &geminiFuncCall{ID: tc.ToolCallID, Name: tc.ToolName, Args: args},
-						ThoughtSignature: signatures[tc.ToolCallID],
+						ThoughtSignature: functionCallSignature(signatures, tc.ToolCallID),
 					})
 				}
 			}
@@ -659,7 +659,7 @@ func mapResponse(gr generateContentResponse, warnings []fantasy.CallWarning) (*f
 			toolCallID := cmp.Or(part.FunctionCall.ID, uuid.NewString())
 			if len(part.ThoughtSignature) > 0 {
 				content = append(content, fantasy.ReasoningContent{ProviderMetadata: fantasy.ProviderMetadata{
-					google.Name: &google.ReasoningMetadata{Signature: string(part.ThoughtSignature), ToolID: toolCallID},
+					google.Name: &google.ReasoningMetadata{Signature: google.EncodeSignature(part.ThoughtSignature), ToolID: toolCallID},
 				}})
 			}
 			content = append(content, fantasy.ToolCallContent{
@@ -922,7 +922,17 @@ func signatureMetadata(signature []byte, toolID string) fantasy.ProviderMetadata
 	if len(signature) == 0 {
 		return nil
 	}
-	return fantasy.ProviderMetadata{google.Name: &google.ReasoningMetadata{Signature: string(signature), ToolID: toolID}}
+	return fantasy.ProviderMetadata{google.Name: &google.ReasoningMetadata{Signature: google.EncodeSignature(signature), ToolID: toolID}}
+}
+
+// functionCallSignature returns the signature for a function call, or nil
+// when the step carried none for it.
+func functionCallSignature(signatures map[string]string, toolCallID string) []byte {
+	signature, found := signatures[toolCallID]
+	if !found || signature == "" {
+		return nil
+	}
+	return google.FunctionCallSignature(signature)
 }
 
 // GenerateObject implements fantasy.LanguageModel via the generic

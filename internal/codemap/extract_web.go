@@ -206,3 +206,21 @@ func extractComponent(out *File, ext, content string) {
 	}
 }
 
+// pascalCase turns my-button and my_button into MyButton.
+func pascalCase(s string) string {
+	var b strings.Builder
+	upper := true
+	for _, r := range s {
+		switch {
+		case r == '-' || r == '_' || r == '.' || r == ' ':
+			upper = true
+		case upper:
+			b.WriteString(strings.ToUpper(string(r)))
+			upper = false
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+

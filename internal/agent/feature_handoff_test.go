@@ -161,3 +161,64 @@ func TestHandoffTextCarriesTheRecordAndTheNextFeature(t *testing.T) {
 	require.Contains(t, text, "View a file before you edit it")
 }
 
+func TestHandoffTextBoundsLongInputs(t *testing.T) {
+	t.Parallel()
+	plan, err := workplan.Parse([]byte(strings.Replace(handoffPlan, "%s", "true", 1)))
+	require.NoError(t, err)
+	var files []string
+	for i := range handoffMaxFiles + 5 {
+		files = append(files, fmt.Sprintf("src/f%02d.ts", i))
+	}
+	text := handoffText(handoffInput{
+		finished: workplan.Feature{ID: "F1"},
+		plan:     plan,
+		progress: strings.Repeat("old note\n", 2000) + "latest note",
+		turns:    []engineering.UserTurn{{Seq: 1, Kind: "request", Text: strings.Repeat("a", handoffMaxTurnText+100)}},
+		changed:  files,
+	})
+	require.Contains(t, text, "[truncated]")
+	require.Contains(t, text, "[earlier notes omitted]")
+	require.Contains(t, text, "latest note")
+	require.Contains(t, text, "- and 5 more")
+	require.Less(t, len(text), handoffMaxTurnText+handoffMaxProgress+8<<10)
+}
+
+// The handoff becomes the session's summary: the next request starts from
+// it as the first message, and the conversation before it is dropped.
+func TestHandOffSavesTheHandoffAsTheSummary(t *testing.T) {
+	t.Parallel()
+	env := testEnv(t)
+	store := engineering.NewStore(t.TempDir())
+	writeHandoffProject(t, env.workingDir, true)
+	writeNotes(t, env.workingDir, time.Now())
+	a := NewSessionAgent(SessionAgentOptions{
+		LargeModel:  Model{CatwalkCfg: testCatwalkModel()},
+		SmallModel:  Model{CatwalkCfg: testCatwalkModel()},
+		IsYolo:      true,
+		Sessions:    env.sessions,
+		Messages:    env.messages,
+		WorkingDir:  env.workingDir,
+		Engineering: store,
+	}).(*sessionAgent)
+
+	sess, err := env.sessions.Create(t.Context(), "solar")
+	require.NoError(t, err)
+	_, err = recordWorkTurn(t.Context(), store, sess.ID, "build a solar system", "")
+	require.NoError(t, err)
+	_, err = env.messages.Create(t.Context(), sess.ID, messageParams("build a solar system"))
+	require.NoError(t, err)
+
+	require.NoError(t, a.handOff(t.Context(), sess.ID, workplan.Feature{ID: "F1", Title: "Scene"}, []string{"src/scene.ts"}))
+
+	saved, err := env.sessions.Get(t.Context(), sess.ID)
+	require.NoError(t, err)
+	require.NotEmpty(t, saved.SummaryMessageID)
+	require.Zero(t, saved.PromptTokens)
+	msgs, err := a.getSessionMessages(t.Context(), saved)
+	require.NoError(t, err)
+	require.Len(t, msgs, 1)
+	require.Contains(t, msgs[0].Content().Text, "1. build a solar system")
+	require.Contains(t, msgs[0].Content().Text, "- src/scene.ts")
+	require.Contains(t, msgs[0].Content().Text, "Continue with feature F2")
+}
+

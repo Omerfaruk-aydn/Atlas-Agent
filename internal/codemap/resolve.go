@@ -582,3 +582,78 @@ func (m *Map) relativeOrRoot(dir, spec string) []int {
 	return m.lookup(spec, nil)
 }
 
+// rustImport resolves use crate::a::b, self::, super:: and mod x.
+func (m *Map) rustImport(f *File, spec string) []int {
+	exts := []string{".rs"}
+	dir := path.Dir(f.Path)
+	moduleDir := dir
+	switch path.Base(f.Path) {
+	case "mod.rs", "lib.rs", "main.rs":
+	default:
+		moduleDir = path.Join(dir, strings.TrimSuffix(path.Base(f.Path), ".rs"))
+	}
+	if name, ok := strings.CutPrefix(spec, "mod:"); ok {
+		return m.lookup(path.Join(moduleDir, name), exts, "mod")
+	}
+	parts := strings.Split(spec, "::")
+	var base string
+	switch parts[0] {
+	case "crate":
+		base = ""
+	case "self":
+		base = moduleDir
+	case "super":
+		base = path.Dir(moduleDir)
+	default:
+		return nil
+	}
+	parts = parts[1:]
+	for n := len(parts); n > 0; n-- {
+		rel := path.Join(append([]string{base}, parts[:n]...)...)
+		if base == "" {
+			if out := m.bySuffix(rel, exts); out != nil {
+				return out
+			}
+			if out := m.bySuffix(rel+"/mod", exts); out != nil {
+				return out
+			}
+			continue
+		}
+		if out := m.lookup(rel, exts, "mod"); out != nil {
+			return out
+		}
+	}
+	return nil
+}
+
+// implicitScope lists the files whose definitions a file sees without
+// importing them: the rest of its Go, Java or Kotlin package, every Swift
+// file of the module, a C file's header.
+func (m *Map) implicitScope(fi int) []int {
+	f := m.Files[fi]
+	dir := path.Dir(f.Path)
+	var out []int
+	switch f.Language {
+	case "go", "java", "kotlin", "scala", "groovy", "csharp", "vlang", "terraform":
+		for _, other := range m.dirs[dir] {
+			if other != fi && m.Files[other].Language == f.Language {
+				out = append(out, other)
+			}
+		}
+	case "swift":
+		for other, g := range m.Files {
+			if other != fi && g.Language == "swift" && len(out) < 2000 {
+				out = append(out, other)
+			}
+		}
+	case "c", "cpp", "objc":
+		stem := strings.TrimSuffix(f.Path, path.Ext(f.Path))
+		for _, ext := range []string{".h", ".hpp", ".hh", ".hxx", ".c", ".cc", ".cpp", ".cxx", ".m", ".mm"} {
+			if other, ok := m.byPath[stem+ext]; ok && other != fi {
+				out = append(out, other)
+			}
+		}
+	}
+	return out
+}
+

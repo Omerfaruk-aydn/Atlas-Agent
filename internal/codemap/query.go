@@ -500,3 +500,10 @@ func (m *Map) Explain(ctx context.Context, text string) string {
 	return b.String()
 }
 
+func lastName(text string) string {
+	if i := strings.LastIndexAny(text, ".:"); i >= 0 {
+		return text[i+1:]
+	}
+	return text
+}
+

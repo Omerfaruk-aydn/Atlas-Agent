@@ -11,6 +11,8 @@ func UnavailableProviderReason(t Type, ids ...InferenceProvider) string {
 			return "no verified model-inference endpoint is available for this built-in connection"
 		case "codex-ide":
 			return "use openai for API-key billing or chatgpt for Codex account sign-in"
+		case InferenceProviderAlibabaTeamSGP:
+			return "the published Team Plan is Beijing-only; use the verified China connection or a custom endpoint confirmed by your subscription"
 		}
 	}
 	switch t {
@@ -108,6 +110,7 @@ const (
 	InferenceProviderZed              InferenceProvider = "zed"
 	InferenceProviderMuse             InferenceProvider = "muse"
 	InferenceProviderMetaAPI          InferenceProvider = "meta-api"
+	InferenceProviderPerplexityAgent  InferenceProvider = "perplexity-agent"
 	InferenceProviderCortecs          InferenceProvider = "cortecs"
 	InferenceProviderVercel           InferenceProvider = "vercel"
 	InferenceProviderMiniMax          InferenceProvider = "minimax"
@@ -117,6 +120,7 @@ const (
 	InferenceProviderQiniuTokenPlan   InferenceProvider = "qiniu-token-plan"
 	InferenceProviderAvian            InferenceProvider = "avian"
 	InferenceProviderNebius           InferenceProvider = "nebius"
+	InferenceProviderNebiusUSNorth1   InferenceProvider = "nebius-us-north1"
 	InferenceProviderNeuralwatt       InferenceProvider = "neuralwatt"
 	InferenceProviderOpenCodeZen      InferenceProvider = "opencode-zen"
 	InferenceProviderOpenCodeGo       InferenceProvider = "opencode-go"
@@ -154,19 +158,20 @@ type ModelOptions struct {
 
 // Model represents an AI model configuration.
 type Model struct {
-	ID                     string       `json:"id"`
-	Name                   string       `json:"name"`
-	CostPer1MIn            float64      `json:"cost_per_1m_in"`
-	CostPer1MOut           float64      `json:"cost_per_1m_out"`
-	CostPer1MInCached      float64      `json:"cost_per_1m_in_cached"`
-	CostPer1MOutCached     float64      `json:"cost_per_1m_out_cached"`
-	ContextWindow          int64        `json:"context_window"`
-	DefaultMaxTokens       int64        `json:"default_max_tokens"`
-	CanReason              bool         `json:"can_reason"`
-	ReasoningLevels        []string     `json:"reasoning_levels,omitempty"`
-	DefaultReasoningEffort string       `json:"default_reasoning_effort,omitempty"`
-	SupportsImages         bool         `json:"supports_attachments"`
-	Options                ModelOptions `json:"options,omitzero"`
+	ID                     string          `json:"id"`
+	Name                   string          `json:"name"`
+	CostPer1MIn            float64         `json:"cost_per_1m_in"`
+	CostPer1MOut           float64         `json:"cost_per_1m_out"`
+	CostPer1MInCached      float64         `json:"cost_per_1m_in_cached"`
+	CostPer1MOutCached     float64         `json:"cost_per_1m_out_cached"`
+	ContextWindow          int64           `json:"context_window"`
+	DefaultMaxTokens       int64           `json:"default_max_tokens"`
+	CanReason              bool            `json:"can_reason"`
+	ReasoningLevels        []string        `json:"reasoning_levels,omitempty"`
+	DefaultReasoningEffort string          `json:"default_reasoning_effort,omitempty"`
+	SupportsImages         bool            `json:"supports_attachments"`
+	Options                ModelOptions    `json:"options,omitzero"`
+	Lifecycle              *ModelLifecycle `json:"lifecycle,omitempty"`
 }
 
 // KnownProviders returns all the known inference providers.
@@ -194,6 +199,7 @@ func KnownProviders() []InferenceProvider {
 		InferenceProviderBedrockEurope,
 		InferenceProviderBedrockOpenAI,
 		InferenceProviderMetaAPI,
+		InferenceProviderPerplexityAgent,
 		InferenceProviderVertexAI,
 		InferenceProviderXAI,
 		InferenceProviderZAI,
@@ -218,6 +224,7 @@ func KnownProviders() []InferenceProvider {
 		InferenceProviderQiniuTokenPlan,
 		InferenceProviderAvian,
 		InferenceProviderNebius,
+		InferenceProviderNebiusUSNorth1,
 		InferenceProviderNeuralwatt,
 		InferenceProviderOpenCodeZen,
 		InferenceProviderOpenCodeGo,

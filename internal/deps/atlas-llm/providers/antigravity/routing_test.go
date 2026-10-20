@@ -14,6 +14,8 @@ import (
 func TestResolveAccountModelRoutes(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct{ model, effort, want string }{
+		{"gemini-4-argon", "high", "gemini-4-argon-high"},
+		{"gemini-4-argon-low", "", "gemini-4-argon-low"},
 		{"gemini-3.8-flash", "medium", "gemini-3.8-flash-medium"},
 		{"gemini-3.7-flash", "low", "gemini-3.7-flash-low"},
 		{"gemini-3.6-flash", "high", "gemini-3.6-flash-high"},

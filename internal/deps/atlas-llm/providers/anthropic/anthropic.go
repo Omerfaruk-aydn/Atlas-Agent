@@ -11,6 +11,7 @@ import (
 	"io"
 	"maps"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -56,7 +57,12 @@ func defaultsToAdaptiveThinking(model string) bool {
 		strings.Contains(model, "claude-fable-") ||
 		strings.Contains(model, "claude-opus-5") ||
 		strings.Contains(model, "claude-sonnet-5") ||
-		strings.Contains(model, "claude-haiku-5-5")
+		strings.Contains(model, "claude-haiku-5-5") || isMiniMaxFlash(model)
+}
+
+func isMiniMaxFlash(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	return model == "minimax-m3.1-flash" || model == "minimax-m3.1-flash-preview"
 }
 
 func requiresAdaptiveThinking(model string) bool {
@@ -70,6 +76,9 @@ func setThinkingDisplay(param interface{ SetExtraFields(map[string]any) }, displ
 
 func defaultsToOmittedThinkingDisplay(model string) bool {
 	model = strings.ToLower(strings.TrimSpace(model))
+	if isMiniMaxFlash(model) {
+		return false
+	}
 	return defaultsToAdaptiveThinking(model) || defaultsToOmittedOpusThinkingDisplay(model)
 }
 
@@ -253,6 +262,9 @@ func WithObjectMode(om fantasy.ObjectMode) Option {
 }
 
 func (a *provider) LanguageModel(ctx context.Context, modelID string) (fantasy.LanguageModel, error) {
+	if strings.EqualFold(modelID, "MiniMax-M3.1-Flash-Preview") {
+		modelID = "MiniMax-M3.1-Flash"
+	}
 	clientOptions := make([]option.RequestOption, 0, 5+len(a.options.headers))
 	clientOptions = append(clientOptions, option.WithMaxRetries(0))
 
@@ -405,6 +417,9 @@ func (a languageModel) prepareParams(call fantasy.Call) (
 	switch {
 	case providerOptions.Effort != nil:
 		effort := *providerOptions.Effort
+		if isMiniMaxFlash(a.modelID) && !slices.Contains([]Effort{EffortLow, EffortMedium, EffortHigh, EffortXHigh, EffortMax}, effort) {
+			return nil, nil, nil, nil, fmt.Errorf("MiniMax M3.1 Flash requires low, medium, high, xhigh or max effort")
+		}
 		params.OutputConfig = anthropic.OutputConfigParam{
 			Effort: anthropic.OutputConfigEffort(effort),
 		}

@@ -280,14 +280,14 @@ func resolveModel(modelID, effort string) (string, bool, error) {
 			continue
 		}
 		switch base {
-		case "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-pro",
+		case "gemini-4-argon", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-pro",
 			"claude-sonnet-5-5", "claude-opus-5-5", "gpt-oss-120b":
 			modelID, effort = base, cmp.Or(effort, level)
 		}
 		break
 	}
 	switch modelID {
-	case "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash":
+	case "gemini-4-argon", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash":
 		effort = cmp.Or(effort, "medium")
 		if effort != "low" && effort != "medium" && effort != "high" {
 			return "", true, fmt.Errorf("antigravity: %s supports low, medium or high effort", modelID)

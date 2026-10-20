@@ -8,6 +8,222 @@
   "default_small_model_id": "anthropic/claude-haiku-4.5",
   "models": [
     {
+      "id": "mistralai/mistral-large-4-0",
+      "name": "Mistral: Mistral Large 4",
+      "cost_per_1m_in": 0.6799999999999999,
+      "cost_per_1m_out": 2.09,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.07,
+      "context_window": 1048576,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "high",
+        "none"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "anthropic/claude-haiku-5.5",
+      "name": "Anthropic: Claude Haiku 5.5",
+      "cost_per_1m_in": 0.09999999999999999,
+      "cost_per_1m_out": 0.5,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.01,
+      "context_window": 1000000,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "xhigh",
+        "high",
+        "medium",
+        "low",
+        "none"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "stepfun/step-5-preview",
+      "name": "StepFun: Step 5 Preview",
+      "cost_per_1m_in": 1.0,
+      "cost_per_1m_out": 2.7,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.09999999999999999,
+      "context_window": 1048576,
+      "default_max_tokens": 64000,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "meta/muse-wonder",
+      "name": "Meta: Muse Wonder",
+      "cost_per_1m_in": 4.0,
+      "cost_per_1m_out": 20.0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.19999999999999998,
+      "context_window": 1048576,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "xhigh",
+        "high",
+        "medium",
+        "low",
+        "minimal"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "google/gemini-4-argon",
+      "name": "Google: Gemini 4 Argon",
+      "cost_per_1m_in": 2.0,
+      "cost_per_1m_out": 10.0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.09999999999999999,
+      "context_window": 1048576,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "nvidia/nemotron-3.5-super-vl:free",
+      "name": "NVIDIA: Nemotron 3.5 Super VL (free)",
+      "cost_per_1m_in": 0.0,
+      "cost_per_1m_out": 0.0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.0,
+      "context_window": 1000000,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true
+    },
+    {
+      "id": "nvidia/nemotron-3.5-super-vl",
+      "name": "NVIDIA: Nemotron 3.5 Super VL",
+      "cost_per_1m_in": 0.15,
+      "cost_per_1m_out": 0.5,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.02,
+      "context_window": 1048576,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true
+    },
+    {
+      "id": "meta/muse-spark-open",
+      "name": "Meta: Muse Spark Open",
+      "cost_per_1m_in": 1.25,
+      "cost_per_1m_out": 4.25,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.15,
+      "context_window": 1048576,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "xhigh",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "inception/mercury-3",
+      "name": "Inception: Mercury 3",
+      "cost_per_1m_in": 0.09999999999999999,
+      "cost_per_1m_out": 0.35,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.01,
+      "context_window": 1000000,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "high",
+        "medium",
+        "low",
+        "none"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
+      "id": "reflection/beam-1.0-501b-a23b",
+      "name": "Reflection: Beam 1.0 501B A23B",
+      "cost_per_1m_in": 0.3,
+      "cost_per_1m_out": 1.0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.04,
+      "context_window": 1048576,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "max",
+        "xhigh",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default_reasoning_effort": "max"
+    },
+    {
+      "id": "deepseek/deepseek-v4.1-flash-1017",
+      "name": "DeepSeek: DeepSeek V4.1 Flash 1017",
+      "cost_per_1m_in": 0.15,
+      "cost_per_1m_out": 0.6,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.003,
+      "context_window": 1048576,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "high",
+        "low",
+        "none"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "minimax/minimax-m3.1-flash:free",
+      "name": "MiniMax: MiniMax M3.1 Flash (free)",
+      "cost_per_1m_in": 0.0,
+      "cost_per_1m_out": 0.0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.0,
+      "context_window": 1000000,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "xhigh",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default_reasoning_effort": "max"
+    },
+    {
       "id": "openai/gpt-6.1-sol-pro",
       "name": "OpenAI: GPT-6.1 Sol Pro",
       "cost_per_1m_in": 2,

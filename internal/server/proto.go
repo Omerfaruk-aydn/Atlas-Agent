@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/backend"
@@ -751,7 +753,13 @@ func (c *controllerV1) handleGetWorkspaceSessionHistory(w http.ResponseWriter, r
 		c.handleError(w, r, err)
 		return
 	}
-	jsonEncode(w, history)
+	// history.File carries no JSON tags; the documented wire form is
+	// proto.File, whose snake_case fields clients decode.
+	out := make([]proto.File, len(history))
+	for i, f := range history {
+		out[i] = fileToProto(f)
+	}
+	jsonEncode(w, out)
 }
 
 // handleGetWorkspaceSessionMessages returns all messages for a session.
@@ -1131,6 +1139,14 @@ func (c *controllerV1) handlePostWorkspaceAgent(w http.ResponseWriter, r *http.R
 	// clients are still watching. Only the explicit cancel endpoint
 	// should be able to end a run.
 	if err := c.backend.SendMessage(id, msg); err != nil {
+		if errors.Is(err, backend.ErrRunAlreadyAccepted) {
+			// A retry of a prompt whose acknowledgement was lost: the
+			// original run is the one executing, so this request was
+			// accepted too, it just starts nothing new.
+			w.Header().Set("X-Atlas-Run-Duplicate", "1")
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
 		c.handleError(w, r, err)
 		return
 	}
@@ -1261,6 +1277,51 @@ func (c *controllerV1) handlePostWorkspaceAgentSessionPromptClear(w http.Respons
 	id := r.PathValue("id")
 	sid := r.PathValue("sid")
 	if err := c.backend.ClearQueue(id, sid); err != nil {
+		c.handleError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleGetWorkspaceAgentSessionGoal reports the autonomous run of a session.
+//
+//	@Summary		Get session goal
+//	@Tags			agent
+//	@Param			id	path	string	true	"Workspace ID"
+//	@Param			sid	path	string	true	"Session ID"
+//	@Success		200	{object}	proto.AgentGoalStatus
+//	@Failure		404	{object}	proto.Error
+//	@Router			/workspaces/{id}/agent/sessions/{sid}/goal [get]
+func (c *controllerV1) handleGetWorkspaceAgentSessionGoal(w http.ResponseWriter, r *http.Request) {
+	status, err := c.backend.GoalStatus(r.PathValue("id"), r.PathValue("sid"))
+	if err != nil {
+		c.handleError(w, r, err)
+		return
+	}
+	jsonEncode(w, status)
+}
+
+// handlePostWorkspaceAgentSessionGoal sets or clears the goal of a session.
+//
+//	@Summary		Set session goal
+//	@Tags			agent
+//	@Accept			json
+//	@Param			id		path	string					true	"Workspace ID"
+//	@Param			sid		path	string					true	"Session ID"
+//	@Param			request	body	proto.AgentGoalRequest	true	"Goal"
+//	@Success		200
+//	@Failure		400	{object}	proto.Error
+//	@Failure		404	{object}	proto.Error
+//	@Failure		500	{object}	proto.Error
+//	@Router			/workspaces/{id}/agent/sessions/{sid}/goal [post]
+func (c *controllerV1) handlePostWorkspaceAgentSessionGoal(w http.ResponseWriter, r *http.Request) {
+	var req proto.AgentGoalRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		c.server.logError(r, "Failed to decode goal request", "error", err)
+		jsonError(w, http.StatusBadRequest, "failed to decode request")
+		return
+	}
+	if err := c.backend.SetGoal(r.Context(), r.PathValue("id"), r.PathValue("sid"), req.Goal); err != nil {
 		c.handleError(w, r, err)
 		return
 	}
@@ -1439,7 +1500,18 @@ func (c *controllerV1) handlePostWorkspaceQuestionsAnswer(w http.ResponseWriter,
 func (c *controllerV1) handlePostWorkspaceQuestionsCancel(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	cancelled, err := c.backend.CancelQuestion(id)
+	// The body is optional: older clients send none and cancel whatever
+	// batch is displayed; newer ones name the batch they mean.
+	var req proto.QuestionCancel
+	if r.Body != nil && r.ContentLength != 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			c.server.logError(r, "Failed to decode request", "error", err)
+			jsonError(w, http.StatusBadRequest, "failed to decode request")
+			return
+		}
+	}
+
+	cancelled, err := c.backend.CancelQuestion(id, req.BatchRequestID)
 	if err != nil {
 		c.handleError(w, r, err)
 		return
@@ -1516,8 +1588,15 @@ func (c *controllerV1) handleError(w http.ResponseWriter, r *http.Request, err e
 		status = http.StatusBadRequest
 	case errors.Is(err, backend.ErrPathRequired):
 		status = http.StatusBadRequest
-	case errors.Is(err, backend.ErrInvalidPermissionAction):
+	case errors.Is(err, backend.ErrInvalidPermissionAction),
+		errors.Is(err, backend.ErrInvalidPermissionMode),
+		errors.Is(err, backend.ErrNotADirectory),
+		errors.Is(err, backend.ErrIsADirectory):
 		status = http.StatusBadRequest
+	case errors.Is(err, backend.ErrPathOutsideWorkspace):
+		status = http.StatusForbidden
+	case errors.Is(err, backend.ErrFileNotFound), errors.Is(err, os.ErrNotExist):
+		status = http.StatusNotFound
 	case errors.Is(err, backend.ErrUnknownCommand):
 		status = http.StatusBadRequest
 	case errors.Is(err, backend.ErrInvalidClientID):

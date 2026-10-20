@@ -31,6 +31,28 @@ func TestMiniMaxM3ThinkingIsOptionalAndAdaptive(t *testing.T) {
 	require.Nil(t, params.Thinking.OfEnabled)
 }
 
+func TestMiniMax31FlashRequiresAdaptiveThinking(t *testing.T) {
+	t.Parallel()
+	p, err := New(WithAPIKey("test-key"))
+	require.NoError(t, err)
+	m, err := p.LanguageModel(t.Context(), "MiniMax-M3.1-Flash-Preview")
+	require.NoError(t, err)
+	require.Equal(t, "MiniMax-M3.1-Flash", m.Model())
+	lm := languageModel{modelID: m.Model()}
+	params, _, _, _, err := lm.prepareParams(fantasy.Call{Temperature: new(0.5)})
+	require.NoError(t, err)
+	require.NotNil(t, params.Thinking.OfAdaptive)
+	require.False(t, params.Temperature.Valid())
+	for _, effort := range []Effort{EffortLow, EffortMax} {
+		params, _, _, _, err = lm.prepareParams(fantasy.Call{ProviderOptions: fantasy.ProviderOptions{Name: &ProviderOptions{Effort: &effort}}})
+		require.NoError(t, err)
+		require.Equal(t, string(effort), string(params.OutputConfig.Effort))
+	}
+	effort := Effort("none")
+	_, _, _, _, err = lm.prepareParams(fantasy.Call{ProviderOptions: fantasy.ProviderOptions{Name: &ProviderOptions{Effort: &effort}}})
+	require.ErrorContains(t, err, "requires")
+}
+
 func TestAdaptiveThinkingOmitsSamplingParameters(t *testing.T) {
 	t.Parallel()
 	effort := Effort("high")

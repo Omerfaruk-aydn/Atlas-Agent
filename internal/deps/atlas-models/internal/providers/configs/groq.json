@@ -8,6 +8,27 @@
   "default_small_model_id": "openai/gpt-oss-20b",
   "models": [
     {
+      "id": "meta-models/muse-spark-open",
+      "name": "Muse Spark Open (organization approval required)",
+      "cost_per_1m_in": 1.25,
+      "cost_per_1m_out": 4.25,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.15,
+      "context_window": 1048576,
+      "default_max_tokens": 16384,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
       "id": "openai/gpt-oss-120b",
       "name": "GPT OSS 120B",
       "cost_per_1m_in": 0.15,

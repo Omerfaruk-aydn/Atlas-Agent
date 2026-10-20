@@ -8,6 +8,43 @@
   "default_small_model_id": "qwen3.8-27b",
   "models": [
     {
+      "id": "deepseek-v4.1-flash",
+      "name": "DeepSeek V4.1 Flash",
+      "cost_per_1m_in": 0.6813,
+      "cost_per_1m_out": 2.0439,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.13626,
+      "context_window": 256000,
+      "default_max_tokens": 32768,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "none",
+        "low",
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "glm-5.3",
+      "name": "GLM 5.3",
+      "cost_per_1m_in": 2.0439,
+      "cost_per_1m_out": 6.24525,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 256000,
+      "default_max_tokens": 16384,
+      "can_reason": true,
+      "supports_attachments": false,
+      "reasoning_levels": [
+        "none",
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "max"
+    },
+    {
       "id": "glm-5.2",
       "name": "glm-5.2",
       "cost_per_1m_in": 2.0439,
@@ -23,7 +60,15 @@
         "high",
         "max"
       ],
-      "default_reasoning_effort": "max"
+      "default_reasoning_effort": "max",
+      "lifecycle": {
+        "status": "deprecated",
+        "replacement": "glm-5.3",
+        "source_url": "https://www.scaleway.com/en/docs/generative-apis/reference-content/supported-models/",
+        "verified_at": "2026-10-20",
+        "note": "",
+        "retirement_date": "2026-11-16"
+      }
     },
     {
       "id": "deepseek-v4-flash-0731",

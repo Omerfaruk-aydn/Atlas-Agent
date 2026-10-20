@@ -44,7 +44,7 @@ func TestCorrectedProviderContracts(t *testing.T) {
 		require.NotContains(t, m.ID, "qwen3.8", "API availability does not imply plan availability")
 		require.Zero(t, m.CostPer1MIn)
 	}
-	require.Equal(t, "MiniMax-M3.1-Flash-Preview", providers["minimax-m-plan"].DefaultLargeModelID)
+	require.Equal(t, "MiniMax-M3.1-Flash", providers["minimax-m-plan"].DefaultLargeModelID)
 	require.NotEqual(t, providers["minimax-m-plan"].APIKey, providers["minimax-coding"].APIKey)
 }
 

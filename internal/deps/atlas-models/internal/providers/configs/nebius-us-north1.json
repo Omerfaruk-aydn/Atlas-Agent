@@ -1,0 +1,32 @@
+{
+  "name": "Nebius Token Factory (US North 1)",
+  "id": "nebius-us-north1",
+  "api_key": "$NEBIUS_API_KEY",
+  "api_endpoint": "https://api.tokenfactory.us-north1.nebius.com/v1",
+  "type": "openai-compat",
+  "default_large_model_id": "meta-models/muse-spark-open",
+  "default_small_model_id": "meta-models/muse-spark-open",
+  "models": [
+    {
+      "id": "meta-models/muse-spark-open",
+      "name": "Muse Spark Open",
+      "cost_per_1m_in": 1.25,
+      "cost_per_1m_out": 4.25,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 1048576,
+      "default_max_tokens": 16384,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_reasoning_effort": "medium"
+    }
+  ]
+}

@@ -263,7 +263,15 @@
         "xhigh"
       ],
       "default_reasoning_effort": "medium",
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "deprecated",
+        "replacement": "gpt-6-sol",
+        "source_url": "https://developers.openai.com/api/docs/deprecations",
+        "verified_at": "2026-10-20",
+        "note": "",
+        "retirement_date": "2027-04-01"
+      }
     },
     {
       "id": "gpt-5.3-codex",
@@ -282,7 +290,15 @@
         "high"
       ],
       "default_reasoning_effort": "medium",
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "deprecated",
+        "replacement": "gpt-6-sol",
+        "source_url": "https://developers.openai.com/api/docs/deprecations",
+        "verified_at": "2026-10-20",
+        "note": "",
+        "retirement_date": "2027-04-01"
+      }
     },
     {
       "id": "gpt-5.2",
@@ -339,7 +355,15 @@
         "high"
       ],
       "default_reasoning_effort": "medium",
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "deprecated",
+        "replacement": "gpt-6-sol",
+        "source_url": "https://developers.openai.com/api/docs/deprecations",
+        "verified_at": "2026-10-20",
+        "note": "",
+        "retirement_date": "2027-04-01"
+      }
     },
     {
       "id": "gpt-5.1-codex",
@@ -517,7 +541,15 @@
       "context_window": 1047576,
       "default_max_tokens": 16384,
       "can_reason": false,
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "deprecated",
+        "replacement": "gpt-6-luna",
+        "source_url": "https://developers.openai.com/api/docs/deprecations",
+        "verified_at": "2026-10-20",
+        "note": "Selected underlying snapshots retire; consult the official version table.",
+        "retirement_date": "2027-01-14"
+      }
     },
     {
       "id": "gpt-4.1-mini",
@@ -529,7 +561,15 @@
       "context_window": 1047576,
       "default_max_tokens": 16384,
       "can_reason": false,
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "deprecated",
+        "replacement": "gpt-6-luna",
+        "source_url": "https://developers.openai.com/api/docs/deprecations",
+        "verified_at": "2026-10-20",
+        "note": "Selected underlying snapshots retire; consult the official version table.",
+        "retirement_date": "2027-01-14"
+      }
     },
     {
       "id": "gpt-4.1-nano",
@@ -571,7 +611,15 @@
       "context_window": 128000,
       "default_max_tokens": 8192,
       "can_reason": false,
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "deprecated",
+        "replacement": "gpt-6-luna",
+        "source_url": "https://developers.openai.com/api/docs/deprecations",
+        "verified_at": "2026-10-20",
+        "note": "Selected underlying snapshots retire; consult the official version table.",
+        "retirement_date": "2027-01-14"
+      }
     },
     {
       "id": "gpt-4o-mini",
@@ -584,7 +632,15 @@
       "default_max_tokens": 8192,
       "can_reason": false,
       "reasoning_effort": "",
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "deprecated",
+        "replacement": "gpt-6-luna",
+        "source_url": "https://developers.openai.com/api/docs/deprecations",
+        "verified_at": "2026-10-20",
+        "note": "Selected underlying snapshots retire; consult the official version table.",
+        "retirement_date": "2027-01-14"
+      }
     }
   ]
 }

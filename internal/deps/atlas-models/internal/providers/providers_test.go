@@ -24,7 +24,7 @@ func TestMuseCatalogEntry(t *testing.T) {
 	require.Equal(t, "Muse", entry.Name)
 	require.Equal(t, "https://api.meta.ai", entry.APIEndpoint)
 	require.Equal(t, catwalk.TypeMuse, entry.Type)
-	require.Equal(t, "muse-spark-1.3", entry.DefaultLargeModelID)
+	require.Equal(t, "muse-wonder-1.0", entry.DefaultLargeModelID)
 	require.Equal(t, "muse-spark-1.2", entry.DefaultSmallModelID)
 
 	ids := make(map[string]catwalk.Model, len(entry.Models))

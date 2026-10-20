@@ -325,6 +325,20 @@ func (s *questionService) withdraw(batch *pendingBatch) {
 	}
 }
 
+// Pending returns the requests still awaiting an answer, oldest first.
+// Clients that reconnect use it to rebuild the forms they missed.
+func (s *questionService) Pending() []Request {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]Request, 0, len(s.queue))
+	for _, batch := range s.queue {
+		if !batch.resolved {
+			out = append(out, batch.req)
+		}
+	}
+	return out
+}
+
 // take marks one pending request resolved; the first caller wins.
 func (s *questionService) take(match func(*pendingBatch) bool) *pendingBatch {
 	s.mu.Lock()

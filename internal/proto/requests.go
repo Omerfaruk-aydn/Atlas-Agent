@@ -134,6 +134,21 @@ type AgentInitRequest struct {
 	Interactive bool `json:"interactive"`
 }
 
+// AgentGoalRequest sets the goal a session works towards on its own. An
+// empty goal ends the run and forgets the goal.
+type AgentGoalRequest struct {
+	Goal string `json:"goal"`
+}
+
+// AgentGoalStatus reports the autonomous run of a session. Active is false
+// when none is running.
+type AgentGoalStatus struct {
+	Active bool   `json:"active"`
+	Goal   string `json:"goal,omitempty"`
+	Used   int    `json:"used,omitempty"`
+	Budget int    `json:"budget,omitempty"`
+}
+
 // LSPStartRequest represents a request to start an LSP for a path.
 type LSPStartRequest struct {
 	Path string `json:"path"`

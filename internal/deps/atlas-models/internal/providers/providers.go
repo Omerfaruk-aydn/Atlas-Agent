@@ -5,6 +5,8 @@ import (
 	_ "embed"
 	"encoding/json"
 	"log"
+	"sync"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/catwalk"
 )
@@ -111,6 +113,12 @@ var boltConfig []byte
 //go:embed configs/perplexity.json
 var perplexityConfig []byte
 
+//go:embed configs/perplexity-agent.json
+var perplexityAgentConfig []byte
+
+//go:embed configs/nebius-us-north1.json
+var nebiusUSNorthConfig []byte
+
 //go:embed configs/phind.json
 var phindConfig []byte
 
@@ -199,10 +207,10 @@ var neuralwattConfig []byte
 var openAIConfig []byte
 
 //go:embed configs/opencode-go.json
-var openCodeGoConfig []byte
+var gatewayGoConfig []byte
 
 //go:embed configs/opencode-zen.json
-var openCodeZenConfig []byte
+var gatewayZenConfig []byte
 
 //go:embed configs/openrouter.json
 var openRouterConfig []byte
@@ -288,6 +296,8 @@ var providerRegistry = []ProviderFunc{
 	vercelV0Provider,
 	boltProvider,
 	perplexityProvider,
+	perplexityAgentProvider,
+	nebiusUSNorthProvider,
 	phindProvider,
 	codexIdeProvider,
 	yiProvider,
@@ -317,8 +327,8 @@ var providerRegistry = []ProviderFunc{
 	nebiusProvider,
 	neuralwattProvider,
 	nvidiaNIMProvider,
-	openCodeGoProvider,
-	openCodeZenProvider,
+	gatewayGoProvider,
+	gatewayZenProvider,
 	openRouterProvider,
 	qiniuCloudProvider,
 	qiniuTokenPlanProvider,
@@ -333,13 +343,49 @@ var providerRegistry = []ProviderFunc{
 // GetAll returns all registered providers.
 func GetAll() []catwalk.Provider {
 	providers := make([]catwalk.Provider, 0, len(providerRegistry))
+	now := time.Now()
 	for _, providerFunc := range providerRegistry {
 		p := providerFunc()
 		if catwalk.UnavailableProviderReason(p.Type, p.ID) == "" {
-			providers = append(providers, p)
+			providers = append(providers, p.SelectableAt(now))
 		}
 	}
 	return providers
+}
+
+var catalogLifecycleRules = sync.OnceValue(func() map[catwalk.InferenceProvider]map[string]catwalk.ModelLifecycle {
+	rules := make(map[catwalk.InferenceProvider]map[string]catwalk.ModelLifecycle)
+	for _, load := range providerRegistry {
+		p := load()
+		for _, m := range p.Models {
+			if m.Lifecycle == nil {
+				continue
+			}
+			if rules[p.ID] == nil {
+				rules[p.ID] = make(map[string]catwalk.ModelLifecycle)
+			}
+			rules[p.ID][m.ID] = *m.Lifecycle
+		}
+	}
+	return rules
+})
+
+// ApplyLifecycle restores sourced lifecycle rules after saved model overrides
+// are merged. This prevents a saved pre-upgrade catalog resurrecting retired
+// built-in routes. Callers must not apply it to an unrelated custom host.
+func ApplyLifecycle(p catwalk.Provider, now time.Time) catwalk.Provider {
+	rules := catalogLifecycleRules()[p.ID]
+	if len(rules) == 0 {
+		return p
+	}
+	models := append([]catwalk.Model(nil), p.Models...)
+	for i := range models {
+		if rule, ok := rules[models[i].ID]; ok {
+			models[i].Lifecycle = &rule
+		}
+	}
+	p.Models = models
+	return p.SelectableAt(now)
 }
 
 func bedrockOpenAIProvider() catwalk.Provider {
@@ -571,6 +617,14 @@ func perplexityProvider() catwalk.Provider {
 	return loadProviderFromConfig(perplexityConfig)
 }
 
+func perplexityAgentProvider() catwalk.Provider {
+	return loadProviderFromConfig(perplexityAgentConfig)
+}
+
+func nebiusUSNorthProvider() catwalk.Provider {
+	return loadProviderFromConfig(nebiusUSNorthConfig)
+}
+
 func phindProvider() catwalk.Provider {
 	return loadProviderFromConfig(phindConfig)
 }
@@ -607,12 +661,12 @@ func openAIProvider() catwalk.Provider {
 	return loadProviderFromConfig(openAIConfig)
 }
 
-func openCodeGoProvider() catwalk.Provider {
-	return loadProviderFromConfig(openCodeGoConfig)
+func gatewayGoProvider() catwalk.Provider {
+	return loadProviderFromConfig(gatewayGoConfig)
 }
 
-func openCodeZenProvider() catwalk.Provider {
-	return loadProviderFromConfig(openCodeZenConfig)
+func gatewayZenProvider() catwalk.Provider {
+	return loadProviderFromConfig(gatewayZenConfig)
 }
 
 func openRouterProvider() catwalk.Provider {

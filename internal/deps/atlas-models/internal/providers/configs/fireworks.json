@@ -8,6 +8,45 @@
   "default_small_model_id": "accounts/fireworks/models/glm-5p3-flash",
   "models": [
     {
+      "id": "accounts/fireworks/models/deepseek-v4p1-flash-1017",
+      "name": "DeepSeek V4.1 Flash 1017",
+      "cost_per_1m_in": 0.3,
+      "cost_per_1m_out": 1.2,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.006,
+      "context_window": 1000000,
+      "default_max_tokens": 384000,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "low",
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "accounts/fireworks/models/muse-spark-open",
+      "name": "Muse Spark Open",
+      "cost_per_1m_in": 1.25,
+      "cost_per_1m_out": 4.25,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.15,
+      "context_window": 1048576,
+      "default_max_tokens": 16384,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_reasoning_effort": "medium"
+    },
+    {
       "id": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
       "name": "Nemotron 3 Ultra 550B A55B",
       "cost_per_1m_in": 0.6,

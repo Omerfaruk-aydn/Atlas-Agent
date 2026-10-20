@@ -5,8 +5,28 @@
   "api_key": "$ANTHROPIC_API_KEY",
   "api_endpoint": "$ANTHROPIC_API_ENDPOINT",
   "default_large_model_id": "claude-sonnet-5-5",
-  "default_small_model_id": "claude-haiku-4-5-20251001",
+  "default_small_model_id": "claude-haiku-5-5",
   "models": [
+    {
+      "id": "claude-haiku-5-5",
+      "name": "Claude Haiku 5.5",
+      "cost_per_1m_in": 0.1,
+      "cost_per_1m_out": 0.5,
+      "cost_per_1m_in_cached": 0.125,
+      "cost_per_1m_out_cached": 0.01,
+      "context_window": 1000000,
+      "default_max_tokens": 128000,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "default_reasoning_effort": "medium"
+    },
     {
       "id": "claude-mythos-5-1",
       "name": "Claude Mythos 5.1 (Invite Only)",
@@ -253,7 +273,15 @@
       "context_window": 200000,
       "default_max_tokens": 64000,
       "can_reason": true,
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "deprecated",
+        "replacement": "claude-sonnet-5-5",
+        "source_url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "verified_at": "2026-10-20",
+        "note": "",
+        "retirement_date": "2026-11-30"
+      }
     },
     {
       "id": "claude-haiku-4-5-20251001",
@@ -277,7 +305,15 @@
       "context_window": 200000,
       "default_max_tokens": 32000,
       "can_reason": true,
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "retired",
+        "replacement": "claude-opus-5-5",
+        "source_url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "verified_at": "2026-10-20",
+        "note": "",
+        "retirement_date": "2026-08-05"
+      }
     },
     {
       "id": "claude-opus-4-20250514",
@@ -289,7 +325,15 @@
       "context_window": 200000,
       "default_max_tokens": 32000,
       "can_reason": true,
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "retired",
+        "replacement": "claude-sonnet-5-5",
+        "source_url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "verified_at": "2026-10-20",
+        "note": "",
+        "retirement_date": "2026-06-15"
+      }
     },
     {
       "id": "claude-sonnet-4-20250514",
@@ -301,7 +345,15 @@
       "context_window": 200000,
       "default_max_tokens": 64000,
       "can_reason": true,
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "retired",
+        "replacement": "claude-sonnet-5-5",
+        "source_url": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+        "verified_at": "2026-10-20",
+        "note": "",
+        "retirement_date": "2026-06-15"
+      }
     },
     {
       "id": "claude-fable-5",

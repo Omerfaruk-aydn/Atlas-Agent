@@ -83,7 +83,10 @@ func getResponsesModelConfig(modelID string) responsesModelConfig {
 	// Responses gateways also serve these reasoning families. Preserve their
 	// effort selections without applying OpenAI-specific instruction roles.
 	if modelID == "grok-4.7" || modelID == "grok-4.6" || modelID == "grok-4.5" ||
-		modelID == "grok-build-0.1" || strings.HasPrefix(modelID, "muse-spark-") {
+		modelID == "grok-build-0.1" || strings.HasPrefix(modelID, "muse-spark-") ||
+		strings.HasPrefix(modelID, "muse-wonder-") ||
+		strings.HasPrefix(modelID, "anthropic/claude-") ||
+		strings.HasPrefix(modelID, "google/gemini-") {
 		defaults.isReasoningModel = true
 		return defaults
 	}

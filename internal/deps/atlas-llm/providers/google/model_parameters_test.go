@@ -55,3 +55,27 @@ func TestVertexGemini38PreservesToolCallIDs(t *testing.T) {
 	require.Equal(t, "call-1", contents[0].Parts[0].FunctionCall.ID)
 	require.Equal(t, "call-1", contents[1].Parts[0].FunctionResponse.ID)
 }
+
+func TestArgonSamplingAndExplicitCacheContract(t *testing.T) {
+	t.Parallel()
+	lm := languageModel{modelID: "gemini-4-argon", providerOptions: options{backend: genai.BackendVertexAI}}
+	call := fantasy.Call{
+		Temperature: new(0.2), TopP: new(0.9), TopK: new(int64(10)),
+		ProviderOptions: fantasy.ProviderOptions{Name: &ProviderOptions{ThinkingConfig: &ThinkingConfig{ThinkingLevel: new("high")}}},
+		Prompt: fantasy.Prompt{
+			{Role: fantasy.MessageRoleAssistant, Content: []fantasy.MessagePart{fantasy.ToolCallPart{ToolCallID: "call-1", ToolName: "read", Input: `{}`}}},
+			{Role: fantasy.MessageRoleTool, Content: []fantasy.MessagePart{fantasy.ToolResultPart{ToolCallID: "call-1", Output: fantasy.ToolResultOutputContentText{Text: "source"}}}},
+		},
+	}
+	cfg, contents, _, err := lm.prepareParams(call)
+	require.NoError(t, err)
+	require.Nil(t, cfg.Temperature)
+	require.Nil(t, cfg.TopP)
+	require.Nil(t, cfg.TopK)
+	require.Equal(t, genai.ThinkingLevel("high"), cfg.ThinkingConfig.ThinkingLevel)
+	require.Equal(t, "call-1", contents[0].Parts[0].FunctionCall.ID)
+	require.Equal(t, "call-1", contents[1].Parts[0].FunctionResponse.ID)
+	call.ProviderOptions = fantasy.ProviderOptions{Name: &ProviderOptions{CachedContent: "cachedContents/old"}}
+	_, _, _, err = lm.prepareParams(call)
+	require.ErrorContains(t, err, "implicit caching only")
+}

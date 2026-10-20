@@ -347,11 +347,11 @@ func (w *ClientWorkspace) AgentClearQueue(sessionID string) {
 	_ = w.client.ClearAgentSessionQueuedPrompts(context.Background(), w.workspaceID(), sessionID)
 }
 
-// AgentSetGoal is not carried over the client protocol yet: a goal run
-// drives turns from inside the coordinator, and a remote client would
-// need the protocol to relay them before it could start one.
+// AgentSetGoal asks the server to run the session towards goal. The turns
+// are driven by the server's coordinator, so the client only relays the
+// request.
 func (w *ClientWorkspace) AgentSetGoal(ctx context.Context, sessionID, goal string) error {
-	return errors.New("setting a goal is not supported against a remote workspace yet")
+	return w.client.SetAgentGoal(ctx, w.workspaceID(), sessionID, goal)
 }
 
 func (w *ClientWorkspace) AgentSummarize(ctx context.Context, sessionID string) error {
@@ -443,21 +443,34 @@ func (w *ClientWorkspace) PermissionSetSkipRequests(skip bool) {
 	_ = w.client.SetPermissionsSkipRequests(context.Background(), w.workspaceID(), skip)
 }
 
-// PermissionMode degrades to the bypass/manual distinction the underlying
-// skip-requests RPC actually carries; a remote Plan or AutoAcceptEdits mode
-// set by another client is indistinguishable from Manual here.
+// PermissionMode reads the server's mode. Servers predating the mode
+// endpoint only carry the bypass/manual distinction of the skip-requests
+// RPC, so against those a Plan or AutoAcceptEdits mode set by another
+// client is indistinguishable from Manual.
 func (w *ClientWorkspace) PermissionMode() permission.PermissionMode {
+	if mode, err := w.client.GetPermissionMode(context.Background(), w.workspaceID()); err == nil && mode != "" {
+		return permission.PermissionMode(mode)
+	}
 	if w.PermissionSkipRequests() {
 		return permission.ModeBypass
 	}
 	return permission.ModeManual
 }
 
-// PermissionSetMode supports only the bypass/manual toggle remotely (via the
-// existing skip-requests RPC). Plan and AutoAcceptEdits have no remote RPC
-// yet, so selecting them locally is a no-op that just logs a warning rather
-// than silently pretending to succeed.
+// PermissionSetMode sets the server's mode, so every client of the
+// workspace sees the same one. Against a server predating the mode
+// endpoint only the bypass/manual toggle is possible; selecting Plan or
+// AutoAcceptEdits there is a no-op that logs a warning rather than
+// pretending to succeed.
 func (w *ClientWorkspace) PermissionSetMode(mode permission.PermissionMode) {
+	err := w.client.SetPermissionMode(context.Background(), w.workspaceID(), string(mode))
+	if err == nil {
+		return
+	}
+	if !errors.Is(err, client.ErrNotFound) {
+		slog.Warn("Failed to set permission mode", "mode", mode, "error", err)
+		return
+	}
 	switch mode {
 	case permission.ModeBypass:
 		w.PermissionSetSkipRequests(true)

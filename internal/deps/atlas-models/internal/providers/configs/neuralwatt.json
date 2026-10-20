@@ -8,6 +8,159 @@
   "default_small_model_id": "glm-5.3-flash",
   "models": [
     {
+      "id": "mimo-v2.6-pro-flex",
+      "name": "MiMo-V2.6-Pro (flex)",
+      "cost_per_1m_in": 0.5655,
+      "cost_per_1m_out": 1.131,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.0234,
+      "context_window": 1048560,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "high",
+        "none"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "nw-large",
+      "name": "Neuralwatt Large",
+      "cost_per_1m_in": 3.0,
+      "cost_per_1m_out": 15.0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.3,
+      "context_window": 1048560,
+      "default_max_tokens": 4096,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "high",
+        "low",
+        "none"
+      ],
+      "default_reasoning_effort": "max"
+    },
+    {
+      "id": "nw-large-flex",
+      "name": "Neuralwatt Large (flex)",
+      "cost_per_1m_in": 1.95,
+      "cost_per_1m_out": 9.75,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.195,
+      "context_window": 1048560,
+      "default_max_tokens": 4096,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "high",
+        "low",
+        "none"
+      ],
+      "default_reasoning_effort": "max"
+    },
+    {
+      "id": "nw-flash",
+      "name": "Neuralwatt Flash",
+      "cost_per_1m_in": 0.15,
+      "cost_per_1m_out": 0.6,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.015,
+      "context_window": 1048560,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "xhigh",
+        "high",
+        "low",
+        "none"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "nw-flash-flex",
+      "name": "Neuralwatt Flash (flex)",
+      "cost_per_1m_in": 0.0975,
+      "cost_per_1m_out": 0.39,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.00975,
+      "context_window": 1048560,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "xhigh",
+        "high",
+        "low",
+        "none"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "nw-small",
+      "name": "Neuralwatt Small",
+      "cost_per_1m_in": 0.45,
+      "cost_per_1m_out": 3.2,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.25,
+      "context_window": 262128,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "xhigh",
+        "medium",
+        "low",
+        "none"
+      ],
+      "default_reasoning_effort": "xhigh"
+    },
+    {
+      "id": "nw-small-flex",
+      "name": "Neuralwatt Small (flex)",
+      "cost_per_1m_in": 0.2925,
+      "cost_per_1m_out": 2.08,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.1625,
+      "context_window": 262128,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "xhigh",
+        "medium",
+        "low",
+        "none"
+      ],
+      "default_reasoning_effort": "xhigh"
+    },
+    {
+      "id": "deepseek-v4.1-flash-speed",
+      "name": "DeepSeek V4.1 Flash (Speed)",
+      "cost_per_1m_in": 0.15,
+      "cost_per_1m_out": 0.6,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.015,
+      "context_window": 1048560,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "xhigh",
+        "high",
+        "low",
+        "none"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
       "id": "qwen-3.8-27b",
       "name": "Qwen 3.8 27B",
       "cost_per_1m_in": 0.45,

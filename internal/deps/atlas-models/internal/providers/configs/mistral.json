@@ -5,8 +5,25 @@
   "api_key": "$MISTRAL_API_KEY",
   "api_endpoint": "https://api.mistral.ai/v1",
   "default_large_model_id": "mistral-medium-3-5",
-  "default_small_model_id": "codestral-2508",
+  "default_small_model_id": "mistral-small-2603",
   "models": [
+    {
+      "id": "mistral-large-4",
+      "name": "Mistral Large 4 (preview)",
+      "cost_per_1m_in": 1.36,
+      "cost_per_1m_out": 4.18,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.14,
+      "context_window": 1048576,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "none",
+        "high"
+      ],
+      "default_reasoning_effort": "high"
+    },
     {
       "id": "mistral-large-2512",
       "name": "Mistral Large 3",

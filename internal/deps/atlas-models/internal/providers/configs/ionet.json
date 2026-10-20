@@ -8,6 +8,18 @@
   "default_small_model_id": "zai-org/GLM-5.3-Flash",
   "models": [
     {
+      "id": "XiaomiMiMo/MiMo-V2.6-Flash",
+      "name": "Xiaomi: MiMo-V2.6-Flash (access tier 2+)",
+      "cost_per_1m_in": 0.1556,
+      "cost_per_1m_out": 0.2632,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.0778,
+      "context_window": 1048320,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": true
+    },
+    {
       "id": "deepseek-ai/DeepSeek-V4.1-Flash",
       "name": "DeepSeek: DeepSeek V4.1 Flash",
       "context_window": 1048320,

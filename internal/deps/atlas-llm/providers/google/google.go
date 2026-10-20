@@ -246,7 +246,7 @@ func (g languageModel) prepareParams(call fantasy.Call) (*genai.GenerateContentC
 
 	isVertexAI := g.providerOptions.backend == genai.BackendVertexAI
 	// Gemini 3.8 requires matching function call/result IDs on Vertex too.
-	omitToolCallIDs := isVertexAI && !strings.HasPrefix(g.modelID, "gemini-3.8")
+	omitToolCallIDs := isVertexAI && !strings.HasPrefix(g.modelID, "gemini-3.8") && !strings.HasPrefix(g.modelID, "gemini-4-")
 	systemInstructions, content, warnings := toGooglePrompt(call.Prompt, omitToolCallIDs)
 
 	if providerOptions.ThinkingConfig != nil {
@@ -305,7 +305,7 @@ func (g languageModel) prepareParams(call fantasy.Call) (*genai.GenerateContentC
 
 	// Gemini 3.8 rejects penalties and deprecates sampling controls. Effort
 	// is configured through thinking_level instead.
-	samplingSupported := !strings.HasPrefix(g.modelID, "gemini-3.8-flash")
+	samplingSupported := !strings.HasPrefix(g.modelID, "gemini-3.8-flash") && !strings.HasPrefix(g.modelID, "gemini-4-")
 	if samplingSupported && call.Temperature != nil {
 		tmp := float32(*call.Temperature)
 		config.Temperature = &tmp
@@ -347,6 +347,9 @@ func (g languageModel) prepareParams(call fantasy.Call) (*genai.GenerateContentC
 		})
 	}
 	if providerOptions.CachedContent != "" {
+		if strings.HasPrefix(g.modelID, "gemini-4-argon") {
+			return nil, nil, nil, fmt.Errorf("Gemini 4 Argon supports implicit caching only; remove cached_content")
+		}
 		config.CachedContent = providerOptions.CachedContent
 	}
 

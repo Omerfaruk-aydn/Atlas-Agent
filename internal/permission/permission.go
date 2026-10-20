@@ -394,6 +394,23 @@ func (s *permissionService) Request(ctx context.Context, opts CreatePermissionRe
 	}
 }
 
+// PendingRequests returns the permission requests still awaiting a
+// decision. Requests are serialized by requestMu, so at most one is
+// pending at a time. A request whose run was cancelled is no longer
+// pending even though no notification announced its withdrawal, which is
+// why the pending map, not activeRequest alone, decides.
+func (s *permissionService) PendingRequests() []PermissionRequest {
+	s.activeRequestMu.Lock()
+	defer s.activeRequestMu.Unlock()
+	if s.activeRequest == nil {
+		return nil
+	}
+	if _, ok := s.pendingRequests.Get(s.activeRequest.ID); !ok {
+		return nil
+	}
+	return []PermissionRequest{*s.activeRequest}
+}
+
 func (s *permissionService) AutoApproveSession(sessionID string) {
 	s.autoApproveSessionsMu.Lock()
 	s.autoApproveSessions[sessionID] = true

@@ -267,6 +267,12 @@ func (dl *directoryLister) shouldIgnore(path string, ignorePatterns []string, is
 	return false
 }
 
+// ShouldIgnore reports whether path, which must lie inside the lister's
+// root, is hidden by the ignore rules ListDirectory applies.
+func (dl *directoryLister) ShouldIgnore(path string, isDir bool) bool {
+	return dl.shouldIgnore(path, nil, isDir)
+}
+
 // ListDirectory lists files and directories in the specified path.
 func ListDirectory(initialPath string, ignorePatterns []string, depth, limit int) ([]string, bool, error) {
 	found := csync.NewSlice[string]()

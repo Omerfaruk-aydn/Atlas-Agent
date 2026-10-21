@@ -92,7 +92,10 @@ type SessionAgentCall struct {
 	QueueContinuation bool
 	// internalContinuation preserves trusted user intent across automatic turns.
 	internalContinuation bool
-	SessionID            string
+	// overflowRetried marks a turn re-queued after compaction because its
+	// request did not fit the model; a second overflow ends it with an error.
+	overflowRetried bool
+	SessionID       string
 	// RunID, when non-empty, is the caller-supplied correlator that
 	// gets echoed back on the notify.RunComplete event emitted for
 	// this turn. It is preserved when the call is enqueued behind a
@@ -199,6 +202,10 @@ type activeCancel struct {
 type ptrBox[T any] struct{ v *T }
 
 type sessionAgent struct {
+	traceRuns sync.Map
+	// beforeDriftRecheck lets a test change the tree between a completion
+	// decision and the check that the tree still matches it.
+	beforeDriftRecheck  func()
 	remoteContext       func() string
 	workingDir          string
 	engineering         *engineering.Store
@@ -206,6 +213,7 @@ type sessionAgent struct {
 	readOnlyExecution   bool
 	largeModel          *csync.Value[Model]
 	largeModelFallbacks *csync.Slice[Model]
+	stageModels         func(string) *Model
 	// fallbackCooldown is SessionAgentOptions.FallbackCooldown. *csync.Value,
 	// not a plain field, so a chat-driven change to fallback_cooldown
 	// reaches an already-running session's next turn -- see
@@ -216,6 +224,7 @@ type sessionAgent struct {
 	// instead of always resetting to the primary on the next turn. See
 	// modelChain and stickyFallback.
 	fallbackSticky      *csync.Value[stickyFallback]
+	fallbackPolicy      *config.FallbackPolicy
 	smallModel          *csync.Value[Model]
 	smallModelFallbacks *csync.Slice[Model]
 	systemPromptPrefix  *csync.Value[string]
@@ -387,6 +396,7 @@ type SessionAgentOptions struct {
 	TaskContextConfig *config.ConfigStore
 	ReadOnlyExecution bool
 	LargeModel        Model
+	StageModels       func(string) *Model
 	// LargeModelFallbacks are tried, in order, when LargeModel keeps
 	// answering with a rate-limit/quota error. See modelChain.
 	LargeModelFallbacks []Model
@@ -395,7 +405,10 @@ type SessionAgentOptions struct {
 	// again. Zero means every turn starts over on the primary, which is
 	// the historical behavior.
 	FallbackCooldown time.Duration
-	SmallModel       Model
+	// FallbackPolicy controls opt-in cross-provider failover for transient
+	// failures. Nil preserves rate-limit-only behavior.
+	FallbackPolicy *config.FallbackPolicy
+	SmallModel     Model
 	// SmallModelFallbacks are tried, in order, between the small model and
 	// the large model when the small model keeps answering with a
 	// rate-limit/quota error. Consumed by call sites that already fall
@@ -490,9 +503,11 @@ func NewSessionAgent(
 		readOnlyExecution:      opts.ReadOnlyExecution,
 		largeModel:             csync.NewValue(opts.LargeModel),
 		largeModelFallbacks:    csync.NewSliceFrom(opts.LargeModelFallbacks),
+		stageModels:            opts.StageModels,
 		fallbackCooldown:       csync.NewValue(opts.FallbackCooldown),
 		smallModelFallbacks:    csync.NewSliceFrom(opts.SmallModelFallbacks),
 		fallbackSticky:         csync.NewValue(stickyFallback{}),
+		fallbackPolicy:         opts.FallbackPolicy,
 		smallModel:             csync.NewValue(opts.SmallModel),
 		systemPromptPrefix:     csync.NewValue(opts.SystemPromptPrefix),
 		systemPrompt:           csync.NewValue(opts.SystemPrompt),
@@ -842,6 +857,7 @@ func ValidateCall(call SessionAgentCall) error {
 }
 
 func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *fantasy.AgentResult, retErr error) {
+	call = applyTurnRouting(call)
 	if a.readOnlyExecution {
 		ctx = execution.WithReadOnly(ctx)
 	}
@@ -857,6 +873,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	}
 	acceptedOutcomePrompt := call.Prompt
 	a.beginEvaluatorRequest(call)
+	a.beginProjectEvidence(ctx, call.SessionID)
 	turnStarted := time.Now()
 	// Task scope comes from the accepted request, before hook/advisor additions.
 	ctx = context.WithValue(ctx, tools.SessionIDContextKey, call.SessionID)
@@ -984,6 +1001,8 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		return nil, engineeringErr
 	}
 	defer finishEngineering()
+	genCtx, trace := a.beginTurnTrace(genCtx, call.SessionID)
+	defer func() { a.finishTurnTrace(trace, call.SessionID, turnStarted, retErr) }()
 	if a.taskContextConfig != nil {
 		if cfg := a.taskContextConfig.Config(); cfg.Options != nil && cfg.Options.TUI != nil {
 			genCtx = activity.WithLanguage(genCtx, cfg.Options.TUI.Language)
@@ -1002,13 +1021,13 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			browser.CloseSession(call.SessionID)
 		}
 	}()
-	agentTools := guardTools(a.tools.Copy(), a.engineering, a.sessions)
+	agentTools := trackSourceRoot(guardTools(a.tools.Copy(), a.engineering, a.sessions), a.workingDir)
 	largeModel := a.largeModel.Get()
 	// chain starts on largeModel -- or on a sticky fallback still within
 	// its cooldown, see stickyFallback -- and, on a 429, moves through
 	// a.largeModelFallbacks for the rest of this turn. See modelChain.
-	chain := newModelChain(largeModel, a.largeModelFallbacks.Copy(),
-		a.fallbackSticky.Get().activeIndex(time.Now()))
+	chain := newModelChainWithPolicy(largeModel, a.largeModelFallbacks.Copy(),
+		a.fallbackSticky.Get().activeIndex(time.Now()), a.fallbackPolicy)
 	systemPrompt := cmp.Or(call.SystemPrompt, a.systemPrompt.Get())
 	if a.taskContextConfig != nil {
 		cfg := a.taskContextConfig.Config()
@@ -1041,41 +1060,38 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		return nil, fmt.Errorf("failed to get session: %w", err)
 	}
 
-	// The goal goes in the system prompt rather than into the
-	// conversation, and that placement is the whole feature. Summarizing
-	// replaces the messages; it does not touch the system prompt. A goal
-	// stated as a message is one auto-compaction away from being
-	// paraphrased into a summary and then drifted away from, which is
-	// exactly when a long session most needs to remember what it is for.
-	//
-	// It is read here, per request, rather than folded in when the prompt
-	// is built, so that setting or changing a goal takes effect on the
-	// next turn instead of the next time the agent happens to be rebuilt.
-	if goal := strings.TrimSpace(currentSession.Goal); goal != "" {
-		systemPrompt += "\n\n<goal>\n" + goal + "\n</goal>"
+	// Volatile state is assembled separately from the stable system prompt.
+	// It is refreshed after the cache breakpoint on every step, preserving
+	// both provider prompt caching and exact goals across compaction.
+	var dynamicContext strings.Builder
+	var runtimeConfig *config.Config
+	if a.taskContextConfig != nil {
+		runtimeConfig = a.taskContextConfig.Config()
 	}
-	systemPrompt += buildTaskLedger(currentSession.Todos)
+	style, err := outputStyle(runtimeConfig, a.workingDir)
+	if err != nil {
+		return nil, err
+	}
+	if style != "" {
+		fmt.Fprintf(&dynamicContext, "<output_style>\n%s\n</output_style>\n", style)
+	}
+	if goal := strings.TrimSpace(currentSession.Goal); goal != "" {
+		dynamicContext.WriteString("\n\n<goal>\n" + goal + "\n</goal>")
+	}
+	dynamicContext.WriteString(buildTaskLedger(currentSession.Todos))
 	if a.workingDir != "" && !a.isSubAgent {
-		// Like the goal, the active browser contract is read per request
-		// from its checkpoint, so compaction and a model switch keep the
-		// requirements, their verification state and the remaining work.
-		systemPrompt += tools.BrowserTaskPromptBlock(a.workingDir, call.SessionID)
-		// The work plan is the agent's own long-work record: read it per
-		// request so a new session or a compacted one resumes from the
-		// contract, the open features and the latest notes.
-		systemPrompt += workplan.PromptBlock(a.projectRoot(call.SessionID))
-		// The request's own checklist, and its wording after a compaction,
-		// sit next to the plan for the same reason.
-		systemPrompt += a.requestChecklistBlock(call.SessionID)
-		systemPrompt += a.strategyHintsBlock(call.SessionID)
+		dynamicContext.WriteString(tools.BrowserTaskPromptBlock(a.workingDir, call.SessionID))
+		dynamicContext.WriteString(workplan.PromptBlock(a.projectRoot(call.SessionID)))
+		dynamicContext.WriteString(a.requestChecklistBlock(call.SessionID))
+		dynamicContext.WriteString(a.strategyHintsBlock(call.SessionID))
 		if a.harnessOptions().EnvironmentEnabled() {
-			systemPrompt += envprobe.Block()
+			dynamicContext.WriteString(envprobe.Block())
 		}
 	}
 	if a.engineering != nil && !a.isSubAgent && !call.internalContinuation && !call.QueueContinuation && ctx.Value(tools.ScheduledTurnKey{}) != true {
 		// The accepted prompt, before hook and advisor additions, is what
 		// the user said; it anchors the task contract.
-		if _, err := recordWorkTurn(ctx, a.engineering, engineering.GetScope(ctx, call.SessionID).SessionID, acceptedOutcomePrompt, a.workBudgetOverride()); err != nil {
+		if _, err := recordWorkTurn(ctx, a.engineering, a.sessions, engineering.GetScope(ctx, call.SessionID).SessionID, acceptedOutcomePrompt, a.workBudgetOverride()); err != nil {
 			return nil, fmt.Errorf("record task turn: %w", err)
 		}
 	}
@@ -1084,7 +1100,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		if err != nil {
 			return nil, fmt.Errorf("prepare delivery context: %w", err)
 		}
-		systemPrompt += contextText
+		dynamicContext.WriteString(contextText)
 	}
 	var pendingOperations bool
 	if a.engineering != nil {
@@ -1101,7 +1117,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		}
 		pendingOperations = len(pending) > 0 || st.Paused
 		data, _ := json.Marshal(map[string]any{"usage": st.Usage, "limits": st.Limits, "unresolved_operations": pending})
-		systemPrompt += "\n\n<execution_status>\n" + string(data) + "\nOperations still marked running may be active background work or interrupted calls. Inspect their actual state; never replay a mutating operation merely because its completion record is absent. Use workflow status/recover.\n</execution_status>"
+		dynamicContext.WriteString("\n\n<execution_status>\n" + string(data) + "\nOperations still marked running may be active background work or interrupted calls. Inspect their actual state; never replay a mutating operation merely because its completion record is absent. Use workflow status/recover.\n</execution_status>")
 	}
 
 	// The work guidance points at workflow work for any task beyond a
@@ -1111,7 +1127,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		pinWorkflow = pinWorkflow || workTier(ctx, a.engineering, engineering.GetScope(ctx, call.SessionID).SessionID) != engineering.TierDirect
 	}
 	deferral := a.beginToolDeferral(ctx, call, currentSession, a.tools.Copy(), pinWorkflow)
-	systemPrompt += deferral.capabilityIndex(tools.ScopeToolsForDesktop(ctx, a.tools.Copy()))
+	dynamicContext.WriteString(deferral.capabilityIndex(tools.ScopeToolsForDesktop(ctx, a.tools.Copy())))
 
 	agent := fantasy.NewAgent(
 		largeModel.Model,
@@ -1217,7 +1233,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	var stepMessages []fantasy.Message
 	var stepPalette []fantasy.AgentTool
 	var pinnedContext []string
-	var shouldSummarize bool
+	var shouldSummarize, overflowed bool
 	// handoff watches the turn for a finished feature; see feature_handoff.go.
 	handoff := a.newHandoffWatch(call.SessionID)
 	var shouldHandoff bool
@@ -1234,8 +1250,14 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	}
 	var deliveryErr, stepFinishErr error
 	monitor := &strategyMonitor{}
+	monitor.noProgressLimit = 8
+	if opts := a.harnessOptions(); opts != nil && opts.NoProgressSteps > 0 {
+		monitor.noProgressLimit = opts.NoProgressSteps
+	}
+	streamStarted := false
 	result, err = agent.Stream(genCtx, fantasy.AgentStreamCall{
-		Prompt:           message.PromptWithTextAttachments(call.Prompt, call.Attachments),
+		OnStepStart:      func(step int) error { trace.startStep(step); return nil },
+		Prompt:           a.promptWithAttachments(call.Prompt, call.Attachments),
 		Files:            files,
 		Messages:         history,
 		Headers:          sessionHeaders(call.SessionID),
@@ -1251,6 +1273,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			if stepFinishErr != nil {
 				return callContext, prepared, fmt.Errorf("persist previous model step: %w", stepFinishErr)
 			}
+			a.selectWorkPhase(chain, largeModel, options.Messages, call.SessionID)
 			if a.engineering != nil {
 				scope := engineering.GetScope(callContext, call.SessionID)
 				if err := a.engineering.Check(callContext, scope.SessionID, scope.TaskID); err != nil {
@@ -1278,6 +1301,8 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			}
 			prepared.Messages = append(prepared.Messages, directives...)
 			if review := monitor.takePending(); review != "" {
+				review = a.consultStallOracle(callContext, call.SessionID, review)
+				traceStrategyChange(callContext)
 				prepared.Messages = append(prepared.Messages, fantasy.NewUserMessage(review))
 			}
 			for i := range prepared.Messages {
@@ -1302,8 +1327,8 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			stepPalette = palette
 			sessionLock.Unlock()
 			executable := nudgeShellTools(palette, authorized, a.shellNudgesGiven, a.observeShell)
-			executable = a.recallErrors(a.captureBaselines(executable))
-			prepared.Tools = append(markLastToolForCache(guardTools(executable, a.engineering, a.sessions), a.getCacheControlOptions()), stubs...)
+			executable = a.qualityTools(a.recallErrors(a.captureBaselines(executable)))
+			prepared.Tools = observedTools(append(markLastToolForCache(trackSourceRoot(guardTools(executable, a.engineering, a.sessions), a.workingDir), a.getCacheControlOptions()), stubs...))
 			if len(stubs) > 0 && len(palette) > 0 {
 				// Stubs are executable but never advertised.
 				prepared.ActiveTools = paletteNames(palette)
@@ -1324,12 +1349,13 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			fold, canceledRunIDs := a.drainQueueForStep(call.SessionID)
 			a.publishCanceledQueueDrops(canceledRunIDs)
 			for _, queued := range fold {
+				trace.record(harnessmetrics.TraceEvent{Kind: "steering", Reason: "queued_user_instruction", Bytes: len(queued.Prompt)})
 				if !queued.internalContinuation {
 					callContext = tools.WithUserInstruction(callContext, queued.Prompt)
 					if a.engineering != nil && !a.isSubAgent {
 						// A prompt folded into a running turn is often a
 						// correction; it joins the contract like any turn.
-						if _, workErr := recordWorkTurn(callContext, a.engineering, engineering.GetScope(callContext, call.SessionID).SessionID, queued.Prompt, a.workBudgetOverride()); workErr != nil {
+						if _, workErr := recordWorkTurn(callContext, a.engineering, a.sessions, engineering.GetScope(callContext, call.SessionID).SessionID, queued.Prompt, a.workBudgetOverride()); workErr != nil {
 							return callContext, prepared, workErr
 						}
 					}
@@ -1368,16 +1394,20 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				}
 			}
 
+			// Runtime state follows the cached prefix and changes without
+			// altering the provider system prompt or persisted history.
+			prepared.Messages = withDynamicContext(prepared.Messages, dynamicContext.String())
+
 			if !a.isSubAgent && a.harnessOptions().BudgetLineEnabled() {
 				// After the cache breakpoints: the line changes every step.
-				line := budgetLine(int64(largeModel.CatwalkCfg.ContextWindow), currentSession.PromptTokens+currentSession.CompletionTokens, a.autoSummarizeAt.Get(), options.StepNumber)
+				line := budgetLine(activeContextWindow(chain.Current()), currentSession.PromptTokens+currentSession.CompletionTokens, a.autoSummarizeAt.Get(), options.StepNumber)
 				prepared.Messages = withBudgetLine(prepared.Messages, line)
 			}
 
 			if promptPrefix != "" {
 				prepared.Messages = append([]fantasy.Message{fantasy.NewSystemMessage(promptPrefix)}, prepared.Messages...)
 			}
-			prepared.Messages, err = a.inspectContext(callContext, call.SessionID, largeModel.ModelCfg.Provider+"/"+largeModel.ModelCfg.Model, options.StepNumber, prepared.Messages, palette, len(stubs), &pinnedContext)
+			prepared.Messages, err = a.inspectContext(callContext, call.SessionID, chain.Current().ModelCfg.Provider+"/"+chain.Current().ModelCfg.Model, options.StepNumber, prepared.Messages, palette, len(stubs), &pinnedContext)
 			if err != nil {
 				return callContext, prepared, err
 			}
@@ -1403,10 +1433,12 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			return callContext, prepared, err
 		},
 		OnReasoningStart: func(id string, reasoning fantasy.ReasoningContent) error {
+			streamStarted = true
 			currentAssistant.AppendReasoningContent(reasoning.Text)
 			return a.messages.Update(genCtx, *currentAssistant)
 		},
 		OnReasoningDelta: func(id string, text string) error {
+			streamStarted = true
 			currentAssistant.AppendReasoningContent(text)
 			return a.messages.Update(genCtx, *currentAssistant)
 		},
@@ -1435,6 +1467,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			return a.messages.Update(genCtx, *currentAssistant)
 		},
 		OnTextDelta: func(id string, text string) error {
+			streamStarted = true
 			// Strip leading newline from initial text content. This is is
 			// particularly important in non-interactive mode where leading
 			// newlines are very visible.
@@ -1446,6 +1479,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			return a.messages.Update(genCtx, *currentAssistant)
 		},
 		OnToolInputStart: func(id string, toolName string) error {
+			streamStarted = true
 			toolCall := message.ToolCall{
 				ID:               id,
 				Name:             toolName,
@@ -1458,7 +1492,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			return a.messages.Update(ctx, *currentAssistant)
 		},
 		OnRetry: func(err *fantasy.ProviderError, delay time.Duration) {
-			if chain.HandleRetry(err) {
+			if chain.HandleRetrySafely(err, streamStarted) {
 				next := chain.Current()
 				if cooldown := a.fallbackCooldown.Get(); cooldown > 0 {
 					a.fallbackSticky.Set(stickyFallback{
@@ -1466,7 +1500,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 						until: time.Now().Add(cooldown),
 					})
 				}
-				slog.Warn("Model rate-limited, failing over",
+				slog.Warn("Model request failed, failing over",
 					"from_provider", largeModel.ModelCfg.Provider, "from_model", largeModel.ModelCfg.Model,
 					"to_provider", next.ModelCfg.Provider, "to_model", next.ModelCfg.Model)
 			} else if isRateLimited(err) && a.onProviderExhausted != nil {
@@ -1475,6 +1509,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				// the next session/turn against it try a different one.
 				a.onProviderExhausted(chain.Current().ModelCfg.Provider)
 			}
+			traceRetry(genCtx, delay, chain.Current())
 			slog.Warn("Provider request failed, retrying", providerRetryLogFields(err, delay)...)
 			// Reset streamed content so the retried response doesn't
 			// concatenate with partial content from the failed attempt.
@@ -1484,6 +1519,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			if updateErr := a.messages.Update(genCtx, *currentAssistant); updateErr != nil {
 				slog.Error("Failed to reset message on retry", "error", updateErr)
 			}
+			streamStarted = false
 		},
 		OnAuthRefresh: call.OnAuthRefresh,
 		ModelProvider: func() fantasy.LanguageModel {
@@ -1492,7 +1528,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			slog.Info("ModelProvider called",
 				"provider", m.ModelCfg.Provider,
 				"model", m.ModelCfg.Model)
-			return &attemptModel{LanguageModel: m.Model, prepare: func(request fantasy.Call) fantasy.Call {
+			return &attemptModel{LanguageModel: observedModel(genCtx, m), prepare: func(request fantasy.Call) fantasy.Call {
 				return a.prepareAttempt(request, m, turnOrigin, reasoningOrigins)
 			}, beforeCall: func(ctx context.Context) error {
 				if err := ctx.Err(); err != nil {
@@ -1502,6 +1538,8 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 					return nil
 				}
 				return a.engineering.Update(ctx, engineering.GetScope(ctx, call.SessionID).SessionID, func(st *engineering.State) error { st.Usage.ProviderInvocations++; return nil })
+			}, fit: func(request fantasy.Call) (fantasy.Call, error) {
+				return a.fitAttempt(request, m, call.SessionID)
 			}}
 		},
 		OnToolCall: func(tc fantasy.ToolCallContent) error {
@@ -1522,6 +1560,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			return a.messages.Update(ctx, *currentAssistant)
 		},
 		OnToolResult: func(result fantasy.ToolResultContent) error {
+			trace.toolResult(result)
 			toolResult := a.convertToToolResult(result)
 			if redactStoredToolCall(currentAssistant, result.ToolCallID) {
 				// A tool registered a secret it refused; the stored
@@ -1545,6 +1584,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			return createMsgErr
 		},
 		OnStepFinish: func(stepResult fantasy.StepResult) (finishErr error) {
+			a.recordEvaluatorEvidence(call.SessionID, []fantasy.StepResult{stepResult})
 			producer := originOf(chain.Current())
 			for _, reasoning := range stepResult.Content.Reasoning() {
 				part := fantasy.ReasoningPart{Text: reasoning.Text, ProviderOptions: fantasy.ProviderOptions(reasoning.ProviderMetadata)}
@@ -1629,9 +1669,6 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				if deliveryErr == nil {
 					deliveryErr = syncBrowserEvidence(context.WithoutCancel(ctx), a.engineering, a.workingDir, call.SessionID)
 				}
-				if deliveryErr == nil {
-					deliveryErr = markWorkDelivered(context.WithoutCancel(ctx), a.engineering, engineering.GetScope(ctx, call.SessionID).SessionID)
-				}
 				if deliveryErr != nil {
 					return deliveryErr
 				}
@@ -1648,7 +1685,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				if a.disableAutoSummarize.Get() {
 					return false
 				}
-				cw := int64(largeModel.CatwalkCfg.ContextWindow)
+				cw := activeContextWindow(chain.Current())
 				tokens := currentSession.CompletionTokens + currentSession.PromptTokens
 				if !shouldAutoSummarize(cw, tokens, a.autoSummarizeAt.Get()) {
 					return false
@@ -1657,7 +1694,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				return true
 			},
 			func(steps []fantasy.StepResult) bool {
-				cw := int64(largeModel.CatwalkCfg.ContextWindow)
+				cw := activeContextWindow(chain.Current())
 				tokens := currentSession.CompletionTokens + currentSession.PromptTokens
 				if !handoff.due(a.projectRoot(call.SessionID), steps, cw, tokens) {
 					return false
@@ -1673,7 +1710,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				return true
 			},
 			func(steps []fantasy.StepResult) bool {
-				return monitor.observe(genCtx, a.engineering, engineering.GetScope(genCtx, call.SessionID).SessionID, steps)
+				return a.observeStrategy(genCtx, monitor, call.SessionID, steps)
 			},
 			func(steps []fantasy.StepResult) bool {
 				return maxStepsReached(steps, a.maxStepsPerTurn.Get())
@@ -1784,10 +1821,15 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		}
 		var fantasyErr *fantasy.Error
 		var providerErr *fantasy.ProviderError
+		var overflow *contextOverflowError
 		const defaultTitle = "Provider Error"
 		linkStyle := lipgloss.NewStyle().Foreground(charmtone.Guac).Underline(true)
 		if isCancelErr {
 			currentAssistant.AddFinish(message.FinishReasonCanceled, "User canceled request", "")
+		} else if errors.As(err, &overflow) && !call.overflowRetried && !a.disableAutoSummarize.Get() {
+			currentAssistant.AddFinish(message.FinishReasonEndTurn, "Context compacted to fit the model", overflow.Error()+"; the conversation is summarized and the turn resumes.")
+		} else if errors.As(err, &overflow) {
+			currentAssistant.AddFinish(message.FinishReasonError, "Context too large for this model", overflow.Error()+". Compact the session or switch to a model with a larger window.")
 		} else if errors.As(err, &providerErr) {
 			if providerErr.Message == "The requested model is not supported." {
 				url := "https://github.com/settings/copilot/features"
@@ -1814,10 +1856,17 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		if updateErr != nil {
 			return nil, updateErr
 		}
-		return nil, err
+		if !errors.As(err, &overflow) || isCancelErr || call.overflowRetried || a.disableAutoSummarize.Get() {
+			return nil, err
+		}
+		// The request was refused before it was sent, so nothing is lost:
+		// compact the conversation like an over-budget turn and resume it.
+		shouldSummarize, overflowed, err = true, true, nil
 	}
 
 	if reason := monitor.stoppedReason(); reason != "" && currentAssistant != nil {
+		a.recordStallCompletion(genCtx, call.SessionID, reason)
+		trace.record(harnessmetrics.TraceEvent{Kind: "gate", Name: "strategy_monitor", Outcome: "unresolved", Reason: "strategy_budget_exhausted"})
 		// Say why the turn ended instead of leaving a silent tool step.
 		currentAssistant.AddFinish(message.FinishReasonEndTurn, "Stopped without progress", reason)
 		if updateErr := a.messages.Update(context.WithoutCancel(ctx), *currentAssistant); updateErr != nil {
@@ -1852,11 +1901,12 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			return nil, summarizeErr
 		}
 		// If the agent wasn't done...
-		if len(currentAssistant.ToolCalls()) > 0 {
+		if len(currentAssistant.ToolCalls()) > 0 || overflowed {
 			existing, ok := a.messageQueue.Get(call.SessionID)
 			if !ok {
 				existing = []SessionAgentCall{}
 			}
+			call.overflowRetried = call.overflowRetried || overflowed
 			call.Prompt = summaryResumeAfterTurn(call.Prompt, result)
 			existing = append(existing, call)
 			a.messageQueue.Set(call.SessionID, existing)
@@ -1873,25 +1923,44 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			// The turn's time and tokens are charged to the feature being
 			// worked on, so a feature that drags on shows in the plan.
 			usage := result.TotalUsage
-			if err := workplan.AddTurn(a.projectRoot(call.SessionID), time.Since(turnStarted), usage.InputTokens+usage.OutputTokens+usage.CacheReadTokens); err != nil {
+			if err := workplan.AddTurnFor(a.projectRoot(call.SessionID), call.SessionID, time.Since(turnStarted), usage.InputTokens+usage.OutputTokens+usage.CacheReadTokens); err != nil {
 				slog.Debug("Failed to record work plan cost", "error", err)
 			}
 		}
 	}
 	var evaluation evaluatorDecision
 	if a.completionGateActive() && result != nil {
-		a.recordEvaluatorEvidence(call.SessionID, result.Steps)
 		pending, _ := a.messageQueue.Get(call.SessionID)
-		if currentAssistant != nil && len(currentAssistant.ToolCalls()) == 0 && !shouldSummarize &&
+		if currentAssistant != nil && len(currentAssistant.ToolCalls()) == 0 && !shouldSummarize && len(result.Steps) > 0 && result.Steps[len(result.Steps)-1].FinishReason == fantasy.FinishReasonStop &&
 			monitor.stoppedReason() == "" && len(pending) == 0 && genCtx.Err() == nil {
-			evaluation = a.evaluateTurn(genCtx, call.SessionID, currentAssistant.Content().Text)
+			evaluation = a.completeTurn(genCtx, call.SessionID, currentAssistant.Content().Text)
 		}
 		// A turn cut short by a message the user sent meanwhile leaves the
 		// request open, so that message extends it instead of replacing it.
 		a.markRequestOpen(call.SessionID, evaluation.Continue != "" || len(pending) > 0)
 	}
+	if result != nil && len(result.Steps) > 0 && result.Steps[len(result.Steps)-1].FinishReason == fantasy.FinishReasonStop &&
+		currentAssistant != nil && len(currentAssistant.ToolCalls()) == 0 && strings.TrimSpace(currentAssistant.Content().Text) != "" &&
+		!shouldSummarize && monitor.stoppedReason() == "" && genCtx.Err() == nil {
+		pending, _ := a.messageQueue.Get(call.SessionID)
+		if len(pending) == 0 {
+			if !a.completionGateActive() {
+				evaluation, _ = a.decideTurnCompletion(genCtx, call.SessionID, evaluation)
+			}
+		}
+		// A withheld runtime decision keeps the original request open for
+		// follow-ups, just as an evaluator continuation does.
+		a.markRequestOpen(call.SessionID, evaluation.Continue != "" || evaluation.Unresolved != "" || evaluation.Unverified != "" || len(pending) > 0)
+	}
 	if evaluation.Unresolved != "" && currentAssistant != nil {
 		currentAssistant.AddFinish(message.FinishReasonEndTurn, "Evaluator findings unresolved", evaluation.Unresolved)
+		if updateErr := a.messages.Update(context.WithoutCancel(ctx), *currentAssistant); updateErr != nil {
+			return nil, updateErr
+		}
+	}
+
+	if evaluation.Unverified != "" && currentAssistant != nil {
+		currentAssistant.AddFinish(message.FinishReasonEndTurn, "Completion not independently verified", evaluation.Unverified)
 		if updateErr := a.messages.Update(context.WithoutCancel(ctx), *currentAssistant); updateErr != nil {
 			return nil, updateErr
 		}
@@ -1910,7 +1979,8 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	// result. Run in the background: it is a second opinion, not
 	// something the user should wait on.
 	if a.advisorModel.Get().v != nil && currentAssistant != nil && a.shouldRunAdvisorPass(call.SessionID) {
-		go a.runAdvisorPass(context.WithoutCancel(ctx), call.SessionID, call.Prompt, currentAssistant.Content().Text)
+		trace.record(harnessmetrics.TraceEvent{Kind: "helper_scheduled", Name: "advisor"})
+		go a.runAdvisorPass(context.WithoutCancel(genCtx), call.SessionID, call.Prompt, currentAssistant.Content().Text)
 	}
 
 	// Send notification that agent has finished its turn (skip for
@@ -1945,6 +2015,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	mark, _ := a.cancelMark.Get(call.SessionID)
 	if evaluation.Continue != "" && mark == 0 && ctx.Err() == nil {
 		next := call
+		a.sessionTrace(call.SessionID).record(harnessmetrics.TraceEvent{Kind: "continuation", Reason: "completion_gate"})
 		next.Prompt = evaluation.Continue
 		next.Attachments, next.Accepted, next.OnComplete, next.RunID, next.acceptSeq = nil, nil, nil, "", 0
 		next.QueueContinuation = false
@@ -1962,6 +2033,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			}
 		}
 		if decision.Continue {
+			trace.record(harnessmetrics.TraceEvent{Kind: "continuation", Reason: "browser_or_shared_contract"})
 			next := call
 			// An ordinary queued prompt, not a durable-queue continuation:
 			// that flag means "deliver the next workflow directive".
@@ -1990,6 +2062,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		}
 	}
 	if queueReady && mark == 0 && ctx.Err() == nil {
+		trace.record(harnessmetrics.TraceEvent{Kind: "continuation", Reason: "durable_workflow_queue"})
 		next := call
 		next.Prompt = "Continue with the next ready user instruction from the persistent workflow queue."
 		next.Attachments, next.Accepted, next.OnComplete, next.RunID, next.acceptSeq = nil, nil, nil, "", 0
@@ -2083,10 +2156,19 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		}
 		a.publishRunComplete(ctx, call, complete)
 	}
+	a.finishTurnTrace(trace, call.SessionID, turnStarted, err)
 	return a.Run(ctx, firstQueuedMessage)
 }
 
-func (a *sessionAgent) Summarize(ctx context.Context, sessionID string, opts fantasy.ProviderOptions, onAuthRefresh func(context.Context, *fantasy.ProviderError) error) error {
+func (a *sessionAgent) Summarize(ctx context.Context, sessionID string, opts fantasy.ProviderOptions, onAuthRefresh func(context.Context, *fantasy.ProviderError) error) (retErr error) {
+	ctx, observation := startGate(ctx, "compaction")
+	defer func() {
+		if retErr != nil {
+			observation.finish("error", "compaction_failed")
+		} else {
+			observation.finish("pass", "compaction_complete")
+		}
+	}()
 	if a.IsSessionBusy(sessionID) {
 		return ErrSessionBusy
 	}
@@ -2166,7 +2248,7 @@ func (a *sessionAgent) summarizeAttempt(ctx context.Context, sessionID string, s
 	}()
 
 	agent := fantasy.NewAgent(
-		summaryModel.Model,
+		observedModel(ctx, summaryModel),
 		fantasy.WithSystemPrompt(string(summaryPrompt)),
 		fantasy.WithUserAgent(userAgent),
 	)
@@ -2194,13 +2276,18 @@ func (a *sessionAgent) summarizeAttempt(ctx context.Context, sessionID string, s
 		ModelProvider: func() fantasy.LanguageModel {
 			// Re-fetch a rebuilt client after credential renewal, while
 			// keeping the compact model selected when this call started.
+			chosen := a.largeModel.Get()
 			if usingCompactModel {
+				chosen = summaryModel
 				if current := a.compactModel.Get().v; current != nil && current.ModelCfg.Provider == summaryModel.ModelCfg.Provider && current.ModelCfg.Model == summaryModel.ModelCfg.Model {
-					return current.Model
+					chosen = *current
 				}
-				return summaryModel.Model
 			}
-			return a.largeModel.Get().Model
+			// The history being summarized meets the summary model's own
+			// window like any other request.
+			return &attemptModel{LanguageModel: chosen.Model, prepare: func(c fantasy.Call) fantasy.Call { return c }, fit: func(c fantasy.Call) (fantasy.Call, error) {
+				return a.fitAttempt(c, chosen, sessionID)
+			}}
 		},
 		PrepareStep: func(callContext context.Context, options fantasy.PrepareStepFunctionOptions) (_ context.Context, prepared fantasy.PrepareStepResult, err error) {
 			prepared.Messages = options.Messages
@@ -2424,6 +2511,7 @@ When you're done presenting the plan and believe it's ready to implement, call t
 		if m.Role == message.Assistant && !target.accepts(m) {
 			m = withoutReasoning(m)
 		}
+		m = a.referenceLargeAttachments(m)
 		aiMsgs := m.ToAIMessage()
 		if !supportsImages {
 			for i := range aiMsgs {

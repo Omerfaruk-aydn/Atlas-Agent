@@ -223,16 +223,40 @@ func (m *BackgroundShellManager) Remove(id string) error {
 	return nil
 }
 
-// Kill terminates a background shell by ID.
+// killWait bounds how long Kill waits for a canceled shell to finish.
+const killWait = 10 * time.Second
+
+// ErrStillStopping reports that a killed job had not finished within the
+// wait. It was told to stop and is no longer tracked; only its exit is
+// unconfirmed.
+var ErrStillStopping = errors.New("the job was told to stop but has not exited yet")
+
+// Kill terminates a background shell by ID and waits, at most killWait,
+// for it to finish.
 func (m *BackgroundShellManager) Kill(id string) error {
+	return m.KillContext(context.Background(), id)
+}
+
+// KillContext is Kill whose wait also ends when ctx does, so a caller that
+// is itself canceled (a turn the user stopped) is never held by a job that
+// will not exit.
+func (m *BackgroundShellManager) KillContext(ctx context.Context, id string) error {
 	shell, ok := m.shells.Take(id)
 	if !ok {
 		return fmt.Errorf("background shell not found: %s", id)
 	}
 
 	shell.cancel()
-	<-shell.done
-	return nil
+	timer := time.NewTimer(killWait)
+	defer timer.Stop()
+	select {
+	case <-shell.done:
+		return nil
+	case <-timer.C:
+		return ErrStillStopping
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // JobStatus is the current lifecycle state of a background shell.

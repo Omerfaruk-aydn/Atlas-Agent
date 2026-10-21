@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -58,7 +59,11 @@ func NewJobKillTool() fantasy.AgentTool {
 				Description: bgShell.Description,
 			}
 
-			err := bgManager.Kill(params.ShellID)
+			err := bgManager.KillContext(ctx, params.ShellID)
+			if errors.Is(err, shell.ErrStillStopping) {
+				result := fmt.Sprintf("Background shell %s was told to stop but had not exited after waiting; it is no longer tracked", params.ShellID)
+				return fantasy.WithResponseMetadata(fantasy.NewTextResponse(result), metadata), nil
+			}
 			if err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}

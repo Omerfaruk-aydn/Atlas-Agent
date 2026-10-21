@@ -1,0 +1,26 @@
+/* Atlas-only additions on top of Atlas Agent's stylesheet. Keep this small:
+   screens copy Atlas Agent's markup and classes instead of restyling. */
+
+/* The composer's context ring. */
+:root {
+  --context-ring-track: color-mix(in srgb, var(--v2-text-text-base) 16%, transparent);
+  --context-ring-normal: var(--v2-icon-icon-base);
+  --context-ring-warning: #f5a524;
+  --context-ring-critical: #ef4444;
+}
+
+[data-component="context-ring"] [data-component="progress-circle"] {
+  transition: transform 0.2s ease;
+}
+
+[data-component="context-ring"]:hover [data-component="progress-circle"] {
+  transform: rotate(-90deg) scale(1.08);
+}
+
+[data-component="context-ring-card"] [data-level="warning"] {
+  color: var(--context-ring-warning);
+}
+
+[data-component="context-ring-card"] [data-level="critical"] {
+  color: var(--context-ring-critical);
+}

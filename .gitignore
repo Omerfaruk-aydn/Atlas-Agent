@@ -13,6 +13,10 @@
 
 # Dependency directories
 vendor/
+# The web client's interface packages are source, not downloaded
+# dependencies (see THIRD_PARTY_NOTICES.md).
+!web/vendor/
+!web/src/vendor/
 
 # Temp migration scripts. The leading-underscore patterns only ever
 # matched a naming convention nobody followed, so the release and

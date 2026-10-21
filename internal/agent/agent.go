@@ -25,6 +25,7 @@ import (
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/activity"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/appenv"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/browser"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/notify"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
@@ -47,6 +48,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/execution"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/hooks"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
@@ -987,9 +989,19 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			genCtx = activity.WithLanguage(genCtx, cfg.Options.TUI.Language)
 		}
 	}
-	genCtx, finishActivity := activity.StartRun(genCtx, engineering.GetScope(genCtx, call.SessionID).SessionID)
+	controlID := engineering.GetScope(genCtx, call.SessionID).SessionID
+	genCtx, finishActivity := activity.StartRun(genCtx, controlID)
 	// Only a run that returns without error earns the completion motion.
 	defer func() { finishActivity(retErr == nil) }()
+	// The browser the turn opened goes with it rather than staying on
+	// screen until the next browser call; a later turn opens it again. A
+	// browser handed to the user (handoff) stays, since the next turn
+	// continues from what they do there.
+	defer func() {
+		if !interaction.Default.Snapshot(controlID).Paused {
+			browser.CloseSession(call.SessionID)
+		}
+	}()
 	agentTools := guardTools(a.tools.Copy(), a.engineering, a.sessions)
 	largeModel := a.largeModel.Get()
 	// chain starts on largeModel -- or on a sticky fallback still within

@@ -1135,6 +1135,17 @@ func CloseAllSessions() {
 	manager.CloseAll()
 }
 
+// CloseSession closes the browser session for id, if a manager was ever
+// started and has one open. Like CloseAllSessions it never starts a
+// manager just to find nothing open.
+func CloseSession(id string) {
+	manager := currentManager()
+	if manager == nil {
+		return
+	}
+	manager.Close(id)
+}
+
 func currentManager() *Manager {
 	defaultManagerMu.RLock()
 	defer defaultManagerMu.RUnlock()

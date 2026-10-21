@@ -177,3 +177,27 @@ func TestBannerStopFlushesRendererBeforeReturning(t *testing.T) {
 	require.False(t, r.last().Visible)
 	require.True(t, r.last().FinishedUntil.IsZero())
 }
+
+// A run that has stopped using the desktop or browser does not keep the
+// overlay on screen until it ends: it goes after a quiet spell, and the
+// next operation brings it back.
+func TestFlowHidesVisualsWhenNoOperationFollows(t *testing.T) {
+	previous := persistentIdleHide
+	persistentIdleHide = 50 * time.Millisecond
+	t.Cleanup(func() { persistentIdleHide = previous })
+
+	m := New(&testRenderer{})
+	defer m.Close()
+	ctx, end := StartFlow(context.Background(), "idle-fixture")
+	defer end()
+
+	m.Begin(ctx, Event{Session: "idle-fixture", Point: true, X: 40, Y: 50})()
+	require.True(t, m.Snapshot().Visible, "it stays up between close operations")
+	require.Eventually(t, func() bool { return !m.Snapshot().Visible }, 2*time.Second, 10*time.Millisecond)
+
+	finish := m.Begin(ctx, Event{Session: "idle-fixture", Point: true, X: 10, Y: 20})
+	require.True(t, m.Snapshot().Visible, "the next operation shows it again")
+	time.Sleep(200 * time.Millisecond)
+	require.True(t, m.Snapshot().Visible, "an operation still running is never hidden")
+	finish()
+}

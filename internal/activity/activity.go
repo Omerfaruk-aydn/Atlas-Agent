@@ -265,6 +265,7 @@ func (m *Manager) Start(ctx context.Context, e Event) Operation {
 			close(finished)
 			m.mu.Lock()
 			if m.event.ID == e.ID && m.event.Persistent {
+				m.hideWhenIdle(e.ID)
 				m.event.Action = "wait"
 				// A recorded failure stays visible while the model reacts,
 				// and a pending request keeps the run waiting.
@@ -294,6 +295,30 @@ func (m *Manager) Start(ctx context.Context, e Event) Operation {
 		}()
 	}
 	return Operation{m: m, id: e.ID, end: end}
+}
+
+// persistentIdleHide is how long a run's desktop or browser visuals stay
+// on screen after its last operation. A run that has moved on to other
+// work -- editing files, running tests -- should not keep the overlay up
+// until it ends; the next operation brings it back.
+var persistentIdleHide = 30 * time.Second
+
+// hideWhenIdle tears down the visuals of operation id if no newer
+// operation has started by the time persistentIdleHide passes. A pending
+// request keeps them, since the user has to answer it there. Called with
+// mu held.
+func (m *Manager) hideWhenIdle(id uint64) {
+	time.AfterFunc(persistentIdleHide, func() {
+		m.mu.Lock()
+		idle := !m.closed && m.event.ID == id && m.event.Persistent && m.event.Visible && m.event.Prompt == nil
+		if idle {
+			m.clearLocked()
+		}
+		m.mu.Unlock()
+		if idle {
+			m.signal()
+		}
+	})
 }
 
 // Stop cancels only the run owning this exact visible banner revision.

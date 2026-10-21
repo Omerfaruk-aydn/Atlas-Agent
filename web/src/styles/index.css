@@ -1,0 +1,21 @@
+/* Layer order: vendored tokens and reset first, then the vendored
+   components (which declare the same layers), then the Atlas app styles,
+   which therefore win over both without !important. */
+@layer properties, theme, base, components, utilities, app;
+
+@import "../vendor/atlas-ui/styles/tokens/colors.css" layer(theme);
+@import "../vendor/atlas-ui/styles/tokens/theme.css" layer(theme);
+@import "../vendor/atlas-ui/styles/legacy-theme.css" layer(theme);
+@import "./tokens-bridge.css" layer(theme);
+@import "../vendor/atlas-ui/styles/base.css" layer(base);
+@import "../vendor/atlas-ui/styles/animations.css" layer(utilities);
+@import "../vendor/atlas-ui/components/collapsible.css" layer(components);
+@import "../vendor/atlas-ui/session-ui/basic-tool.css" layer(components);
+@import "../vendor/atlas-ui/session-ui/message-part.css" layer(components);
+@import "../vendor/atlas-ui/session-ui/session-turn.css" layer(components);
+@import "../vendor/atlas-ui/session-ui/markdown.css" layer(components);
+@import "../vendor/atlas-ui/session-ui/question-prompt.css" layer(components);
+@import "../vendor/atlas-ui/session-ui/tool-status-title.css" layer(components);
+@import "../vendor/atlas-ui/session-ui/tool-error-card.css" layer(components);
+@import "./app.css" layer(app);
+@import "./shell.css" layer(app);

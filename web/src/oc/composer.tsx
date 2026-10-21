@@ -173,9 +173,15 @@ export function createComposerModel(input: {
         await api.shell(input.store().id, sid, text)
       } else {
         const attachments = (await Promise.all(images.map((part) => attachmentPayload(part as never)))).filter((a): a is Attachment => !!a)
-        const runID = newRunID()
-        input.store().markStarting(sid, runID)
-        await api.prompt(input.store().id, sid, text, runID, attachments)
+        if (untrack(working)) {
+          // Written while the agent works: it goes into the running turn,
+          // as in the terminal, rather than waiting in a queue.
+          await api.followUp(input.store().id, sid, text, attachments)
+        } else {
+          const runID = newRunID()
+          input.store().markStarting(sid, runID)
+          await api.prompt(input.store().id, sid, text, runID, attachments)
+        }
       }
       controller.addHistory(parts, shell ? "shell" : "normal")
       prompt().reset()

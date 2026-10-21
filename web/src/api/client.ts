@@ -133,6 +133,12 @@ export const api = {
   /** Sends a prompt. The run ID makes it idempotent, so a request whose
    * answer was lost is retried with the same ID and the server starts
    * the run once. */
+  /** followUp sends a message into the session's running turn, as the
+   * terminal does, instead of queueing it. It has no run ID to make a
+   * retry safe, so it is sent once. */
+  followUp(id: string, sid: string, prompt: string, attachments: Attachment[] = []) {
+    return request<{ run_id: string; duplicate: boolean }>("POST", sess(id, sid, "/prompt"), { prompt, follow_up: true, attachments })
+  },
   async prompt(id: string, sid: string, prompt: string, runID: string, attachments: Attachment[] = []) {
     const body = { prompt, run_id: runID, attachments }
     let lastError: unknown

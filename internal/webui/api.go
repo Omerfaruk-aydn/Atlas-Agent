@@ -466,9 +466,15 @@ func (g *Gateway) handleWorkflow(w http.ResponseWriter, r *http.Request, h *hub)
 // promptRequest is a prompt from the browser. RunID makes it idempotent:
 // a client that lost the acknowledgement retries with the same RunID and
 // the server starts the run once.
+//
+// FollowUp sends a message written while the session's turn is running
+// into that turn, as the terminal does, instead of queueing it as a turn of
+// its own. It carries no RunID: the server folds only prompts without one
+// into the active turn. With no turn running it simply starts one.
 type promptRequest struct {
 	Prompt      string             `json:"prompt"`
 	RunID       string             `json:"run_id"`
+	FollowUp    bool               `json:"follow_up,omitempty"`
 	Attachments []proto.Attachment `json:"attachments,omitempty"`
 }
 
@@ -485,7 +491,9 @@ func (g *Gateway) handlePrompt(w http.ResponseWriter, r *http.Request, h *hub) {
 		writeError(w, http.StatusRequestEntityTooLarge, "prompt is too long")
 		return
 	}
-	if _, err := uuid.Parse(req.RunID); err != nil {
+	if req.FollowUp {
+		req.RunID = ""
+	} else if _, err := uuid.Parse(req.RunID); err != nil {
 		writeError(w, http.StatusBadRequest, "run_id must be a UUID")
 		return
 	}

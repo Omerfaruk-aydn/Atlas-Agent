@@ -579,7 +579,7 @@ func TestAcceptance_WorkspacesAreIsolated(t *testing.T) {
 func TestAcceptance_RejectsUnauthorizedRequests(t *testing.T) {
 	h := newHarness(t)
 	anon := &http.Client{}
-	rsp, err := anon.Get(h.base + "/api/bootstrap")
+	rsp, err := get(anon, h.base+"/api/bootstrap")
 	require.NoError(t, err)
 	rsp.Body.Close()
 	require.Equal(t, http.StatusUnauthorized, rsp.StatusCode)
@@ -588,16 +588,16 @@ func TestAcceptance_RejectsUnauthorizedRequests(t *testing.T) {
 	link := h.gw.LaunchURL()
 	b := h.signIn()
 	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	rsp, err = noRedirect.Get(link)
+	rsp, err = get(noRedirect, link)
 	require.NoError(t, err)
 	rsp.Body.Close()
 	require.Equal(t, http.StatusSeeOther, rsp.StatusCode)
-	rsp, err = noRedirect.Get(link)
+	rsp, err = get(noRedirect, link)
 	require.NoError(t, err)
 	rsp.Body.Close()
 	require.Equal(t, http.StatusUnauthorized, rsp.StatusCode)
 
-	req, _ := http.NewRequest(http.MethodPost, h.base+"/api/workspaces", strings.NewReader(`{"path":"x"}`))
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, h.base+"/api/workspaces", strings.NewReader(`{"path":"x"}`))
 	req.Header.Set("Origin", "http://evil.example")
 	req.Header.Set(csrfHeader, b.csrf)
 	rsp, err = b.http.Do(req)
@@ -605,14 +605,14 @@ func TestAcceptance_RejectsUnauthorizedRequests(t *testing.T) {
 	rsp.Body.Close()
 	require.Equal(t, http.StatusForbidden, rsp.StatusCode)
 
-	req, _ = http.NewRequest(http.MethodPost, h.base+"/api/workspaces", strings.NewReader(`{"path":"x"}`))
+	req, _ = http.NewRequestWithContext(context.Background(), http.MethodPost, h.base+"/api/workspaces", strings.NewReader(`{"path":"x"}`))
 	req.Header.Set("Origin", h.base)
 	rsp, err = b.http.Do(req)
 	require.NoError(t, err)
 	rsp.Body.Close()
 	require.Equal(t, http.StatusForbidden, rsp.StatusCode, "missing CSRF token")
 
-	req, _ = http.NewRequest(http.MethodGet, h.base+"/api/bootstrap", nil)
+	req, _ = http.NewRequestWithContext(context.Background(), http.MethodGet, h.base+"/api/bootstrap", nil)
 	req.Host = "attacker.example:" + h.gw.Port()
 	rsp, err = b.http.Do(req)
 	require.NoError(t, err)

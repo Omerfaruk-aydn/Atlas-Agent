@@ -70,7 +70,7 @@ func (g *Gateway) Handler() http.Handler {
 	api.HandleFunc("GET /api/workspaces/{id}/settings", g.withHub(g.handleSettings))
 	api.HandleFunc("POST /api/workspaces/{id}/permission-mode", g.withHub(g.handlePermissionMode))
 	api.HandleFunc("POST /api/workspaces/{id}/compaction", g.withHub(g.handleCompaction))
-	api.HandleFunc("POST /api/workspaces/{id}/session-mode",g.withHub(g.handleSessionMode))
+	api.HandleFunc("POST /api/workspaces/{id}/session-mode", g.withHub(g.handleSessionMode))
 	api.HandleFunc("GET /api/workspaces/{id}/files", g.withHub(g.relayGet("/files")))
 	api.HandleFunc("GET /api/workspaces/{id}/files/content", g.withHub(g.handleFileContent))
 	api.HandleFunc("GET /api/workspaces/{id}/jobs", g.withHub(g.relayGet("/jobs")))

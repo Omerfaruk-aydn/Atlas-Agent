@@ -99,12 +99,22 @@ type browser struct {
 	csrf string
 }
 
+// get issues a GET with a context, which the linter requires over
+// Client.Get.
+func get(c *http.Client, url string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return c.Do(req)
+}
+
 func (h *harness) signIn() *browser {
 	h.t.Helper()
 	jar, err := cookiejar.New(nil)
 	require.NoError(h.t, err)
 	b := &browser{t: h.t, h: h, http: &http.Client{Jar: jar, Timeout: 2 * time.Minute}}
-	rsp, err := b.http.Get(h.gw.LaunchURL())
+	rsp, err := get(b.http, h.gw.LaunchURL())
 	require.NoError(h.t, err)
 	rsp.Body.Close()
 	require.Equal(h.t, http.StatusOK, rsp.StatusCode)
@@ -125,7 +135,7 @@ func (b *browser) request(method, path string, body any) *http.Response {
 		require.NoError(b.t, err)
 		r = bytes.NewReader(raw)
 	}
-	req, err := http.NewRequest(method, b.h.base+path, r)
+	req, err := http.NewRequestWithContext(context.Background(), method, b.h.base+path, r)
 	require.NoError(b.t, err)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -210,7 +220,7 @@ func (b *browser) events(wsID string, after uint64) *stream {
 	if after > 0 {
 		req.Header.Set("Last-Event-ID", strconv.FormatUint(after, 10))
 	}
-	rsp, err := b.http.Do(req)
+	rsp, err := b.http.Do(req) //nolint:bodyclose // The reader goroutine below closes it.
 	require.NoError(b.t, err)
 	require.Equal(b.t, http.StatusOK, rsp.StatusCode)
 	s := &stream{cancel: cancel, notify: make(chan struct{}, 1), done: make(chan struct{})}

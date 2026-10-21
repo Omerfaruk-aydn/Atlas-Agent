@@ -12,24 +12,38 @@ type attemptModel struct {
 	fantasy.LanguageModel
 	prepare    func(fantasy.Call) fantasy.Call
 	beforeCall func(context.Context) error
+	// fit reduces the prepared request to this model's context window, or
+	// refuses it before anything is sent.
+	fit func(fantasy.Call) (fantasy.Call, error)
+}
+
+func (m *attemptModel) ready(ctx context.Context, call fantasy.Call) (fantasy.Call, error) {
+	if m.beforeCall != nil {
+		if err := m.beforeCall(ctx); err != nil {
+			return call, err
+		}
+	}
+	call = m.prepare(call)
+	if m.fit != nil {
+		return m.fit(call)
+	}
+	return call, nil
 }
 
 func (m *attemptModel) Generate(ctx context.Context, call fantasy.Call) (*fantasy.Response, error) {
-	if m.beforeCall != nil {
-		if err := m.beforeCall(ctx); err != nil {
-			return nil, err
-		}
+	call, err := m.ready(ctx, call)
+	if err != nil {
+		return nil, err
 	}
-	return m.LanguageModel.Generate(ctx, m.prepare(call))
+	return m.LanguageModel.Generate(ctx, call)
 }
 
 func (m *attemptModel) Stream(ctx context.Context, call fantasy.Call) (fantasy.StreamResponse, error) {
-	if m.beforeCall != nil {
-		if err := m.beforeCall(ctx); err != nil {
-			return nil, err
-		}
+	call, err := m.ready(ctx, call)
+	if err != nil {
+		return nil, err
 	}
-	return m.LanguageModel.Stream(ctx, m.prepare(call))
+	return m.LanguageModel.Stream(ctx, call)
 }
 
 func (a *sessionAgent) prepareAttempt(call fantasy.Call, model Model, initial reasoningOrigin, origins map[string]reasoningOrigin) fantasy.Call {

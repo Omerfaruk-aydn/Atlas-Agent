@@ -1,0 +1,54 @@
+/* Atlas Agent's session components still read a few tokens from its older
+   theme. Point them at the v2 tokens so they follow [data-color-scheme]
+   (the older theme only follows the OS preference). */
+
+@font-face {
+  font-family: "Inter";
+  src: url("../vendor/atlas-ui/fonts/Inter.ttf") format("truetype");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root,
+[data-color-scheme] {
+  --font-family-mono: ui-monospace, SFMono-Regular, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --text-base: var(--v2-text-text-base);
+  --text-strong: var(--v2-text-text-base);
+  --text-weak: var(--v2-text-text-muted);
+  --text-weaker: var(--v2-text-text-faint);
+  --text-interactive-base: var(--v2-text-text-accent);
+  --text-link-base: var(--v2-text-text-accent);
+  --icon-weak: var(--v2-icon-icon-muted);
+  --icon-weaker: var(--v2-icon-icon-faint);
+  --icon-warning-base: var(--v2-state-fg-warning);
+  --icon-diff-add-base: var(--v2-state-fg-success);
+  --icon-diff-delete-base: var(--v2-state-fg-danger);
+  --icon-diff-modified-base: var(--v2-state-fg-warning);
+  --background-base: var(--v2-background-bg-base);
+  --background-stronger: var(--v2-background-bg-layer-01);
+  --color-background-stronger: var(--v2-background-bg-layer-01);
+  --surface-base: var(--v2-background-bg-layer-01);
+  --surface-base-active: var(--v2-background-bg-layer-02);
+  --surface-inset-base: var(--v2-background-bg-layer-01);
+  --surface-raised-base-hover: var(--v2-overlay-simple-overlay-hover);
+  --border-weak-base: var(--v2-border-border-muted);
+  --border-weaker-base: var(--v2-border-border-muted);
+  --border-strong-base: var(--v2-border-border-strong);
+  --border-active: var(--v2-border-border-focus);
+  --progress-circle-background: var(--v2-border-border-base);
+  --progress-circle-background-overlay: transparent;
+  --progress-circle-progress: var(--v2-icon-icon-base);
+  --markdown-inline-code-color: var(--v2-text-text-base);
+  --markdown-inline-code-path-color: var(--v2-text-text-code-path);
+  --markdown-shell-code-background: var(--v2-background-bg-layer-01);
+  --markdown-shell-code-border: var(--v2-border-border-muted);
+  --markdown-shell-code-color: var(--v2-text-text-base);
+  --markdown-shell-code-token-color: var(--v2-text-text-muted);
+  --tool-content-gap: 4px;
+  --tool-motion-ease: cubic-bezier(0.2, 0, 0, 1);
+  --tool-motion-fade-ms: 150ms;
+  --tool-motion-spring-ms: 300ms;
+  --tool-motion-blur: 0px;
+  --session-title-height: 40px;
+  --container-session: 744px;
+}

@@ -605,6 +605,9 @@
         },
         "options": {
           "$ref": "#/$defs/ModelOptions"
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/ModelLifecycle"
         }
       },
       "additionalProperties": false,
@@ -620,6 +623,35 @@
         "default_max_tokens",
         "can_reason",
         "supports_attachments"
+      ]
+    },
+    "ModelLifecycle": {
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "retirement_date": {
+          "type": "string"
+        },
+        "replacement": {
+          "type": "string"
+        },
+        "source_url": {
+          "type": "string"
+        },
+        "verified_at": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "status",
+        "source_url",
+        "verified_at"
       ]
     },
     "ModelOptions": {

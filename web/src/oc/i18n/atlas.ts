@@ -28,4 +28,7 @@ export const atlasTr: Record<string, string> = {
   "review.tab.count.other": "{{count}} dosya değiştirildi",
   "review.loadingChanges": "Değişiklikler yükleniyor…",
   "ui.permission.allowAlways": "Oturum için izin ver",
+  // The packaged translation reads "İkinci el" ("second-hand") here.
+  "ui.messagePart.tools.used.one": "Kullanıldı: {{count}} {{tools}}",
+  "ui.messagePart.tools.used.other": "Kullanıldı: {{count}} {{tools}}",
 }

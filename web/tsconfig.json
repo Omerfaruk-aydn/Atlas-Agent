@@ -1,0 +1,334 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": [
+      "vite/client",
+      "node"
+    ],
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@atlas/ui/accordion": [
+        "vendor/atlas-ui/src/data-display/accordion/accordion.tsx"
+      ],
+      "@atlas/ui/avatar": [
+        "vendor/atlas-ui/src/data-display/avatar/avatar.tsx"
+      ],
+      "@atlas/ui/badge": [
+        "vendor/atlas-ui/src/data-display/badge/badge.tsx"
+      ],
+      "@atlas/ui/button": [
+        "vendor/atlas-ui/src/actions/button/button.tsx"
+      ],
+      "@atlas/ui/button.css": [
+        "vendor/atlas-ui/src/actions/button/button.css"
+      ],
+      "@atlas/ui/checkbox": [
+        "vendor/atlas-ui/src/forms/checkbox/checkbox.tsx"
+      ],
+      "@atlas/ui/dialog": [
+        "vendor/atlas-ui/src/overlays/dialog/dialog.tsx"
+      ],
+      "@atlas/ui/diff-changes": [
+        "vendor/atlas-ui/src/data-display/diff-changes/diff-changes.tsx"
+      ],
+      "@atlas/ui/divider": [
+        "vendor/atlas-ui/src/layout/divider/divider.tsx"
+      ],
+      "@atlas/ui/field": [
+        "vendor/atlas-ui/src/forms/field/field.tsx"
+      ],
+      "@atlas/ui/file-tree.css": [
+        "vendor/atlas-ui/src/styles/file-tree.css"
+      ],
+      "@atlas/ui/icon": [
+        "vendor/atlas-ui/src/icons/icon/icon.tsx"
+      ],
+      "@atlas/ui/icons/catalog": [
+        "vendor/atlas-ui/src/icons/catalog.ts"
+      ],
+      "@atlas/ui/icon-button": [
+        "vendor/atlas-ui/src/actions/icon-button/icon-button.tsx"
+      ],
+      "@atlas/ui/inline-input": [
+        "vendor/atlas-ui/src/forms/inline-input/inline-input.tsx"
+      ],
+      "@atlas/ui/keybind": [
+        "vendor/atlas-ui/src/data-display/keybind/keybind.tsx"
+      ],
+      "@atlas/ui/line-comment": [
+        "vendor/atlas-ui/src/data-display/line-comment/line-comment.tsx"
+      ],
+      "@atlas/ui/loader": [
+        "vendor/atlas-ui/src/feedback/loader/loader.tsx"
+      ],
+      "@atlas/ui/menu": [
+        "vendor/atlas-ui/src/navigation/menu/menu.tsx"
+      ],
+      "@atlas/ui/progress-circle": [
+        "vendor/atlas-ui/src/feedback/progress-circle/progress-circle.tsx"
+      ],
+      "@atlas/ui/project-avatar": [
+        "vendor/atlas-ui/src/data-display/project-avatar/project-avatar.tsx"
+      ],
+      "@atlas/ui/radio": [
+        "vendor/atlas-ui/src/forms/radio/radio.tsx"
+      ],
+      "@atlas/ui/segmented-control": [
+        "vendor/atlas-ui/src/navigation/segmented-control/segmented-control.tsx"
+      ],
+      "@atlas/ui/select": [
+        "vendor/atlas-ui/src/forms/select/select.tsx"
+      ],
+      "@atlas/ui/split-button": [
+        "vendor/atlas-ui/src/actions/split-button/split-button.tsx"
+      ],
+      "@atlas/ui/switch": [
+        "vendor/atlas-ui/src/forms/switch/switch.tsx"
+      ],
+      "@atlas/ui/tab-state-indicator": [
+        "vendor/atlas-ui/src/navigation/tab-state-indicator.tsx"
+      ],
+      "@atlas/ui/tabs": [
+        "vendor/atlas-ui/src/navigation/tabs/tabs.tsx"
+      ],
+      "@atlas/ui/text-input": [
+        "vendor/atlas-ui/src/forms/text-input/text-input.tsx"
+      ],
+      "@atlas/ui/text-input.css": [
+        "vendor/atlas-ui/src/forms/text-input/text-input.css"
+      ],
+      "@atlas/ui/textarea": [
+        "vendor/atlas-ui/src/forms/textarea/textarea.tsx"
+      ],
+      "@atlas/ui/text-shimmer": [
+        "vendor/atlas-ui/src/typography/text-shimmer/text-shimmer.tsx"
+      ],
+      "@atlas/ui/toast": [
+        "vendor/atlas-ui/src/feedback/toast/toast.tsx"
+      ],
+      "@atlas/ui/tooltip": [
+        "vendor/atlas-ui/src/overlays/tooltip/tooltip.tsx"
+      ],
+      "@atlas/ui/wordmark": [
+        "vendor/atlas-ui/src/typography/wordmark/wordmark.tsx"
+      ],
+      "@atlas/ui/*": [
+        "vendor/atlas-ui/src/components/*.tsx"
+      ],
+      "@atlas/ui/i18n/*": [
+        "vendor/atlas-ui/src/i18n/*.ts"
+      ],
+      "@atlas/ui/hooks": [
+        "vendor/atlas-ui/src/hooks/index.ts"
+      ],
+      "@atlas/ui/context": [
+        "vendor/atlas-ui/src/context/index.ts"
+      ],
+      "@atlas/ui/context/*": [
+        "vendor/atlas-ui/src/context/*.tsx"
+      ],
+      "@atlas/ui/storybook/scaffold": [
+        "vendor/atlas-ui/src/storybook/scaffold.tsx"
+      ],
+      "@atlas/ui/storybook/fixtures": [
+        "vendor/atlas-ui/src/storybook/fixtures.ts"
+      ],
+      "@atlas/ui/styles": [
+        "vendor/atlas-ui/src/styles/index.css"
+      ],
+      "@atlas/ui/styles/tokens": [
+        "vendor/atlas-ui/src/styles/tokens/index.css"
+      ],
+      "@atlas/ui/styles/tokens/*": [
+        "vendor/atlas-ui/src/styles/tokens/*"
+      ],
+      "@atlas/ui/styles/tailwind": [
+        "vendor/atlas-ui/src/styles/tailwind/index.css"
+      ],
+      "@atlas/ui/theme": [
+        "vendor/atlas-ui/src/theme/index.ts"
+      ],
+      "@atlas/ui/theme/*": [
+        "vendor/atlas-ui/src/theme/*.ts"
+      ],
+      "@atlas/ui/theme/context": [
+        "vendor/atlas-ui/src/theme/context.tsx"
+      ],
+      "@atlas/ui/icons/provider": [
+        "vendor/atlas-ui/src/components/provider-icons/types.ts"
+      ],
+      "@atlas/ui/icons/file-type": [
+        "vendor/atlas-ui/src/components/file-icons/types.ts"
+      ],
+      "@atlas/ui/icons/app": [
+        "vendor/atlas-ui/src/components/app-icons/types.ts"
+      ],
+      "@atlas/ui/fonts/*": [
+        "vendor/atlas-ui/src/assets/fonts/*"
+      ],
+      "@atlas/ui/audio/*": [
+        "vendor/atlas-ui/src/assets/audio/*"
+      ],
+      "@/*": [
+        "src/oc/app/*"
+      ],
+      "@atlas/session-ui/actions": [
+        "vendor/atlas-session-ui/src/actions.ts"
+      ],
+      "@atlas/session-ui/document": [
+        "vendor/atlas-session-ui/src/document.ts"
+      ],
+      "@atlas/session-ui/message": [
+        "vendor/atlas-session-ui/src/message/current-message.tsx"
+      ],
+      "@atlas/session-ui/timeline/projection": [
+        "vendor/atlas-session-ui/src/timeline/projection.ts"
+      ],
+      "@atlas/session-ui/timeline/detail": [
+        "vendor/atlas-session-ui/src/timeline/detail.ts"
+      ],
+      "@atlas/session-ui/timeline/row": [
+        "vendor/atlas-session-ui/src/timeline/session-timeline-row.tsx"
+      ],
+      "@atlas/session-ui/timeline": [
+        "vendor/atlas-session-ui/src/timeline/session-timeline.tsx"
+      ],
+      "@atlas/session-ui/basic-tool": [
+        "vendor/atlas-session-ui/src/components/basic-tool.tsx"
+      ],
+      "@atlas/session-ui/dock-prompt": [
+        "vendor/atlas-session-ui/src/components/dock-prompt.tsx"
+      ],
+      "@atlas/session-ui/file": [
+        "vendor/atlas-session-ui/src/components/file.tsx"
+      ],
+      "@atlas/session-ui/file-media": [
+        "vendor/atlas-session-ui/src/components/file-media.tsx"
+      ],
+      "@atlas/session-ui/file-search": [
+        "vendor/atlas-session-ui/src/components/file-search.tsx"
+      ],
+      "@atlas/session-ui/file-ssr": [
+        "vendor/atlas-session-ui/src/components/file-ssr.tsx"
+      ],
+      "@atlas/session-ui/line-comment": [
+        "vendor/atlas-session-ui/src/components/line-comment.tsx"
+      ],
+      "@atlas/session-ui/line-comment-annotations": [
+        "vendor/atlas-session-ui/src/components/line-comment-annotations.tsx"
+      ],
+      "@atlas/session-ui/markdown": [
+        "vendor/atlas-session-ui/src/components/markdown.tsx"
+      ],
+      "@atlas/session-ui/message-part": [
+        "vendor/atlas-session-ui/src/components/message-part.tsx"
+      ],
+      "@atlas/session-ui/message-nav": [
+        "vendor/atlas-session-ui/src/components/message-nav.tsx"
+      ],
+      "@atlas/session-ui/session-review": [
+        "vendor/atlas-session-ui/src/components/session-review.tsx"
+      ],
+      "@atlas/session-ui/session-retry": [
+        "vendor/atlas-session-ui/src/components/session-retry.tsx"
+      ],
+      "@atlas/session-ui/tool-count-label": [
+        "vendor/atlas-session-ui/src/components/tool-count-label.tsx"
+      ],
+      "@atlas/session-ui/tool-count-summary": [
+        "vendor/atlas-session-ui/src/components/tool-count-summary.tsx"
+      ],
+      "@atlas/session-ui/tool-error-card": [
+        "vendor/atlas-session-ui/src/components/tool-error-card.tsx"
+      ],
+      "@atlas/session-ui/tool-status-title": [
+        "vendor/atlas-session-ui/src/components/tool-status-title.tsx"
+      ],
+      "@atlas/session-ui/session-diff": [
+        "vendor/atlas-session-ui/src/components/session-diff.ts"
+      ],
+      "@atlas/session-ui/message-file": [
+        "vendor/atlas-session-ui/src/components/message-file.ts"
+      ],
+      "@atlas/session-ui/attachment-card": [
+        "vendor/atlas-session-ui/src/message/attachment-card.tsx"
+      ],
+      "@atlas/session-ui/comment-card": [
+        "vendor/atlas-session-ui/src/message/comment-card.tsx"
+      ],
+      "@atlas/session-ui/markdown-stream": [
+        "vendor/atlas-session-ui/src/components/markdown-stream.ts"
+      ],
+      "@atlas/session-ui/markdown-cache": [
+        "vendor/atlas-session-ui/src/components/markdown-cache.tsx"
+      ],
+      "@atlas/session-ui/line-comment-styles": [
+        "vendor/atlas-session-ui/src/components/line-comment-styles.ts"
+      ],
+      "@atlas/session-ui/pierre": [
+        "vendor/atlas-session-ui/src/pierre/index.ts"
+      ],
+      "@atlas/session-ui/pierre/*": [
+        "vendor/atlas-session-ui/src/pierre/*.ts"
+      ],
+      "@atlas/session-ui/context": [
+        "vendor/atlas-session-ui/src/context/index.ts"
+      ],
+      "@atlas/session-ui/context/*": [
+        "vendor/atlas-session-ui/src/context/*.tsx"
+      ],
+      "@atlas/session-ui/styles": [
+        "vendor/atlas-session-ui/src/styles/index.css"
+      ],
+      "@atlas/session-ui/storybook": [
+        "vendor/atlas-session-ui/src/storybook/index.ts"
+      ],
+      "@atlas/session-ui/v2/*.css": [
+        "vendor/atlas-session-ui/src/v2/components/*.css"
+      ],
+      "@atlas/session-ui/v2/*": [
+        "vendor/atlas-session-ui/src/v2/components/*.tsx"
+      ],
+      "@atlas/util/*": [
+        "vendor/atlas-util/src/*"
+      ],
+      "@atlas/client/promise": [
+        "src/oc/shims/client.ts"
+      ],
+      "@atlas/schema/*": [
+        "src/oc/shims/schema/*"
+      ],
+      "@atlas/gui-extensions/sdk": [
+        "src/oc/shims/gui-extensions/sdk.ts"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "e2e",
+    "vite.config.ts",
+    "playwright.config.ts",
+    "vendor/atlas-ui/src"
+  ],
+  "exclude": [
+    "vendor/atlas-ui/src/**/*.stories.tsx",
+    "vendor/atlas-ui/src/**/*.test.ts",
+    "vendor/atlas-ui/src/**/*.test.tsx"
+  ]
+}

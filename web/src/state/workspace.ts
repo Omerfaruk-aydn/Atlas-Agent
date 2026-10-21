@@ -271,7 +271,12 @@ export class WorkspaceStore {
       }
       case "session_status": {
         const st = p as SessionStatus
+        const wasBusy = !!this.state.status[st.session_id]?.busy
         this.set("status", st.session_id, { busy: st.busy, queued: st.queued })
+        // The server drops events for slow subscribers, so the last update
+        // of a message can go missing and leave it cut off mid-sentence.
+        // Reading the messages back once the turn ends repairs that.
+        if (wasBusy && !st.busy) this.settle(st.session_id)
         if (st.busy) {
           this.set("starting", st.session_id, undefined!)
           this.set("lastRun", st.session_id, undefined!)
@@ -283,6 +288,7 @@ export class WorkspaceStore {
         this.set("lastRun", rc.session_id, rc)
         if (!rc.run_id || this.state.starting[rc.session_id] === rc.run_id) this.set("starting", rc.session_id, undefined!)
         if (rc.error) this.set("errors", rc.session_id, rc.error)
+        this.settle(rc.session_id)
         // A run that ended may have withdrawn a prompt nobody answered.
         void this.refreshPending()
         this.bumpHistory(rc.session_id)
@@ -329,6 +335,15 @@ export class WorkspaceStore {
         this.set("versions", "settings", (n: number) => n + 1)
         return
     }
+  }
+
+  /** Reloads an open session's messages after a turn ended, so a dropped
+   * live update cannot leave the final text incomplete. */
+  private settle(sid: string) {
+    if (!this.openSessions.has(sid) || this.buffer) return
+    void this.reloadMessages(sid).catch(() => {
+      // The next resync will catch up.
+    })
   }
 
   private touch(sid: string, at: number) {

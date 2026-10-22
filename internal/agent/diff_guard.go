@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workplan"
@@ -328,7 +329,9 @@ func (a *sessionAgent) diffFindings(ledger *evaluatorLedger) (weakened, leftover
 // reviewDiff sends the work back once for new diff findings. All findings
 // raised in the request are kept for the evaluator. The caller holds
 // ledger.mu.
-func (a *sessionAgent) reviewDiff(sessionID string, ledger *evaluatorLedger) (evaluatorDecision, bool) {
+func (a *sessionAgent) reviewDiff(sessionID string, ledger *evaluatorLedger) (decision evaluatorDecision, stop bool) {
+	observation := &gateObservation{trace: a.sessionTrace(sessionID), name: "diff", started: time.Now()}
+	defer func() { observation.decision(decision, len(ledger.baselines) > 0) }()
 	if a.workingDir == "" || len(ledger.baselines) == 0 {
 		return evaluatorDecision{}, false
 	}

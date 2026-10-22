@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -23,7 +24,7 @@ func TestParseEvaluatorVerdict(t *testing.T) {
 		{name: "pass", reply: "VERDICT: PASS", pass: true, ok: true},
 		{name: "pass after preamble", reply: "I checked the diff.\nverdict: pass", pass: true, ok: true},
 		{name: "fail with findings", reply: "VERDICT: FAIL\n- a.go:3 nil map write\n- b.go:9 error ignored", findings: "- a.go:3 nil map write\n- b.go:9 error ignored", ok: true},
-		{name: "fail without findings", reply: "VERDICT: FAIL", pass: true, ok: true},
+		{name: "fail without findings is an invalid report, not a pass", reply: "VERDICT: FAIL"},
 		{name: "unknown verdict", reply: "VERDICT: MAYBE"},
 		{name: "no verdict", reply: "Looks fine to me."},
 		{name: "empty", reply: ""},
@@ -79,6 +80,29 @@ func fakeEditTool() fantasy.AgentTool {
 }
 
 func withEvaluator(a *sessionAgent, model fantasy.LanguageModel, rounds int) {
+	// Migrate the existing scripted review fixtures to the production JSON
+	// protocol while keeping legacy parser unit tests for plan review.
+	if scripted, ok := model.(*scriptedModel); ok {
+		convert := func(step *scriptedStep) {
+			pass, findings, ok := parseEvaluatorVerdict(step.text)
+			if !ok {
+				return
+			}
+			report := structuredReview{Verdict: "pass", Findings: []reviewFinding{}}
+			if !pass {
+				report.Verdict = "fail"
+				report.Findings = []reviewFinding{{Severity: "high", Summary: findings, Evidence: "Observed fixture finding"}}
+			}
+			data, _ := json.Marshal(report)
+			step.text = string(data)
+		}
+		for i := range scripted.steps {
+			convert(&scripted.steps[i])
+		}
+		if scripted.repeat != nil {
+			convert(scripted.repeat)
+		}
+	}
 	cat := catwalk.Model{ContextWindow: 200000, DefaultMaxTokens: 10000}
 	a.SetEvaluatorOptions(&Model{Model: model, CatwalkCfg: cat}, nil, rounds)
 }

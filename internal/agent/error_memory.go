@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/errmemory"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ruleevidence"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workplan"
 )
 
@@ -155,24 +157,25 @@ func (a *sessionAgent) saveHarnessLearning(sessionID string, ledger *evaluatorLe
 	}
 	opts := a.harnessOptions()
 	if len(ledger.newFlaky) > 0 && opts.FlakyChecksEnabled() {
-		state := workplan.LoadState(a.ledgerRoot(ledger))
-		added := false
-		for _, command := range ledger.newFlaky {
-			if state.AddFlaky(command) {
-				added = true
-				a.recordHarness(harnessmetrics.FlakyCheck, sessionID, map[string]string{"command": command})
+		if err := workplan.UpdateState(a.ledgerRoot(ledger), sessionID, func(state *workplan.State) error {
+			for _, command := range ledger.newFlaky {
+				if state.AddFlaky(command) {
+					a.recordHarness(harnessmetrics.FlakyCheck, sessionID, map[string]string{"command": command})
+				}
 			}
-		}
-		if added {
-			if err := workplan.SaveState(a.ledgerRoot(ledger), state); err != nil {
-				slog.Debug("Could not save flaky checks", "error", err)
-			}
+			return nil
+		}); err != nil {
+			slog.Debug("Could not save flaky checks", "error", err)
 		}
 	}
 	ledger.newFlaky = nil
 	if len(ledger.learned) > 0 && opts.ErrorMemoryEnabled() {
 		for _, fix := range ledger.learned {
-			if err := errmemory.Learn(a.ledgerRoot(ledger), fix.signature, fix.line, fix.command, fix.fixes, fix.files); err != nil {
+			origin := ruleevidence.Origin{Session: sessionID, Sequence: ledger.seq, Signature: fix.signature, At: time.Now().UnixMilli()}
+			if trace := a.sessionTrace(sessionID); trace != nil && trace.trace != nil {
+				origin.Turn = trace.trace.Turn
+			}
+			if err := errmemory.Learn(a.ledgerRoot(ledger), fix.signature, fix.line, fix.command, fix.fixes, fix.files, origin); err != nil {
 				slog.Debug("Could not save an error fix", "error", err)
 				continue
 			}
@@ -226,6 +229,10 @@ func (t *errorRecallTool) Run(ctx context.Context, call fantasy.ToolCall) (fanta
 		ledger.recalled[signature] = true
 		ledger.mu.Unlock()
 		if shown {
+			if err := errmemory.FailedReuse(t.agent.workingDir, signature); err != nil {
+				slog.Warn("Failed to record ineffective error hint", "error", err)
+			}
+			t.agent.recordHarness(harnessmetrics.Kind("rule_reuse_failed"), sessionID, map[string]string{"source": "error_memory"})
 			return resp, nil
 		}
 	}
@@ -235,6 +242,7 @@ func (t *errorRecallTool) Run(ctx context.Context, call fantasy.ToolCall) (fanta
 	}
 	resp.Content += "\n\n" + errmemory.Note(entry)
 	t.agent.recordHarness(harnessmetrics.ErrorRecalled, sessionID, nil)
+	t.agent.recordHarness(harnessmetrics.Kind("rule_offered"), sessionID, map[string]string{"source": "error_memory", "count": "1"})
 	return resp, nil
 }
 

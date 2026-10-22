@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 )
 
@@ -20,8 +21,10 @@ import (
 // new turn is worth one attempt against the primary before falling back
 // again.
 type modelChain struct {
-	models []Model // models[0] is the primary; the rest are the configured fallbacks, in order.
-	active int     // index into models of the model currently in use.
+	models        []Model // models[0] is the primary; the rest are the configured fallbacks, in order.
+	active        int     // index into models of the model currently in use.
+	policy        *config.FallbackPolicy
+	transientUsed int
 }
 
 // newModelChain builds a chain of primary followed by fallbacks, starting
@@ -30,11 +33,15 @@ type modelChain struct {
 // (stale state from a fallback list that has since shrunk) is treated as 0
 // rather than panicking or silently clamping to the last model.
 func newModelChain(primary Model, fallbacks []Model, startIndex int) *modelChain {
+	return newModelChainWithPolicy(primary, fallbacks, startIndex, nil)
+}
+
+func newModelChainWithPolicy(primary Model, fallbacks []Model, startIndex int, policy *config.FallbackPolicy) *modelChain {
 	models := append([]Model{primary}, fallbacks...)
 	if startIndex < 0 || startIndex >= len(models) {
 		startIndex = 0
 	}
-	return &modelChain{models: models, active: startIndex}
+	return &modelChain{models: models, active: startIndex, policy: policy}
 }
 
 // stickyFallback remembers which model a chain last failed over to, and
@@ -58,6 +65,13 @@ func (s stickyFallback) activeIndex(now time.Time) int {
 // Current is the model presently in use.
 func (c *modelChain) Current() Model {
 	return c.models[c.active]
+}
+
+// Route selects a phase-specific model before a new model step. Configured
+// rate-limit fallbacks remain available, but the phase model becomes primary.
+func (c *modelChain) Route(model Model) {
+	c.models[0] = model
+	c.active = 0
 }
 
 // RefreshModels replaces clients rebuilt after credential renewal without
@@ -89,14 +103,31 @@ func (c *modelChain) Provider() fantasy.LanguageModel {
 // within this Run even if that model would also fail -- it simply continues
 // down the list on repeated 429s.
 func (c *modelChain) HandleRetry(err *fantasy.ProviderError) bool {
-	if err == nil || err.StatusCode != http.StatusTooManyRequests {
+	return c.HandleRetrySafely(err, false)
+}
+
+// HandleRetrySafely additionally requires a quiet stream for opt-in transient
+// fallback. HTTP 429 retains the historical behavior for compatibility.
+func (c *modelChain) HandleRetrySafely(err *fantasy.ProviderError, streamStarted bool) bool {
+	if err != nil && err.StatusCode == http.StatusTooManyRequests {
+		if c.active+1 >= len(c.models) {
+			return false
+		}
+		c.active++
+		return true
+	}
+	if streamStarted || !c.transientFallbackEligible(err) {
 		return false
 	}
-	if c.active+1 >= len(c.models) {
-		return false
+	for i := c.active + 1; i < len(c.models); i++ {
+		if c.models[i].ModelCfg.Provider == c.models[c.active].ModelCfg.Provider || !fallbackCompatible(c.models[0], c.models[i]) {
+			continue
+		}
+		c.active = i
+		c.transientUsed++
+		return true
 	}
-	c.active++
-	return true
+	return false
 }
 
 // Fellback reports whether the chain has moved off the primary model.

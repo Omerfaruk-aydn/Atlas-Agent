@@ -28,10 +28,9 @@ import (
 // instruction, so the user receives fixed work instead of a note about
 // broken work.
 //
-// The gate fails open. A reviewer that errors, times out or ignores the
-// reply format lets the turn end as it would have without the gate: it is
-// a quality aid layered on top of the agent's own verification, not a
-// safety boundary.
+// A required reviewer that errors or cannot return a usable structured report
+// ends the turn unverified. It cannot certify completion. Deterministic and
+// contract checks run first; their failures do not spend reviewer tokens.
 
 // evaluatorTimeout bounds one review. The reviewer reads code with tools,
 // so it needs more room than the advisor's quick look, but the session is
@@ -110,8 +109,19 @@ const evaluatorMaxImages = 3
 // evaluatorLedger is what one request did across its automatic
 // continuations, so a fix round is judged against the whole change.
 type evaluatorLedger struct {
-	mu      sync.Mutex
-	request string
+	projectBefore map[string]fileBaseline
+	projectLatest map[string]fileBaseline
+	projectError  string
+	passingTests  map[string]bool
+	qualityErrors []string
+	lintBaseline  []string
+	qualityRaised string
+	qualityRounds int
+	fuzzSuggested bool
+	redRuns       map[string]evaluatorCommand
+	redGreen      []workplan.RedEvidence
+	mu            sync.Mutex
+	request       string
 	// open is set while the request is still being worked on, so a
 	// message the user sends meanwhile is added to it.
 	open bool
@@ -204,6 +214,12 @@ const evaluatorMaxEdits = 200
 type evaluatorDecision struct {
 	Continue   string
 	Unresolved string
+	// Unverified is set when a required review could not run or returned
+	// nothing usable. The turn ends, but it is not reported as verified.
+	Unverified string
+	// Review is the status of the independent review this turn required;
+	// empty when none was required (nothing changed).
+	Review reviewStatus
 }
 
 // SetEvaluatorOptions updates the completion gate in place so a
@@ -318,6 +334,17 @@ func (a *sessionAgent) recordEvaluatorEvidence(sessionID string, steps []fantasy
 	ledger.mu.Lock()
 	defer ledger.mu.Unlock()
 	ledger.record(steps)
+	if len(ledger.redRuns) > 0 || len(ledger.redGreen) > 0 {
+		evidence := slices.Clone(ledger.redGreen)
+		for _, r := range ledger.redRuns {
+			evidence = append(evidence, workplan.RedEvidence{Command: r.command, Directory: r.dir, RedSequence: r.seq})
+		}
+		slices.SortFunc(evidence, func(a, b workplan.RedEvidence) int { return a.RedSequence - b.RedSequence })
+		if err := workplan.UpdateState(a.ledgerRoot(ledger), sessionID, func(s *workplan.State) error { s.RedEvidence = evidence; return nil }); err != nil {
+			slog.Warn("Failed to persist observed red evidence", "session_id", sessionID, "error", err)
+			a.sessionTrace(sessionID).record(harnessmetrics.TraceEvent{Kind: "gate", Name: "red_green_storage", Outcome: "unverified", Reason: "evidence_write_failed"})
+		}
+	}
 }
 
 func (l *evaluatorLedger) record(steps []fantasy.StepResult) {
@@ -377,6 +404,9 @@ func (l *evaluatorLedger) record(steps []fantasy.StepResult) {
 				// background job or a call cut off before its exit status
 				// proves nothing either way.
 				if finished {
+					if exit == 0 && !failed {
+						l.recordPassingTests(toolResultOutputString(tr.Result))
+					}
 					l.noteFlaky(run)
 					l.remember(run)
 					l.trackError(run, toolResultOutputString(tr.Result))
@@ -453,6 +483,7 @@ func (l *evaluatorLedger) isFlaky(command string) bool {
 // check, which must see a verify command run early in a long turn even
 // after many later commands pushed it out of the review's recent list.
 func (l *evaluatorLedger) remember(run evaluatorCommand) {
+	l.observeRedGreen(run)
 	if l.runs == nil {
 		l.runs = map[string]evaluatorCommand{}
 	}
@@ -573,8 +604,13 @@ func (l *evaluatorLedger) review(report string) string {
 
 // parseEvaluatorVerdict reads the reviewer's reply. ok is false for a
 // reply that does not follow the format, which the gate treats as no
-// verdict. A FAIL with no findings is not actionable and counts as PASS.
+// verdict. A FAIL with no findings is not actionable and counts as an
+// invalid report, never as PASS.
 func parseEvaluatorVerdict(reply string) (pass bool, findings string, ok bool) {
+	if strings.HasPrefix(strings.TrimSpace(reply), "{") {
+		r, err := decodeReview(reply)
+		return r.Verdict == "pass", r.findingsText(), err == nil
+	}
 	lines := strings.Split(strings.TrimSpace(reply), "\n")
 	for i, line := range lines {
 		rest, found := strings.CutPrefix(strings.ToUpper(strings.TrimSpace(line)), "VERDICT:")
@@ -591,7 +627,9 @@ func parseEvaluatorVerdict(reply string) (pass bool, findings string, ok bool) {
 				// checklist still gave actionable findings.
 				findings = unmetRequirements(lines[:i])
 			}
-			return findings == "", findings, true
+			// A FAIL that names nothing cannot be acted on, but it is not a
+			// pass either: it is an invalid report.
+			return false, findings, findings != ""
 		default:
 			return false, "", false
 		}
@@ -601,16 +639,26 @@ func parseEvaluatorVerdict(reply string) (pass bool, findings string, ok bool) {
 
 // evaluateTurn runs the gate for a turn that ended normally. It returns
 // the zero decision when the turn needs no review or the review passes.
-func (a *sessionAgent) evaluateTurn(ctx context.Context, sessionID, report string) evaluatorDecision {
+func (a *sessionAgent) evaluateTurn(ctx context.Context, sessionID, report string) (decision evaluatorDecision) {
+	var observation *gateObservation
+	defer func() {
+		if observation != nil {
+			observation.decision(decision, true)
+		}
+	}()
 	if !a.completionGateActive() {
 		return evaluatorDecision{}
 	}
 	ledger := a.evaluatorLedgerFor(sessionID)
 	ledger.mu.Lock()
 	a.saveHarnessLearning(sessionID, ledger)
-	if !ledger.changed && !ledger.lastFailed {
+	if !ledger.changed && !ledger.lastFailed && ledger.projectError == "" {
 		ledger.mu.Unlock()
 		return evaluatorDecision{}
+	}
+	if decision, stop := a.deterministicChecks(ctx, sessionID, ledger); stop {
+		ledger.mu.Unlock()
+		return decision
 	}
 	if ledger.changed {
 		if decision, stop := a.reviewDiff(sessionID, ledger); stop {
@@ -618,36 +666,59 @@ func (a *sessionAgent) evaluateTurn(ctx context.Context, sessionID, report strin
 			return decision
 		}
 	}
-	if decision, stop := a.checkContract(ctx, sessionID, ledger); stop {
+	if decision, stop := a.checkContractStage(ctx, sessionID, ledger, true); stop {
 		if decision.Unresolved != "" {
 			a.saveFailureCase(ctx, sessionID, ledger, "contract", decision.Unresolved)
 		}
 		ledger.mu.Unlock()
 		return decision
 	}
-	if !a.evaluatorActive() {
+	if decision, stop := a.checkRedGreen(ctx, sessionID, ledger); stop {
+		ledger.mu.Unlock()
+		return decision
+	}
+	if decision, stop := a.mutationCheck(ctx, sessionID, ledger); stop {
+		ledger.mu.Unlock()
+		return decision
+	}
+	if decision, stop := a.contractReviewAfterQuality(ctx, sessionID, ledger); stop {
+		ledger.mu.Unlock()
+		return decision
+	}
+	if !a.evaluatorActive() || !a.harnessOptions().GateEnabled("evaluator") {
+		a.sessionTrace(sessionID).record(harnessmetrics.TraceEvent{Kind: "gate", Name: "evaluator", Outcome: "skipped", Reason: "no_configured_reviewer_or_ablation"})
 		if decision, stop := a.confirmChecklist(sessionID, ledger); stop {
 			ledger.mu.Unlock()
 			return decision
 		}
 		ledger.changed = false
 		ledger.mu.Unlock()
-		return evaluatorDecision{}
+		return evaluatorDecision{Review: reviewWaived}
 	}
+	ctx, observation = startGate(ctx, "evaluator")
 	review := ledger.review(report)
 	images := slices.Clone(ledger.images)
 	ledger.mu.Unlock()
 
 	reply, err := a.runEvaluator(ctx, sessionID, review, images)
 	if err != nil {
-		slog.Warn("Evaluator review failed; ending the turn without it", "session_id", sessionID, "error", err)
-		return evaluatorDecision{}
+		slog.Warn("Evaluator review failed; ending the turn unverified", "session_id", sessionID, "error", err)
+		return evaluatorDecision{Review: reviewUnavailable, Unverified: "Independent review could not run (" + string(reviewUnavailable) + "): " + err.Error()}
 	}
-	pass, findings, ok := parseEvaluatorVerdict(reply)
-	if !ok {
-		slog.Warn("Evaluator reply had no verdict; ending the turn without it", "session_id", sessionID)
-		return evaluatorDecision{}
+	parsed, parseErr := decodeReview(reply)
+	if parseErr != nil && a.harnessOptions().EvaluatorRepairEnabled() {
+		slog.Warn("Evaluator report format invalid; requesting one repair", "session_id", sessionID)
+		a.sessionTrace(sessionID).record(harnessmetrics.TraceEvent{Kind: "review_format_repair", Name: "evaluator", Reason: "invalid_report"})
+		reply, err = a.runEvaluator(ctx, sessionID, review+"\n\nYour previous reply did not match the required JSON schema. Re-evaluate the same evidence and return exactly the JSON object requested.", images)
+		if err == nil {
+			parsed, parseErr = decodeReview(reply)
+		}
 	}
+	if err != nil || parseErr != nil {
+		slog.Warn("Evaluator reply had no usable verdict; ending the turn unverified", "session_id", sessionID)
+		return evaluatorDecision{Review: reviewInvalidReport, Unverified: "Independent review returned no usable verdict (" + string(reviewInvalidReport) + ")"}
+	}
+	pass, findings := parsed.Verdict == "pass", parsed.findingsText()
 
 	ledger.mu.Lock()
 	defer ledger.mu.Unlock()
@@ -657,7 +728,7 @@ func (a *sessionAgent) evaluateTurn(ctx context.Context, sessionID, report strin
 	if pass {
 		a.recordHarness(harnessmetrics.EvaluatorPass, sessionID, nil)
 		slog.Info("Evaluator accepted the turn", "session_id", sessionID, "rounds", ledger.rounds)
-		return evaluatorDecision{}
+		return evaluatorDecision{Review: reviewPassed}
 	}
 	a.recordHarness(harnessmetrics.EvaluatorFail, sessionID, nil)
 	limit := a.evaluatorRounds.Get()
@@ -668,11 +739,11 @@ func (a *sessionAgent) evaluateTurn(ctx context.Context, sessionID, report strin
 		slog.Warn("Evaluator findings remain after the round limit", "session_id", sessionID, "rounds", ledger.rounds)
 		ledger.lastFailed = false
 		a.saveFailureCase(ctx, sessionID, ledger, "evaluator", findings)
-		return evaluatorDecision{Unresolved: findings}
+		return evaluatorDecision{Review: reviewFailed, Unresolved: findings}
 	}
 	ledger.rounds++
 	slog.Info("Evaluator sent the turn back", "session_id", sessionID, "round", ledger.rounds)
-	return evaluatorDecision{Continue: evaluatorContinuationPrompt(findings, ledger.rounds, limit)}
+	return evaluatorDecision{Review: reviewFailed, Continue: evaluatorContinuationPrompt(findings, ledger.rounds, limit)}
 }
 
 func evaluatorContinuationPrompt(findings string, round, limit int) string {
@@ -690,7 +761,8 @@ func (a *sessionAgent) runEvaluator(ctx context.Context, sessionID, review strin
 	if model == nil {
 		return "", fmt.Errorf("evaluator has no model")
 	}
-	system := evaluatorSystemPrompt
+	system, _, _ := strings.Cut(evaluatorSystemPrompt, "Reply in exactly this format")
+	system += structuredReviewFormat
 	if len(images) > 0 && model.CatwalkCfg.SupportsImages {
 		system += "\n\n" + visualReviewRubric
 		review += fmt.Sprintf("\n\nThe %d attached image(s) are the latest screenshots the agent took of its work, oldest first.", len(images))
@@ -698,7 +770,8 @@ func (a *sessionAgent) runEvaluator(ctx context.Context, sessionID, review strin
 	} else {
 		images = nil
 	}
-	return a.runReviewer(ctx, sessionID, *model, system, review, images, a.evaluatorTools.Copy(), evaluatorMaxSteps)
+	reviewTools := append(a.evaluatorTools.Copy(), newSubmitReviewTool())
+	return a.runReviewer(ctx, sessionID, *model, system, review, images, reviewTools, evaluatorMaxSteps)
 }
 
 // runReviewer streams one independent review: a fresh context, the given
@@ -723,9 +796,9 @@ func (a *sessionAgent) runReviewer(ctx context.Context, sessionID string, model 
 	defer finish()
 
 	agent := fantasy.NewAgent(
-		model.Model,
+		observedModel(ctx, model),
 		fantasy.WithSystemPrompt(system),
-		fantasy.WithTools(guardTools(reviewTools, a.engineering)...),
+		fantasy.WithTools(observedTools(guardTools(reviewTools, a.engineering))...),
 		fantasy.WithStopConditions(fantasy.StepCountIs(maxSteps)),
 		fantasy.WithUserAgent(userAgent),
 	)
@@ -737,6 +810,18 @@ func (a *sessionAgent) runReviewer(ctx context.Context, sessionID string, model 
 	}
 	if result == nil {
 		return "", fmt.Errorf("reviewer returned no result")
+	}
+	structured := slices.ContainsFunc(reviewTools, func(tool fantasy.AgentTool) bool { return tool.Info().Name == submitReviewToolName })
+	for i := len(result.Steps) - 1; i >= 0; i-- {
+		for _, call := range result.Steps[i].Content.ToolCalls() {
+			if call.ToolName == submitReviewToolName && !call.Invalid {
+				a.sessionTrace(sessionID).record(harnessmetrics.TraceEvent{Kind: "review_verdict_transport", Name: "evaluator", Reason: "tool_call"})
+				return call.Input, nil
+			}
+		}
+	}
+	if structured {
+		a.sessionTrace(sessionID).record(harnessmetrics.TraceEvent{Kind: "review_verdict_transport", Name: "evaluator", Reason: "text_fallback"})
 	}
 	return result.Response.Content.Text(), nil
 }

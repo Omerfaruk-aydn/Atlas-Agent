@@ -2,6 +2,7 @@ package agent
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -29,7 +30,10 @@ func TestBudgetLine(t *testing.T) {
 	require.Contains(t, line, "Context: 400k of 1000k tokens used (40%); the conversation is summarized at about 750k, 350k from now.")
 	require.Contains(t, line, "This turn has taken 3 steps.")
 
-	require.Contains(t, budgetLine(1_000_000, 700_000, 0, 1), "A summary is close")
+	highContext := budgetLine(1_000_000, 700_000, 0, 1)
+	require.Contains(t, highContext, "A summary is close")
+	require.Contains(t, highContext, "Do not rush or finish incomplete work")
+	require.Contains(t, highContext, "every completion claim still requires verification")
 	require.Contains(t, budgetLine(0, 0, 0, 30), "This turn has taken 30 steps. If the last steps")
 }
 
@@ -95,6 +99,7 @@ func TestSaveHarnessLearningWritesFlakyAndFixes(t *testing.T) {
 	a := newLedgerAgent()
 	a.workingDir = root
 	ledger := &evaluatorLedger{
+		seq:      3,
 		newFlaky: []string{"npm test"},
 		learned:  []learnedFix{{signature: "error: x is undefined", line: "error: x is undefined", command: "npm test", fixes: []string{"a.js: +`let x`"}}},
 	}
@@ -152,7 +157,7 @@ func TestSettleAlternativesPicksThePassingWorktree(t *testing.T) {
 
 	// Nothing run yet: asked again once, then given up.
 	note := a.settleAlternatives(t.Context(), "s1", ledger)
-	require.Contains(t, note, "run `make test` yourself with working_dir")
+	require.Contains(t, note, "Run `make test`")
 
 	ledger.remember(evaluatorCommand{command: "make test", failed: true, seq: 1, dir: filepath.ToSlash(filepath.Join(workplan.Dir, workplan.AlternativeDir, "s-a"))})
 	ledger.remember(evaluatorCommand{command: "make test", seq: 2, dir: dirB})
@@ -163,6 +168,42 @@ func TestSettleAlternativesPicksThePassingWorktree(t *testing.T) {
 
 	a.dropAlternatives(t.Context(), ledger)
 	require.Nil(t, ledger.alternatives)
+}
+
+func TestReplayFromGreenPreservesMainCheckout(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for _, args := range [][]string{{"init"}, {"config", "user.email", "atlas@example.test"}, {"config", "user.name", "Atlas Test"}} {
+		cmd := exec.CommandContext(t.Context(), "git", args...)
+		cmd.Dir = root
+		require.NoError(t, cmd.Run())
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.txt"), []byte("green\n"), 0o644))
+	cmd := exec.CommandContext(t.Context(), "git", "add", "main.txt")
+	cmd.Dir = root
+	require.NoError(t, cmd.Run())
+	cmd = exec.CommandContext(t.Context(), "git", "commit", "-m", "green")
+	cmd.Dir = root
+	require.NoError(t, cmd.Run())
+	green, err := workplan.RecordGreen(t.Context(), root, nil, []string{"make test"})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.txt"), []byte("user work\n"), 0o644))
+
+	a := newLedgerAgent()
+	a.workingDir = root
+	dir := filepath.Join(root, workplan.Dir, workplan.AlternativeDir, "s-a")
+	ledger := &evaluatorLedger{alternatives: &contractAlternatives{command: "make test", root: root, dirs: []string{dir}}}
+	ledger.remember(evaluatorCommand{command: "make test", failed: true, tail: "assertion failed", seq: 1, dir: dir})
+	request := a.settleAlternatives(t.Context(), "s1", ledger)
+	require.Contains(t, request, short(green.Commit))
+	require.Contains(t, request, "assertion failed")
+	require.Contains(t, request, "materially different strategy")
+	require.FileExists(t, filepath.Join(ledger.alternatives.dirs[0], "main.txt"))
+	content, err := os.ReadFile(filepath.Join(root, "main.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "user work\n", string(content))
+	require.Empty(t, a.replayFromGreen(t.Context(), "s1", ledger, ledger.alternatives), "recovery is bounded to one replay")
+	a.dropAlternatives(t.Context(), ledger)
 }
 
 func TestContractFlakyFailureDoesNotEscalateOnce(t *testing.T) {

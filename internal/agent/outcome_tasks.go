@@ -239,6 +239,7 @@ func (a *sessionAgent) sharedCompletionPrompt(ctx context.Context, sessionID str
 	if control := interaction.Default.Snapshot(scope.SessionID); control.Paused || control.Canceled {
 		return sharedContinuation{StopReason: "user_control"}
 	}
+	a.checkSourceDrift(ctx, sessionID)
 	requirements, err := sharedTaskRequirements(ctx, a.engineering, a.sessions, sessionID)
 	if err != nil {
 		return sharedContinuation{StopReason: "outcome_unavailable: " + err.Error()}
@@ -290,6 +291,12 @@ func (a *sessionAgent) sharedCompletionPrompt(ctx context.Context, sessionID str
 			return nil
 		}
 		continuation := &state.Outcomes.Continuation
+		if state.Completion != nil && state.Completion.Verdict != "complete" && (continuation.StopReason == "no_progress" || continuation.StopReason == "continuation_limit") {
+			// The unified gate already exhausted this task's shared budget.
+			// A different progress projection cannot restart the same work.
+			decision.StopReason = continuation.StopReason
+			return nil
+		}
 		if continuation.ContractFingerprint != contract {
 			// Model-authored task rewrites cannot reset execution bounds.
 			continuation.ContractFingerprint = contract

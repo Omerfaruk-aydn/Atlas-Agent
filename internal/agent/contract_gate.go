@@ -37,8 +37,8 @@ import (
 //     cannot fail proves nothing), and an adversarial pass tries to break
 //     it. The commands that verified the work are saved to project memory.
 //
-// Every step fails open: an error in git, the reviewer or the file system
-// ends the turn as it would have ended without the gate.
+// Missing or failing required checks withhold completion. Optional plan/probe
+// helpers retain their documented fail-open policy and emit observations.
 
 // contractMaxFollowUps bounds the rounds spent on probes and breaker passes
 // for one request.
@@ -141,7 +141,18 @@ func (a *sessionAgent) workPlanOptions() *config.WorkPlan {
 // checkContract runs the gate. stop is true when its decision is final for
 // this turn; otherwise the reviewer, if configured, runs next. The caller
 // holds ledger.mu.
-func (a *sessionAgent) checkContract(ctx context.Context, sessionID string, ledger *evaluatorLedger) (evaluatorDecision, bool) {
+func (a *sessionAgent) checkContract(ctx context.Context, sessionID string, ledger *evaluatorLedger) (decision evaluatorDecision, stop bool) {
+	return a.checkContractStage(ctx, sessionID, ledger, false)
+}
+
+func (a *sessionAgent) checkContractStage(ctx context.Context, sessionID string, ledger *evaluatorLedger, deferReview bool) (decision evaluatorDecision, stop bool) {
+	ctx, observation := startGate(ctx, "contract")
+	active := false
+	if !a.harnessOptions().GateEnabled("contract") {
+		observation.finish("skipped", "disabled_by_ablation")
+		return evaluatorDecision{}, false
+	}
+	defer func() { observation.decision(decision, active) }()
 	if a.workingDir == "" || !ledger.changed {
 		return evaluatorDecision{}, false
 	}
@@ -152,12 +163,7 @@ func (a *sessionAgent) checkContract(ctx context.Context, sessionID string, ledg
 	if plan == nil {
 		return evaluatorDecision{}, false
 	}
-	opts := a.workPlanOptions()
-	if opts.PlanReviewEnabled() && len(plan.Features) > 0 {
-		if decision, stop := a.reviewPlan(ctx, sessionID, ledger, plan); stop {
-			return decision, true
-		}
-	}
+	active = true
 	if problems := plan.CheckProblems(); len(problems) > 0 {
 		key := strings.Join(problems, "\n")
 		if ledger.checkProblemsRaised != key {
@@ -175,8 +181,34 @@ func (a *sessionAgent) checkContract(ctx context.Context, sessionID string, ledg
 	ledger.failStreak = nil
 	ledger.greenEdit = ledger.lastEdit + 1
 	a.dropAlternatives(ctx, ledger)
-	a.recordContractPassed(sessionID, a.ledgerRoot(ledger), requirements)
+	a.recordContractPassed(sessionID, a.ledgerRoot(ledger), requirements, ledger)
+	if deferReview {
+		return evaluatorDecision{}, false
+	}
+	return a.finishContractReview(ctx, sessionID, ledger, plan, requirements)
+}
+
+func (a *sessionAgent) finishContractReview(ctx context.Context, sessionID string, ledger *evaluatorLedger, plan *workplan.Plan, requirements []workplan.Requirement) (evaluatorDecision, bool) {
+	if a.workPlanOptions().PlanReviewEnabled() && len(plan.Features) > 0 {
+		if decision, stop := a.reviewPlan(ctx, sessionID, ledger, plan); stop {
+			return decision, true
+		}
+	}
 	return a.followUpContract(ctx, sessionID, ledger, plan, requirements)
+}
+
+func (a *sessionAgent) contractReviewAfterQuality(ctx context.Context, sessionID string, l *evaluatorLedger) (evaluatorDecision, bool) {
+	if !a.harnessOptions().GateEnabled("contract") || !l.changed {
+		return evaluatorDecision{}, false
+	}
+	plan, _, err := workplan.Load(a.ledgerRoot(l))
+	if err != nil {
+		return evaluatorDecision{Unverified: "Contract changed or became unreadable before review"}, true
+	}
+	if plan == nil || len(plan.Requirements()) == 0 {
+		return evaluatorDecision{}, false
+	}
+	return a.finishContractReview(ctx, sessionID, l, plan, plan.Requirements())
 }
 
 // sendContractBack turns gaps into the agent's next instruction, escalating
@@ -316,7 +348,7 @@ func (a *sessionAgent) followUpContract(ctx context.Context, sessionID string, l
 	var notes []string
 	notes = append(notes, a.settleProbes(ctx, sessionID, ledger)...)
 
-	state := workplan.LoadState(a.ledgerRoot(ledger))
+	state := workplan.LoadSessionState(a.ledgerRoot(ledger), sessionID)
 	unsettled := state.Unsettled(plan)
 	git := opts.CheckpointsEnabled() && workplan.IsGitRepo(ctx, a.ledgerRoot(ledger))
 	var greens []workplan.Green
@@ -343,10 +375,14 @@ func (a *sessionAgent) followUpContract(ctx context.Context, sessionID string, l
 		a.recordHarness(harnessmetrics.BreakerPass, sessionID, map[string]string{"features": fmt.Sprint(len(unsettled))})
 	}
 	if len(unsettled) > 0 {
-		for _, f := range unsettled {
-			state.Settled = append(state.Settled, f.ID)
-		}
-		if err := workplan.SaveState(a.ledgerRoot(ledger), state); err != nil {
+		if err := workplan.UpdateState(a.ledgerRoot(ledger), sessionID, func(state *workplan.State) error {
+			for _, f := range unsettled {
+				if !slices.Contains(state.Settled, f.ID) {
+					state.Settled = append(state.Settled, f.ID)
+				}
+			}
+			return nil
+		}); err != nil {
 			slog.Warn("Failed to save work plan state", "error", err)
 		}
 	}

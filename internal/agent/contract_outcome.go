@@ -1,6 +1,11 @@
 package agent
 
-import "github.com/Omerfaruk-aydn/Atlas-Agent/internal/outcome"
+import (
+	"context"
+	"strings"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/outcome"
+)
 
 // The shared completion check counts a finished task as verified only when
 // a verification tool ran for it. Work verified the usual way, with the
@@ -18,8 +23,14 @@ func (a *sessionAgent) verifiedByContract(sessionID string, requirements []outco
 	if !a.contractGreen(sessionID) {
 		return requirements
 	}
+	// A passing contract is not a requirement-specific proof, so it cannot
+	// cover work that a reviewer's finding still stands against.
+	if len(openFindingLines(context.Background(), a.engineering, sessionID)) > 0 {
+		return requirements
+	}
 	for i := range requirements {
-		if requirements[i].Phase == outcome.PhaseApplied {
+		// The project contract says nothing about a system outside the tree.
+		if requirements[i].Phase == outcome.PhaseApplied && !strings.HasPrefix(requirements[i].ID, "external:") && !strings.HasPrefix(requirements[i].ID, "work:") {
 			requirements[i].Phase = outcome.PhaseVerified
 			requirements[i].Reason = contractVerifiedReason
 		}
@@ -30,6 +41,9 @@ func (a *sessionAgent) verifiedByContract(sessionID string, requirements []outco
 // contractGreen reports whether the contract passed for the current
 // request and no code changed after it.
 func (a *sessionAgent) contractGreen(sessionID string) bool {
+	if !a.harnessOptions().GateEnabled("contract") {
+		return false
+	}
 	if a.evaluatorLedgers == nil {
 		return false
 	}

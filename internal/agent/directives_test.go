@@ -86,7 +86,9 @@ func TestPersistentNextQueueRunsAfterCurrentStreamFinishes(t *testing.T) {
 	a.engineering = engineering.NewStore(t.TempDir())
 	sess, err := env.sessions.Create(t.Context(), "persistent queue")
 	require.NoError(t, err)
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	// The two turns share SQLite with other parallel package tests. Keep the
+	// deadline finite without treating scheduler contention as a queue failure.
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {

@@ -55,64 +55,106 @@ VERDICT: FAIL
 - <problem: which feature or check, what is wrong, what would fix it>
 - <one line per problem>`
 
-// reviewPlan reviews the plan once per version. It fails open: without a
-// model, or when the review errors, the work goes on unreviewed. The caller
+// reviewPlan reviews the plan once per version. Optional mode preserves the
+// historical best-effort behavior; risky and required policies fail closed
+// when their required review cannot produce a valid verdict. The caller
 // holds ledger.mu.
-func (a *sessionAgent) reviewPlan(ctx context.Context, sessionID string, ledger *evaluatorLedger, plan *workplan.Plan) (evaluatorDecision, bool) {
-	key := workplan.Hash(plan.ReviewKey())
+func (a *sessionAgent) reviewPlan(ctx context.Context, sessionID string, ledger *evaluatorLedger, plan *workplan.Plan) (decision evaluatorDecision, stop bool) {
+	ctx, observation := startGate(ctx, "plan_review")
+	outcome, reason := "skipped", "already_reviewed"
+	defer func() {
+		if stop {
+			observation.decision(decision, true)
+		} else {
+			observation.finish(outcome, reason)
+		}
+	}()
+	required := planReviewRequired(a.workPlanOptions().PlanReviewPolicy(), plan)
+	reviewKey := plan.ReviewKey()
+	if required {
+		reviewKey += "\nrequired-review-v1"
+	}
+	key := workplan.Hash(reviewKey)
 	if ledger.planReviewed == key {
 		return evaluatorDecision{}, false
 	}
-	state := workplan.LoadState(a.ledgerRoot(ledger))
-	if state.ReviewedPlan == key {
+	root := a.ledgerRoot(ledger)
+	if workplan.LoadSessionState(root, sessionID).ReviewedPlan == key {
 		ledger.planReviewed = key
+		return evaluatorDecision{}, false
+	}
+	fail := func(cause string) (evaluatorDecision, bool) {
+		if required {
+			outcome = "fail_closed"
+			return requiredPlanReviewFailure(cause)
+		}
 		return evaluatorDecision{}, false
 	}
 	// Record the version first: a review that fails is not retried on
 	// every turn at the user's expense.
 	ledger.planReviewed = key
-	state.ReviewedPlan = key
-	if goal := workplan.Hash(plan.Goal); state.ReviewedGoal != goal {
-		state.ReviewedGoal, state.PlanReviews, state.ReviewFindings = goal, 0, ""
-	}
-	if state.PlanReviews >= maxPlanReviews {
-		if err := workplan.SaveState(a.ledgerRoot(ledger), state); err != nil {
-			slog.Warn("Failed to save work plan state", "error", err)
+	var earlier string
+	exhausted := false
+	if err := workplan.UpdateState(root, sessionID, func(state *workplan.State) error {
+		state.ReviewedPlan = key
+		if goal := workplan.Hash(plan.Goal); state.ReviewedGoal != goal {
+			state.ReviewedGoal, state.PlanReviews, state.ReviewFindings = goal, 0, ""
 		}
-		return evaluatorDecision{}, false
-	}
-	earlier := state.ReviewFindings
-	state.PlanReviews++
-	if err := workplan.SaveState(a.ledgerRoot(ledger), state); err != nil {
+		if state.PlanReviews >= maxPlanReviews {
+			exhausted = true
+			return nil
+		}
+		earlier = state.ReviewFindings
+		state.PlanReviews++
+		return nil
+	}); err != nil {
 		slog.Warn("Failed to save work plan state", "error", err)
+		return fail("review state could not be saved")
+	}
+	if exhausted {
+		reason = "review_budget_exhausted"
+		return fail("review budget is exhausted")
 	}
 
 	model, ok := a.reviewModel()
 	if !ok {
-		return evaluatorDecision{}, false
+		reason = "reviewer_unavailable"
+		return fail("reviewer is unavailable")
 	}
 	raw, err := os.ReadFile(filepath.Join(a.ledgerRoot(ledger), workplan.Dir, workplan.PlanFile))
 	if err != nil {
-		return evaluatorDecision{}, false
+		outcome, reason = "fail_open", "plan_read_failed"
+		slog.Warn("Failed to read work plan for review", "session_id", sessionID, "error", err)
+		return fail("plan could not be read")
 	}
 	prompt := "User request:\n" + evaluatorTruncate(ledger.request) + "\n\nThe plan (" + workplan.Dir + "/" + workplan.PlanFile + "):\n" + evaluatorTruncate(string(raw))
 	if earlier != "" {
 		prompt = planFollowUpPrompt + earlier + "\n\n" + prompt
 	}
+	outcome, reason = "fail_open", "review_unavailable"
 	reply, err := a.runReviewer(ctx, sessionID, model, planReviewSystemPrompt, prompt, nil, a.evaluatorTools.Copy(), planReviewMaxSteps)
 	if err != nil {
-		slog.Warn("Plan review failed; continuing without it", "session_id", sessionID, "error", err)
-		return evaluatorDecision{}, false
+		slog.Warn("Plan review failed", "session_id", sessionID, "error", err)
+		return fail("reviewer execution failed")
 	}
 	pass, findings, parsed := parseEvaluatorVerdict(reply)
 	a.recordHarness(harnessmetrics.PlanReviewed, sessionID, nil)
-	if !parsed || pass {
+	if pass {
+		outcome, reason = "pass", "review_accepted"
 		return evaluatorDecision{}, false
 	}
+	if !parsed {
+		reason = "invalid_report"
+		slog.Warn("Plan review returned no usable verdict", "session_id", sessionID)
+		return fail("reviewer returned an invalid verdict")
+	}
 	a.recordHarness(harnessmetrics.PlanReviewFindings, sessionID, nil)
-	state.ReviewFindings = evaluatorTruncate(strings.TrimSpace(findings))
-	if err := workplan.SaveState(a.ledgerRoot(ledger), state); err != nil {
+	if err := workplan.UpdateState(root, sessionID, func(state *workplan.State) error {
+		state.ReviewFindings = evaluatorTruncate(strings.TrimSpace(findings))
+		return nil
+	}); err != nil {
 		slog.Warn("Failed to save work plan state", "error", err)
+		return fail("review findings could not be saved")
 	}
 	return evaluatorDecision{Continue: "A reviewer with a fresh context read your work plan before the work goes further and found problems:\n\n" +
 		strings.TrimSpace(findings) + "\n\nRevise " + workplan.Dir + "/" + workplan.PlanFile + " where a finding holds and say briefly why where it does not. " +

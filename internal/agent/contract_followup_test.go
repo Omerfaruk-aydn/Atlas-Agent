@@ -220,6 +220,13 @@ func TestPlanReviewRunsOncePerPlanVersion(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
+	// Exercise plan-review versioning directly. The completion pipeline now
+	// runs cheap contract checks before spending reviewer tokens.
+	review := func(agent *sessionAgent, ctx context.Context, id string, ledger *evaluatorLedger) (evaluatorDecision, bool) {
+		plan, _, err := workplan.Load(root)
+		require.NoError(t, err)
+		return agent.reviewPlan(ctx, id, ledger, plan)
+	}
 	writeWorkPlan(t, root, `{"goal":"shop","verify":[{"command":"ls"}],"features":[{"id":"F1","title":"Cart"}]}`)
 	reviewer := &scriptedModel{repeat: &scriptedStep{text: "VERDICT: FAIL\n- `ls` cannot fail; it does not test the cart"}}
 	a := gateAgent(t, root)
@@ -227,7 +234,7 @@ func TestPlanReviewRunsOncePerPlanVersion(t *testing.T) {
 	a.engineering = nil
 	ledger := &evaluatorLedger{changed: true, request: "build a shop"}
 
-	decision, stop := a.checkContract(t.Context(), "s", ledger)
+	decision, stop := review(a, t.Context(), "s", ledger)
 	require.True(t, stop)
 	require.Contains(t, decision.Continue, "`ls` cannot fail")
 	require.Contains(t, decision.Continue, "Revise .atlas/work.json")
@@ -235,18 +242,18 @@ func TestPlanReviewRunsOncePerPlanVersion(t *testing.T) {
 	require.Contains(t, requestText(reviewer.calls()[0]), "build a shop")
 
 	ledger.changed = true
-	_, _ = a.checkContract(t.Context(), "s", ledger)
+	_, _ = review(a, t.Context(), "s", ledger)
 	require.Len(t, reviewer.calls(), 1, "the same plan is not reviewed twice")
 
 	// Marking a feature done is progress, not a new plan.
 	writeWorkPlan(t, root, `{"goal":"shop","verify":[{"command":"ls"}],"features":[{"id":"F1","title":"Cart","done":true}]}`)
 	fresh := gateAgent(t, root)
 	withEvaluator(fresh, reviewer, 2)
-	_, _ = fresh.checkContract(t.Context(), "s", &evaluatorLedger{changed: true})
+	_, _ = review(fresh, t.Context(), "s", &evaluatorLedger{changed: true})
 	require.Len(t, reviewer.calls(), 1, "the review survives in the plan state")
 
 	writeWorkPlan(t, root, `{"goal":"shop","verify":[{"command":"npm test"}],"features":[{"id":"F1","title":"Cart"}]}`)
-	_, _ = fresh.checkContract(t.Context(), "s", &evaluatorLedger{changed: true})
+	_, _ = review(fresh, t.Context(), "s", &evaluatorLedger{changed: true})
 	require.Len(t, reviewer.calls(), 2, "a changed contract is reviewed again")
 	followUp := requestText(reviewer.calls()[1])
 	require.Contains(t, followUp, "follow-up review")
@@ -255,13 +262,13 @@ func TestPlanReviewRunsOncePerPlanVersion(t *testing.T) {
 	// Each revision for the findings is a new version; the reviews stop
 	// after the follow-up instead of looping.
 	writeWorkPlan(t, root, `{"goal":"shop","verify":[{"command":"npm test -- cart"}],"features":[{"id":"F1","title":"Cart"}]}`)
-	decision, _ = fresh.checkContract(t.Context(), "s", &evaluatorLedger{changed: true})
+	decision, _ = review(fresh, t.Context(), "s", &evaluatorLedger{changed: true})
 	require.Len(t, reviewer.calls(), 2, "at most two reviews of one plan")
 	require.NotContains(t, decision.Continue, "fresh context")
 
 	// Another goal is new work and is reviewed afresh.
 	writeWorkPlan(t, root, `{"goal":"blog","verify":[{"command":"npm test"}],"features":[{"id":"F1","title":"Posts"}]}`)
-	_, _ = fresh.checkContract(t.Context(), "s", &evaluatorLedger{changed: true})
+	_, _ = review(fresh, t.Context(), "s", &evaluatorLedger{changed: true})
 	require.Len(t, reviewer.calls(), 3)
 	require.NotContains(t, requestText(reviewer.calls()[2]), "follow-up review")
 }

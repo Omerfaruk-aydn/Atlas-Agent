@@ -2,7 +2,7 @@ package cart
 
 import "testing"
 
-func TestHiddenTotals(t *testing.T) {
+func TestAtlasFixCartTotalsTotals(t *testing.T) {
 	cases := []struct {
 		name string
 		cart Cart

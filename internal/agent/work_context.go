@@ -11,6 +11,8 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/outcome"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 )
 
 // workBlockLimit bounds the per-turn work projection. Full records stay
@@ -35,11 +37,18 @@ func hasActiveUserItems(w *engineering.WorkState) bool {
 
 // startsNewTask reports whether a request begins a new task: the previous
 // contract had user requirements and all of them are finished.
-func startsNewTask(w *engineering.WorkState) bool {
+func startsNewTask(st engineering.State) bool {
+	w := st.Work
+	if w == nil || !st.Completion.CompleteAt(st) {
+		return false
+	}
 	hadUserItems := false
 	for _, item := range w.Items {
 		if item.Origin == engineering.OriginUser {
 			hadUserItems = true
+			if status := engineering.EffectiveStatus(item, st.Generation); status != engineering.ItemDelivered && status != engineering.ItemSuperseded && status != engineering.ItemDeclined {
+				return false
+			}
 		}
 	}
 	return hadUserItems && !hasActiveUserItems(w)
@@ -49,13 +58,26 @@ func startsNewTask(w *engineering.WorkState) bool {
 // the work budget. A continuation keeps the current budget. A request that
 // follows a finished contract starts a fresh task: the previous working
 // sets are dropped so earlier failures do not inflate the new budget.
-func recordWorkTurn(ctx context.Context, store *engineering.Store, sessionID, text, override string) (engineering.WorkState, error) {
+func recordWorkTurn(ctx context.Context, store *engineering.Store, sessions session.Service, sessionID, text, override string) (engineering.WorkState, error) {
 	if store == nil || sessionID == "" {
 		return engineering.WorkState{}, nil
 	}
-	return store.UpdateWork(ctx, sessionID, func(w *engineering.WorkState, st engineering.State) error {
-		if startsNewTask(w) && !continuationPrompt(text) {
+	completion, completionErr := store.CompletionStatus(ctx, sessionID)
+	tasksMatch := false
+	if sessions != nil && completion != nil {
+		tasks, err := completionTaskFingerprint(ctx, sessions, sessionID)
+		tasksMatch = err == nil && tasks == completion.TasksFingerprint
+	}
+	var out engineering.WorkState
+	err := store.Update(ctx, sessionID, func(st *engineering.State) error {
+		if st.Work == nil {
+			st.Work = &engineering.WorkState{}
+		}
+		w := st.Work
+		if completionErr == nil && tasksMatch && completion.Verdict == "complete" && completion.Revision == st.Revision && startsNewTask(*st) && !continuationPrompt(text) {
 			*w = engineering.WorkState{Turns: w.Turns, Seq: w.Seq, Budget: engineering.WorkBudget{Override: w.Budget.Override}}
+			st.Completion = nil
+			st.Outcomes.Continuation = outcome.Continuation{}
 		}
 		turn := w.RecordUserTurn(text, time.Now())
 		if override != "" && engineering.ValidTier(override) {
@@ -64,15 +86,18 @@ func recordWorkTurn(ctx context.Context, store *engineering.Store, sessionID, te
 			w.Budget.Override = ""
 		}
 		if turn.Kind == "continuation" && w.Budget.Tier != "" {
+			out = *w
 			return nil
 		}
 		profile := st.Profile
 		if profile == "" {
 			profile = engineering.InferProfile(text)
 		}
-		w.Budget = engineering.ClassifyBudget(text, w, profile)
+		w.Budget = engineering.RaiseForRuntimeSignals(engineering.ClassifyBudget(text, w, profile), w, *st)
+		out = *w
 		return nil
 	})
+	return out, err
 }
 
 // workTier returns the session's current work budget tier.
@@ -207,26 +232,6 @@ func workBudgetSetting(cfg *config.Config) string {
 	return tier
 }
 
-// markWorkDelivered records delivery of verified, still-current items when
-// the agent delivers an answer.
-func markWorkDelivered(ctx context.Context, store *engineering.Store, sessionID string) error {
-	if store == nil {
-		return nil
-	}
-	st, err := store.Read(ctx, sessionID)
-	if err != nil || st.Work == nil {
-		return err
-	}
-	_, err = store.UpdateWork(ctx, sessionID, func(w *engineering.WorkState, st engineering.State) error {
-		w.MarkDelivered(st.Generation, time.Now())
-		if w.Phase != "waiting" {
-			w.Phase = "deliver"
-		}
-		return nil
-	})
-	return err
-}
-
 // markWorkWaiting records why the turn stopped for the user: a question,
 // a permission decision or a hook. The phase clears on the next user turn.
 func markWorkWaiting(ctx context.Context, store *engineering.Store, sessionID string, results []fantasy.ToolResultContent) error {
@@ -275,10 +280,10 @@ func adaptiveEffort(ctx context.Context, store *engineering.Store, sessionID, pr
 		budget = st.Work.Budget
 	default:
 		w := st.Work
-		if w != nil && startsNewTask(w) && !continuationPrompt(prompt) {
+		if w != nil && startsNewTask(st) && !continuationPrompt(prompt) {
 			w = nil
 		}
-		budget = engineering.ClassifyBudget(prompt, w, cmpOr(st.Profile, engineering.InferProfile(prompt)))
+		budget = engineering.RaiseForRuntimeSignals(engineering.ClassifyBudget(prompt, w, cmpOr(st.Profile, engineering.InferProfile(prompt))), w, st)
 	}
 	if budget.Tier != engineering.TierDeep {
 		return model, ""

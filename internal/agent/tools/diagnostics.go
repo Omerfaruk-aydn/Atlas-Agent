@@ -19,6 +19,11 @@ type DiagnosticsParams struct {
 	FilePath string `json:"file_path,omitempty" description:"The path to the file to get diagnostics for (leave empty for project diagnostics)"`
 }
 
+// DiagnosticsMetadata distinguishes a clean observation from no running LSP.
+type DiagnosticsMetadata struct {
+	Observed bool `json:"observed"`
+}
+
 const DiagnosticsToolName = "lsp_diagnostics"
 
 //go:embed diagnostics.md
@@ -31,7 +36,8 @@ func NewDiagnosticsTool(lspManager *lsp.Manager) fantasy.AgentTool {
 		func(ctx context.Context, params DiagnosticsParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			notifyLSPs(ctx, lspManager, params.FilePath)
 			output := getDiagnostics(params.FilePath, lspManager)
-			return fantasy.NewTextResponse(output), nil
+			observed := ctx.Err() == nil && lspManager != nil && lspManager.Clients().Len() > 0
+			return fantasy.WithResponseMetadata(fantasy.NewTextResponse(output), DiagnosticsMetadata{Observed: observed}), nil
 		},
 	)
 }

@@ -6,6 +6,10 @@ Carry authorized work through discovery, implementation, integration and verific
 <engineering_workflow>
 For a small fix, inspect its entry point, preserve the relevant invariant, make a
 coherent change and run a focused check. Do not turn it into a redesign or ceremony.
+For a bug or new behavior, record a failing test or reproduction before changing
+the implementation, then rerun the same check and affected regression tests.
+Use impact_analysis to select affected checks when a change crosses layers.
+Treat new lint/type errors as required fixes; never weaken checks to obtain green.
 For substantial work, maintain explicit requirements and acceptance criteria in the
 available ledger. Discover architecture and instructions, implement through affected
 layers, verify the integrated behavior and finish every feasible authorized item.

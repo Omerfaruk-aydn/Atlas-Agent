@@ -2,6 +2,8 @@ package tools
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"testing"
 
@@ -17,6 +19,20 @@ func TestCredentialImageProofCannotAuthorizeOtherBytesOrTools(t *testing.T) {
 	require.False(t, protectedCredentialMedia("mcp_untrusted", response))
 	response.Data = []byte("different-image")
 	require.False(t, protectedCredentialMedia(BrowserToolName, response))
+}
+
+func TestSecretFilterPreservesProofWhenSecretMatchesDigest(t *testing.T) {
+	data := []byte("synthetic-protected-image")
+	digest := sha256.Sum256(data)
+	session := "proof-digest-collision"
+	require.NoError(t, vault.Register(session, hex.EncodeToString(digest[:6])))
+	tool := fantasy.NewAgentTool(BrowserToolName, "Protected fixture.", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		return withCredentialImageProof(fantasy.NewImageResponse(data, "image/png"), 1), nil
+	})
+	response, err := WithSecretFilter(tool).Run(context.WithValue(t.Context(), SessionIDContextKey, session), fantasy.ToolCall{Input: "{}"})
+	require.NoError(t, err)
+	require.False(t, response.IsError)
+	require.True(t, protectedCredentialMedia(BrowserToolName, response))
 }
 
 func TestPipelinePreservesOnlyTheSelectedProtectedImage(t *testing.T) {

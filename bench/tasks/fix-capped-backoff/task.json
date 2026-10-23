@@ -1,0 +1,17 @@
+{
+  "id": "fix-capped-backoff",
+  "prompt": "Backoff(base,cap,attempt) doubles per attempt, saturates at cap without integer overflow; invalid base/cap or negative attempt returns zero. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "go",
+    "test",
+    "-p",
+    "1",
+    "-count=1",
+    "./..."
+  ],
+  "timeout_seconds": 180,
+  "language": "go",
+  "categories": [
+    "bug-fix"
+  ]
+}

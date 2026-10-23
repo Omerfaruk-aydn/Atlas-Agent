@@ -1,0 +1,87 @@
+{
+  "suite": "tasks",
+  "model": "provider/model-id",
+  "repeats": 2,
+  "tasks": [
+    "fix-lease-renewal",
+    "fix-header-case",
+    "fix-newline-normalization",
+    "fix-typescript-intervals"
+  ],
+  "variants": [
+    {
+      "name": "configured-baseline",
+      "gates": {
+        "evaluator": true,
+        "contract": true,
+        "advisor": true,
+        "goal_judge": true,
+        "escalator": true,
+        "lint_fix": false,
+        "mutation": false
+      }
+    },
+    {
+      "name": "without-evaluator",
+      "gates": {
+        "evaluator": false,
+        "contract": true,
+        "advisor": true,
+        "goal_judge": true,
+        "escalator": true,
+        "lint_fix": false,
+        "mutation": false
+      }
+    },
+    {
+      "name": "without-contract",
+      "gates": {
+        "evaluator": true,
+        "contract": false,
+        "advisor": true,
+        "goal_judge": true,
+        "escalator": true,
+        "lint_fix": false,
+        "mutation": false
+      }
+    },
+    {
+      "name": "without-advisor",
+      "gates": {
+        "evaluator": true,
+        "contract": true,
+        "advisor": false,
+        "goal_judge": true,
+        "escalator": true,
+        "lint_fix": false,
+        "mutation": false
+      }
+    },
+    {
+      "name": "without-goal-judge",
+      "gates": {
+        "evaluator": true,
+        "contract": true,
+        "advisor": true,
+        "goal_judge": false,
+        "escalator": true,
+        "lint_fix": false,
+        "mutation": false
+      }
+    },
+    {
+      "name": "without-escalator",
+      "gates": {
+        "evaluator": true,
+        "contract": true,
+        "advisor": true,
+        "goal_judge": true,
+        "escalator": false,
+        "lint_fix": false,
+        "mutation": false
+      }
+    }
+  ],
+  "setup": "Replace the model placeholder and configure authorized evaluator/advisor/goal/escalate roles. Gates marked true only permit existing configured policy. Inspect actual gate invocation counts. Live runs require explicit user approval.",
+  "verification_ablation": "See verification-ablation.example.json for implemented lint_fix/mutation on-off variants over Go tasks. No live run is authorized."
+}

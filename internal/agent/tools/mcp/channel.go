@@ -175,12 +175,34 @@ func channelEnabled(enabled []string, name string) bool {
 	return false
 }
 
+type channelScope struct {
+	workspace  string
+	generation uint64
+}
+
+type connectionGenerationKey struct{}
+
+func withConnectionGeneration(ctx context.Context, generation uint64) context.Context {
+	return context.WithValue(ctx, connectionGenerationKey{}, generation)
+}
+
+func connectionGeneration(ctx context.Context, name string) uint64 {
+	if generation, ok := ctx.Value(connectionGenerationKey{}).(uint64); ok {
+		return generation
+	}
+	return currentGen(name)
+}
+
 // publishChannelMessage validates and renders a payload, then publishes it as
 // an EventChannelMessage via must-deliver semantics. Channel notifications
 // represent ordered inbound messages (chat, alerts) rather than disposable UI
 // updates, so a stalled subscriber must not permanently lose them the way
 // lossy Publish would. Malformed payloads are dropped (fail closed).
 func publishChannelMessage(ctx context.Context, name string, raw json.RawMessage) {
+	publishChannelMessageScoped(ctx, channelScope{}, name, raw)
+}
+
+func publishChannelMessageScoped(ctx context.Context, scope channelScope, name string, raw json.RawMessage) {
 	p, ok := parseChannelParams(raw)
 	if !ok {
 		slog.Warn("Dropping malformed channel notification", "server", name)
@@ -190,6 +212,8 @@ func publishChannelMessage(ctx context.Context, name string, raw json.RawMessage
 		Type:           EventChannelMessage,
 		Name:           name,
 		ChannelMessage: renderChannel(name, p),
+		Workspace:      scope.workspace,
+		Generation:     scope.generation,
 	})
 }
 
@@ -282,6 +306,7 @@ type channelTransport struct {
 	inner mcp.Transport
 	name  string
 	gate  *channelGate
+	scope channelScope
 }
 
 // Connect implements mcp.Transport.
@@ -293,15 +318,16 @@ func (t *channelTransport) Connect(ctx context.Context) (mcp.Connection, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &channelConn{Connection: conn, name: t.name, gate: t.gate}, nil
+	return &channelConn{Connection: conn, name: t.name, gate: t.gate, scope: t.scope}, nil
 }
 
 // channelConn wraps an mcp.Connection and filters channel notifications out of
 // the stream the SDK sees, dispatching them to the channel handler instead.
 type channelConn struct {
 	mcp.Connection
-	name string
-	gate *channelGate
+	name  string
+	gate  *channelGate
+	scope channelScope
 }
 
 // Read intercepts notifications/claude/channel. Such messages are always
@@ -320,7 +346,7 @@ func (c *channelConn) Read(ctx context.Context) (jsonrpc.Message, error) {
 			return msg, nil
 		}
 		if raw := c.gate.accept(req.Params); raw != nil {
-			publishChannelMessage(ctx, c.name, raw)
+			publishChannelMessageScoped(ctx, c.scope, c.name, raw)
 		}
 	}
 }

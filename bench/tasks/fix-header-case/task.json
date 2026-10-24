@@ -1,0 +1,18 @@
+{
+  "id": "fix-header-case",
+  "prompt": "Clients report that Header occasionally misses a stored header. Inspect the project contract, fix the retrieval issue and add regression tests. Preserve the public API and unrelated files.",
+  "check": [
+    "go",
+    "test",
+    "-p",
+    "1",
+    "-count=1",
+    "./..."
+  ],
+  "timeout_seconds": 180,
+  "language": "go",
+  "categories": [
+    "ambiguous-request",
+    "bug-fix"
+  ]
+}

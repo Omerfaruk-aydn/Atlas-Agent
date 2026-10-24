@@ -1,0 +1,1 @@
+MAX_RECORDS = 64

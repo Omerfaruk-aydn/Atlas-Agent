@@ -1,0 +1,8 @@
+{
+  "id": "fix-python-ledger-contract",
+  "prompt": "Importing a payment batch produces inconsistent totals and occasionally loses a row. Discover the accounting rules in CONTRACT.md, fix the parser and ledger together, and add regression tests. Preserve config.py and public APIs.",
+  "check": ["python", "-m", "unittest", "discover", "-s", ".", "-p", "test_atlas_*.py"],
+  "timeout_seconds": 180,
+  "language": "python",
+  "categories": ["multi-file", "interacting-changes", "ambiguous-request", "scope-trap", "bug-fix"]
+}

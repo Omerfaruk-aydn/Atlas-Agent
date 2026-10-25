@@ -1,0 +1,17 @@
+{
+  "id": "fix-terminal-line-count",
+  "prompt": "Lines counts logical lines: empty is zero, a trailing newline terminates its line without adding another empty line; CRLF counts as one terminator. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "go",
+    "test",
+    "-p",
+    "1",
+    "-count=1",
+    "./..."
+  ],
+  "timeout_seconds": 180,
+  "language": "go",
+  "categories": [
+    "bug-fix"
+  ]
+}

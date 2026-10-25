@@ -1,0 +1,17 @@
+{
+  "id": "fix-rune-limit",
+  "prompt": "Truncate(s,n) limits text to n Unicode code points; n<=0 yields empty. It must never split UTF-8. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "go",
+    "test",
+    "-p",
+    "1",
+    "-count=1",
+    "./..."
+  ],
+  "timeout_seconds": 180,
+  "language": "go",
+  "categories": [
+    "bug-fix"
+  ]
+}

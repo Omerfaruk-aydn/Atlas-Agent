@@ -1,0 +1,17 @@
+{
+  "id": "fix-stable-unique",
+  "prompt": "Unique returns the first occurrence of each string in original order. Empty input produces an empty slice. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "go",
+    "test",
+    "-p",
+    "1",
+    "-count=1",
+    "./..."
+  ],
+  "timeout_seconds": 180,
+  "language": "go",
+  "categories": [
+    "bug-fix"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "fix-stable-topology",
+  "prompt": "order maps names to prerequisite names. Return deterministic dependency-first order, choosing ready names lexicographically; reject cycles and missing dependencies. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "python",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    ".",
+    "-p",
+    "test_atlas_*.py"
+  ],
+  "timeout_seconds": 180,
+  "language": "python",
+  "categories": [
+    "bug-fix"
+  ]
+}

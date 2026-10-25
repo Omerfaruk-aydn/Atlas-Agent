@@ -1,0 +1,17 @@
+{
+  "id": "fix-sorted-copy-insert",
+  "prompt": "Insert returns sorted integers with v added; preserve duplicates and do not change the input or its backing array. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "go",
+    "test",
+    "-p",
+    "1",
+    "-count=1",
+    "./..."
+  ],
+  "timeout_seconds": 180,
+  "language": "go",
+  "categories": [
+    "bug-fix"
+  ]
+}

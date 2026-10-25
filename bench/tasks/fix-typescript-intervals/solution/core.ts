@@ -1,0 +1,1 @@
+export function solve(xs: [number,number][]): [number,number][] { const out: [number,number][]=[];for(const [a,b] of xs.filter(([a,b])=>a<b).sort((x,y)=>x[0]-y[0])){const last=out[out.length-1];if(last&&a<=last[1])last[1]=Math.max(last[1],b);else out.push([a,b]);}return out; }

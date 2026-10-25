@@ -1,0 +1,1 @@
+export function solve(base:number,cap:number,attempt:number):number{if(!Number.isFinite(base)||!Number.isFinite(cap)||base<=0||cap<=0||!Number.isInteger(attempt)||attempt<0)return 0;return Math.min(cap,base*2**attempt);}

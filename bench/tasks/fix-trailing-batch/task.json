@@ -1,0 +1,19 @@
+{
+  "id": "fix-trailing-batch",
+  "prompt": "batches groups records into chunks of positive size, including the final short chunk. Invalid sizes raise ValueError; preserve input. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "python",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    ".",
+    "-p",
+    "test_atlas_*.py"
+  ],
+  "timeout_seconds": 180,
+  "language": "python",
+  "categories": [
+    "bug-fix"
+  ]
+}

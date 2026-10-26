@@ -14,8 +14,8 @@ import (
 )
 
 func TestNpmCommandWindowsRunsNodeWithoutShellQuoting(t *testing.T) {
-	if _, err := exec.LookPath("node"); err != nil {
-		t.Skip("Node.js is required for the npm update integration fixture")
+	if _, err := exec.LookPath("node.exe"); err != nil {
+		t.Skip("A directly executable node.exe is required for the npm update integration fixture")
 	}
 	dir := filepath.Join(t.TempDir(), "Ömer&Ceylin npm fixture")
 	cli := filepath.Join(dir, "node_modules", "npm", "bin", "npm-cli.js")

@@ -1,0 +1,24 @@
+{
+  "suite": "tasks",
+  "model": "provider/model-id",
+  "repeats": 2,
+  "tasks": ["fix-lease-renewal", "fix-cart-totals"],
+  "variants": [
+    {
+      "name": "verification-enabled",
+      "config": {"options": {"harness": {"lint_command": "go vet ./...", "completion_commands": ["go test -p 1 ./..."], "mutation_max": 4, "mutation_timeout_seconds": 60}}},
+      "gates": {"lint_fix": true, "mutation": true}
+    },
+    {
+      "name": "without-lint-fix",
+      "config": {"options": {"harness": {"lint_command": "go vet ./...", "completion_commands": ["go test -p 1 ./..."], "mutation_max": 4, "mutation_timeout_seconds": 60}}},
+      "gates": {"lint_fix": false, "mutation": true}
+    },
+    {
+      "name": "without-mutation",
+      "config": {"options": {"harness": {"lint_command": "go vet ./...", "completion_commands": ["go test -p 1 ./..."], "mutation_max": 4, "mutation_timeout_seconds": 60}}},
+      "gates": {"lint_fix": true, "mutation": false}
+    }
+  ],
+  "setup": "Replace the model placeholder and configure authorized reviewer roles. Uses Go tasks because the automatic mutation backend currently supports Go. Inspect invocation/skip/unverified counts; a skipped mutation check is not evidence of test quality. Live provider runs require explicit approval."
+}

@@ -18,6 +18,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -50,17 +52,18 @@ jobs:
           echo "Resolved tag $TAG"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.tag.outputs.tag }}
+          persist-credentials: false
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
 
@@ -87,8 +90,29 @@ jobs:
           GOOS=darwin  GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/atlas-agent-darwin-x64 .
           GOOS=darwin  GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/atlas-agent-darwin-arm64 .
 
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/atlas-agent.spdx.json
+
+      - name: Create and verify checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum atlas-agent-* atlas-agent.spdx.json > SHA256SUMS
+          sha256sum -c SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/atlas-agent-*
+            dist/atlas-agent.spdx.json
+
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           generate_release_notes: true
@@ -98,5 +122,7 @@ jobs:
             dist/atlas-agent-linux-x64
             dist/atlas-agent-darwin-x64
             dist/atlas-agent-darwin-arm64
+            dist/atlas-agent.spdx.json
+            dist/SHA256SUMS
             install.sh
             install.ps1

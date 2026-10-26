@@ -30,6 +30,8 @@ jobs:
       - run: go mod tidy
       - run: git diff --exit-code
       - run: go build -race ./...
+      - name: Auto-approve security corpus gate
+        run: go test -race -count=1 -v ./internal/permission -run 'TestAutoApproveSecurityCorpus|TestAutoApproveRiskyCorpusNeverReachesModel'
       - name: Validate Windows speech installer routing
         run: node npm/cli/scripts/speech-setup.test.js
       - name: Enable sandboxed Chrome user namespaces on Ubuntu runner
@@ -48,10 +50,47 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
       - run: npm --prefix web ci
       - run: npm --prefix web run typecheck
       - run: npm --prefix web test
       - run: npm --prefix web run build
+
+  browser-regression:
+    # Ubuntu is the supported CI target. Missing Go or Chromium dependencies
+    # fail this job; an unsupported driver is never reported as a pass/skip.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm --prefix web ci
+      - name: Validate runner and assertion contracts
+        run: go test -race -count=1 ./internal/agent/tools ./internal/webui/webtest -run 'TestBrowserWorkflow|TestBrowserPipeline|TestBrowserRegression'
+      - name: Install supported Chromium and runtime dependencies
+        run: npx --prefix web playwright install --with-deps chromium
+      - name: Build isolated real Atlas web stack
+        run: npm --prefix web run build && go build -trimpath -o dist/dev/atlas-web-dev .
+      - name: Run Atlas browser-use regressions
+        run: npm --prefix web run e2e:browser-use
+      # Keep Playwright during the migration: the new scenarios cover the
+      # requested high-risk paths, not attachment, cross-client, permission,
+      # responsiveness and anti-CSRF equivalence yet.
+      - name: Run preserved Playwright coverage
+        run: npm --prefix web run e2e
+      - name: Upload browser regression evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: browser-use-regression
+          path: web/test-results/
+          if-no-files-found: error
+          retention-days: 14

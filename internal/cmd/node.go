@@ -142,7 +142,7 @@ func init() {
 	nodeListCmd.Flags().Bool("json", false, "Print JSON")
 
 	nodePlanCmd.Flags().String("id", "", "Run id; reusing it makes nodes replay recorded results instead of re-running")
-	nodeCmd.AddCommand(nodeServeCmd, nodePairCmd, nodeListCmd, nodeRevokeCmd, nodeExecCmd, nodePlanCmd)
+	nodeCmd.AddCommand(nodeServeCmd, nodePairCmd, nodeListCmd, nodeRevokeCmd, nodeExecCmd, nodePlanCmd, newNodeHandoffCommand())
 	rootCmd.AddCommand(nodeCmd)
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/event"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/format"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/herdr"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/proto"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
@@ -67,19 +68,46 @@ atlas run --continue "Follow up on your last response"
 			return err
 		}
 		var (
-			quiet, _      = cmd.Flags().GetBool("quiet")
-			verbose, _    = cmd.Flags().GetBool("verbose")
-			largeModel, _ = cmd.Flags().GetString("model")
-			smallModel, _ = cmd.Flags().GetString("small-model")
-			sessionID, _  = cmd.Flags().GetString("session")
-			useLast, _    = cmd.Flags().GetBool("continue")
-			jsonOut, _    = cmd.Flags().GetBool("json")
-			agentName, _  = cmd.Flags().GetString("agent")
+			quiet, _        = cmd.Flags().GetBool("quiet")
+			verbose, _      = cmd.Flags().GetBool("verbose")
+			largeModel, _   = cmd.Flags().GetString("model")
+			smallModel, _   = cmd.Flags().GetString("small-model")
+			sessionID, _    = cmd.Flags().GetString("session")
+			useLast, _      = cmd.Flags().GetBool("continue")
+			jsonOut, _      = cmd.Flags().GetBool("json")
+			agentName, _    = cmd.Flags().GetString("agent")
+			policyPath, _   = cmd.Flags().GetString("permission-policy")
+			outputFormat, _ = cmd.Flags().GetString("output-format")
 		)
+		if outputFormat == "" {
+			outputFormat = "text"
+			if jsonOut {
+				outputFormat = "json"
+			}
+		}
+		if outputFormat != "text" && outputFormat != "json" && outputFormat != "stream-json" {
+			return fmt.Errorf("unknown output format %q: use text, json or stream-json", outputFormat)
+		}
+		if cmd.Flags().Changed("json") && cmd.Flags().Changed("output-format") {
+			return errors.New("--json and --output-format are mutually exclusive")
+		}
+		jsonOut = outputFormat == "json" || outputFormat == "stream-json"
 
 		// Cancel on SIGINT or SIGTERM.
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, os.Kill)
 		defer cancel()
+		var policy permission.HeadlessPolicy
+		if policyPath != "" {
+			if useClientServer() {
+				return errors.New("--permission-policy requires local mode so the policy cannot be bypassed")
+			}
+			loadedPolicy, policyErr := permission.LoadHeadlessPolicy(policyPath)
+			if policyErr != nil {
+				return policyErr
+			}
+			policy = loadedPolicy
+			ctx = permission.WithoutPrompts(ctx)
+		}
 
 		prompt := strings.Join(args, " ")
 
@@ -166,6 +194,9 @@ atlas run --continue "Follow up on your last response"
 		}
 
 		appWs := ws.(*workspace.AppWorkspace)
+		if policyPath != "" {
+			appWs.App().Permissions.SetAllowedTools(policy.AllowedTools)
+		}
 
 		if agentName != "" {
 			prompt, err = wrapPromptForAgent(appWs.App().Config(), agentName, prompt)
@@ -182,7 +213,7 @@ atlas run --continue "Follow up on your last response"
 			sessionID = sess.ID
 		}
 
-		return appWs.App().RunNonInteractive(ctx, os.Stdout, prompt, largeModel, smallModel, quiet || verbose, sessionID, useLast, jsonOut)
+		return appWs.App().RunNonInteractiveFormat(ctx, os.Stdout, prompt, largeModel, smallModel, quiet || verbose, sessionID, useLast, outputFormat)
 	},
 }
 
@@ -196,6 +227,8 @@ func init() {
 	runCmd.Flags().StringP("session", "s", "", "Continue a previous session by ID")
 	runCmd.Flags().BoolP("continue", "C", false, "Continue the most recent session")
 	runCmd.Flags().Bool("json", false, "Print one JSON object with the response, session ID, tokens, and cost instead of streaming text")
+	runCmd.Flags().String("output-format", "text", "Output format: text, json or stream-json (JSONL events)")
+	runCmd.Flags().String("permission-policy", "", "JSON file with explicit allowed_tools for fail-closed unattended execution")
 	runCmd.Flags().StringP("agent", "a", "",
 		"Hand the prompt to a configured subagent (see `atlas agent list`) via the agent tool, instead of running it directly")
 	runCmd.MarkFlagsMutuallyExclusive("session", "continue")

@@ -113,6 +113,7 @@ func newEvalBenchCommand() *cobra.Command {
 	bench.AddCommand(rescore)
 
 	var asJSON bool
+	var previousFile string
 	report := &cobra.Command{
 		Use:   "report <results.json>",
 		Short: "Print the comparison for recorded bench results; does not run agents",
@@ -123,16 +124,37 @@ func newEvalBenchCommand() *cobra.Command {
 				return err
 			}
 			summaries := evaluation.SummarizeBench(records)
+			var regressions []string
+			if previousFile != "" {
+				var previous []evaluation.BenchRecord
+				if err := evaluation.ReadJSONFile(previousFile, &previous); err != nil {
+					return err
+				}
+				regressions = evaluation.BenchRegressions(records, previous)
+			}
 			if asJSON {
 				encoder := json.NewEncoder(cmd.OutOrStdout())
 				encoder.SetIndent("", "  ")
+				if previousFile != "" {
+					return encoder.Encode(struct {
+						Summaries   any      `json:"summaries"`
+						Regressions []string `json:"regressions"`
+					}{summaries, regressions})
+				}
 				return encoder.Encode(summaries)
+			}
+			for _, m := range evaluation.BenchMetrics(records) {
+				fmt.Fprintf(cmd.OutOrStdout(), "%s pass@1=%.3f pass@k=%.3f tokens=%d cost=%.6f duration_ms=%d fail_open=%d unmeasured_gate_runs=%d\n", m.Variant, m.PassAt1, m.PassAtK, m.Tokens, m.Cost, m.DurationMS, m.FailOpen, m.Unmeasured)
+			}
+			for _, warning := range regressions {
+				fmt.Fprintln(cmd.OutOrStdout(), warning)
 			}
 			_, err := fmt.Fprint(cmd.OutOrStdout(), evaluation.FormatBenchReport(summaries))
 			return err
 		},
 	}
-	report.Flags().BoolVar(&asJSON, "json", false, "Print the summaries as JSON")
+	report.Flags().BoolVar(&asJSON, "json", false, "Print summaries, attempt metrics and regressions as JSON")
+	report.Flags().StringVar(&previousFile, "previous", "", "Compare matched tasks with a previous recorded run")
 	bench.AddCommand(report)
 	return bench
 }

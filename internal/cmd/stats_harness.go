@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -37,7 +38,15 @@ from real sessions rather than guesses.`,
 		if err != nil {
 			return fmt.Errorf("failed to read harness events: %w", err)
 		}
-		_, err = fmt.Fprint(cmd.OutOrStdout(), harnessmetrics.Format(harnessmetrics.Summarize(events), since))
+		ctx := cmd.Context()
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		gates, gateErr := harnessmetrics.LoadGateEvents(ctx, dataDir, since)
+		if gateErr != nil {
+			return gateErr
+		}
+		_, err = fmt.Fprint(cmd.OutOrStdout(), harnessmetrics.Format(harnessmetrics.Summarize(events), since), harnessmetrics.FormatGates(harnessmetrics.SummarizeGates(gates)))
 		return err
 	},
 }

@@ -75,6 +75,27 @@ func newReviewCommand() *cobra.Command {
 		}
 		commit, _ := cmd.Flags().GetString("commit")
 		base, _ := cmd.Flags().GetString("base")
+		prNumber, _ := cmd.Flags().GetInt("pr")
+		publish, _ := cmd.Flags().GetBool("publish")
+		if prNumber > 0 {
+			if commit != "" || base != "" {
+				return fmt.Errorf("--pr cannot be combined with --commit or --base")
+			}
+			minimum, _ := cmd.Flags().GetString("min-severity")
+			findings, err := pullRequestFindings(cmd.Context(), root, prNumber, minimum)
+			if err != nil {
+				return err
+			}
+			if publish {
+				if err := publishPRFindings(cmd.Context(), root, prNumber, findings); err != nil {
+					return err
+				}
+			}
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{"findings": findings, "published": publish, "second_pass": true})
+		}
+		if publish {
+			return fmt.Errorf("--publish requires --pr")
+		}
 		prompt, truncated, err := prepareReview(cmd.Context(), root, commit, base)
 		if err != nil {
 			return err
@@ -101,6 +122,7 @@ func newReviewCommand() *cobra.Command {
 	command.Flags().String("commit", "", "Review one commit")
 	command.Flags().String("base", "", "Review changes since the merge base")
 	command.Flags().Bool("prepare-only", false, "Print the review request without calling a model")
+	addPRReviewFlags(command)
 	command.MarkFlagsMutuallyExclusive("commit", "base")
 	return command
 }

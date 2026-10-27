@@ -569,6 +569,8 @@ func (Attribution) JSONSchemaExtend(schema *jsonschema.Schema) {
 type Options struct {
 	Voice        speech.DictationOptions `json:"voice,omitzero" jsonschema:"description=Offline microphone dictation using Vosk models or optional Windows recognition; no cloud service"`
 	UsageProfile string                  `json:"usage_profile,omitempty" jsonschema:"description=Active named usage profile"`
+	OutputStyle  string                  `json:"output_style,omitempty" jsonschema:"description=Response style: default, concise, explanatory, learning, or a project/user output-styles file,enum=default,enum=concise,enum=explanatory,enum=learning"`
+	SafeMode     bool                    `json:"-" jsonschema:"-"`
 	// WorkBudget fixes the work budget tier instead of deriving it from the
 	// request and observed difficulty. Empty or "auto" means derived.
 	WorkBudget           string                  `json:"work_budget,omitempty" jsonschema:"description=Work budget tier: auto (default) derives it from the request and observed difficulty; direct, standard or deep fixes it,enum=auto,enum=direct,enum=standard,enum=deep"`
@@ -665,7 +667,8 @@ type Options struct {
 	// back to the primary. Zero (the default) resets on every turn, which
 	// is the existing behavior; a nonzero value avoids retrying a model
 	// that is likely still rate-limited from the previous turn.
-	FallbackCooldown int `json:"fallback_cooldown,omitempty" jsonschema:"description=How many seconds a fallback model stays active after a failover before the next turn returns to the primary model. Zero resets every turn.,example=300"`
+	FallbackCooldown int             `json:"fallback_cooldown,omitempty" jsonschema:"description=How many seconds a fallback model stays active after a failover before the next turn returns to the primary model. Zero resets every turn.,example=300"`
+	FallbackPolicy   *FallbackPolicy `json:"fallback_policy,omitempty" jsonschema:"description=Opt-in policy for transient cross-provider fallback. HTTP 429 fallback remains governed by model_fallbacks."`
 	// ModelRoles maps a free-form role name (e.g. "frontend", "research",
 	// "review") to a concrete provider/model pair, distinct from the
 	// large/small model types. A subagent's Model field can reference one
@@ -716,6 +719,21 @@ type Options struct {
 	// a Windows Job Object. See the Sandbox type doc for exactly what
 	// this does and does not protect against.
 	Sandbox *Sandbox `json:"sandbox,omitempty" jsonschema:"description=Contain shell-spawned processes in an OS-level container. Currently Windows only (Job Objects); a no-op elsewhere."`
+}
+
+// FallbackPolicy controls opt-in failover for temporary provider failures.
+// A zero MaxProviders permits one additional provider per model chain.
+type FallbackPolicy struct {
+	OnTransient  bool `json:"on_transient,omitempty" jsonschema:"description=Allow cross-provider fallback for retryable 5xx, request timeout and classified transport failures before stream output.,default=false"`
+	MaxProviders int  `json:"max_providers,omitempty" jsonschema:"description=Maximum additional providers used for transient fallback per turn. Zero selects one.,default=1,minimum=0,maximum=4"`
+}
+
+// MaxProvidersOrDefault returns the bounded additional-provider budget.
+func (p *FallbackPolicy) MaxProvidersOrDefault() int {
+	if p == nil || p.MaxProviders <= 0 {
+		return 1
+	}
+	return min(p.MaxProviders, 4)
 }
 
 // DeferToolSchemasEnabled reports whether tool schemas outside the core
@@ -840,11 +858,12 @@ func (a Advisor) EscalateSeverityThreshold() string {
 // WorkPlan holds the work plan options. See Options.WorkPlan. A nil
 // pointer field means the default, on.
 type WorkPlan struct {
-	PlanReview   *bool `json:"plan_review,omitempty" jsonschema:"description=Have a reviewer critique a new or changed plan once before the work goes on.,default=true"`
-	ProveChecks  *bool `json:"prove_checks,omitempty" jsonschema:"description=Ask that each finished feature's check be run against the code from before the feature\\, where it must fail.,default=true"`
-	Checkpoints  *bool `json:"checkpoints,omitempty" jsonschema:"description=Record a git checkpoint whenever the contract holds\\, so a check that breaks later comes with the files changed since it last passed.,default=true"`
-	Breaker      *bool `json:"breaker,omitempty" jsonschema:"description=After features are finished\\, ask for an adversarial pass that tries to break them.,default=true"`
-	LearnRecipes *bool `json:"learn_recipes,omitempty" jsonschema:"description=Save the commands that verified the work to project memory.,default=true"`
+	PlanReview   *bool  `json:"plan_review,omitempty" jsonschema:"description=Have a reviewer critique a new or changed plan once before the work goes on.,default=true"`
+	ReviewPolicy string `json:"review_policy,omitempty" jsonschema:"description=Plan review failure policy: optional preserves best-effort review\\, risky requires a valid verdict for plans with risky verification commands\\, required requires every enabled review.,enum=optional,enum=risky,enum=required,default=optional"`
+	ProveChecks  *bool  `json:"prove_checks,omitempty" jsonschema:"description=Ask that each finished feature's check be run against the code from before the feature\\, where it must fail.,default=true"`
+	Checkpoints  *bool  `json:"checkpoints,omitempty" jsonschema:"description=Record a git checkpoint whenever the contract holds\\, so a check that breaks later comes with the files changed since it last passed.,default=true"`
+	Breaker      *bool  `json:"breaker,omitempty" jsonschema:"description=After features are finished\\, ask for an adversarial pass that tries to break them.,default=true"`
+	LearnRecipes *bool  `json:"learn_recipes,omitempty" jsonschema:"description=Save the commands that verified the work to project memory.,default=true"`
 	// FeatureHandoff starts the next feature from the plan and progress
 	// notes once a feature is finished and checked, instead of carrying the
 	// whole conversation that built it.
@@ -855,6 +874,20 @@ func defaultOn(b *bool) bool { return b == nil || *b }
 
 // PlanReviewEnabled reports whether plans are reviewed.
 func (w *WorkPlan) PlanReviewEnabled() bool { return w == nil || defaultOn(w.PlanReview) }
+
+// PlanReviewPolicy returns the validated failure policy. Invalid values fail
+// closed to optional's safer sibling, risky, rather than disabling review.
+func (w *WorkPlan) PlanReviewPolicy() string {
+	if w == nil || w.ReviewPolicy == "" {
+		return "optional"
+	}
+	switch w.ReviewPolicy {
+	case "optional", "risky", "required":
+		return w.ReviewPolicy
+	default:
+		return "risky"
+	}
+}
 
 // ProveChecksEnabled reports whether finished features' checks are probed.
 func (w *WorkPlan) ProveChecksEnabled() bool { return w == nil || defaultOn(w.ProveChecks) }
@@ -875,17 +908,48 @@ func (w *WorkPlan) FeatureHandoffEnabled() bool { return w == nil || defaultOn(w
 // Harness holds the harness options. See Options.Harness. A nil Harness
 // keeps every option on.
 type Harness struct {
-	CheckGuard           *bool `json:"check_guard,omitempty" jsonschema:"description=Send the work back once when a turn weakens its own checks: removed assertions or tests\\, new skip or focus markers\\, new lint suppressions\\, lowered coverage thresholds or loosened plan checks.,default=true"`
-	RequestChecklist     *bool `json:"request_checklist,omitempty" jsonschema:"description=Split a request with several asks into a checklist that survives compaction and is checked item by item before the turn ends.,default=true"`
-	ParallelAlternatives *bool `json:"parallel_alternatives,omitempty" jsonschema:"description=When a check keeps failing\\, prepare two git worktrees so two different approaches can be tried side by side and the one that passes kept.,default=true"`
-	FlakyChecks          *bool `json:"flaky_checks,omitempty" jsonschema:"description=Tell flaky checks (different results with no code change) apart from real failures and regressions.,default=true"`
-	ErrorMemory          *bool `json:"error_memory,omitempty" jsonschema:"description=Remember how an error was fixed and show it when the same error comes back.,default=true"`
-	Environment          *bool `json:"environment,omitempty" jsonschema:"description=Detect the installed toolchains and their versions once and tell the model.,default=true"`
-	DiffHygiene          *bool `json:"diff_hygiene,omitempty" jsonschema:"description=Before a turn ends\\, flag leftover debug statements\\, conflict markers\\, new TODOs\\, commented-out code\\, likely secrets and large files in the change.,default=true"`
-	BudgetLine           *bool `json:"budget_line,omitempty" jsonschema:"description=Tell the model how full its context is and how many steps the turn has taken.,default=true"`
-	FailureCorpus        *bool `json:"failure_corpus,omitempty" jsonschema:"description=Save requests that ended with unmet checks or findings so atlas eval corpus can replay them.,default=true"`
-	StrategyHints        *bool `json:"strategy_hints,omitempty" jsonschema:"description=Suggest the checks that verified similar projects before.,default=true"`
+	EvaluatorRepair          *bool    `json:"evaluator_repair,omitempty" jsonschema:"description=Allow one extra call to the configured evaluator to repair invalid JSON; otherwise end unverified immediately.,default=false"`
+	StallOracle              *bool    `json:"stall_oracle,omitempty" jsonschema:"description=Allow one configured escalator consultation during a stalled approach; adds a model call and requires an explicit escalator model.,default=false"`
+	LintFix                  *bool    `json:"lint_fix,omitempty" jsonschema:"description=Check new LSP errors after edits and enforce a configured fast linter. Opt-in; may execute project commands.,default=false"`
+	LintCommand              string   `json:"lint_command,omitempty" jsonschema:"description=Optional fast lint shell command run through normal permissions and hooks."`
+	LintTimeoutSeconds       int      `json:"lint_timeout_seconds,omitempty" jsonschema:"description=Time budget for each fast lint observation; zero selects 10 seconds.,default=10,minimum=0,maximum=120"`
+	CompletionCommands       []string `json:"completion_commands,omitempty" jsonschema:"description=Opt-in build/test/type/secret-scan commands run before paid review through normal permissions and hooks."`
+	CompletionTimeoutSeconds int      `json:"completion_timeout_seconds,omitempty" jsonschema:"description=Time budget for each completion check; zero selects 120 seconds and values above 600 are capped.,default=120,minimum=0,maximum=600"`
+	RedGreen                 *bool    `json:"red_green,omitempty" jsonschema:"description=Require an observed failing check followed by implementation changes and the same check passing.,default=false"`
+	Mutation                 *bool    `json:"mutation,omitempty" jsonschema:"description=Run bounded Go mutations in a disposable project copy before review; never mutate the working source.,default=false"`
+	MutationCommand          string   `json:"mutation_command,omitempty" jsonschema:"description=Test command for mutation checks in the disposable copy; empty selects go test -p 1 -count=1 ./... ."`
+	MutationMax              int      `json:"mutation_max,omitempty" jsonschema:"description=Maximum deterministic changed-line mutants; zero selects 4.,default=4,minimum=0,maximum=32"`
+	MutationTimeoutSeconds   int      `json:"mutation_timeout_seconds,omitempty" jsonschema:"description=Total mutation budget in seconds; zero selects 60.,default=60,minimum=0,maximum=600"`
+	FuzzHints                *bool    `json:"fuzz_hints,omitempty" jsonschema:"description=Offer one advisory property/fuzz test hint for changed parser/codec/numeric code.,default=true"`
+	NoProgressSteps          int      `json:"no_progress_steps,omitempty" jsonschema:"description=Steps without new verification/file/finding/contract evidence before strategy review; zero selects 8.,default=8,minimum=0,maximum=100"`
+	DisabledGates            []string `json:"disabled_gates,omitempty" jsonschema:"description=Opt-in experiment disabling named gates: evaluator\\, contract\\, advisor\\, goal_judge\\, escalator\\, lint_fix or mutation. Empty preserves configured gate policies."`
+	Trace                    *bool    `json:"trace,omitempty" jsonschema:"description=Record bounded local metadata-only turn traces without model payloads.,default=true"`
+	CheckGuard               *bool    `json:"check_guard,omitempty" jsonschema:"description=Send the work back once when a turn weakens its own checks: removed assertions or tests\\, new skip or focus markers\\, new lint suppressions\\, lowered coverage thresholds or loosened plan checks.,default=true"`
+	RequestChecklist         *bool    `json:"request_checklist,omitempty" jsonschema:"description=Split a request with several asks into a checklist that survives compaction and is checked item by item before the turn ends.,default=true"`
+	ParallelAlternatives     *bool    `json:"parallel_alternatives,omitempty" jsonschema:"description=When a check keeps failing\\, prepare two git worktrees so two different approaches can be tried side by side and the one that passes kept.,default=true"`
+	FlakyChecks              *bool    `json:"flaky_checks,omitempty" jsonschema:"description=Tell flaky checks (different results with no code change) apart from real failures and regressions.,default=true"`
+	ErrorMemory              *bool    `json:"error_memory,omitempty" jsonschema:"description=Remember how an error was fixed and show it when the same error comes back.,default=true"`
+	Environment              *bool    `json:"environment,omitempty" jsonschema:"description=Detect the installed toolchains and their versions once and tell the model.,default=true"`
+	DiffHygiene              *bool    `json:"diff_hygiene,omitempty" jsonschema:"description=Before a turn ends\\, flag leftover debug statements\\, conflict markers\\, new TODOs\\, commented-out code\\, likely secrets and large files in the change.,default=true"`
+	BudgetLine               *bool    `json:"budget_line,omitempty" jsonschema:"description=Tell the model how full its context is and how many steps the turn has taken.,default=true"`
+	AttachmentReferenceBytes int      `json:"attachment_reference_bytes,omitempty" jsonschema:"description=Send large on-disk text attachments as path and size with a short preview; zero selects 16384 and -1 disables references.,default=16384,minimum=-1,maximum=10485760"`
+	IdleCompactMinutes       int      `json:"idle_compact_minutes,omitempty" jsonschema:"description=Compact large idle sessions after this many minutes; zero disables background compaction.,default=0,minimum=0,maximum=10080"`
+	IdleCompactTokens        int64    `json:"idle_compact_tokens,omitempty" jsonschema:"description=Minimum observed prompt and completion tokens before idle compaction; zero selects 32000.,default=32000,minimum=0,maximum=10000000"`
+	FailureCorpus            *bool    `json:"failure_corpus,omitempty" jsonschema:"description=Save requests that ended with unmet checks or findings so atlas eval corpus can replay them.,default=true"`
+	StrategyHints            *bool    `json:"strategy_hints,omitempty" jsonschema:"description=Suggest the checks that verified similar projects before.,default=true"`
 }
+
+// CompletionTimeout returns a bounded per-command verification budget.
+func (h *Harness) CompletionTimeout() time.Duration {
+	seconds := 120
+	if h != nil && h.CompletionTimeoutSeconds > 0 {
+		seconds = min(h.CompletionTimeoutSeconds, 600)
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+// TraceEnabled reports whether local metadata traces are recorded.
+func (h *Harness) TraceEnabled() bool { return h == nil || defaultOn(h.Trace) }
 
 // CheckGuardEnabled reports whether weakened checks are flagged.
 func (h *Harness) CheckGuardEnabled() bool { return h == nil || defaultOn(h.CheckGuard) }
@@ -913,6 +977,27 @@ func (h *Harness) DiffHygieneEnabled() bool { return h == nil || defaultOn(h.Dif
 
 // BudgetLineEnabled reports whether the model is told its context use.
 func (h *Harness) BudgetLineEnabled() bool { return h == nil || defaultOn(h.BudgetLine) }
+
+// AttachmentReferenceLimit returns the text attachment size above which a
+// path and preview replace full prompt content. Negative disables references.
+func (h *Harness) AttachmentReferenceLimit() int {
+	if h == nil || h.AttachmentReferenceBytes == 0 {
+		return 16 << 10
+	}
+	return h.AttachmentReferenceBytes
+}
+
+// IdleCompactionPolicy returns the opt-in idle duration and context floor.
+func (h *Harness) IdleCompactionPolicy() (idle time.Duration, tokens int64, enabled bool) {
+	if h == nil || h.IdleCompactMinutes <= 0 {
+		return 0, 0, false
+	}
+	tokens = h.IdleCompactTokens
+	if tokens == 0 {
+		tokens = 32_000
+	}
+	return time.Duration(h.IdleCompactMinutes) * time.Minute, tokens, true
+}
 
 // FailureCorpusEnabled reports whether failed requests are saved.
 func (h *Harness) FailureCorpusEnabled() bool { return h == nil || defaultOn(h.FailureCorpus) }
@@ -1537,6 +1622,10 @@ type HookConfig struct {
 	MaxFires int    `json:"max_fires,omitempty" jsonschema:"description=Maximum agent actions per session and hook,default=3,minimum=1,maximum=16"`
 	// Timeout in seconds. Default 30.
 	Timeout int `json:"timeout,omitempty" jsonschema:"description=Timeout in seconds for the hook command,default=30"`
+	// Required makes execution failure, timeout, or unavailable execution fail
+	// closed. PreToolUse blocks dispatch; PostToolUse stops the turn because the
+	// already-completed tool effect cannot be rolled back.
+	Required bool `json:"required,omitempty" jsonschema:"description=Fail closed when this hook cannot execute successfully. PreToolUse blocks the call and PostToolUse stops the turn.,default=false"`
 }
 
 // DisplayName returns the hook name for display purposes. It returns Name
@@ -1778,6 +1867,7 @@ func allToolNames() []string {
 		"ls",
 		"memory",
 		"question",
+		"request_permission",
 		"session_search",
 		"skill_manage",
 		"sourcegraph",

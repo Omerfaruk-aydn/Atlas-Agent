@@ -20,6 +20,13 @@ type ToolInfo struct {
 	Parameters  map[string]any `json:"parameters"`
 	Required    []string       `json:"required"`
 	Parallel    bool           `json:"parallel"` // Whether this tool can run in parallel with other tools
+
+	// Contract is the exact form of Parameters for checking input: opaque
+	// values accept anything and maps constrain their values. It is nil for
+	// tools whose schema was written by hand.
+	Contract map[string]any `json:"-"`
+	// Unknown is what the tool does with input fields it does not define.
+	Unknown schema.InputPolicy `json:"-"`
 }
 
 // ToolCall represents a tool invocation, matching the existing pattern.
@@ -141,6 +148,7 @@ type funcToolWrapper[TInput any] struct {
 	schema          Schema
 	providerOptions ProviderOptions
 	parallel        bool
+	unknown         schema.InputPolicy
 }
 
 func (w *funcToolWrapper[TInput]) SetProviderOptions(opts ProviderOptions) {
@@ -150,6 +158,20 @@ func (w *funcToolWrapper[TInput]) SetProviderOptions(opts ProviderOptions) {
 func (w *funcToolWrapper[TInput]) ProviderOptions() ProviderOptions {
 	return w.providerOptions
 }
+
+// RejectUnknownInput makes a tool built by NewAgentTool refuse calls that
+// carry a top-level field it does not define. The default is to ignore such
+// fields. Use it where a misspelled option would otherwise be dropped silently
+// and the action would run differently from what was asked. Tools without a
+// generated schema are returned unchanged.
+func RejectUnknownInput(tool AgentTool) AgentTool {
+	if setter, ok := tool.(interface{ rejectUnknown() }); ok {
+		setter.rejectUnknown()
+	}
+	return tool
+}
+
+func (w *funcToolWrapper[TInput]) rejectUnknown() { w.unknown = schema.RejectUnknown }
 
 // ShapeAgentToolSchema narrows the generated input schema of a tool built by
 // NewAgentTool, for example to remove a field the runtime always rejects in a
@@ -182,6 +204,8 @@ func (w *funcToolWrapper[TInput]) Info() ToolInfo {
 		Parameters:  schema.ToParameters(w.schema),
 		Required:    w.schema.Required,
 		Parallel:    w.parallel,
+		Contract:    schema.ValidationParameters(w.schema),
+		Unknown:     w.unknown,
 	}
 }
 

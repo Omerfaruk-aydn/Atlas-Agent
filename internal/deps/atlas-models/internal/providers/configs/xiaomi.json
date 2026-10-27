@@ -17,7 +17,16 @@
       "context_window": 1048576,
       "default_max_tokens": 131072,
       "can_reason": true,
-      "reasoning_levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"],
+      "reasoning_levels": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
       "default_reasoning_effort": "high",
       "supports_attachments": true
     },
@@ -31,7 +40,16 @@
       "context_window": 1048576,
       "default_max_tokens": 131072,
       "can_reason": true,
-      "reasoning_levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"],
+      "reasoning_levels": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
       "default_reasoning_effort": "high",
       "supports_attachments": true
     },
@@ -45,9 +63,25 @@
       "context_window": 1048576,
       "default_max_tokens": 131072,
       "can_reason": true,
-      "reasoning_levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"],
+      "reasoning_levels": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
       "default_reasoning_effort": "high",
-      "supports_attachments": false
+      "supports_attachments": false,
+      "lifecycle": {
+        "status": "retired",
+        "replacement": "mimo-v2.6-pro",
+        "source_url": "https://mimo.mi.com/docs/en-US/tokenplan/Token%20Plan/subscription",
+        "verified_at": "2026-10-27",
+        "retirement_date": "2026-10-21"
+      }
     },
     {
       "id": "mimo-v2.5",
@@ -59,9 +93,25 @@
       "context_window": 1048576,
       "default_max_tokens": 131072,
       "can_reason": true,
-      "reasoning_levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"],
+      "reasoning_levels": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
       "default_reasoning_effort": "high",
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "retired",
+        "replacement": "mimo-v2.6-flash",
+        "source_url": "https://mimo.mi.com/docs/en-US/tokenplan/Token%20Plan/subscription",
+        "verified_at": "2026-10-27",
+        "retirement_date": "2026-10-21"
+      }
     },
     {
       "id": "mimo-v2.6-pro-ultraspeed",
@@ -73,7 +123,16 @@
       "context_window": 1048576,
       "default_max_tokens": 131072,
       "can_reason": true,
-      "reasoning_levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"],
+      "reasoning_levels": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
       "default_reasoning_effort": "high",
       "supports_attachments": true
     }

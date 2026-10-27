@@ -49,7 +49,7 @@ func TestXiaomiCatalog(t *testing.T) {
 			require.Equal(t, 0.0036, models["mimo-v2.6-pro"].CostPer1MOutCached)
 			require.Contains(t, models, "mimo-v2.6-pro-ultraspeed")
 		} else {
-			require.Len(t, models, 4, "only the four text models are supported by Token Plan")
+			require.Len(t, models, 2, "only the V2.6 text models remain; V2.5 went offline on 2026-10-21")
 		}
 	}
 	require.Empty(t, want, "all Xiaomi providers must be embedded")

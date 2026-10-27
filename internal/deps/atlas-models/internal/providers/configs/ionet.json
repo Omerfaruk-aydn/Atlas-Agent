@@ -474,6 +474,42 @@
       "cost_per_1m_out_cached": 0.029875000000000002,
       "can_reason": true,
       "supports_attachments": false
+    },
+    {
+      "id": "tencent/Hy4-preview",
+      "name": "Tencent: Hy4 Preview",
+      "cost_per_1m_in": 0.834,
+      "cost_per_1m_out": 2.501,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.042,
+      "context_window": 262144,
+      "default_max_tokens": 65536,
+      "can_reason": true,
+      "supports_attachments": false
+    },
+    {
+      "id": "reflection/Beam-1.0-501B-A23B",
+      "name": "Reflection: Beam 1.0",
+      "cost_per_1m_in": 0.35,
+      "cost_per_1m_out": 1.12,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.175,
+      "context_window": 1048576,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": false
+    },
+    {
+      "id": "nvidia/nemotron-3.5-super-vl",
+      "name": "NVIDIA: Nemotron 3.5 Super VL",
+      "cost_per_1m_in": 0.17,
+      "cost_per_1m_out": 0.63,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.085,
+      "context_window": 262144,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true
     }
   ]
 }

@@ -1,0 +1,82 @@
+ D docs/agent-quality-verification-2026-10-01.json
+ D docs/agent-roles-verification-2026-10-02.json
+ M docs/antigravity-models.md
+ M internal/agent/agent.go
+ M internal/agent/attempt_model.go
+ M internal/agent/capability_lifecycle_test.go
+ M internal/agent/contract_gate.go
+ M internal/agent/contract_outcome.go
+ M internal/agent/coordinator.go
+ M internal/agent/delivery_context.go
+ M internal/agent/directives.go
+ M internal/agent/error_memory.go
+ M internal/agent/evaluator.go
+ M internal/agent/evaluator_test.go
+ M internal/agent/feature_handoff_test.go
+ M internal/agent/goal.go
+ M internal/agent/goal_test.go
+ M internal/agent/learn_workflow.go
+ M internal/agent/outcome_guard.go
+ M internal/agent/outcome_tasks.go
+ M internal/agent/plan_review.go
+ M internal/agent/runtime_guard.go
+ M internal/agent/task_context.go
+ M internal/agent/tools/job_kill.go
+ M internal/agent/tools/safe.go
+ M internal/agent/work_context.go
+ M internal/agent/work_loop_test.go
+ M internal/agent/work_refresh_test.go
+ M internal/agent/work_workflow.go
+ M internal/agent/workflow_tool.go
+ M internal/cmd/workflow.go
+ M internal/cmd/workflow_findings_test.go
+ M internal/deps/atlas-llm/agent.go
+ M internal/deps/atlas-llm/providers/antigravity/account_models_test.go
+ M internal/deps/atlas-llm/providers/antigravity/antigravity.go
+ M internal/deps/atlas-llm/providers/antigravity/live_account_test.go
+ M internal/deps/atlas-llm/schema/schema.go
+ M internal/deps/atlas-llm/tool.go
+ M internal/engineering/learned_methods.go
+ M internal/engineering/quality.go
+ M internal/engineering/runtime.go
+ M internal/engineering/snapshot.go
+ M internal/engineering/verification_journal.go
+ M internal/engineering/work.go
+ M internal/harnessmetrics/harnessmetrics.go
+ M internal/outcome/outcome.go
+ M internal/workplan/checkpoint.go
+ M internal/workplan/metrics.go
+ M internal/workplan/state.go
+?? docs/agentic-roadmap-master-prompt.md
+?? internal/agent/candidate_export_test.go
+?? internal/agent/completion_binding_test.go
+?? internal/agent/completion_decision.go
+?? internal/agent/completion_decision_test.go
+?? internal/agent/completion_input.go
+?? internal/agent/completion_persistence_test.go
+?? internal/agent/context_fit.go
+?? internal/agent/context_fit_test.go
+?? internal/agent/context_overflow_run_test.go
+?? internal/agent/context_window.go
+?? internal/agent/context_window_test.go
+?? internal/agent/effect_tracking_test.go
+?? internal/agent/late_effects_test.go
+?? internal/agent/review_status.go
+?? internal/agent/source_drift.go
+?? internal/agent/task_context_select.go
+?? internal/agent/task_context_select_test.go
+?? internal/agent/tools/schema_contract_test.go
+?? internal/deps/atlas-llm/schema/contract_test.go
+?? internal/deps/atlas-llm/tool_input_validation_test.go
+?? internal/engineering/completion.go
+?? internal/engineering/completion_test.go
+?? internal/engineering/external_observation_test.go
+?? internal/engineering/method_outcomes.go
+?? internal/engineering/method_outcomes_test.go
+?? internal/engineering/work_evidence_test.go
+?? internal/engineering/work_journal_test.go
+?? internal/engineering/work_signals.go
+?? internal/engineering/work_signals_test.go
+?? internal/workplan/process_test.go
+?? internal/workplan/scope.go
+?? internal/workplan/scope_test.go

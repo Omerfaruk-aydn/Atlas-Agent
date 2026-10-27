@@ -59,15 +59,22 @@
         "high"
       ],
       "default_reasoning_effort": "medium",
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "alias",
+        "replacement": "gemini-3.8-flash",
+        "source_url": "https://ai.google.dev/gemini-api/docs/deprecations",
+        "verified_at": "2026-10-27",
+        "note": "Requests are auto-routed to gemini-3.8-flash."
+      }
     },
     {
       "id": "gemini-3.6-flash",
       "name": "Gemini 3.6 Flash",
-      "cost_per_1m_in": 1.5,
-      "cost_per_1m_out": 7.5,
+      "cost_per_1m_in": 0.75,
+      "cost_per_1m_out": 3.75,
       "cost_per_1m_in_cached": 0,
-      "cost_per_1m_out_cached": 0.15,
+      "cost_per_1m_out_cached": 0.075,
       "context_window": 1048576,
       "default_max_tokens": 65536,
       "can_reason": true,
@@ -97,7 +104,14 @@
         "high"
       ],
       "default_reasoning_effort": "medium",
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "alias",
+        "replacement": "gemini-3.6-flash",
+        "source_url": "https://ai.google.dev/gemini-api/docs/deprecations",
+        "verified_at": "2026-10-27",
+        "note": "Requests are auto-routed to gemini-3.6-flash."
+      }
     },
     {
       "id": "gemini-3.5-flash-lite",
@@ -193,6 +207,18 @@
       "cost_per_1m_out": 2.5,
       "cost_per_1m_in_cached": 0,
       "cost_per_1m_out_cached": 0.03,
+      "context_window": 1048576,
+      "default_max_tokens": 50000,
+      "can_reason": true,
+      "supports_attachments": true
+    },
+    {
+      "id": "gemini-2.5-flash-lite",
+      "name": "Gemini 2.5 Flash-Lite",
+      "cost_per_1m_in": 0.1,
+      "cost_per_1m_out": 0.4,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.01,
       "context_window": 1048576,
       "default_max_tokens": 50000,
       "can_reason": true,

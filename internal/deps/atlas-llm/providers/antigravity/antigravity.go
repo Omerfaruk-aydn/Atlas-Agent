@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -555,6 +556,18 @@ func toGeminiPrompt(prompt fantasy.Prompt) (*geminiContent, []geminiContent, []f
 
 // -- HTTP -----------------------------------------------------------------
 
+// requiresCLIClient reports whether the backend only serves the route to the
+// Antigravity CLI client. Gemini 4 Argon answers 404 for the IDE User-Agent
+// the login stores (verified 2026-10-27 on a g1-pro-tier account: the same
+// token and project succeed once the product token is antigravity/cli).
+func requiresCLIClient(modelID string) bool {
+	return strings.HasPrefix(modelID, "gemini-4-argon")
+}
+
+func cliUserAgent() string {
+	return "antigravity/cli/1.4.8 (aidev_client; os_type=" + runtime.GOOS + "; arch=" + runtime.GOARCH + "; auth_method=consumer)"
+}
+
 func (m *languageModel) do(ctx context.Context, method string, body envelope) (*http.Response, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -569,6 +582,9 @@ func (m *languageModel) do(ctx context.Context, method string, body envelope) (*
 	req.Header.Set("Content-Type", "application/json")
 	for k, v := range m.options.headers {
 		req.Header.Set(k, v)
+	}
+	if requiresCLIClient(m.modelID) {
+		req.Header.Set("User-Agent", cliUserAgent())
 	}
 	if method == "streamGenerateContent" {
 		req.URL.RawQuery = "alt=sse"

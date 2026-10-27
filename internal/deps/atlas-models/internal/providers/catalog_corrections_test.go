@@ -39,7 +39,8 @@ func TestCorrectedProviderContracts(t *testing.T) {
 	require.Equal(t, "mistral-medium-3-5", providers["mistral"].DefaultLargeModelID)
 	require.NotEqual(t, providers["zai"].APIEndpoint, providers["zai-api"].APIEndpoint)
 	require.Equal(t, "https://coding-intl.dashscope.aliyuncs.com/v1", providers["alibaba-coding"].APIEndpoint)
-	require.Len(t, providers["alibaba-coding"].Models, 10)
+	// Alibaba's Coding Plan page lists exactly these six models.
+	require.Len(t, providers["alibaba-coding"].Models, 6)
 	for _, m := range providers["alibaba-coding"].Models {
 		require.NotContains(t, m.ID, "qwen3.8", "API availability does not imply plan availability")
 		require.Zero(t, m.CostPer1MIn)

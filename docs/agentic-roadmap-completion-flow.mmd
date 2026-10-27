@@ -1,0 +1,42 @@
+flowchart TD
+    A[Tool dispatch: ownership / runtime guard] --> B[Record outcomes and source generation]
+    B --> C[Step finish and stop conditions]
+    C --> D{Error or cancellation?}
+    D -->|yes| E[Persist error/canceled finish; exit run]
+    D -->|no| F{Compaction or feature handoff?}
+    F -->|yes| G[PreCompact policy; summarize/handoff; queue resume if needed]
+    F -->|no| H{Normal end eligible for evaluator?}
+    G --> H
+    H -->|yes| I[Record/reuse evidence; evaluateTurn]
+    I --> J{Changed or previously failed?}
+    J -->|yes| K[Diff guard]
+    K -->|no send-back| L[Contract: optional plan review then required command gaps]
+    L -->|green| M[Settle probes; checkpoint; optional probe/breaker follow-ups]
+    M -->|no follow-up| N{Reviewer configured?}
+    N -->|yes| O[Independent evaluator: pass / fail / unavailable / invalid]
+    N -->|no| P[Checklist confirmation or review waived]
+    J -->|no| Q[Keep current evaluator decision]
+    K -->|send-back| Q
+    L -->|gap / unresolved| Q
+    M -->|follow-up| Q
+    O --> Q
+    P --> Q
+    H -->|no| R{Normal final text eligible for aggregate decision?}
+    Q --> R
+    R -->|yes| S[Read live completion input; drift recheck; unified decision; atomic evidence binding]
+    R -->|no| T[Release active run]
+    S --> U{Continuation reserved?}
+    U -->|yes| V[Carry bounded continuation decision into queue policy]
+    U -->|no| W[Complete / blocked / unverified / unresolved finish]
+    V --> T
+    W --> T
+    T --> X[Optional async advisor then severity-triggered escalation]
+    T --> AQ[Queue policy: evaluator continuation else browser then shared; durable directives]
+    AQ --> AR{Queued work survives cancellation?}
+    AR -->|yes| A
+    AR -->|no| Y[Return from Run; coordinator stops goal on error or advances active goal]
+    E --> Y
+    Y -->|active goal and successful run| Z{Goal claimed?}
+    Z -->|yes| AA[Judge status plus aggregate completion blockers]
+    AA --> AB[Reached / continue / stop unverified]
+    Z -->|no| AC[Continue within goal budget or stop]

@@ -1,0 +1,15 @@
+[
+  {
+    "exit_code": 0,
+    "seconds": 201.0993989,
+    "command": "go test -p 1 ./internal/agent"
+  },
+  {
+    "command": "go vet -p 1 ./internal/agent",
+    "exit_code": 0
+  },
+  {
+    "command": "golangci-lint run (agent)",
+    "exit_code": 0
+  }
+]

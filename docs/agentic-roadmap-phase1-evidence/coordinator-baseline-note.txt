@@ -1,0 +1,1 @@
+Original pre-phase SHA-256 is retained. The semantic preimage is reconstructed by reversing the one-line carrier insertion; original whitespace bytes were not preserved before formatting. The user tool-schema/source-root changes remain in the current file.

@@ -1,0 +1,173 @@
+ D bench/tasks/add-cache-ttl/hidden/bench_hidden_test.go
+ D bench/tasks/fix-cart-totals/hidden/bench_hidden_test.go
+ D bench/tasks/fix-csv-parser/hidden/bench_hidden_test.go
+ D bench/tasks/fix-moving-average/hidden/bench_hidden_test.go
+ D bench/tasks/fix-safe-join/hidden/bench_hidden_test.go
+ D bench/tasks/fix-token-bucket/hidden/bench_hidden_test.go
+ D bench/tasks/fix-worker-pool/hidden/bench_hidden_test.go
+ D bench/tasks/implement-patch/hidden/bench_hidden_test.go
+ D bench/tasks/implement-semver/hidden/bench_hidden_test.go
+ D docs/agent-quality-verification-2026-10-01.json
+ D docs/agent-roles-verification-2026-10-02.json
+ M docs/antigravity-models.md
+ M internal/agent/advisor.go
+ M internal/agent/agent.go
+ M internal/agent/attempt_model.go
+ M internal/agent/capability_lifecycle_test.go
+ M internal/agent/contract_gate.go
+ M internal/agent/contract_outcome.go
+ M internal/agent/coordinator.go
+ M internal/agent/delivery_context.go
+ M internal/agent/diff_guard.go
+ M internal/agent/directives.go
+ M internal/agent/error_memory.go
+ M internal/agent/evaluator.go
+ M internal/agent/evaluator_test.go
+ M internal/agent/feature_handoff.go
+ M internal/agent/feature_handoff_test.go
+ M internal/agent/goal.go
+ M internal/agent/goal_test.go
+ M internal/agent/harness_metrics.go
+ M internal/agent/learn_workflow.go
+ M internal/agent/outcome_guard.go
+ M internal/agent/outcome_tasks.go
+ M internal/agent/plan_review.go
+ M internal/agent/runtime_guard.go
+ M internal/agent/task_context.go
+ M internal/agent/tools/job_kill.go
+ M internal/agent/tools/safe.go
+ M internal/agent/work_context.go
+ M internal/agent/work_loop_test.go
+ M internal/agent/work_refresh_test.go
+ M internal/agent/work_workflow.go
+ M internal/agent/workflow_tool.go
+ M internal/cmd/eval.go
+ M internal/cmd/eval_bench.go
+ M internal/cmd/stats_harness.go
+ M internal/cmd/workflow.go
+ M internal/cmd/workflow_findings_test.go
+ M internal/config/config.go
+ M internal/config/load.go
+ M internal/deps/atlas-llm/agent.go
+ M internal/deps/atlas-llm/providers/antigravity/account_models_test.go
+ M internal/deps/atlas-llm/providers/antigravity/antigravity.go
+ M internal/deps/atlas-llm/providers/antigravity/live_account_test.go
+ M internal/deps/atlas-llm/schema/schema.go
+ M internal/deps/atlas-llm/tool.go
+ M internal/engineering/learned_methods.go
+ M internal/engineering/quality.go
+ M internal/engineering/runtime.go
+ M internal/engineering/snapshot.go
+ M internal/engineering/verification_journal.go
+ M internal/engineering/work.go
+ M internal/evaluation/bench.go
+ M internal/harnessmetrics/harnessmetrics.go
+ M internal/outcome/outcome.go
+ M internal/shellconfig/options.go
+ M internal/workplan/checkpoint.go
+ M internal/workplan/metrics.go
+ M internal/workplan/state.go
+ M schema.json
+?? bench/check-typescript.cjs
+?? bench/gate-ablation.example.json
+?? bench/package.json
+?? bench/tasks/add-cache-ttl/hidden/atlas_add_cache_ttl_hidden_test.go
+?? bench/tasks/fix-capped-backoff/
+?? bench/tasks/fix-cart-totals/hidden/atlas_fix_cart_totals_hidden_test.go
+?? bench/tasks/fix-copying-merge/
+?? bench/tasks/fix-csv-parser/hidden/atlas_fix_csv_parser_hidden_test.go
+?? bench/tasks/fix-decimal-total/
+?? bench/tasks/fix-duration-decimal/
+?? bench/tasks/fix-expired-window/
+?? bench/tasks/fix-half-open-overlap/
+?? bench/tasks/fix-header-case/
+?? bench/tasks/fix-header-redaction/
+?? bench/tasks/fix-lease-renewal/
+?? bench/tasks/fix-moving-average/hidden/atlas_fix_moving_average_hidden_test.go
+?? bench/tasks/fix-nested-flatten/
+?? bench/tasks/fix-newline-normalization/
+?? bench/tasks/fix-placeholder-expansion/
+?? bench/tasks/fix-query-encoding/
+?? bench/tasks/fix-quoted-csv/
+?? bench/tasks/fix-recursive-merge/
+?? bench/tasks/fix-rune-limit/
+?? bench/tasks/fix-safe-join/hidden/atlas_fix_safe_join_hidden_test.go
+?? bench/tasks/fix-sorted-copy-insert/
+?? bench/tasks/fix-stable-topology/
+?? bench/tasks/fix-stable-unique/
+?? bench/tasks/fix-terminal-line-count/
+?? bench/tasks/fix-token-bucket/hidden/atlas_fix_token_bucket_hidden_test.go
+?? bench/tasks/fix-trailing-batch/
+?? bench/tasks/fix-typescript-backoff/
+?? bench/tasks/fix-typescript-canonical-path/
+?? bench/tasks/fix-typescript-grouping/
+?? bench/tasks/fix-typescript-intervals/
+?? bench/tasks/fix-typescript-median/
+?? bench/tasks/fix-typescript-pagination/
+?? bench/tasks/fix-typescript-percent/
+?? bench/tasks/fix-typescript-pick/
+?? bench/tasks/fix-typescript-slug/
+?? bench/tasks/fix-typescript-unique/
+?? bench/tasks/fix-worker-pool/hidden/atlas_fix_worker_pool_hidden_test.go
+?? bench/tasks/implement-patch/hidden/atlas_implement_patch_hidden_test.go
+?? bench/tasks/implement-semver/hidden/atlas_implement_semver_hidden_test.go
+?? docs/agentic-roadmap-audit.md
+?? docs/agentic-roadmap-baseline.md
+?? docs/agentic-roadmap-completion-flow.mmd
+?? docs/agentic-roadmap-master-prompt.md
+?? docs/agentic-roadmap-phase0-evidence/
+?? docs/agentic-roadmap-phase1-evidence/
+?? docs/agentic-roadmap-phase1.md
+?? docs/agentic-roadmap-prompt-sizes.json
+?? internal/agent/candidate_export_test.go
+?? internal/agent/completion_binding_test.go
+?? internal/agent/completion_decision.go
+?? internal/agent/completion_decision_test.go
+?? internal/agent/completion_input.go
+?? internal/agent/completion_persistence_test.go
+?? internal/agent/context_fit.go
+?? internal/agent/context_fit_test.go
+?? internal/agent/context_overflow_run_test.go
+?? internal/agent/context_window.go
+?? internal/agent/context_window_test.go
+?? internal/agent/effect_tracking_test.go
+?? internal/agent/gate_usage_test.go
+?? internal/agent/late_effects_test.go
+?? internal/agent/prompt_budget_test.go
+?? internal/agent/review_status.go
+?? internal/agent/source_drift.go
+?? internal/agent/task_context_select.go
+?? internal/agent/task_context_select_test.go
+?? internal/agent/testdata/prompt_tokens.golden.json
+?? internal/agent/tools/schema_contract_test.go
+?? internal/agent/trace.go
+?? internal/agent/trace_test.go
+?? internal/cmd/eval_observation_test.go
+?? internal/cmd/eval_retention.go
+?? internal/cmd/eval_trace.go
+?? internal/config/harness_ablation.go
+?? internal/config/harness_observation_test.go
+?? internal/deps/atlas-llm/schema/contract_test.go
+?? internal/deps/atlas-llm/tool_input_validation_test.go
+?? internal/engineering/completion.go
+?? internal/engineering/completion_test.go
+?? internal/engineering/external_observation_test.go
+?? internal/engineering/method_outcomes.go
+?? internal/engineering/method_outcomes_test.go
+?? internal/engineering/work_evidence_test.go
+?? internal/engineering/work_journal_test.go
+?? internal/engineering/work_signals.go
+?? internal/engineering/work_signals_test.go
+?? internal/evaluation/bench_ablation.go
+?? internal/evaluation/bench_metrics.go
+?? internal/evaluation/bench_metrics_test.go
+?? internal/evaluation/retention.go
+?? internal/evaluation/retention_cases.json
+?? internal/evaluation/retention_test.go
+?? internal/harnessmetrics/gate_stats.go
+?? internal/harnessmetrics/trace.go
+?? internal/harnessmetrics/trace_test.go
+?? internal/shellconfig/harness_observation_test.go
+?? internal/workplan/process_test.go
+?? internal/workplan/scope.go
+?? internal/workplan/scope_test.go

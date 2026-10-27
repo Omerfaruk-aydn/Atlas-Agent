@@ -1,0 +1,5 @@
+{
+  "command": "go test -p 1 ./internal/agent/... ./internal/config/... ./internal/cmd/...",
+  "exit_code": 0,
+  "seconds": 758.0820237
+}

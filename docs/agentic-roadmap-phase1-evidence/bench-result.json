@@ -1,0 +1,5 @@
+{
+  "command": "atlas eval bench validate bench/tasks",
+  "exit_code": 0,
+  "seconds": 101.9584013
+}

@@ -12,7 +12,7 @@
       "name": "Kimi K3",
       "cost_per_1m_in": 3,
       "cost_per_1m_out": 15,
-      "cost_per_1m_in_cached": 0.30,
+      "cost_per_1m_in_cached": 0.3,
       "cost_per_1m_out_cached": 0,
       "context_window": 1048576,
       "default_max_tokens": 131072,
@@ -20,10 +20,48 @@
       "supports_attachments": true
     },
     {
+      "id": "kimi-k3.1-pro-highspeed",
+      "name": "Kimi K3.1 Pro Highspeed",
+      "cost_per_1m_in": 4,
+      "cost_per_1m_out": 20,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.2,
+      "context_window": 1048576,
+      "default_max_tokens": 1048576,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "none",
+        "low",
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
+      "id": "kimi-k3.1-pro",
+      "name": "Kimi K3.1 Pro",
+      "cost_per_1m_in": 2,
+      "cost_per_1m_out": 10,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0.2,
+      "context_window": 1048576,
+      "default_max_tokens": 1048576,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "none",
+        "low",
+        "high",
+        "max"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
       "id": "kimi-k2.7-code",
       "name": "Kimi K2.7 Code",
       "cost_per_1m_in": 0.95,
-      "cost_per_1m_out": 4.0,
+      "cost_per_1m_out": 4,
       "cost_per_1m_in_cached": 0.19,
       "cost_per_1m_out_cached": 0,
       "context_window": 262144,
@@ -34,8 +72,8 @@
     {
       "id": "kimi-k2.7-code-highspeed",
       "name": "Kimi K2.7 Code High Speed",
-      "cost_per_1m_in": 1.90,
-      "cost_per_1m_out": 8.0,
+      "cost_per_1m_in": 1.9,
+      "cost_per_1m_out": 8,
       "cost_per_1m_in_cached": 0.38,
       "cost_per_1m_out_cached": 0,
       "context_window": 262144,
@@ -47,7 +85,7 @@
       "id": "kimi-k2.6",
       "name": "Kimi K2.6",
       "cost_per_1m_in": 0.95,
-      "cost_per_1m_out": 4.0,
+      "cost_per_1m_out": 4,
       "cost_per_1m_in_cached": 0.16,
       "cost_per_1m_out_cached": 0,
       "context_window": 262144,
@@ -59,85 +97,134 @@
       "id": "kimi-k2.5",
       "name": "Kimi K2.5",
       "cost_per_1m_in": 0.6,
-      "cost_per_1m_out": 3.0,
+      "cost_per_1m_out": 3,
       "cost_per_1m_in_cached": 0.1,
       "cost_per_1m_out_cached": 0,
       "context_window": 262144,
       "default_max_tokens": 32768,
       "can_reason": true,
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "retired",
+        "replacement": "kimi-k3.1-pro",
+        "source_url": "https://platform.kimi.ai/docs/models",
+        "verified_at": "2026-10-27",
+        "retirement_date": "2026-08-31"
+      }
     },
     {
       "id": "moonshot-v1-8k",
       "name": "Moonshot V1 8K",
       "cost_per_1m_in": 0.2,
-      "cost_per_1m_out": 2.0,
+      "cost_per_1m_out": 2,
       "cost_per_1m_in_cached": 0,
       "cost_per_1m_out_cached": 0,
       "context_window": 8192,
       "default_max_tokens": 4096,
       "can_reason": false,
-      "supports_attachments": false
+      "supports_attachments": false,
+      "lifecycle": {
+        "status": "retired",
+        "replacement": "kimi-k3.1-pro",
+        "source_url": "https://platform.kimi.ai/docs/models",
+        "verified_at": "2026-10-27",
+        "retirement_date": "2026-08-31"
+      }
     },
     {
       "id": "moonshot-v1-32k",
       "name": "Moonshot V1 32K",
-      "cost_per_1m_in": 1.0,
-      "cost_per_1m_out": 3.0,
+      "cost_per_1m_in": 1,
+      "cost_per_1m_out": 3,
       "cost_per_1m_in_cached": 0,
       "cost_per_1m_out_cached": 0,
       "context_window": 32768,
       "default_max_tokens": 8192,
       "can_reason": false,
-      "supports_attachments": false
+      "supports_attachments": false,
+      "lifecycle": {
+        "status": "retired",
+        "replacement": "kimi-k3.1-pro",
+        "source_url": "https://platform.kimi.ai/docs/models",
+        "verified_at": "2026-10-27",
+        "retirement_date": "2026-08-31"
+      }
     },
     {
       "id": "moonshot-v1-128k",
       "name": "Moonshot V1 128K",
-      "cost_per_1m_in": 2.0,
-      "cost_per_1m_out": 5.0,
+      "cost_per_1m_in": 2,
+      "cost_per_1m_out": 5,
       "cost_per_1m_in_cached": 0,
       "cost_per_1m_out_cached": 0,
       "context_window": 131072,
       "default_max_tokens": 16384,
       "can_reason": false,
-      "supports_attachments": false
+      "supports_attachments": false,
+      "lifecycle": {
+        "status": "retired",
+        "replacement": "kimi-k3.1-pro",
+        "source_url": "https://platform.kimi.ai/docs/models",
+        "verified_at": "2026-10-27",
+        "retirement_date": "2026-08-31"
+      }
     },
     {
       "id": "moonshot-v1-8k-vision-preview",
       "name": "Moonshot V1 8K Vision Preview",
       "cost_per_1m_in": 0.2,
-      "cost_per_1m_out": 2.0,
+      "cost_per_1m_out": 2,
       "cost_per_1m_in_cached": 0,
       "cost_per_1m_out_cached": 0,
       "context_window": 8192,
       "default_max_tokens": 4096,
       "can_reason": false,
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "retired",
+        "replacement": "kimi-k3.1-pro",
+        "source_url": "https://platform.kimi.ai/docs/models",
+        "verified_at": "2026-10-27",
+        "retirement_date": "2026-08-31"
+      }
     },
     {
       "id": "moonshot-v1-32k-vision-preview",
       "name": "Moonshot V1 32K Vision Preview",
-      "cost_per_1m_in": 1.0,
-      "cost_per_1m_out": 3.0,
+      "cost_per_1m_in": 1,
+      "cost_per_1m_out": 3,
       "cost_per_1m_in_cached": 0,
       "cost_per_1m_out_cached": 0,
       "context_window": 32768,
       "default_max_tokens": 8192,
       "can_reason": false,
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "retired",
+        "replacement": "kimi-k3.1-pro",
+        "source_url": "https://platform.kimi.ai/docs/models",
+        "verified_at": "2026-10-27",
+        "retirement_date": "2026-08-31"
+      }
     },
     {
       "id": "moonshot-v1-128k-vision-preview",
       "name": "Moonshot V1 128K Vision Preview",
-      "cost_per_1m_in": 2.0,
-      "cost_per_1m_out": 5.0,
+      "cost_per_1m_in": 2,
+      "cost_per_1m_out": 5,
       "cost_per_1m_in_cached": 0,
       "cost_per_1m_out_cached": 0,
       "context_window": 131072,
       "default_max_tokens": 16384,
       "can_reason": false,
-      "supports_attachments": true
+      "supports_attachments": true,
+      "lifecycle": {
+        "status": "retired",
+        "replacement": "kimi-k3.1-pro",
+        "source_url": "https://platform.kimi.ai/docs/models",
+        "verified_at": "2026-10-27",
+        "retirement_date": "2026-08-31"
+      }
     }
   ]
 }

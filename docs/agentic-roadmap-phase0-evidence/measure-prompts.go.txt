@@ -1,0 +1,91 @@
+// This audit-only program renders a fixed fixture without loading user config.
+// Copy it to a temporary .go file, then run it from the repository root.
+package main
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"text/template"
+)
+
+type sample struct {
+	Mode          string   `json:"mode"`
+	Profile       string   `json:"profile"`
+	Protocols     string   `json:"protocols"`
+	Bytes         int      `json:"bytes"`
+	ApproxTokens  int      `json:"atlas_approx_tokens"`
+	Messages      []string `json:"messages"`
+	MessageSHA256 []string `json:"message_sha256"`
+}
+
+func read(path string) string {
+	data, err := os.ReadFile(filepath.FromSlash(path))
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
+}
+
+func main() {
+	version := regexp.MustCompile(`const ProtocolVersion = "([^"]+)"`).FindStringSubmatch(read("internal/agent/prompt/protocols.go"))[1]
+	var samples []sample
+	for _, mode := range []string{"coder", "task"} {
+		source := read("internal/agent/templates/"+mode+".md.tpl") + read("internal/agent/templates/agent_contract.md.tpl")
+		tmpl, err := template.New(mode).Option("missingkey=error").Parse(source)
+		if err != nil {
+			panic(err)
+		}
+		for _, profile := range []string{"core", "project_agents"} {
+			data := map[string]any{
+				"Config": map[string]any{"LSP": []string{}, "Options": map[string]any{
+					"MaxSessionCost": 0, "MaxStepsPerTurn": 0,
+					"AllowedDomains": []string{}, "BlockedDomains": []string{}, "Execution": nil,
+				}},
+				"WorkingDir": "D:/Atlas", "IsGitRepo": true, "Platform": "windows", "Date": "10/27/2026",
+				"GitStatus": "", "TaskProtocols": fmt.Sprintf("<prompt_recipe version=%q>\n</prompt_recipe>", version),
+				"RoleSkillGuidance": "", "AvailSkillXML": "", "ProjectMemory": "", "UserMemory": "",
+				"ContextFiles": []map[string]string{}, "GlobalContextFiles": []map[string]string{}, "ContextNotice": "",
+			}
+			if profile == "project_agents" {
+				data["ContextFiles"] = []map[string]string{{"Path": "AGENTS.md", "Origin": ".", "Scope": "project", "Content": read("AGENTS.md")}}
+			}
+			var rendered bytes.Buffer
+			if err := tmpl.Execute(&rendered, data); err != nil {
+				panic(err)
+			}
+			for _, protocols := range []string{"none", "browser", "desktop", "browser+desktop"} {
+				s := sample{Mode: mode, Profile: profile, Protocols: protocols, Messages: []string{rendered.String()}}
+				if protocols != "none" {
+					// Match withToolProtocols for palettes containing only browser
+					// and/or computer: neither category has taskCategoryGuidance.
+					guidance := "<tool_protocol name=\"routing\">\n" + read("internal/agent/templates/tool_routing.md") + "</tool_protocol>"
+					if protocols == "browser" || protocols == "browser+desktop" {
+						guidance += "\n<tool_protocol name=\"browser\">\n" + read("internal/agent/templates/browser_protocol.md") + "</tool_protocol>"
+					}
+					if protocols == "desktop" || protocols == "browser+desktop" {
+						guidance += "\n<tool_protocol name=\"desktop\">\n" + read("internal/agent/templates/desktop_protocol.md") + "</tool_protocol>"
+					}
+					s.Messages = append(s.Messages, guidance)
+				}
+				for _, message := range s.Messages {
+					s.Bytes += len(message)
+					s.ApproxTokens += (len(message) + 3) / 4
+					hash := sha256.Sum256([]byte(message))
+					s.MessageSHA256 = append(s.MessageSHA256, hex.EncodeToString(hash[:]))
+				}
+				samples = append(samples, s)
+			}
+		}
+	}
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(samples); err != nil {
+		panic(err)
+	}
+}

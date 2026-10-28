@@ -1,0 +1,7 @@
+goos: windows
+goarch: amd64
+pkg: github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics
+cpu: AMD Ryzen 5 4500 6-Core Processor              
+BenchmarkTraceMetadataWrite-12    	     100	    344415 ns/op	    7944 B/op	      72 allocs/op
+PASS
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics	1.002s

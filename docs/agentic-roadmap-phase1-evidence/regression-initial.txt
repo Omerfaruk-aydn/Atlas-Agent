@@ -1,0 +1,18 @@
+2026/10/28 12:32:23 ERROR Escalation pass panicked session_id=s1 panic="runtime error: invalid memory address or nil pointer dereference"
+2026/10/28 12:33:03 ERROR Failed to save session title and usage error="context canceled"
+2026/10/28 12:34:10 ERROR Error generating title with small model; trying next err="context deadline exceeded"
+2026/10/28 12:34:10 ERROR Error generating title with large model; trying next err="context deadline exceeded"
+2026/10/28 12:34:11 ERROR Error generating title with small model; trying next err="context canceled"
+2026/10/28 12:34:11 ERROR Error generating title with large model; trying next err="context canceled"
+2026/10/28 12:34:18 ERROR Failed to flush pending message updates after run error="sql: database is closed"
+--- FAIL: TestPersistentNextQueueRunsAfterCurrentStreamFinishes (5.30s)
+    directives_test.go:108: Persistent queue did not finish
+FAIL
+FAIL	github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent	119.678s
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/config	11.521s
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/cmd	21.475s
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/cmd/clientserverrace	(cached)
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics	2.549s
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/evaluation	132.529s
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/shellconfig	3.555s
+FAIL

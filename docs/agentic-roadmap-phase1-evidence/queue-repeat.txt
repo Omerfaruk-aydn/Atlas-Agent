@@ -1,0 +1,1 @@
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent	7.100s

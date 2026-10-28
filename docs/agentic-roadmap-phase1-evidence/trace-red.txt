@@ -1,0 +1,14 @@
+# github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics [github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics.test]
+internal\harnessmetrics\trace_test.go:18:13: r.BeginTrace undefined (type *Recorder has no field or method BeginTrace)
+internal\harnessmetrics\trace_test.go:19:15: undefined: TraceEvent
+internal\harnessmetrics\trace_test.go:20:47: New(func() string {…}).BeginTrace undefined (type *Recorder has no field or method BeginTrace)
+internal\harnessmetrics\trace_test.go:22:16: undefined: TraceEvent
+internal\harnessmetrics\trace_test.go:23:17: undefined: LoadTrace
+internal\harnessmetrics\trace_test.go:27:12: undefined: SummarizeGates
+internal\harnessmetrics\trace_test.go:40:13: r.BeginTrace undefined (type *Recorder has no field or method BeginTrace)
+internal\harnessmetrics\trace_test.go:41:15: undefined: TraceEvent
+internal\harnessmetrics\trace_test.go:42:24: r.TraceFailures undefined (type *Recorder has no field or method TraceFailures)
+internal\harnessmetrics\trace_test.go:51:20: r.BeginTrace undefined (type *Recorder has no field or method BeginTrace)
+internal\harnessmetrics\trace_test.go:51:20: too many errors
+FAIL	github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics [build failed]
+FAIL

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ruleevidence"
 )
 
 // Strategy statistics answer "what verified work like this before?". Each
@@ -104,6 +106,12 @@ func checksByKind(events []Event) map[string][]checkCount {
 		if e.Kind != ContractPassed || e.Attrs["kind"] == "" {
 			continue
 		}
+		sequence, _ := strconv.Atoi(e.Attrs["origin_sequence"])
+		turn, _ := strconv.Atoi(e.Attrs["origin_turn"])
+		origin := ruleevidence.Origin{Session: e.Session, Turn: turn, Sequence: sequence, Signature: e.Attrs["origin_signature"], At: e.Time}
+		if ruleevidence.Expired(origin, ruleevidence.Usage{Succeeded: 1}, time.Now()) {
+			continue
+		}
 		for key, command := range e.Attrs {
 			if !strings.HasPrefix(key, "c") || key == "checks" || command == "" {
 				continue
@@ -154,7 +162,7 @@ func CheckHints(root string, kinds []string, limit int) []string {
 	if root == "" || len(kinds) == 0 {
 		return nil
 	}
-	stamp := ""
+	stamp := time.Now().UTC().Format("2006-01-02")
 	for _, name := range []string{"events.1.jsonl", File} {
 		if info, err := os.Stat(filepath.Join(root, Dir, name)); err == nil {
 			stamp += info.ModTime().String() + strconv.FormatInt(info.Size(), 10)

@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -23,6 +24,9 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ruleevidence"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
 )
 
 const (
@@ -41,13 +45,15 @@ const (
 
 // Entry is one remembered error and the changes that fixed it.
 type Entry struct {
-	Signature string   `json:"signature"`
-	Example   string   `json:"example"`
-	Command   string   `json:"command,omitempty"`
-	Fixes     []string `json:"fixes"`
-	Files     []string `json:"files,omitempty"`
-	Fixed     int      `json:"fixed"`
-	Last      int64    `json:"last"`
+	Origin    ruleevidence.Origin `json:"origin"`
+	Usage     ruleevidence.Usage  `json:"usage"`
+	Signature string              `json:"signature"`
+	Example   string              `json:"example"`
+	Command   string              `json:"command,omitempty"`
+	Fixes     []string            `json:"fixes"`
+	Files     []string            `json:"files,omitempty"`
+	Fixed     int                 `json:"fixed"`
+	Last      int64               `json:"last"`
 }
 
 // mu serializes read-modify-write cycles of the store within the process.
@@ -119,15 +125,26 @@ func save(root string, entries []Entry) error {
 
 // Lookup returns the remembered fix for signature.
 func Lookup(root, signature string) (Entry, bool) {
+	signature = vault.Redact("", signature)
 	if root == "" || signature == "" {
 		return Entry{}, false
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	for _, e := range load(root) {
+	entries := load(root)
+	entries = slices.DeleteFunc(entries, func(e Entry) bool { return ruleevidence.Expired(e.Origin, e.Usage, time.Now()) })
+	for i, e := range entries {
 		if e.Signature == signature && len(e.Fixes) > 0 {
-			return e, true
+			entries[i].Usage.Offered++
+			entries[i].Usage.LastUsed = time.Now().UnixMilli()
+			if err := save(root, entries); err != nil {
+				return Entry{}, false
+			}
+			return entries[i], true
 		}
+	}
+	if err := save(root, entries); err != nil {
+		slog.Warn("Failed to prune error hints", "error", err)
 	}
 	return Entry{}, false
 }
@@ -135,10 +152,15 @@ func Lookup(root, signature string) (Entry, bool) {
 // Learn records that the edits summarized in fixes, to files, fixed the
 // error with signature. The newest fix comes first; the least recently
 // seen entries are dropped beyond the store's limit.
-func Learn(root, signature, example, command string, fixes, files []string) error {
+func Learn(root, signature, example, command string, fixes, files []string, origin ...ruleevidence.Origin) error {
 	if root == "" || signature == "" || len(fixes) == 0 {
 		return nil
 	}
+	if len(origin) != 1 || !origin[0].Valid() {
+		return errors.New("error fix requires runtime provenance")
+	}
+	signature = vault.Redact(origin[0].Session, signature)
+	origin[0].Signature = vault.Redact(origin[0].Session, origin[0].Signature)
 	mu.Lock()
 	defer mu.Unlock()
 	entries := load(root)
@@ -148,14 +170,24 @@ func Learn(root, signature, example, command string, fixes, files []string) erro
 		i = len(entries) - 1
 	}
 	e := &entries[i]
+	e.Origin = origin[0]
+	if e.Usage.Offered > 0 {
+		e.Usage.Succeeded++
+	}
+	e.Usage.Failed = 0
+	example = vault.Redact(origin[0].Session, example)
+	command = vault.Redact(origin[0].Session, command)
 	e.Example = clip(example, maxExample)
 	e.Command = clip(command, maxCommandChar)
 	clipped := make([]string, 0, len(fixes))
 	for _, fix := range fixes[:min(len(fixes), maxFixes)] {
-		clipped = append(clipped, clip(fix, maxFixChars))
+		clipped = append(clipped, clip(vault.Redact(origin[0].Session, fix), maxFixChars))
 	}
 	e.Fixes = clipped
-	e.Files = files[:min(len(files), 8)]
+	e.Files = slices.Clone(files[:min(len(files), 8)])
+	for i := range e.Files {
+		e.Files[i] = vault.Redact(origin[0].Session, e.Files[i])
+	}
 	e.Fixed++
 	e.Last = time.Now().UnixMilli()
 	slices.SortFunc(entries, func(a, b Entry) int {
@@ -169,6 +201,21 @@ func Learn(root, signature, example, command string, fixes, files []string) erro
 		}
 	})
 	return save(root, entries[:min(len(entries), maxEntries)])
+}
+
+// FailedReuse records another observed failure after the hint was offered.
+func FailedReuse(root, signature string) error {
+	signature = vault.Redact("", signature)
+	mu.Lock()
+	defer mu.Unlock()
+	entries := load(root)
+	for i := range entries {
+		if entries[i].Signature == signature {
+			entries[i].Usage.Failed++
+		}
+	}
+	entries = slices.DeleteFunc(entries, func(e Entry) bool { return ruleevidence.Expired(e.Origin, e.Usage, time.Now()) })
+	return save(root, entries)
 }
 
 // Note renders a remembered fix for the agent.

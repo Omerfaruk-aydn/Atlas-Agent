@@ -1,0 +1,13 @@
+# github.com/Omerfaruk-aydn/Atlas-Agent/internal/evaluation [github.com/Omerfaruk-aydn/Atlas-Agent/internal/evaluation.test]
+internal\evaluation\retention_test.go:11:13: undefined: RetentionCases
+internal\evaluation\retention_test.go:16:9: undefined: ScoreRetention
+internal\evaluation\retention_test.go:18:36: undefined: ScoreRetention
+internal\evaluation\retention_test.go:19:9: undefined: ScoreRetention
+FAIL	github.com/Omerfaruk-aydn/Atlas-Agent/internal/evaluation [build failed]
+# github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent [github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent.test]
+internal\agent\prompt_budget_test.go:46:99: undefined: checkPromptBudget
+internal\agent\prompt_budget_test.go:47:20: undefined: checkPromptBudget
+internal\agent\prompt_budget_test.go:48:18: undefined: checkPromptBudget
+internal\agent\prompt_budget_test.go:49:18: undefined: checkPromptBudget
+FAIL	github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent [build failed]
+FAIL

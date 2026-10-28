@@ -31,6 +31,18 @@ func (s *Store) retainVerification(ctx context.Context, session string, op Opera
 		if _, err := s.PutRecord(ctx, "runtime-operations-"+Hash(session)+"-"+key[:2], key, 0, data); err != nil {
 			return err
 		}
+		// The model cites the call ID it saw, so evidence must resolve by it
+		// too. Call IDs can repeat (the latest wins) and the index is only a
+		// convenience over the authoritative operation record: never fatal.
+		if op.CallID != "" {
+			callKey := Hash("call:" + op.CallID)
+			ns := "runtime-operations-" + Hash(session) + "-" + callKey[:2]
+			var revision uint64
+			if record, _, err := s.ReadRecord(ctx, ns, callKey); err == nil {
+				revision = record.Revision
+			}
+			_, _ = s.PutRecordStrict(ctx, ns, callKey, revision, data)
+		}
 	}
 	if op.Tool != "verify" || !op.OutcomeObserved || op.Status != "completed" || op.EvidenceHash == "" {
 		return nil
@@ -114,6 +126,27 @@ func (s *Store) OperationObservation(ctx context.Context, session, id string, st
 		return Operation{}, fmt.Errorf("operation journal identity mismatch")
 	}
 	return op, nil
+}
+
+// JournaledOperation resolves an operation by runtime ID or tool call ID from
+// the durable journal after the rolling state has dropped it. The identity is
+// re-checked, so a record can never stand in for a different reference.
+func (s *Store) JournaledOperation(ctx context.Context, session, ref string) (Operation, bool) {
+	if ref == "" {
+		return Operation{}, false
+	}
+	for _, key := range []string{Hash(ref), Hash("call:" + ref)} {
+		_, data, err := s.ReadRecord(ctx, "runtime-operations-"+Hash(session)+"-"+key[:2], key)
+		if err != nil {
+			continue
+		}
+		var op Operation
+		if json.Unmarshal(data, &op) != nil || op.ID != ref && op.CallID != ref || op.Tool == "" || op.Status != "completed" && op.Status != "failed" {
+			continue
+		}
+		return op, true
+	}
+	return Operation{}, false
 }
 
 func (s *Store) VerificationObservation(ctx context.Context, session, call, task string, st State) (Operation, []Check, error) {

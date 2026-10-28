@@ -1,4 +1,4 @@
-﻿# Hooks
+# Hooks
 
 > [!NOTE]
 > This document was designed for both humans and agents.
@@ -143,6 +143,7 @@ and project-level, with project level hooks taking precedence.
         "matcher": "bash", // regex tested against the tool name
         "command": "./hooks/my-hot-hook.sh", // the path to the hook
         "timeout": 10, // in seconds; default 30
+        "required": true, // fail closed on execution error or timeout
       },
     ],
   },

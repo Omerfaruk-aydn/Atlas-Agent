@@ -1,0 +1,17 @@
+[
+  {
+    "command": "go test -p 1 ./internal/agent ./internal/config ./internal/cmd/... ./internal/harnessmetrics ./internal/evaluation ./internal/shellconfig",
+    "exit_code": 1,
+    "seconds": 394.3841713
+  },
+  {
+    "command": "go build -p 1 ./...",
+    "exit_code": 0,
+    "seconds": 58.7558093
+  },
+  {
+    "command": "go vet -p 1 ./internal/agent ./internal/config ./internal/cmd/... ./internal/harnessmetrics ./internal/evaluation ./internal/shellconfig",
+    "exit_code": 0,
+    "seconds": 42.8872633
+  }
+]

@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -28,12 +29,16 @@ import (
 type Kind string
 
 const (
+	TraceWriteFailed   Kind = "trace_write_failed"
 	ContractPassed     Kind = "contract_passed"
 	ContractSentBack   Kind = "contract_sent_back"
 	ContractUnresolved Kind = "contract_unresolved"
 	StepBack           Kind = "step_back"
 	Alternatives       Kind = "alternatives"
 	Regression         Kind = "regression"
+	// CompletionDiverged counts turns where the unified completion decision
+	// (shadow mode) disagreed with the legacy ending paths.
+	CompletionDiverged Kind = "completion_diverged"
 	VacuousCheck       Kind = "vacuous_check"
 	PlanReviewed       Kind = "plan_reviewed"
 	PlanReviewFindings Kind = "plan_review_findings"
@@ -48,6 +53,10 @@ const (
 	NudgeFollowed      Kind = "nudge_followed"
 	LoopStopped        Kind = "loop_stopped"
 	Compaction         Kind = "compaction"
+	ContextPruned      Kind = "context_pruned"
+	PromptCache        Kind = "prompt_cache"
+	ModelStage         Kind = "model_stage"
+	OracleConsulted    Kind = "oracle_consulted"
 	FeatureHandoff     Kind = "feature_handoff"
 	OutputSpilled      Kind = "output_spilled"
 	RecipeLearned      Kind = "recipe_learned"
@@ -84,10 +93,12 @@ type Event struct {
 // Recorder appends events for one data directory. The zero value and a nil
 // Recorder record nothing.
 type Recorder struct {
-	dir    func() string
-	mu     sync.Mutex
-	warned bool
-	now    func() time.Time
+	dir           func() string
+	mu            sync.Mutex
+	warned        bool
+	now           func() time.Time
+	traceFailures atomic.Uint64
+	tracePrunedAt atomic.Int64
 }
 
 // New returns a recorder that writes under dir(), read on every record so
@@ -255,6 +266,7 @@ func Format(s Summary, since time.Time) string {
 	line("step-back prompts", count(StepBack))
 	line("alternative attempts suggested", count(Alternatives))
 	line("regressions caught", count(Regression))
+	line("completion decisions that diverged from legacy", count(CompletionDiverged))
 	line("checks that could not fail", count(VacuousCheck))
 	line("pass rate", ratio(c[ContractPassed], c[ContractPassed]+c[ContractUnresolved]))
 	line("alternatives prepared (one passed)", fmt.Sprintf("%d (%d)", c[AlternativesPrepared], c[AlternativeWon]))
@@ -270,6 +282,7 @@ func Format(s Summary, since time.Time) string {
 	line("plans reviewed (with findings)", fmt.Sprintf("%d (%d)", c[PlanReviewed], c[PlanReviewFindings]))
 	line("breaker passes", count(BreakerPass))
 	line("evaluator pass / fail", fmt.Sprintf("%d / %d", c[EvaluatorPass], c[EvaluatorFail]))
+	line("trace metadata writes failed", count(TraceWriteFailed))
 	line("visual reviews", count(VisualReview))
 
 	section("\nTool discovery")

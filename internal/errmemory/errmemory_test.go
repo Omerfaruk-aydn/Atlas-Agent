@@ -2,6 +2,9 @@ package errmemory
 
 import (
 	"testing"
+	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ruleevidence"
 
 	"github.com/stretchr/testify/require"
 )
@@ -32,8 +35,9 @@ func TestLearnAndLookup(t *testing.T) {
 	_, ok := Lookup(root, "error: x")
 	require.False(t, ok)
 
-	require.NoError(t, Learn(root, "error: x", "error: x happened", "make", []string{"a.c: +`int x;`"}, []string{"a.c"}))
-	require.NoError(t, Learn(root, "error: x", "error: x happened again", "make", []string{"b.c: -`x--`"}, []string{"b.c"}))
+	origin := ruleevidence.Origin{Session: "fixture", Sequence: 3, Signature: "error: x", At: time.Now().UnixMilli()}
+	require.NoError(t, Learn(root, "error: x", "error: x happened", "make", []string{"a.c: +`int x;`"}, []string{"a.c"}, origin))
+	require.NoError(t, Learn(root, "error: x", "error: x happened again", "make", []string{"b.c: -`x--`"}, []string{"b.c"}, origin))
 	entry, ok := Lookup(root, "error: x")
 	require.True(t, ok)
 	require.Equal(t, 2, entry.Fixed)

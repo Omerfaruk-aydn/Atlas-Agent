@@ -28,3 +28,15 @@ The opt-in `TestLiveThirdPartyAccount` sends synthetic inputs only and checks
 one tool call followed by a streamed final answer for each model. It requires
 `ATLAS_ANTIGRAVITY_LIVE=1`, `ATLAS_ANTIGRAVITY_TOKEN` and
 `ATLAS_ANTIGRAVITY_PROJECT` in the test process; never commit credentials.
+
+## Gemini 4 Argon availability (checked 2026-10-27)
+
+Argon is not listed by `v1internal:fetchAvailableModels` for any client
+identity, yet `streamGenerateContent` serves it. The backend gates the route
+on the request User-Agent product token: `antigravity/cli/<version>` gets 200
+(served as `gemini-4-argon-trial`), while the IDE form
+`antigravity/2.21.0 <os>/<arch>` gets 404 `Requested entity was not found`.
+The same token, project (`aicode-consumers`) and body succeed or fail on that
+header alone, and Gemini 3.8 Flash, Claude 5.5 and GPT-OSS accept both forms.
+The provider therefore sends the CLI User-Agent for `gemini-4-argon*` routes
+only. Wire route names are `gemini-4-argon-low|medium|high`.

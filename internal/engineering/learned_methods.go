@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/ruleevidence"
 )
 
 var learnedMethodName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
@@ -14,21 +17,25 @@ var learnedMethodName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 // LearnedMethod is a bounded procedure candidate, not a universal instruction.
 // Evidence is captured by the runtime; promotion uses the normal skill tool.
 type LearnedMethod struct {
-	ID           string            `json:"id"`
-	Name         string            `json:"name"`
-	Description  string            `json:"description"`
-	Conditions   []string          `json:"conditions"`
-	Versions     []string          `json:"versions"`
-	Limits       []string          `json:"limits"`
-	Steps        []string          `json:"steps"`
-	OperationIDs []string          `json:"operation_ids"`
-	Evidence     []EvidenceRef     `json:"evidence"`
-	Sources      []SourceReference `json:"sources"`
-	SessionID    string            `json:"session_id"`
-	Generation   uint64            `json:"generation"`
-	Status       string            `json:"status"`
-	CreatedAt    int64             `json:"created_at"`
-	SkillPath    string            `json:"skill_path,omitempty"`
+	Usage           ruleevidence.Usage `json:"usage"`
+	OfferedSessions []string           `json:"offered_sessions,omitempty"`
+	ID              string             `json:"id"`
+	Name            string             `json:"name"`
+	Description     string             `json:"description"`
+	Conditions      []string           `json:"conditions"`
+	Versions        []string           `json:"versions"`
+	Limits          []string           `json:"limits"`
+	Steps           []string           `json:"steps"`
+	OperationIDs    []string           `json:"operation_ids"`
+	Evidence        []EvidenceRef      `json:"evidence"`
+	Sources         []SourceReference  `json:"sources"`
+	SessionID       string             `json:"session_id"`
+	Generation      uint64             `json:"generation"`
+	Status          string             `json:"status"`
+	CreatedAt       int64              `json:"created_at"`
+	SkillPath       string             `json:"skill_path,omitempty"`
+	// Outcomes are how tasks that used the method ended; see MethodStanding.
+	Outcomes []MethodOutcome `json:"outcomes,omitempty"`
 }
 
 func methodKey(root string) (string, error) {
@@ -61,6 +68,8 @@ func (s *Store) ExtractMethod(ctx context.Context, root, sessionID string, in Le
 		return LearnedMethod{}, err
 	}
 	in.Evidence = nil
+	in.Usage = ruleevidence.Usage{}
+	in.OfferedSessions = nil
 	seen := map[string]bool{}
 	verified := false
 	last := int64(0)
@@ -137,7 +146,65 @@ func (s *Store) LearnedMethods(ctx context.Context, root string) ([]LearnedMetho
 		return nil, err
 	}
 	st, err := s.Read(ctx, k)
-	return st.LearnedMethods, err
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	keep := func(m LearnedMethod) bool {
+		origin := ruleevidence.Origin{Session: m.SessionID, Sequence: len(m.Evidence), Signature: m.ID, At: m.CreatedAt}
+		usage := m.Usage
+		for _, o := range m.Outcomes {
+			if o.Success {
+				usage.Succeeded++
+			} else {
+				usage.Failed++
+			}
+		}
+		return !ruleevidence.Expired(origin, usage, now)
+	}
+	var live []LearnedMethod
+	for _, m := range st.LearnedMethods {
+		if keep(m) {
+			live = append(live, m)
+		}
+	}
+	if len(live) != len(st.LearnedMethods) {
+		err = s.Update(ctx, k, func(current *State) error {
+			out := current.LearnedMethods[:0]
+			for _, m := range current.LearnedMethods {
+				if keep(m) {
+					out = append(out, m)
+				}
+			}
+			current.LearnedMethods = out
+			return nil
+		})
+	}
+	return live, err
+}
+
+// OfferMethods counts each task exposure once; it is not a success claim.
+func (s *Store) OfferMethods(ctx context.Context, root, session string, ids []string) (int, error) {
+	k, err := methodKey(root)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	err = s.Update(ctx, k, func(st *State) error {
+		for i := range st.LearnedMethods {
+			m := &st.LearnedMethods[i]
+			if !slices.Contains(ids, m.ID) || slices.Contains(m.OfferedSessions, session) {
+				continue
+			}
+			m.OfferedSessions = append(m.OfferedSessions, session)
+			m.OfferedSessions = m.OfferedSessions[max(0, len(m.OfferedSessions)-64):]
+			m.Usage.Offered++
+			m.Usage.LastUsed = time.Now().UnixMilli()
+			count++
+		}
+		return nil
+	})
+	return count, err
 }
 
 // CurrentMethod rechecks original evidence and explicitly scoped sources.
@@ -176,7 +243,7 @@ func (s *Store) CurrentMethod(ctx context.Context, root, id string) (LearnedMeth
 		}
 		return m, nil
 	}
-	return LearnedMethod{}, errors.New("unknown learned method")
+	return LearnedMethod{}, errors.New("unknown learned method (expired or unreliable candidates are pruned)")
 }
 
 // MethodInstructions compiles an evidence-scoped candidate into skill prose.
@@ -193,6 +260,8 @@ func MethodInstructions(m LearnedMethod) string {
 		}
 		b.WriteString("\n")
 	}
+	standing, reason := MethodStanding(m)
+	fmt.Fprintf(&b, "Standing: %s (%s). A candidate has not been shown to work beyond the task it came from.\n\n", standing, reason)
 	fmt.Fprintf(&b, "Evidence: %s, generation %d. Verification is scoped to the recorded sequence; a single success is not a universal guarantee. Recheck versions, source and targets before reuse.\n", m.ID, m.Generation)
 	return b.String()
 }
@@ -205,7 +274,16 @@ func (s *Store) MarkMethodExported(ctx context.Context, root, id, path string) e
 	return s.Update(ctx, k, func(st *State) error {
 		for i := range st.LearnedMethods {
 			if st.LearnedMethods[i].ID == id {
+				standing, reason := MethodStanding(st.LearnedMethods[i])
+				if standing == StandingUnreliable {
+					return fmt.Errorf("method is unreliable (%s); it is not exported as a practice", reason)
+				}
+				// Exporting does not measure anything: a method that was
+				// exported unmeasured stays marked as such.
 				st.LearnedMethods[i].Status = "exported"
+				if standing != StandingEffective {
+					st.LearnedMethods[i].Status = "exported_candidate"
+				}
 				st.LearnedMethods[i].SkillPath = path
 				return nil
 			}

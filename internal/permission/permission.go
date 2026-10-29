@@ -55,6 +55,9 @@ const (
 	// commands that would otherwise skip the prompt via the "safe
 	// command" allowlist.
 	ModePlan PermissionMode = "plan"
+	// ModeAutoApprove approves only contextually safe calls. Unknown or risky
+	// calls continue through the normal confirmation pipeline.
+	ModeAutoApprove PermissionMode = "auto_approve"
 	// ModeBypass skips all confirmation. Equivalent to the pre-existing
 	// --yolo / SkipRequests(true) behavior.
 	ModeBypass PermissionMode = "bypass"
@@ -159,6 +162,8 @@ type permissionService struct {
 	// is both safe to read concurrently and takes effect immediately --
 	// see SetAllowedTools.
 	allowedTools *csync.Slice[string]
+	autoApprover AutoApprover
+	scoped       scopedGrants
 
 	// used to make sure we only process one request at a time
 	requestMu       sync.Mutex
@@ -266,12 +271,27 @@ func (s *permissionService) Request(ctx context.Context, opts CreatePermissionRe
 		}
 		// Non-edit tools (bash, network, MCP) fall through to the full
 		// manual pipeline below, unchanged.
+	case ModeAutoApprove:
+		decision := classifyAutoApproval(ctx, s.autoApprover, opts, s.workingDir)
+		if decision.Class == ApprovalSafe {
+			auditApproval(s.workingDir, opts, decision)
+			s.notificationBroker.Publish(pubsub.CreatedEvent, PermissionNotification{ToolCallID: opts.ToolCallID, Granted: true})
+			return true, nil
+		}
 	}
 
 	// ModeManual (and ModeAutoAcceptEdits for non-edit tools): a call the
 	// tool itself flagged as safe (bash's read-only allowlist) is granted
 	// immediately, matching today's pre-Request short-circuit exactly.
 	if opts.Safe {
+		return true, nil
+	}
+
+	path := opts.Path
+	if absolute, err := filepath.Abs(path); err == nil {
+		path = absolute
+	}
+	if s.scoped.allowed(PermissionKey{SessionID: opts.SessionID, ToolName: opts.ToolName, Action: opts.Action, Path: path}) {
 		return true, nil
 	}
 
@@ -472,6 +492,7 @@ func NewPermissionService(workingDir string, skip bool, allowedTools []string) S
 		autoApproveSessions: make(map[string]bool),
 		allowedTools:        csync.NewSliceFrom(allowedTools),
 		pendingRequests:     csync.NewMap[string, chan bool](),
+		scoped:              scopedGrants{grants: make(map[PermissionKey]scopedGrant)},
 		mode:                mode,
 	}
 	return svc

@@ -2,6 +2,7 @@ package mobile
 
 import (
 	"bufio"
+	"errors"
 	"net"
 	"sync"
 	"time"
@@ -105,6 +106,9 @@ func (p *protocolListener) Close() error {
 	p.once.Do(func() {
 		close(p.done)
 		err = p.listener.Close()
+		if errors.Is(err, net.ErrClosed) {
+			err = nil
+		}
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		for conn := range p.pending {

@@ -1,0 +1,12 @@
+{
+  "allowed_tools": [
+    "view",
+    "glob",
+    "grep",
+    "ls",
+    "edit",
+    "write",
+    "multiedit",
+    "bash:execute"
+  ]
+}

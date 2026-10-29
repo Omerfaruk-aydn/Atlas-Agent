@@ -69,6 +69,7 @@ internal/remotecontrol/relaybin/files/manifest.json
 
 /atlas
 /tmp/
+/.tools/
 
 manpages/
 completions/atlas.*sh

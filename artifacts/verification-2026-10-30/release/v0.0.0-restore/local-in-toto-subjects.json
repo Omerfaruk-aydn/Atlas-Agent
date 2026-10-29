@@ -1,0 +1,37 @@
+{
+  "_type": "https://in-toto.io/Statement/v1",
+  "subject": [
+    {
+      "name": "atlas-agent-windows-x64.exe",
+      "digest": {
+        "sha256": "9ac800ab0659b2b468dda5954d9c92c833168c05a7ee5770ca9b9f6c19f7eeb7"
+      }
+    },
+    {
+      "name": "atlas-agent-linux-x64",
+      "digest": {
+        "sha256": "709ecfda924a398ba986f069096742bda5bdc5a03d5b632296aeca66e6b01c7d"
+      }
+    },
+    {
+      "name": "atlas-agent-darwin-x64",
+      "digest": {
+        "sha256": "d58fdc90279d67e733fda25260c509c937ff1eb0cd76be5d788c43169a92d2bf"
+      }
+    },
+    {
+      "name": "atlas-agent-darwin-arm64",
+      "digest": {
+        "sha256": "c54295b019cec019cd47cb911dcd7292204fdc59280f7665bcdd89f3013bb73c"
+      }
+    },
+    {
+      "name": "atlas-agent.spdx.json",
+      "digest": {
+        "sha256": "38831636b950da1648720b9e56d31b2a03c9e48095f3ed84304111d050aedda3"
+      }
+    }
+  ],
+  "predicateType": null,
+  "note": "Unsigned local structural verification; not GitHub OIDC provenance."
+}

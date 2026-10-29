@@ -183,18 +183,19 @@ func (r *Runner) run(ctx context.Context, in runInput) (AggregateResult, error) 
 		return AggregateResult{Decision: DecisionNone}, nil
 	}
 
-	// Deduplicate by command string.
-	seen := make(map[string]bool, len(matching))
+	// Deduplicate by action while retaining the strictest failure policy.
+	seen := make(map[string]int, len(matching))
 	var deduped []config.HookConfig
 	for _, h := range matching {
 		key := h.Command
 		if h.Prompt != "" {
 			key = "agent\x00" + h.Agent + "\x00" + h.Prompt
 		}
-		if seen[key] {
+		if idx, ok := seen[key]; ok {
+			deduped[idx].Required = deduped[idx].Required || h.Required
 			continue
 		}
-		seen[key] = true
+		seen[key] = len(deduped)
 		deduped = append(deduped, h)
 	}
 
@@ -242,9 +243,16 @@ func (r *Runner) run(ctx context.Context, in runInput) (AggregateResult, error) 
 	return agg, nil
 }
 
+func hookExecutionFailure(hook config.HookConfig, reason string) HookResult {
+	if !hook.Required {
+		return HookResult{Decision: DecisionNone}
+	}
+	return HookResult{Decision: DecisionDeny, Reason: "Required hook failed: " + reason, RequiredFailure: true}
+}
+
 func (r *Runner) runAgentAction(ctx context.Context, hook config.HookConfig, sessionID string, payload []byte) HookResult {
 	if r.agentAction == nil {
-		return HookResult{Reason: "Agent action executor unavailable"}
+		return hookExecutionFailure(hook, "agent action executor unavailable")
 	}
 	key := hook.Agent + "\x00" + hook.Prompt
 	r.actionCounts.Lock()
@@ -252,7 +260,7 @@ func (r *Runner) runAgentAction(ctx context.Context, hook config.HookConfig, ses
 	if counts == nil {
 		if len(r.actionCounts.sessions) >= 256 {
 			r.actionCounts.Unlock()
-			return HookResult{Reason: "Agent hook session limit reached"}
+			return hookExecutionFailure(hook, "agent hook session limit reached")
 		}
 		counts = map[string]int{}
 		r.actionCounts.sessions[sessionID] = counts
@@ -263,12 +271,12 @@ func (r *Runner) runAgentAction(ctx context.Context, hook config.HookConfig, ses
 	}
 	if limit < 1 || limit > 16 || counts[key] >= limit {
 		r.actionCounts.Unlock()
-		return HookResult{Reason: "Agent hook firing limit reached"}
+		return hookExecutionFailure(hook, "agent hook firing limit reached")
 	}
 	counts[key]++
 	r.actionCounts.Unlock()
 	if len(payload) > 16384 {
-		return HookResult{Reason: "Agent hook event exceeds 16 KiB"}
+		return hookExecutionFailure(hook, "agent hook event exceeds 16 KiB")
 	}
 	timeout := min(hook.TimeoutDuration(), 120*time.Second)
 	child, cancel := context.WithTimeout(ctx, timeout)
@@ -347,25 +355,25 @@ func (r *Runner) runOne(parentCtx context.Context, hook config.HookConfig, envVa
 			// The goroutine may still be writing to stdout/stderr; do
 			// not read either buffer below this point.
 			if execution.HasBinding(parentCtx) {
-				return HookResult{Decision: DecisionDeny, Reason: "Required hook isolation did not finish cancellation"}
+				return HookResult{Decision: DecisionDeny, Reason: "Required hook isolation did not finish cancellation", RequiredFailure: hook.Required}
 			}
-			return HookResult{Decision: DecisionNone}
+			return hookExecutionFailure(hook, "hook did not finish cancellation")
 		}
 	}
 
 	if err != nil && execution.HasBinding(parentCtx) {
 		if _, observedExit := errors.AsType[execution.ExitError](err); !observedExit {
-			return HookResult{Decision: DecisionDeny, Reason: "Required hook isolation failed: " + err.Error()}
+			return HookResult{Decision: DecisionDeny, Reason: "Required hook isolation failed: " + err.Error(), RequiredFailure: hook.Required}
 		}
 	}
 	if shell.IsInterrupt(err) {
 		// Distinguish timeout from parent cancellation.
 		if parentCtx.Err() != nil {
 			slog.Debug("Hook cancelled by parent context", "command", hook.Command)
-		} else {
-			slog.Warn("Hook timed out", "command", hook.Command, "timeout", timeout)
+			return hookExecutionFailure(hook, "hook execution was cancelled")
 		}
-		return HookResult{Decision: DecisionNone}
+		slog.Warn("Hook timed out", "command", hook.Command, "timeout", timeout)
+		return hookExecutionFailure(hook, "hook execution timed out")
 	}
 
 	if err != nil {
@@ -393,15 +401,15 @@ func (r *Runner) runOne(parentCtx context.Context, hook config.HookConfig, envVa
 				Reason:   reason,
 			}
 		default:
-			// Other non-zero exits are non-blocking errors.
 			slog.Warn(
-				"Hook failed with non-blocking error",
+				"Hook command failed",
 				"command", hook.Command,
 				"exit_code", exitCode,
+				"required", hook.Required,
 				"stderr", strings.TrimSpace(stderr.String()),
 				"error", err,
 			)
-			return HookResult{Decision: DecisionNone}
+			return hookExecutionFailure(hook, fmt.Sprintf("command exited with code %d", exitCode))
 		}
 	}
 

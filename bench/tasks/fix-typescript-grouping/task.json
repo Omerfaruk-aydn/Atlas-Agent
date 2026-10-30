@@ -1,0 +1,13 @@
+{
+  "id": "fix-typescript-grouping",
+  "prompt": "solve groups string values by exact value in a JSON-compatible object, including __proto__, without prototype pollution. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "node",
+    "{suite}/../check-typescript.cjs"
+  ],
+  "timeout_seconds": 180,
+  "language": "typescript",
+  "categories": [
+    "bug-fix"
+  ]
+}

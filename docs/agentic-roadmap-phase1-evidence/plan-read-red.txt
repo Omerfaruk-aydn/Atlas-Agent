@@ -1,0 +1,17 @@
+--- FAIL: TestPlanReadFailureIsMeasuredAsFailOpen (0.08s)
+    gate_usage_test.go:36: 
+        	Error Trace:	D:/Atlas/internal/agent/gate_usage_test.go:36
+        	Error:      	Not equal: 
+        	            	expected: "fail_open"
+        	            	actual  : "skipped"
+        	            	
+        	            	Diff:
+        	            	--- Expected
+        	            	+++ Actual
+        	            	@@ -1 +1 @@
+        	            	-fail_open
+        	            	+skipped
+        	Test:       	TestPlanReadFailureIsMeasuredAsFailOpen
+FAIL
+FAIL	github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent	1.609s
+FAIL

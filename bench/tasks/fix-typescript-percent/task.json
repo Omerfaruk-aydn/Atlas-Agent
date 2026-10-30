@@ -1,0 +1,13 @@
+{
+  "id": "fix-typescript-percent",
+  "prompt": "solve parses a complete decimal percentage string, optional surrounding whitespace and sign, returning a fraction. Reject trailing garbage and non-finite values by returning null. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "node",
+    "{suite}/../check-typescript.cjs"
+  ],
+  "timeout_seconds": 180,
+  "language": "typescript",
+  "categories": [
+    "bug-fix"
+  ]
+}

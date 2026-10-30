@@ -1,0 +1,13 @@
+{
+  "id": "fix-typescript-slug",
+  "prompt": "solve makes a lowercase ASCII slug from decomposable accented Latin text, removes combining accents, collapses non-alphanumeric runs to one dash, and trims dashes. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "node",
+    "{suite}/../check-typescript.cjs"
+  ],
+  "timeout_seconds": 180,
+  "language": "typescript",
+  "categories": [
+    "bug-fix"
+  ]
+}

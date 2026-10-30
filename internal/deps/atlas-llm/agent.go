@@ -1248,7 +1248,28 @@ func (a *agent) validateToolCall(toolCall ToolCallContent, availableTools []Agen
 			return fmt.Errorf("missing required parameter: %s", required)
 		}
 	}
-	return nil
+	// Types, enums and nested structure follow the advertised schema, so a
+	// wrong-typed argument is reported to the model the same way for every
+	// tool instead of depending on each tool's own decoding.
+	// A tool built from a Go type carries its exact contract. Another wrapper
+	// may have changed the advertised properties since, so the contract is
+	// used only while it still describes the same fields.
+	if toolInfo.Contract != nil && sameKeys(toolInfo.Contract, toolInfo.Parameters) {
+		return schema.ValidateExact(toolInfo.Contract, toolInfo.Required, toolInfo.Unknown, input)
+	}
+	return schema.ValidateToolInput(toolInfo.Parameters, toolInfo.Required, input)
+}
+
+func sameKeys(a, b map[string]any) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key := range a {
+		if _, ok := b[key]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *agent) createPrompt(system, prompt string, messages []Message, files ...FilePart) (Prompt, error) {

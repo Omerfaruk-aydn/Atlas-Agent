@@ -175,3 +175,15 @@ func TestJudgeGoalStopsConsultingAClearedJudge(t *testing.T) {
 	require.True(t, ok, "with the judge cleared, the agent's own claim must stand again")
 	require.Empty(t, reason)
 }
+
+// An absent judge is an explicit waiver, never a passed review.
+func TestJudgeGoalStatusDistinguishesWaiverFromPass(t *testing.T) {
+	c := &coordinator{goalJudge: csync.NewValue(ptrBox[Model]{})}
+	status, _ := c.judgeGoalStatus(t.Context(), "s1", "ship the feature")
+	require.Equal(t, reviewWaived, status)
+	require.False(t, status.Verified(), "a waiver must not support a verified completion")
+	require.False(t, reviewUnavailable.Verified())
+	require.False(t, reviewInvalidReport.Verified())
+	require.True(t, reviewFailed.Blocking())
+	require.False(t, reviewUnavailable.Blocking(), "an unavailable review lets work move on")
+}

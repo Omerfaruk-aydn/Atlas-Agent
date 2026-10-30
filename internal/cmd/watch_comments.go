@@ -87,7 +87,7 @@ func newWatchCommentsCommand() *cobra.Command {
 					if err != nil {
 						return err
 					}
-					prompt := fmt.Sprintf("User enabled editor comment dispatch for %s:%d. Task: %s. Inspect project instructions and current source before editing. Follow ordinary permissions and verify the outcome.", task.Path, task.Line, task.Prompt)
+					prompt := fmt.Sprintf("User enabled editor comment suggestions for %s:%d. Task: %s. Produce only an evidence-based suggestion or a draft branch/PR. Never merge or push to a protected branch, never edit the user's current checkout without permission, and follow ordinary permissions and verification.", task.Path, task.Line, task.Prompt)
 					child := exec.CommandContext(cmd.Context(), executable, "run", "--cwd", root, "--data-dir", filepath.Dir(store.Dir()), "--", prompt)
 					child.Stdout = cmd.OutOrStdout()
 					child.Stderr = cmd.ErrOrStderr()

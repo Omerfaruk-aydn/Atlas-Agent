@@ -240,9 +240,23 @@ func (c *coordinator) advanceGoal(ctx context.Context, sessionID string, runErr 
 		// The agent says it is finished. Check the claim before taking
 		// its word for it, and if the check disagrees, hand back what
 		// is missing rather than a bare "no".
-		verdict, reason := c.judgeGoal(ctx, sessionID, goal)
-		if verdict {
+		status, reason := c.judgeGoalStatus(ctx, sessionID, goal)
+		if !status.Blocking() {
+			// Neither the agent's claim nor a judge's agreement outranks a
+			// missing proof the runtime itself holds.
+			if blockers := completionBlockers(ctx, c.engineering, c.sessions, sessionID); len(blockers) > 0 {
+				status, reason = reviewFailed, "The runtime still holds: "+strings.Join(blockers, "; ")
+			}
+		}
+		switch status {
+		case reviewPassed:
 			c.stopGoal(ctx, sessionID, "Goal reached: "+goal)
+			return
+		case reviewWaived:
+			c.stopGoal(ctx, sessionID, "Goal claimed by the agent; no goal judge is configured, so it is not independently verified: "+goal)
+			return
+		case reviewUnavailable, reviewInvalidReport:
+			c.stopGoal(ctx, sessionID, "Goal claimed by the agent but not verified ("+string(status)+": "+reason+"): "+goal)
 			return
 		}
 		run.mu.Lock()
@@ -290,49 +304,75 @@ func (c *coordinator) nextGoalTurn(ctx context.Context, sessionID, prompt string
 // is a different model looking only at the goal and the transcript, with
 // no stake in being finished.
 //
-// A judge that cannot run is not allowed to hold the session hostage:
-// with no model configured, or on an error, the agent's own claim
-// stands.
+// A judge that cannot run does not hold the session hostage, but it does
+// not certify the goal either: the run ends reporting an unverified claim.
 func (c *coordinator) judgeGoal(ctx context.Context, sessionID, goal string) (bool, string) {
+	status, reason := c.judgeGoalStatus(ctx, sessionID, goal)
+	return !status.Blocking(), reason
+}
+
+// judgeGoalStatus separates a judge that agreed from one that was absent,
+// could not run or answered in an unusable form. The goal loop ends the run
+// in the last two cases without calling the goal reached.
+func (c *coordinator) judgeGoalStatus(ctx context.Context, sessionID, goal string) (status reviewStatus, detail string) {
+	ctx, observation := startGate(ctx, "goal_judge")
+	defer func() {
+		outcome := "unverified"
+		switch status {
+		case reviewPassed:
+			outcome = "pass"
+		case reviewFailed:
+			outcome = "send_back"
+		case reviewWaived:
+			outcome = "skipped"
+		}
+		observation.finish(outcome, string(status))
+	}()
+	if c.cfg != nil && c.cfg.Config().Options != nil && !c.cfg.Config().Options.Harness.GateEnabled("goal_judge") {
+		return reviewWaived, "disabled by explicit ablation"
+	}
 	if c.goalJudge == nil {
-		return true, ""
+		return reviewWaived, ""
 	}
 	goalJudge := c.goalJudge.Get().v
 	if goalJudge == nil {
-		return true, ""
+		return reviewWaived, ""
 	}
 
 	agent := fantasy.NewAgent(
-		goalJudge.Model,
+		observedModel(ctx, *goalJudge),
 		fantasy.WithSystemPrompt(goalJudgePrompt),
 		fantasy.WithUserAgent(userAgent),
 	)
 
 	transcript, err := c.recentTranscript(ctx, sessionID)
 	if err != nil {
-		slog.Warn("Could not read the session to check the goal; accepting the agent's claim",
-			"session_id", sessionID, "error", err)
-		return true, ""
+		slog.Warn("Could not read the session to check the goal", "session_id", sessionID, "error", err)
+		return reviewUnavailable, "the session could not be read: " + err.Error()
 	}
 
 	result, err := agent.Stream(ctx, fantasy.AgentStreamCall{
 		Prompt: "GOAL:\n" + goal + "\n\nWHAT THE AGENT DID:\n" + transcript,
 	})
 	if err != nil || result == nil {
-		slog.Warn("Goal check failed; accepting the agent's claim", "session_id", sessionID, "error", err)
-		return true, ""
+		slog.Warn("Goal check failed", "session_id", sessionID, "error", err)
+		return reviewUnavailable, "the goal check did not run to completion"
 	}
 
 	reply := strings.TrimSpace(result.Response.Content.Text())
-	if strings.HasPrefix(strings.ToUpper(reply), "MET") {
-		return true, ""
+	upper := strings.ToUpper(reply)
+	switch {
+	case strings.HasPrefix(upper, "NOT MET"):
+		reason := strings.TrimSpace(reply[len("NOT MET"):])
+		reason = strings.TrimSpace(strings.TrimPrefix(reason, ":"))
+		if reason == "" {
+			reason = "The check did not say what is missing."
+		}
+		return reviewFailed, reason
+	case upper == "MET" || strings.HasPrefix(upper, "MET\n") || strings.HasPrefix(upper, "MET."):
+		return reviewPassed, ""
 	}
-	reason := strings.TrimSpace(strings.TrimPrefix(reply, "NOT MET"))
-	reason = strings.TrimSpace(strings.TrimPrefix(reason, ":"))
-	if reason == "" {
-		reason = "The check did not say what is missing."
-	}
-	return false, reason
+	return reviewInvalidReport, "the goal check answered in neither MET nor NOT MET form"
 }
 
 const goalJudgePrompt = `You check whether a goal has actually been reached. You are not doing the work and you are not helping with it; another agent has claimed it is finished and your job is to say whether that is true.

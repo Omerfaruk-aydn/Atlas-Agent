@@ -41,6 +41,10 @@ type Schema struct {
 	Maximum     *float64           `json:"maximum,omitempty"`
 	MinLength   *int               `json:"minLength,omitempty"`
 	MaxLength   *int               `json:"maxLength,omitempty"`
+	// Any marks a value whose Go type cannot describe its wire format: an
+	// interface, a json.RawMessage, or a type with its own UnmarshalJSON. The
+	// advertised type is a hint for the model; validation accepts any value.
+	Any bool `json:"-"`
 }
 
 // ParseState represents the state of JSON parsing.
@@ -91,6 +95,11 @@ func Generate(t reflect.Type) Schema {
 	return generateSchemaRecursive(t, make(map[reflect.Type]bool))
 }
 
+var (
+	rawMessageType  = reflect.TypeFor[json.RawMessage]()
+	unmarshalerType = reflect.TypeFor[json.Unmarshaler]()
+)
+
 func generateSchemaRecursive(t reflect.Type, visited map[reflect.Type]bool) Schema {
 	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
@@ -98,7 +107,20 @@ func generateSchemaRecursive(t reflect.Type, visited map[reflect.Type]bool) Sche
 	if t.Implements(providerType) {
 		return reflect.Zero(t).Interface().(Provider).JSONSchema()
 	}
+	// A raw JSON holder is a byte slice to reflection, which would advertise
+	// an array of integers. Its wire format is any JSON value.
+	if t == rawMessageType {
+		return Schema{Any: true}
+	}
+	generated := generateByKind(t, visited)
+	// A type that decodes itself has a wire format reflection cannot see.
+	if t != timeType && t.Kind() != reflect.Interface && reflect.PointerTo(t).Implements(unmarshalerType) {
+		generated.Any = true
+	}
+	return generated
+}
 
+func generateByKind(t reflect.Type, visited map[reflect.Type]bool) Schema {
 	// time.Time marshals to an RFC 3339 string, not to its unexported
 	// struct fields; describing it as an object made every encoded value
 	// fail validation and told the model the wrong shape.
@@ -196,7 +218,8 @@ func generateSchemaRecursive(t reflect.Type, visited map[reflect.Type]bool) Sche
 
 		return schema
 	case reflect.Interface:
-		return Schema{Type: "object"}
+		// Any JSON value is acceptable; "object" is only the hint advertised.
+		return Schema{Type: "object", Any: true}
 	default:
 		return Schema{Type: "object"}
 	}
@@ -514,4 +537,157 @@ func Normalize(node map[string]any) {
 	}
 	delete(node, "type")
 	node["anyOf"] = anyOf
+}
+
+// ValidationMap is the exact contract of a generated schema, for checking
+// input rather than advertising it. It differs from ToMap where generation
+// can only hint: an opaque value (see Schema.Any) accepts anything, and a map
+// type constrains its values instead of naming a property called "*".
+func ValidationMap(s Schema) map[string]any {
+	if s.Any {
+		result := map[string]any{}
+		if s.Description != "" {
+			result["description"] = s.Description
+		}
+		if len(s.Enum) > 0 {
+			result["enum"] = s.Enum
+		}
+		return result
+	}
+	result := ToMapShallow(s)
+	if value, ok := s.Properties["*"]; ok && s.Type == "object" && len(s.Properties) == 1 {
+		result["additionalProperties"] = ValidationMap(*value)
+		return result
+	}
+	if s.Properties != nil {
+		props := make(map[string]any, len(s.Properties))
+		for name, property := range s.Properties {
+			props[name] = ValidationMap(*property)
+		}
+		result["properties"] = props
+	}
+	if s.Items != nil {
+		result["items"] = ValidationMap(*s.Items)
+	}
+	return result
+}
+
+// ValidationParameters is ValidationMap for a tool's top-level properties,
+// in the same shape as ToParameters.
+func ValidationParameters(s Schema) map[string]any {
+	if s.Properties == nil {
+		return map[string]any{}
+	}
+	result := make(map[string]any, len(s.Properties))
+	for name, property := range s.Properties {
+		result[name] = ValidationMap(*property)
+	}
+	return result
+}
+
+// ToMapShallow converts one schema node without its children.
+func ToMapShallow(s Schema) map[string]any {
+	s.Properties, s.Items = nil, nil
+	return ToMap(s)
+}
+
+// InputPolicy says what a tool's contract does with fields it does not list.
+type InputPolicy int
+
+const (
+	// IgnoreUnknown lets a call carry fields the tool does not define; the
+	// tool never sees them. It is the default, because models routinely add
+	// harmless extras and refusing them costs a round trip.
+	IgnoreUnknown InputPolicy = iota
+	// RejectUnknown refuses a call with an undefined top-level field, for tools
+	// where a misspelled option would otherwise be dropped silently and the
+	// action run with different behavior than the model asked for.
+	RejectUnknown
+)
+
+// ValidateExact checks input against an exact contract (see ValidationMap).
+func ValidateExact(parameters map[string]any, required []string, policy InputPolicy, input map[string]any) error {
+	if len(parameters) == 0 {
+		return nil
+	}
+	doc := map[string]any{"type": "object", "properties": parameters}
+	if len(required) > 0 {
+		doc["required"] = required
+	}
+	if policy == RejectUnknown {
+		doc["additionalProperties"] = false
+	}
+	return validateDocument(doc, input)
+}
+
+func validateDocument(doc map[string]any, input map[string]any) error {
+	data, err := json.Marshal(doc)
+	if err != nil {
+		return nil //nolint:nilerr // An unrepresentable schema cannot reject input.
+	}
+	validator, err := jsonschema.NewCompiler().Compile(data)
+	if err != nil {
+		return nil //nolint:nilerr // An invalid schema is the tool author's bug, not the model's.
+	}
+	if result := validator.Validate(input); !result.IsValid() {
+		return fmt.Errorf("invalid arguments: %s", strings.Join(ValidationMessages(result), "; "))
+	}
+	return nil
+}
+
+// ValidateToolInput checks a tool call's arguments against the schema a tool
+// advertises (its property map and required list): required fields, types,
+// enums and nested structure. It is the fallback for tools whose schema was
+// written by hand, where which parts are exact is unknown, so it prunes the
+// placeholder types generation uses (see reliableProperties). Tools built from
+// a Go type carry an exact contract and use ValidateExact.
+func ValidateToolInput(parameters map[string]any, required []string, input map[string]any) error {
+	if len(parameters) == 0 {
+		return nil
+	}
+	doc := map[string]any{"type": "object", "properties": reliableProperties(parameters)}
+	if len(required) > 0 {
+		doc["required"] = required
+	}
+	return validateDocument(doc, input)
+}
+
+// reliableProperties keeps the parts of a generated schema that describe the
+// wire format exactly: primitive types, enums and required fields. Generation
+// advertises an interface or json.RawMessage field as an "object" or an array
+// of integers, which is a placeholder for "anything", so those type claims
+// are dropped rather than enforced.
+func reliableProperties(properties map[string]any) map[string]any {
+	out := make(map[string]any, len(properties))
+	for name, property := range properties {
+		out[name] = reliableNode(property)
+	}
+	return out
+}
+
+func reliableNode(node any) any {
+	m, ok := node.(map[string]any)
+	if !ok {
+		return node
+	}
+	out := make(map[string]any, len(m))
+	for key, value := range m {
+		out[key] = value
+	}
+	switch out["type"] {
+	case "object":
+		delete(out, "type")
+	case "array":
+		if items, ok := out["items"].(map[string]any); ok && items["type"] == "integer" {
+			delete(out, "type")
+			delete(out, "items")
+		}
+	}
+	if props, ok := out["properties"].(map[string]any); ok {
+		out["properties"] = reliableProperties(props)
+	}
+	if items, ok := out["items"]; ok {
+		out["items"] = reliableNode(items)
+	}
+	return out
 }

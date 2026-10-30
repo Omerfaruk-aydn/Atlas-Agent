@@ -1,0 +1,13 @@
+{
+  "id": "fix-typescript-pagination",
+  "prompt": "solve returns a 1-based page of items with positive size; nonpositive page clamps to 1, invalid size returns empty. Preserve input. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "node",
+    "{suite}/../check-typescript.cjs"
+  ],
+  "timeout_seconds": 180,
+  "language": "typescript",
+  "categories": [
+    "bug-fix"
+  ]
+}

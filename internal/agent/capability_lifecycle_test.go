@@ -11,6 +11,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/skills"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +21,8 @@ func TestLearnExportUsesGuardedSkillInvocationAndPreservesDenial(t *testing.T) {
 	root := t.TempDir()
 	store := engineering.NewStore(t.TempDir())
 	ctx := context.WithValue(t.Context(), tools.SessionIDContextKey, "s")
-	c := &coordinator{cfg: config.NewTestStore(&config.Config{}).Scoped(root), engineering: store}
+	granted := permission.NewPermissionService(root, true, nil)
+	c := &coordinator{cfg: config.NewTestStore(&config.Config{}).Scoped(root), engineering: store, permissions: granted}
 	require.NoError(t, store.Update(ctx, "s", func(st *engineering.State) error {
 		st.Operations = []engineering.Operation{{ID: "observe", Tool: "view", Status: "completed", OutcomeObserved: true, FinishedAt: 1}, {ID: "test", Tool: "test_run", Status: "completed", OutcomeObserved: true, FinishedAt: 2}}
 		return nil
@@ -38,7 +40,15 @@ func TestLearnExportUsesGuardedSkillInvocationAndPreservesDenial(t *testing.T) {
 		require.Contains(t, p.Instructions, m.ID)
 		return fantasy.ToolResponse{IsError: true, StopTurn: true, Metadata: `{"permission":{"id":"pending"}}`, Content: "denied"}, nil
 	}
-	r, err := c.learnWorkflow(ctx, WorkflowParams{LearnAction: "export", MethodID: m.ID}, fantasy.ToolCall{ID: "export"}, invoke)
+	// An unmeasured candidate is not written down as a practice unless that
+	// is asked for explicitly.
+	refused, err := c.learnWorkflow(ctx, WorkflowParams{LearnAction: "export", MethodID: m.ID}, fantasy.ToolCall{ID: "unasked"}, invoke)
+	require.NoError(t, err)
+	require.True(t, refused.IsError)
+	require.Contains(t, refused.Content, "accept_unmeasured")
+	require.Zero(t, calls, "nothing was written")
+
+	r, err := c.learnWorkflow(ctx, WorkflowParams{LearnAction: "export", MethodID: m.ID, AcceptUnmeasured: true}, fantasy.ToolCall{ID: "export"}, invoke)
 	require.NoError(t, err)
 	require.True(t, r.StopTurn)
 	require.Equal(t, `{"permission":{"id":"pending"}}`, r.Metadata)
@@ -46,13 +56,13 @@ func TestLearnExportUsesGuardedSkillInvocationAndPreservesDenial(t *testing.T) {
 	methods, err := store.LearnedMethods(ctx, root)
 	require.NoError(t, err)
 	require.Equal(t, "candidate", methods[0].Status)
-	_, err = c.learnWorkflow(ctx, WorkflowParams{LearnAction: "export", MethodID: m.ID}, fantasy.ToolCall{ID: "approved"}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+	_, err = c.learnWorkflow(ctx, WorkflowParams{LearnAction: "export", MethodID: m.ID, AcceptUnmeasured: true}, fantasy.ToolCall{ID: "approved"}, func(context.Context, fantasy.ToolCall) (fantasy.ToolResponse, error) {
 		return fantasy.NewTextResponse("written"), nil
 	})
 	require.NoError(t, err)
 	methods, err = store.LearnedMethods(ctx, root)
 	require.NoError(t, err)
-	require.Equal(t, "exported", methods[0].Status)
+	require.Equal(t, "exported_candidate", methods[0].Status, "exporting does not make an unmeasured method an established practice")
 	require.Contains(t, methods[0].SkillPath, filepath.Join(".atlas", "skills"))
 }
 

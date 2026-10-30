@@ -54,7 +54,7 @@ func budgetLine(contextWindow, tokens int64, usedRatio float64, step int) string
 	}
 	text += fmt.Sprintf("This turn has taken %d steps.", step)
 	if point > 0 && float64(tokens) >= float64(point)*0.8 {
-		text += " A summary is close: write the current state and the next step to your notes or plan before starting anything long."
+		text += " A summary is close: write the current state and the next step to your notes or plan before starting anything long. Do not rush or finish incomplete work: the system will compact or hand off safely, and every completion claim still requires verification."
 	} else if step >= 3*budgetLineMinSteps {
 		text += " If the last steps did not move the work forward, step back and change approach."
 	}

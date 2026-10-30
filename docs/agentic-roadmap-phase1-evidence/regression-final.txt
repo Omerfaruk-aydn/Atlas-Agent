@@ -1,0 +1,7 @@
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent	102.855s
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/config	(cached)
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/cmd	16.967s
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/cmd/clientserverrace	(cached)
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics	2.136s
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/evaluation	108.439s
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/shellconfig	(cached)

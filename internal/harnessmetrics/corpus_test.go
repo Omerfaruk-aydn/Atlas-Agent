@@ -58,10 +58,16 @@ func TestProjectKindsAndCheckHints(t *testing.T) {
 
 	data := t.TempDir()
 	r := New(func() string { return data })
-	r.Record(ContractPassed, "s1", CheckAttrs([]string{"go"}, []string{"go test ./...", "go vet ./..."}))
-	r.Record(ContractPassed, "s1", CheckAttrs([]string{"go"}, []string{"go test ./..."}))
-	r.Record(ContractPassed, "s2", CheckAttrs([]string{"go"}, []string{"go test ./..."}))
-	r.Record(ContractPassed, "s3", CheckAttrs([]string{"node"}, []string{"npm test"}))
+	observed := func(kinds, commands []string) map[string]string {
+		attrs := CheckAttrs(kinds, commands)
+		attrs["origin_sequence"] = "3"
+		attrs["origin_signature"] = "observed-check-fixture"
+		return attrs
+	}
+	r.Record(ContractPassed, "s1", observed([]string{"go"}, []string{"go test ./...", "go vet ./..."}))
+	r.Record(ContractPassed, "s1", observed([]string{"go"}, []string{"go test ./..."}))
+	r.Record(ContractPassed, "s2", observed([]string{"go"}, []string{"go test ./..."}))
+	r.Record(ContractPassed, "s3", observed([]string{"node"}, []string{"npm test"}))
 	require.Equal(t, []string{"go test ./...", "go vet ./..."}, CheckHints(data, []string{"go"}, 5))
 	require.Equal(t, []string{"go test ./..."}, CheckHints(data, []string{"go", "rust"}, 1))
 	require.Empty(t, CheckHints(data, []string{"python"}, 5))

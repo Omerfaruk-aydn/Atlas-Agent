@@ -1,141 +1,125 @@
 name: Release Restore
 
-# Safety net for releases that get deleted (manually or otherwise). Every
-# six hours this workflow lists the repo's git tags and, for any tag that
-# exists but does not have a corresponding GitHub Release, rebuilds the
-# binaries and creates the missing release.
-#
-# Why this exists: we have observed releases disappearing from the repo,
-# breaking the npm postinstall (which downloads binaries from the release
-# asset URL). Rather than try to make the release UI itself immutable
-# (which is not currently exposed via the GitHub API), we just keep a
-# reconciler running.
-
+# Rebuilds a missing release from its immutable tag. A matrix keeps exactly
+# one tag per release; the previous multi-line tag_name could not represent
+# multiple missing releases and mixed their artifacts.
 on:
   schedule:
-    # Every 6 hours. Cron is in UTC; 0 */6 is fine for "every 6 hours".
     - cron: '0 */6 * * *'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Optional: only check this specific tag (e.g. v0.2.2). Leave empty to check all tags.'
+        description: 'Optional: only check this specific tag (e.g. v0.2.2).'
         required: false
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  restore:
-    name: Restore missing releases
+  discover:
     runs-on: ubuntu-latest
+    outputs:
+      tags: ${{ steps.missing.outputs.tags }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-
-      - name: List git tags
-        id: tags
-        run: |
-          set -euo pipefail
-          # `git tag` already gives us only release tags because of our
-          # v* convention; if you ever tag something else you'll need to
-          # filter here. List newest-first so a manual dispatch with
-          # no input rebuilds the most recent one first.
-          git fetch --tags --prune --prune-tags origin
-          git tag --sort=-version:refname > /tmp/tags.txt
-          echo "Tags found:"
-          cat /tmp/tags.txt
-          echo "tag_count=$(wc -l < /tmp/tags.txt)" >> "$GITHUB_OUTPUT"
-
-      - name: Decide which tags need a release
+          persist-credentials: false
+      - name: Find tags without releases
         id: missing
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ONLY_TAG: ${{ inputs.tag }}
-          TAG_LIST: /tmp/tags.txt
         run: |
           set -euo pipefail
+          git fetch --tags --prune --prune-tags origin
           : > /tmp/missing.txt
           while read -r TAG; do
             [ -z "$TAG" ] && continue
             if [ -n "$ONLY_TAG" ] && [ "$TAG" != "$ONLY_TAG" ]; then continue; fi
-            # GET /repos/{owner}/{repo}/releases/tags/{tag} -> 200 if the
-            # release exists. gh api sets a non-zero exit code on a
-            # non-2xx response, so we can branch on the exit code without
-            # the unsupported --output / -w flags.
-            if gh api \
-              -H "Accept: application/vnd.github+json" \
-              "/repos/${{ github.repository }}/releases/tags/$TAG" \
-              --silent >/dev/null 2>&1; then
-              echo "OK: $TAG already has a release"
-            else
-              echo "MISSING: $TAG"
+            if ! gh api --silent "/repos/${{ github.repository }}/releases/tags/$TAG" >/dev/null 2>&1; then
               echo "$TAG" >> /tmp/missing.txt
             fi
-          done < "$TAG_LIST"
-          if [ -s /tmp/missing.txt ]; then
-            {
-              echo "missing_tags<<EOF"
-              cat /tmp/missing.txt
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
-            echo "Found $(wc -l < /tmp/missing.txt) missing releases"
-          else
-            echo "missing_tags=" >> "$GITHUB_OUTPUT"
-            echo "All releases present"
-          fi
+          done < <(git tag --list 'v*' --sort=-version:refname)
+          jq -R -s 'split("\n") | map(select(length > 0))' /tmp/missing.txt > /tmp/missing.json
+          cat /tmp/missing.json
+          echo "tags=$(cat /tmp/missing.json)" >> "$GITHUB_OUTPUT"
 
-      - name: Build binaries for missing tags
-        if: steps.missing.outputs.missing_tags != ''
+  restore:
+    needs: discover
+    if: needs.discover.outputs.tags != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: ${{ fromJSON(needs.discover.outputs.tags) }}
+    name: Restore ${{ matrix.tag }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.tag }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Build web client when present in this tag
+        run: |
+          if [ -f web/package.json ]; then
+            npm --prefix web ci
+            npm --prefix web run build
+          fi
+      - name: Build binaries
         env:
-          MISSING: ${{ steps.missing.outputs.missing_tags }}
+          CGO_ENABLED: '0'
+          GOEXPERIMENT: greenteagc
         run: |
           set -euo pipefail
           mkdir -p dist
-          # ensure install scripts exist for older tags that may not ship them
-          cat > install.sh <<'EOF'
-          #!/usr/bin/env bash
-          set -e
-          ASSET="atlas-agent-$1-x64"
-          if [ "$1" = "windows" ]; then ASSET="$ASSET.exe"; fi
-          curl -fsSL "https://github.com/Omerfaruk-aydn/Atlas-Agent/releases/download/__TAG__/$ASSET" \
-            -o /usr/local/bin/atlas-agent
-          chmod +x /usr/local/bin/atlas-agent
-          EOF
-          cat > install.ps1 <<'EOF'
-          $ErrorActionPreference = 'Stop'
-          $asset = "atlas-agent-windows-x64.exe"
-          $url = "https://github.com/Omerfaruk-aydn/Atlas-Agent/releases/download/__TAG__/$asset"
-          $out = Join-Path $env:ProgramFiles 'AtlasAgent/atlas-agent.exe'
-          New-Item -ItemType Directory -Force -Path (Split-Path $out) | Out-Null
-          Invoke-WebRequest -Uri $url -OutFile $out
-          EOF
-          while read -r TAG; do
-            [ -z "$TAG" ] && continue
-            echo "=== Building binaries for $TAG ==="
-            git checkout "$TAG" -- .
-            GOFLAGS='-mod=mod' go build -o "dist/atlas-agent-windows-x64.exe" .
-            GOOS=linux   GOARCH=amd64 go build -o "dist/atlas-agent-linux-x64" .
-            GOOS=darwin  GOARCH=amd64 go build -o "dist/atlas-agent-darwin-x64" .
-            GOOS=darwin  GOARCH=arm64 go build -o "dist/atlas-agent-darwin-arm64" .
-            ls -la dist/
-            # Restore the main branch checkout so we leave the workspace
-            # in a sensible state for the upload step.
-            git checkout HEAD -- .
-          done <<< "$MISSING"
-
-      - name: Publish missing releases
-        if: steps.missing.outputs.missing_tags != ''
-        uses: softprops/action-gh-release@v2
+          TAG='${{ matrix.tag }}'
+          COMMIT="$(git rev-parse HEAD)"
+          LDFLAGS="-s -w -X github.com/Omerfaruk-aydn/Atlas-Agent/internal/version.Version=${TAG} -X github.com/Omerfaruk-aydn/Atlas-Agent/internal/version.Commit=${COMMIT}"
+          if [ -d internal/remotecontrol/relaybin ]; then go generate ./internal/remotecontrol/relaybin; fi
+          GOOS=windows GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/atlas-agent-windows-x64.exe .
+          GOOS=linux GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/atlas-agent-linux-x64 .
+          GOOS=darwin GOARCH=amd64 go build -ldflags="$LDFLAGS" -o dist/atlas-agent-darwin-x64 .
+          GOOS=darwin GOARCH=arm64 go build -ldflags="$LDFLAGS" -o dist/atlas-agent-darwin-arm64 .
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
-          tag_name: ${{ steps.missing.outputs.missing_tags }}
+          path: .
+          format: spdx-json
+          output-file: dist/atlas-agent.spdx.json
+      - name: Create and verify checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum atlas-agent-* atlas-agent.spdx.json > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/atlas-agent-*
+            dist/atlas-agent.spdx.json
+      - name: Publish this missing release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          tag_name: ${{ matrix.tag }}
           generate_release_notes: true
           files: |
             dist/atlas-agent-windows-x64.exe
             dist/atlas-agent-linux-x64
             dist/atlas-agent-darwin-x64
             dist/atlas-agent-darwin-arm64
+            dist/atlas-agent.spdx.json
+            dist/SHA256SUMS
             install.sh
             install.ps1

@@ -1,0 +1,8 @@
+{
+  "id": "fix-typescript-route-contract",
+  "prompt": "Route registration and lookup disagree for some URLs. Discover the route contract in CONTRACT.md and fix both modules consistently. Add regression tests and preserve config.ts and the public API.",
+  "check": ["node", "{suite}/../check-typescript.cjs"],
+  "timeout_seconds": 180,
+  "language": "typescript",
+  "categories": ["multi-file", "interacting-changes", "ambiguous-request", "scope-trap", "bug-fix"]
+}

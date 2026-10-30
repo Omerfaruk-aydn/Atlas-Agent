@@ -1,0 +1,20 @@
+{
+  "initial_paths": 99,
+  "unchanged_initial_paths": 87,
+  "intentionally_extended_initial_paths": [
+    "internal/agent/completion_decision.go",
+    "internal/agent/completion_input.go",
+    "internal/agent/agent.go",
+    "internal/agent/contract_gate.go",
+    "internal/agent/contract_outcome.go",
+    "internal/agent/coordinator.go",
+    "internal/agent/evaluator.go",
+    "internal/agent/goal.go",
+    "internal/agent/outcome_guard.go",
+    "internal/agent/plan_review.go",
+    "internal/agent/runtime_guard.go",
+    "internal/harnessmetrics/harnessmetrics.go"
+  ],
+  "unexpected_changed_paths": [],
+  "coordinator_preimage": "semantic reconstruction; original byte hash recorded; original formatting bytes unavailable"
+}

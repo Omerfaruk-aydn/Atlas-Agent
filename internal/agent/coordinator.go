@@ -181,6 +181,7 @@ type Coordinator interface {
 }
 
 type coordinator struct {
+	oracleBudgets    sync.Map
 	automationMu     sync.Mutex
 	automationCancel context.CancelFunc
 	automationDone   chan struct{}
@@ -338,6 +339,11 @@ func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, 
 	}
 	c.currentAgent = agent
 	c.agents[config.AgentCoder] = agent
+	if approvals, ok := c.permissions.(permission.AutoApprovalService); ok {
+		if worker, ok := agent.(*sessionAgent); ok {
+			approvals.SetAutoApprover(smallModelPermissionApprover{worker: worker})
+		}
+	}
 	if c.stateStore() != nil {
 		automationContext, cancel := context.WithCancel(ctx)
 		c.automationCancel = cancel
@@ -498,6 +504,7 @@ func (c *coordinator) run(ctx context.Context, accept *AcceptedRun, sessionID st
 			OnAuthRefresh:     c.makeAuthRefreshCallback(providerCfg),
 		})
 	}
+	ctx = withTraceCarrier(ctx)
 	beforeLoaded := c.skillTracker.LoadedNames()
 	result, originalErr := run()
 	logTurnSkillUsage(sessionID, prompt, c.activeSkills, c.skillTracker, beforeLoaded)
@@ -916,8 +923,10 @@ func (c *coordinator) buildAgent(ctx context.Context, prompt *prompt.Prompt, age
 		Engineering:            c.engineering,
 		TaskContextConfig:      c.cfg,
 		LargeModel:             large,
+		StageModels:            c.buildStageModels(ctx, isSubAgent),
 		LargeModelFallbacks:    largeFallbacks,
 		FallbackCooldown:       time.Duration(c.cfg.Config().Options.FallbackCooldown) * time.Second,
+		FallbackPolicy:         c.cfg.Config().Options.FallbackPolicy,
 		SmallModel:             small,
 		SmallModelFallbacks:    smallFallbacks,
 		SystemPromptPrefix:     largeProviderCfg.SystemPromptPrefix,
@@ -1058,7 +1067,12 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 	// it belongs only to the session the user is driving -- a sub-agent
 	// has no goal of its own to finish.
 	if !isSubAgent {
-		allTools = append(allTools, c.goalTool())
+		allTools = append(allTools, c.goalTool(), c.requestPermissionTool())
+		if _, oracle := c.cfg.Config().ResolveRole("oracle"); oracle {
+			allTools = append(allTools, c.oracleTool())
+		} else if _, escalate := c.cfg.Config().ResolveRole("escalate"); escalate {
+			allTools = append(allTools, c.oracleTool())
+		}
 	}
 
 	if slices.Contains(agent.AllowedTools, tools.AgenticFetchToolName) {
@@ -1132,9 +1146,9 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		tools.NewJobOutputTool(c.cfg.WorkingDir()),
 		tools.NewJobKillTool(),
 		tools.NewDownloadTool(c.permissions, c.cfg.WorkingDir(), nil, urlPolicy(c.cfg), pathPolicy, c.cfg.Config().Options.MaxDownloadBytes),
-		tools.NewEditTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy),
+		fantasy.RejectUnknownInput(tools.NewEditTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy)),
 		tools.NewExitPlanModeTool(c.permissions, c.cfg.WorkingDir()),
-		tools.NewMultiEditTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy),
+		fantasy.RejectUnknownInput(tools.NewMultiEditTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy)),
 		tools.NewFetchTool(c.permissions, c.cfg.WorkingDir(), nil, urlPolicy(c.cfg)),
 		tools.NewGlobTool(c.cfg.WorkingDir(), c.cfg.Config().Tools.Glob),
 		tools.NewGrepTool(c.cfg.WorkingDir(), c.cfg.Config().Tools.Grep),
@@ -1150,7 +1164,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		tools.NewDesignSearchTool(),
 		tools.NewViewTool(c.lspManager, c.permissions, c.filetracker, c.skillTracker, c.cfg.WorkingDir(), tools.NewViewLimits(c.cfg.Config()), c.cfg.Config().Options.SkillsPaths...),
 		tools.NewVideoTool(c.cfg.WorkingDir(), c.permissions, c.cfg.Config().Options.Voice),
-		tools.NewWriteTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy),
+		fantasy.RejectUnknownInput(tools.NewWriteTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy)),
 	)
 
 	if c.integrations != nil {
@@ -1194,7 +1208,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 				if err := schema.ValidateAgainstSchema(arguments, specification); err != nil {
 					return tools.SchemaViolationResponse(call, err), nil
 				}
-				return (&guardedTool{AgentTool: target, store: c.engineering, sessions: c.sessions}).Run(ctx, call)
+				return (&guardedTool{AgentTool: target, store: c.engineering, sessions: c.sessions, root: c.cfg.WorkingDir()}).Run(ctx, call)
 			}
 		}
 		return fantasy.NewTextErrorResponse("Tool is disabled or unavailable: " + call.Name), nil
@@ -1349,7 +1363,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 			// hook interception, ordinary permissions and execution accounting.
 			for _, target := range c.filterTools(allTools, agent, c.hookRunner(hooks.EventPreToolUse), c.hookRunner(hooks.EventPostToolUse), isSubAgent) {
 				if target.Info().Name == call.Name {
-					return (&guardedTool{AgentTool: target, store: c.engineering, sessions: c.sessions}).Run(callCtx, call)
+					return (&guardedTool{AgentTool: target, store: c.engineering, sessions: c.sessions, root: c.cfg.WorkingDir()}).Run(callCtx, call)
 				}
 			}
 			return fantasy.NewTextErrorResponse("required tool is disabled or unavailable: " + call.Name), nil
@@ -1751,9 +1765,6 @@ func (c *coordinator) buildEvaluator(ctx context.Context, large Model, advisorMo
 		return nil, nil, 0
 	}
 	model := &large
-	if advisorModel != nil {
-		model = advisorModel
-	}
 	if roleModel, ok := c.cfg.Config().ResolveRole("evaluator"); ok {
 		resolved, err := c.resolveModel(ctx, roleModel, true)
 		if err != nil {
@@ -1761,6 +1772,16 @@ func (c *coordinator) buildEvaluator(ctx context.Context, large Model, advisorMo
 		} else {
 			model = &resolved
 		}
+	} else if roleName, ok := differentProviderRole(c.cfg.Config(), large.ModelCfg.Provider, advisorModel); ok {
+		roleModel, _ := c.cfg.Config().ResolveRole(roleName)
+		resolved, err := c.resolveModel(ctx, roleModel, true)
+		if err != nil {
+			slog.Warn("Different-provider evaluator failed to build; using the session model", "role", roleName, "error", err)
+		} else {
+			model = &resolved
+		}
+	} else {
+		slog.Info("No different-provider evaluator is available; using the session model in a fresh context")
 	}
 	evaluatorTools, err := c.buildTools(ctx, config.Agent{AllowedTools: evaluatorToolNames}, true)
 	if err != nil {
@@ -2526,6 +2547,17 @@ func (c *coordinator) QueuedPrompts(sessionID string) int {
 
 func (c *coordinator) QueuedPromptsList(sessionID string) []string {
 	return c.currentAgent.QueuedPromptsList(sessionID)
+}
+
+// Handoff creates a linked fresh session without a model call.
+func (c *coordinator) Handoff(ctx context.Context, sessionID string) (session.Session, error) {
+	worker, ok := c.currentAgent.(interface {
+		Handoff(context.Context, string) (session.Session, error)
+	})
+	if !ok {
+		return session.Session{}, errors.New("session handoff is not supported by this agent")
+	}
+	return worker.Handoff(ctx, sessionID)
 }
 
 func (c *coordinator) Summarize(ctx context.Context, sessionID string) error {

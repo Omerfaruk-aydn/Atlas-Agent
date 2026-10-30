@@ -140,19 +140,28 @@ func newWorkflowCommand() *cobra.Command {
 	budget.Flags().DurationVar(&duration, "duration", 0, "Active execution limit, e.g. 30m")
 	budget.Flags().StringVar(&task, "task", "", "Task account; empty sets the session budget")
 	command.AddCommand(budget)
-	var evidence string
+	var evidence, observedOp string
 	recover := &cobra.Command{Use: "recover <session-id> <operation-id> <completed|failed|abandoned>", Args: cobra.ExactArgs(3), Short: "Record inspected effects; never replay a command", RunE: func(cmd *cobra.Command, args []string) error {
 		store, err := workflowStore(cmd)
 		if err != nil {
 			return err
 		}
-		if err := store.Resolve(cmd.Context(), args[0], args[1], args[2], evidence); err != nil {
+		if observedOp != "" {
+			if args[2] != "completed" {
+				return fmt.Errorf("--observed-op only applies to a completed resolution")
+			}
+			err = store.ResolveObserved(cmd.Context(), args[0], args[1], observedOp, evidence)
+		} else {
+			err = store.Resolve(cmd.Context(), args[0], args[1], args[2], evidence)
+		}
+		if err != nil {
 			return err
 		}
 		_, err = fmt.Fprintln(cmd.OutOrStdout(), "Operation resolved; nothing replayed.")
 		return err
 	}}
 	recover.Flags().StringVar(&evidence, "evidence", "", "Required observation of actual files, exit codes or jobs")
+	recover.Flags().StringVar(&observedOp, "observed-op", "", "Operation id of a read-only adapter check with evidence bound to the exact external effect; opaque MCP calls cannot verify it")
 	command.AddCommand(recover)
 	return command
 }

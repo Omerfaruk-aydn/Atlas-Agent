@@ -4,8 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,6 +15,7 @@ const StateFile = "work-state.json"
 
 // State records what Atlas has already done for the plan.
 type State struct {
+	RedEvidence []RedEvidence `json:"red_evidence,omitempty"`
 	// ReviewedPlan is the hash of the plan version last reviewed.
 	ReviewedPlan string `json:"reviewed_plan,omitempty"`
 	// PlanReviews counts the reviews of the plan for ReviewedGoal, and
@@ -65,16 +64,12 @@ func LoadState(root string) State {
 	return s
 }
 
-// SaveState writes the state.
+// SaveState writes the project-wide state atomically. Code that reads and
+// then writes should use UpdateState, which also holds the lock across the
+// read.
 func SaveState(root string, s State) error {
-	data, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Join(root, Dir), 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
-		return err
-	}
-	return os.WriteFile(filepath.Join(root, Dir, StateFile), data, 0o644)
+	path := filepath.Join(root, Dir, StateFile)
+	return withFileLock(path, func() error { return saveStateFile(path, s) })
 }
 
 // Unsettled returns the done features not yet followed up, in plan order.

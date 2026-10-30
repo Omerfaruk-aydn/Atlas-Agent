@@ -14,6 +14,7 @@ import (
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
 )
 
 // maxStrategySignals bounds consecutive strategy reviews of a stalled
@@ -29,11 +30,15 @@ const strategyWindow = 6
 // same result. It asks for a different method once per distinct signal and
 // stops the turn when consecutive signals keep coming without recovery.
 type strategyMonitor struct {
-	mu       sync.Mutex
-	signals  int
-	pending  string
-	stopped  string
-	lastSeen int
+	mu              sync.Mutex
+	signals         int
+	pending         string
+	stopped         string
+	lastSeen        int
+	lastSteps       int
+	progress        string
+	staleSteps      int
+	noProgressLimit int
 }
 
 type toolInteraction struct {
@@ -56,7 +61,17 @@ func interactions(steps []fantasy.StepResult) []toolInteraction {
 				continue
 			}
 			_, isErr := r.Result.(fantasy.ToolResultOutputContentError)
-			out = append(out, toolInteraction{callID: call.ToolCallID, tool: call.ToolName, input: call.Input, output: toolResultOutputString(r.Result), metadata: r.ClientMetadata, isError: isErr, stop: r.StopTurn})
+			if exit, finished := bashExitCode(r.ClientMetadata); finished && exit != 0 {
+				isErr = true
+			}
+			output := toolResultOutputString(r.Result)
+			if _, tail, found := strings.Cut(output, "<required_lint_fix>"); found {
+				if _, diagnostics, ok := strings.Cut(tail, "\n"); ok {
+					output = diagnostics
+					isErr = true
+				}
+			}
+			out = append(out, toolInteraction{callID: call.ToolCallID, tool: call.ToolName, input: call.Input, output: output, metadata: r.ClientMetadata, isError: isErr, stop: r.StopTurn})
 		}
 	}
 	return out
@@ -67,11 +82,13 @@ var (
 	errorQuoted  = regexp.MustCompile("(\"[^\"]*\"|'[^']*'|`[^`]*`)")
 	errorPaths   = regexp.MustCompile(`([A-Za-z]:)?[\\/][^\s:]+`)
 	errorSpaces  = regexp.MustCompile(`\s+`)
+	testFailure  = regexp.MustCompile(`(?m)^--- FAIL: ([^\s]+)`)
 )
 
 // errorClass normalizes a failure so that the same failure on different
 // inputs, paths or line numbers compares equal.
-func errorClass(output string, metadata ...string) string {
+func errorClass(output string, metadata ...string) (class string) {
+	defer func() { class = vault.Redact("", class) }()
 	var structured struct {
 		Code      string `json:"code"`
 		ErrorCode string `json:"error_code"`
@@ -83,6 +100,9 @@ func errorClass(output string, metadata ...string) string {
 				return strings.ToLower(code)
 			}
 		}
+	}
+	if test := testFailure.FindStringSubmatch(output); len(test) > 1 {
+		return "test:" + test[1]
 	}
 	s := strings.ToLower(output)
 	if i := strings.IndexByte(s, '\n'); i > 0 && i < 240 {
@@ -129,7 +149,7 @@ func detectStrategySignal(steps []fantasy.StepResult) (strategySignal, bool) {
 		inputs := map[string]bool{}
 		var tools []string
 		for _, i := range tail {
-			if !i.isError || i.tool != last.tool || errorClass(i.output, i.metadata) != class {
+			if !i.isError || errorClass(i.output, i.metadata) != class {
 				same = false
 				break
 			}
@@ -173,20 +193,37 @@ func expectedPolling(i toolInteraction) bool {
 }
 
 // observe runs after every step. It returns true when the turn must stop.
-func (m *strategyMonitor) observe(ctx context.Context, store *engineering.Store, sessionID string, steps []fantasy.StepResult) bool {
+func (m *strategyMonitor) observe(ctx context.Context, store *engineering.Store, sessionID string, steps []fantasy.StepResult, progress ...string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	// Only a new tool interaction can carry a new signal; a text step
 	// after a review must not re-raise the same tail of failures.
 	all := interactions(steps)
 	seen := len(all)
-	if seen == m.lastSeen {
+	newStep := len(steps) > m.lastSteps
+	m.lastSteps = len(steps)
+	if newStep && len(progress) > 0 {
+		if progress[0] != m.progress {
+			m.progress = progress[0]
+			m.staleSteps = 0
+			m.signals = 0
+		} else if seen == 0 || !expectedPolling(all[seen-1]) {
+			m.staleSteps++
+		}
+	}
+	stalled := m.noProgressLimit > 0 && m.staleSteps >= m.noProgressLimit
+	if seen == m.lastSeen && !stalled {
 		return m.stopped != ""
 	}
 	m.lastSeen = seen
 	signal, ok := detectStrategySignal(steps)
+	if !ok && stalled {
+		signal = strategySignal{Kind: "no_progress", Class: "no new passing check, file, finding or closed requirement", Evidence: fmt.Sprintf("step-%d", len(steps))}
+		ok = true
+		m.staleSteps = 0
+	}
 	if !ok {
-		if seen > 0 && !all[seen-1].isError && !expectedPolling(all[seen-1]) {
+		if len(progress) == 0 && seen > 0 && !all[seen-1].isError && !expectedPolling(all[seen-1]) {
 			m.signals = 0
 		}
 		return false
@@ -203,6 +240,9 @@ func (m *strategyMonitor) observe(ctx context.Context, store *engineering.Store,
 Observed %s: %s (tools: %s; latest call %s).
 Repeating this will not produce new information. Before the next call: name the failure class, decide what new evidence would distinguish its causes, and switch method (inspect the cause directly, build a minimal reproduction, try an alternative API, or ask the user if it is blocked on their decision). Record the change with workflow {"action":"work","work_action":"method","work":{"method":...,"reason":...,"evidence":["%s"]}}. If an earlier call may have changed state, inspect the target before sending it again. After %d consecutive reviews without a successful observation, a further signal ends the turn.
 </strategy_review>`, signal.Kind, signal.Class, strings.Join(signal.Tools, ", "), signal.Evidence, signal.Evidence, maxStrategySignals)
+	if m.signals == 2 {
+		m.pending += "\n<stall_oracle_request>Consult the explicitly configured oracle before another attempt; otherwise report the missing dependency and continue only with a different evidence-based method.</stall_oracle_request>"
+	}
 	return false
 }
 

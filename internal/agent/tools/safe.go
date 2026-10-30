@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"runtime"
 	"slices"
 	"strings"
@@ -72,6 +73,27 @@ func containsCommandChaining(s string) bool {
 	return slices.ContainsFunc(chainingMetacharacters, func(c string) bool {
 		return strings.Contains(s, c)
 	})
+}
+
+// BashReadOnly reports whether a bash call is a single well-known observation
+// command (ls, git status, ...). Anything else, including chained commands,
+// is treated as a possible source change by the effect tracker.
+func BashReadOnly(input string) bool {
+	var p BashParams
+	if json.Unmarshal([]byte(input), &p) != nil || p.RunInBackground {
+		return false
+	}
+	command := strings.TrimSpace(p.Command)
+	if command == "" || containsCommandChaining(command) || strings.ContainsAny(command, "><\n&") {
+		return false
+	}
+	return slices.ContainsFunc(safeCommands, func(safe string) bool {
+		return command == safe || strings.HasPrefix(command, safe+" ")
+	}) && !strings.HasPrefix(command, "kill") && !strings.HasPrefix(command, "nohup") &&
+		!strings.HasPrefix(command, "timeout") && !strings.HasPrefix(command, "nice") &&
+		!strings.HasPrefix(command, "set") && !strings.HasPrefix(command, "unset") &&
+		!strings.HasPrefix(command, "git branch") && !strings.HasPrefix(command, "git tag") &&
+		!strings.HasPrefix(command, "git remote") && !strings.HasPrefix(command, "git config")
 }
 
 func init() {

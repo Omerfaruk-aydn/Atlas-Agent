@@ -135,6 +135,13 @@ func (f *FakeLLM) serve(w http.ResponseWriter, r *http.Request) {
 	f.requests = append(f.requests, raw)
 	f.mu.Unlock()
 
+	if strings.Contains(string(enc), "[[error]]") {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Should-Retry", "false")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"scripted regression failure","type":"invalid_request_error"}}`))
+		return
+	}
 	reply := f.script(req)
 	if req.Stream {
 		f.stream(w, r, req.Model, reply)
@@ -157,18 +164,43 @@ func (f *FakeLLM) script(req chatRequest) scriptedReply {
 	}
 	var lastUser string
 	var userHadImage bool
-	for _, m := range req.Messages {
-		if m.Role == "user" {
-			lastUser = m.text()
-			userHadImage = m.hasImage()
+	lastUserIndex := -1
+	for i := len(req.Messages) - 1; i >= 0; i-- {
+		m := req.Messages[i]
+		if m.Role != "user" {
+			continue
 		}
+		text := strings.TrimSpace(m.text())
+		if strings.HasPrefix(text, "<") {
+			continue
+		}
+		lastUser = strings.TrimPrefix(text, "User steering for the active turn: ")
+		lastUserIndex = i
+		userHadImage = m.hasImage()
+		break
 	}
-	if n := len(req.Messages); n > 0 && req.Messages[n-1].Role == "tool" {
-		result := req.Messages[n-1].text()
+	for i := len(req.Messages) - 1; i > lastUserIndex; i-- {
+		if req.Messages[i].Role != "tool" {
+			continue
+		}
+		result := req.Messages[i].text()
 		if len(result) > 300 {
 			result = result[:300]
 		}
 		return scriptedReply{text: []string{"Tool finished. Result: ", "`" + strings.ReplaceAll(result, "`", "'") + "`"}}
+	}
+	wantedTool := ""
+	switch {
+	case strings.Contains(lastUser, "[[ask]]"):
+		wantedTool = "question"
+	case writeMarker.MatchString(lastUser):
+		wantedTool = "write"
+	case strings.Contains(lastUser, "[[bash]]"), strings.Contains(lastUser, "[[permission]]"):
+		wantedTool = "bash"
+	}
+	if wantedTool != "" && !toolOffered(req.Tools, wantedTool) {
+		args, _ := json.Marshal(map[string]any{"names": []string{wantedTool}})
+		return scriptedReply{toolName: "tool_search", toolArgs: string(args)}
 	}
 	switch {
 	case strings.Contains(lastUser, "[[ask]]"):
@@ -184,6 +216,9 @@ func (f *FakeLLM) script(req chatRequest) scriptedReply {
 		name := writeMarker.FindStringSubmatch(lastUser)[1]
 		args, _ := json.Marshal(map[string]string{"file_path": name, "content": "written by the fake model\n"})
 		return scriptedReply{toolName: "write", toolArgs: string(args)}
+	case strings.Contains(lastUser, "[[permission]]"):
+		args, _ := json.Marshal(map[string]string{"description": "Request explicit permission", "command": "rm -f .atlas-e2e-permission-probe"})
+		return scriptedReply{toolName: "bash", toolArgs: string(args)}
 	case strings.Contains(lastUser, "[[bash]]"):
 		args, _ := json.Marshal(map[string]string{"description": "Print a marker", "command": "echo pipeline-output"})
 		return scriptedReply{toolName: "bash", toolArgs: string(args)}
@@ -201,6 +236,16 @@ func (f *FakeLLM) script(req chatRequest) scriptedReply {
 		echo += "\n\n(image received)"
 	}
 	return scriptedReply{text: []string{echo[:len(echo)/2], echo[len(echo)/2:]}}
+}
+
+func toolOffered(tools []map[string]any, name string) bool {
+	for _, tool := range tools {
+		function, _ := tool["function"].(map[string]any)
+		if function["name"] == name {
+			return true
+		}
+	}
+	return false
 }
 
 func bigDocument() []string {

@@ -219,8 +219,9 @@ func TestWorkStateReachesThePromptAndFollowsTheRequest(t *testing.T) {
 		return model.calls()[before]
 	}
 	first := run("What does the summarize threshold control?")
-	require.Contains(t, first.Prompt[0].Content[0].(fantasy.TextPart).Text, `"tier":"direct"`)
-	require.Contains(t, first.Prompt[0].Content[0].(fantasy.TextPart).Text, "project_context")
+	firstContext := allPromptText(first.Prompt)
+	require.Contains(t, firstContext, `"tier":"direct"`)
+	require.Contains(t, firstContext, "project_context")
 
 	run("Refactor the cache architecture so eviction is pluggable")
 	st, err := store.Read(t.Context(), sess.ID)
@@ -233,7 +234,20 @@ func TestWorkStateReachesThePromptAndFollowsTheRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "continuation", st.Work.Turns[2].Kind)
 	require.Equal(t, engineering.TierDeep, st.Work.Budget.Tier)
-	require.Contains(t, third.Prompt[0].Content[0].(fantasy.TextPart).Text, "<work_state>")
+	require.Contains(t, allPromptText(third.Prompt), "<work_state>")
+}
+
+func allPromptText(prompt fantasy.Prompt) string {
+	var b strings.Builder
+	for _, msg := range prompt {
+		for _, part := range msg.Content {
+			if text, ok := part.(fantasy.TextPart); ok {
+				b.WriteString(text.Text)
+				b.WriteByte('\n')
+			}
+		}
+	}
+	return b.String()
 }
 
 // The workflow work action records contract items and refuses unobserved
@@ -244,7 +258,7 @@ func TestWorkflowWorkActionBindsObservedEvidence(t *testing.T) {
 	store := engineering.NewStore(t.TempDir())
 	c := &coordinator{engineering: store}
 	ctx := context.WithValue(t.Context(), tools.SessionIDContextKey, "s")
-	_, err := recordWorkTurn(ctx, store, "s", "Make the parser accept empty input", "")
+	_, err := recordWorkTurn(ctx, store, nil, "s", "Make the parser accept empty input", "")
 	require.NoError(t, err)
 
 	call := func(action string, in WorkInput) fantasy.ToolResponse {

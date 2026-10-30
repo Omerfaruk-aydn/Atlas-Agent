@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -193,6 +194,10 @@ type Event struct {
 	// ChannelMessage is set only for EventChannelMessage: the fully rendered
 	// and escaped <channel>...</channel> element to inject into the session.
 	ChannelMessage string
+	// Workspace and Generation bind channel events to one workspace and one
+	// connection lifetime. Scoped subscribers reject missing or stale identity.
+	Workspace  string
+	Generation uint64
 }
 
 // Counts number of available tools, prompts, etc.
@@ -226,22 +231,40 @@ type ClientInfo struct {
 	PendingConfig *config.MCPConfig
 }
 
-// SubscribeEvents returns a channel for MCP events.
-//
-// Channel message events (EventChannelMessage) are excluded: they carry no
-// workspace or session identity, and the MCP broker is process-global. Without
-// this filter, every workspace that calls SubscribeEvents would receive every
-// other workspace's channel events — a cross-workspace injection path. Channel
-// delivery requires workspace-scoped routing, which is deferred to a later PR;
-// until then, channel events must not flow through the shared event fan-out.
+// SubscribeEvents preserves the legacy non-channel event stream. Callers that
+// need channel messages must use SubscribeWorkspaceEvents.
 func SubscribeEvents(ctx context.Context) <-chan pubsub.Event[Event] {
+	return subscribeEvents(ctx, "")
+}
+
+// SubscribeWorkspaceEvents routes channel messages only to their exact
+// workspace and current connection generation. Missing identity is dropped.
+// Non-channel events retain their existing process-wide fan-out behavior.
+func SubscribeWorkspaceEvents(ctx context.Context, workspace string) <-chan pubsub.Event[Event] {
+	return subscribeEvents(ctx, canonicalWorkspace(workspace))
+}
+
+func canonicalWorkspace(workspace string) string {
+	if strings.TrimSpace(workspace) == "" {
+		return ""
+	}
+	absolute, err := filepath.Abs(workspace)
+	if err != nil {
+		return ""
+	}
+	return filepath.Clean(absolute)
+}
+
+func subscribeEvents(ctx context.Context, workspace string) <-chan pubsub.Event[Event] {
 	raw := broker.Subscribe(ctx)
 	filtered := make(chan pubsub.Event[Event], 64)
 	go func() {
 		defer close(filtered)
 		for ev := range raw {
 			if ev.Payload.Type == EventChannelMessage {
-				continue
+				if workspace == "" || canonicalWorkspace(ev.Payload.Workspace) != workspace || ev.Payload.Generation != currentGen(ev.Payload.Name) {
+					continue
+				}
 			}
 			select {
 			case filtered <- ev:
@@ -578,7 +601,7 @@ func initClient(ctx context.Context, cfg *config.ConfigStore, name string, m con
 // newer attempt is doing. This is what makes a config change that lands
 // mid-connect converge on the latest config rather than a stale one.
 func connectAndRegister(ctx context.Context, cfg *config.ConfigStore, name string, m config.MCPConfig, gen uint64, resolver config.VariableResolver, channelOptIn bool) (*ClientSession, error) {
-	session, err := createSession(ctx, cfg, name, m, resolver, channelOptIn)
+	session, err := createSession(withConnectionGeneration(ctx, gen), cfg, name, m, resolver, channelOptIn)
 	if err != nil {
 		return nil, err
 	}
@@ -748,7 +771,7 @@ func getOrRenewClient(ctx context.Context, cfg *config.ConfigStore, name string)
 	// Capture the generation so a reconcile teardown that lands mid-renewal
 	// invalidates this rebuild instead of letting it clobber the newer one.
 	gen := currentGen(name)
-	newSess, err := newSession(ctx, cfg, name, m, cfg.Resolver(), channelEnabled(cfg.Overrides().EnabledChannels, name))
+	newSess, err := newSession(withConnectionGeneration(ctx, gen), cfg, name, m, cfg.Resolver(), channelEnabled(cfg.Overrides().EnabledChannels, name))
 	if err != nil {
 		clearMCPData(name)
 		// If an OAuth MCP fails to reconnect because the token is no
@@ -959,7 +982,12 @@ func createSession(ctx context.Context, cfg *config.ConfigStore, name string, m 
 	// capability AND was opted in via --channels; otherwise it is closed
 	// (buffer discarded). This prevents early notifications from being lost.
 	channelGate := newChannelGate()
-	transport = &channelTransport{inner: transport, name: name, gate: channelGate}
+	workspace := ""
+	if cfg != nil {
+		workspace = cfg.WorkingDir()
+	}
+	scope := channelScope{workspace: canonicalWorkspace(workspace), generation: connectionGeneration(ctx, name)}
+	transport = &channelTransport{inner: transport, name: name, gate: channelGate, scope: scope}
 
 	// When the server is marked Sessionless, the tools/prompts/resources
 	// list-changed handlers are omitted. The go-sdk opens a SEP-2575
@@ -1024,7 +1052,7 @@ func createSession(ctx context.Context, cfg *config.ConfigStore, name string, m 
 	if channelOptIn && hasChannelCapability(session.InitializeResult()) {
 		buffered := channelGate.resolve(true)
 		for _, raw := range buffered {
-			publishChannelMessage(mcpCtx, name, raw)
+			publishChannelMessageScoped(mcpCtx, scope, name, raw)
 		}
 		slog.Info("MCP channel enabled", "name", name, "buffered", len(buffered))
 	} else {

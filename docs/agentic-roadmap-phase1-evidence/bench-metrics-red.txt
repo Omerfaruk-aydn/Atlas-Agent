@@ -1,0 +1,6 @@
+# github.com/Omerfaruk-aydn/Atlas-Agent/internal/evaluation [github.com/Omerfaruk-aydn/Atlas-Agent/internal/evaluation.test]
+internal\evaluation\bench_metrics_test.go:11:121: unknown field FailOpen in struct literal of type BenchRecord
+internal\evaluation\bench_metrics_test.go:12:11: undefined: BenchMetrics
+internal\evaluation\bench_metrics_test.go:17:21: undefined: BenchRegressions
+FAIL	github.com/Omerfaruk-aydn/Atlas-Agent/internal/evaluation [build failed]
+FAIL

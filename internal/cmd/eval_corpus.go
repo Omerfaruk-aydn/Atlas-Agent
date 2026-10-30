@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"text/tabwriter"
@@ -86,7 +87,23 @@ the work it actually struggles with.`,
 	}
 	export.Flags().StringVar(&suite, "suite", "", "Suite directory to write the tasks into")
 	export.Flags().StringSliceVar(&check, "check", nil, "Judge command as comma-separated argv, replacing the case's recorded checks")
-	command.AddCommand(export)
+	command.AddCommand(export, &cobra.Command{
+		Use: "suggest", Short: "Cluster recurring failures and print evidence-bound, review-only improvement proposals", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			dataDir, err := corpusDataDir(cmd)
+			if err != nil {
+				return err
+			}
+			cases, err := harnessmetrics.LoadCases(dataDir)
+			if err != nil {
+				return err
+			}
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{
+				"proposals": harnessmetrics.ProposeImprovements(cases),
+				"policy":    "No proposal is applied automatically. Export the evidence cases and run an A/B bench only with explicit user approval.",
+			})
+		},
+	})
 	return command
 }
 

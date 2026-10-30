@@ -136,20 +136,22 @@ func RecordGreen(ctx context.Context, root string, done, passed []string) (Green
 		return Green{}, err
 	}
 	green := Green{Commit: commit, Time: time.Now().UnixMilli(), Done: slices.Clone(done), Passed: slices.Clone(passed)}
-	greens, err := Greens(root)
-	if err != nil {
-		greens = nil // A corrupt list is replaced rather than blocking new checkpoints.
-	}
-	greens = append(greens, green)
-	greens = greens[max(0, len(greens)-maxGreens):]
-	data, err := json.MarshalIndent(greens, "", "  ")
-	if err != nil {
-		return Green{}, err
-	}
-	if err := os.MkdirAll(filepath.Join(root, Dir), 0o755); err != nil {
-		return Green{}, err
-	}
-	return green, os.WriteFile(filepath.Join(root, Dir, CheckpointsFile), data, 0o644)
+	path := filepath.Join(root, Dir, CheckpointsFile)
+	// Another session may record a checkpoint at the same moment; the list is
+	// read and replaced under a lock so neither entry is lost.
+	return green, withFileLock(path, func() error {
+		greens, err := Greens(root)
+		if err != nil {
+			greens = nil // A corrupt list is replaced rather than blocking new checkpoints.
+		}
+		greens = append(greens, green)
+		greens = greens[max(0, len(greens)-maxGreens):]
+		data, err := json.MarshalIndent(greens, "", "  ")
+		if err != nil {
+			return err
+		}
+		return writeFileAtomic(path, data, 0o644)
+	})
 }
 
 // LastGreenPassing returns the newest green state in which command passed.

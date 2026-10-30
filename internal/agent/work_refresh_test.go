@@ -44,19 +44,19 @@ func countWorkBlocks(s string) int {
 func TestContinueAfterDeliveryDoesNotEraseContract(t *testing.T) {
 	t.Parallel()
 	store := engineering.NewStore(t.TempDir())
-	_, err := recordWorkTurn(t.Context(), store, "s", "fix cache", "")
+	_, err := recordWorkTurn(t.Context(), store, nil, "s", "fix cache", "")
 	require.NoError(t, err)
 	_, err = store.UpdateWork(t.Context(), "s", func(w *engineering.WorkState, _ engineering.State) error {
 		w.Items = []engineering.WorkItem{{ID: "R1", Text: "fix cache", Origin: engineering.OriginUser, Status: engineering.ItemDelivered}}
 		return nil
 	})
 	require.NoError(t, err)
-	w, err := recordWorkTurn(t.Context(), store, "s", "devam et", "")
+	w, err := recordWorkTurn(t.Context(), store, nil, "s", "devam et", "")
 	require.NoError(t, err)
 	require.Len(t, w.Items, 1)
-	w, err = recordWorkTurn(t.Context(), store, "s", "create export", "")
+	w, err = recordWorkTurn(t.Context(), store, nil, "s", "create export", "")
 	require.NoError(t, err)
-	require.Empty(t, w.Items)
+	require.Len(t, w.Items, 1, "legacy delivered labels without a current aggregate decision cannot erase the contract")
 }
 
 func TestProjectionNeverDropsUserConstraintsToMeetSoftBudget(t *testing.T) {

@@ -89,7 +89,24 @@ type Workspace struct {
 	TaskID           string `json:"task_id,omitempty"`
 }
 
+// SourceMark is the source fingerprint observed right after a passing check,
+// with the generation it was taken at. Comparing it later exposes changes no
+// tracked tool reported: a background job that kept writing, an edit made
+// outside the agent, a partial write by a tool that failed.
+type SourceMark struct {
+	Generation  uint64 `json:"generation"`
+	Fingerprint string `json:"fingerprint"`
+}
+
 type State struct {
+	Completion *CompletionCheckpoint `json:"completion,omitempty"`
+	// VerifiedSource is set when a check passed; see SourceMark.
+	VerifiedSource *SourceMark `json:"verified_source,omitempty"`
+
+	// journal resolves operations the rolling list no longer holds. It is set
+	// on read-only views handed to work-state logic, never persisted.
+	journal func(ref string) (Operation, bool)
+
 	Expertise        []ExpertiseRecord            `json:"expertise,omitempty"`
 	LearnedMethods   []LearnedMethod              `json:"learned_methods,omitempty"`
 	Branches         []PatchBranch                `json:"patch_branches,omitempty"`
@@ -474,6 +491,62 @@ func (s *Store) FinishObserved(ctx context.Context, session, id string, passed, 
 	})
 }
 
+// NoteSourceChange advances the source generation for a change detected
+// outside a successful operation (partial failure, cancellation, an editor
+// or shell the tool classification could not see). Evidence recorded at the
+// earlier generation becomes stale; history is not rewritten.
+func (s *Store) NoteSourceChange(ctx context.Context, session string) error {
+	return s.Update(ctx, session, func(st *State) error {
+		st.Generation++
+		st.Failures = map[string]int{}
+		return nil
+	})
+}
+
+// RecordVerifiedSource stores the fingerprint observed after a passing check,
+// at the generation that check ran in.
+func (s *Store) RecordVerifiedSource(ctx context.Context, session, fingerprint string) error {
+	if fingerprint == "" {
+		return nil
+	}
+	return s.Update(ctx, session, func(st *State) error {
+		st.VerifiedSource = &SourceMark{Generation: st.Generation, Fingerprint: fingerprint}
+		return nil
+	})
+}
+
+// SourceMarked returns the stored mark when it still describes the current
+// generation, so a caller knows whether a fingerprint comparison can say
+// anything. A mark from an older generation was already staled by a tracked
+// change.
+func (s *Store) SourceMarked(ctx context.Context, session string) (SourceMark, bool) {
+	st, err := s.Read(ctx, session)
+	if err != nil || st.VerifiedSource == nil || st.VerifiedSource.Generation != st.Generation {
+		return SourceMark{}, false
+	}
+	return *st.VerifiedSource, true
+}
+
+// NoteSourceDrift compares the current fingerprint with the mark taken after
+// the last passing check. A difference at the same generation is a change no
+// tracked tool reported, so the source generation advances and every earlier
+// check becomes stale. It reports whether it did.
+func (s *Store) NoteSourceDrift(ctx context.Context, session, current string) (bool, error) {
+	drifted := false
+	err := s.Update(ctx, session, func(st *State) error {
+		mark := st.VerifiedSource
+		if mark == nil || mark.Generation != st.Generation || mark.Fingerprint == current {
+			return nil
+		}
+		st.Generation++
+		st.Failures = map[string]int{}
+		st.VerifiedSource = nil
+		drifted = true
+		return nil
+	})
+	return drifted, err
+}
+
 func (s *Store) Charge(ctx context.Context, id, task string, tokens int64, cost float64, duration time.Duration) error {
 	if tokens < 0 || cost < 0 || math.IsNaN(cost) || math.IsInf(cost, 0) || duration < 0 {
 		return errors.New("usage deltas must be non-negative")
@@ -510,10 +583,30 @@ func (s *Store) SetBudget(ctx context.Context, id, task string, limits Limits) e
 }
 
 func (s *Store) Resolve(ctx context.Context, id, operation, resolution, evidence string) error {
+	return s.resolve(ctx, id, operation, resolution, evidence, "")
+}
+
+// ResolveObserved settles an external effect as verified. The observation is
+// not text typed by the caller: a trusted adapter must have recorded a
+// read-only check of this exact effect. Opaque MCP replies do not establish
+// which resource or expected result was checked and cannot supply this proof.
+func (s *Store) ResolveObserved(ctx context.Context, id, operation, observedOp, evidence string) error {
+	if observedOp == "" {
+		return errors.New("an observed operation is required")
+	}
+	return s.resolve(ctx, id, operation, "completed", evidence, observedOp)
+}
+
+func (s *Store) resolve(ctx context.Context, id, operation, resolution, evidence, observedOp string) error {
 	if evidence == "" || len(evidence) > 2048 || resolution != "completed" && resolution != "failed" && resolution != "abandoned" {
 		return errors.New("recovery requires inspection evidence and completed/failed/abandoned resolution")
 	}
 	return s.Update(ctx, id, func(st *State) error {
+		if resolution == "completed" {
+			if err := checkExternalObservation(st, operation, observedOp); err != nil {
+				return err
+			}
+		}
 		now := time.Now().UnixMilli()
 		found := false
 		for i := range st.Operations {
@@ -532,9 +625,14 @@ func (s *Store) Resolve(ctx context.Context, id, operation, resolution, evidence
 			return errors.New("unresolved operation not found")
 		}
 		phase := outcome.PhaseCanceled
+		external := slices.ContainsFunc(st.Outcomes.Records, func(r outcome.Record) bool { return r.OpID == operation && r.External && r.Mutation })
 		switch resolution {
 		case "completed":
 			phase = outcome.PhaseApplied
+			if external {
+				// Inspection of the target system observed the effect.
+				phase = outcome.PhaseVerified
+			}
 		case "failed":
 			phase = outcome.PhaseFailed
 		}
@@ -545,9 +643,57 @@ func (s *Store) Resolve(ctx context.Context, id, operation, resolution, evidence
 	})
 }
 
+// checkExternalObservation refuses to call a pending external effect
+// completed on the strength of the caller's words or a successful unrelated
+// call. Output evidence must attest to the exact dispatched request, including
+// its target and requested change, and come from a later read-only check.
+func checkExternalObservation(st *State, operation, observedOp string) error {
+	var effect *outcome.Record
+	effectAt := -1
+	for i := range st.Outcomes.Records {
+		if r := &st.Outcomes.Records[i]; r.OpID == operation && r.External && r.Mutation && !r.Resolved {
+			effect, effectAt = &st.Outcomes.Records[i], i
+		}
+	}
+	if effect == nil {
+		return nil
+	}
+	if observedOp == "" {
+		return errors.New("an external effect is verified by a recorded observation, not by a description: inspect the target system with a tool call, then resolve with the observing operation id")
+	}
+	// Records are kept in the order calls finished, so a later index is a
+	// later call even within one millisecond.
+	for i, r := range st.Outcomes.Records {
+		if r.OpID != observedOp {
+			continue
+		}
+		if r.OpID == operation || i <= effectAt || r.Mutation || r.Phase != outcome.PhaseVerified {
+			return errors.New("the observing operation must be a later read-only check of the exact external effect; an opaque MCP call or another mutation is not proof")
+		}
+		op, ok := findOperation(*st, observedOp)
+		if !ok || op.Status != "completed" || !op.OutcomeObserved || !validArtifactHash(op.EvidenceHash) || op.StartedAt <= effect.At {
+			return errors.New("the observing check has no runtime-observed successful result")
+		}
+		if effect.Fingerprint != "" && slices.ContainsFunc(st.Outcomes.Evidence, func(e outcome.Evidence) bool {
+			return e.Kind == outcome.KindOutput && e.Source == observedOp && e.Subject == operation && e.Claim == ExternalResultClaim(*effect) && e.StaleBy == ""
+		}) {
+			return nil
+		}
+		return errors.New("the observing check has no current adapter evidence bound to this operation's exact target and requested result; opaque MCP effects remain unverified")
+	}
+	return errors.New("observing operation not found in the recorded outcomes")
+}
+
+// ExternalResultClaim is the assertion a trusted verification adapter records
+// only after comparing the actual target state with the dispatched request.
+// A caller-supplied description or a server's generic success is insufficient.
+func ExternalResultClaim(effect outcome.Record) string {
+	return "external-result:" + effect.Fingerprint
+}
+
 func unknownOperationOutcome(st *State, id string) bool {
 	return slices.ContainsFunc(st.Outcomes.Records, func(record outcome.Record) bool {
-		return record.OpID == id && (record.Phase == outcome.PhaseUnknown || record.Phase == outcome.PhaseDispatched)
+		return record.OpID == id && (record.Phase == outcome.PhaseUnknown || record.Phase == outcome.PhaseDispatched || record.PendingExternal())
 	})
 }
 

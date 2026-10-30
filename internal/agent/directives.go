@@ -61,7 +61,7 @@ func (a *sessionAgent) prepareDirectives(ctx context.Context, call SessionAgentC
 			return nil, err
 		}
 		if !a.isSubAgent {
-			if _, err := recordWorkTurn(ctx, a.engineering, scope.SessionID, directive.Text, a.workBudgetOverride()); err != nil {
+			if _, err := recordWorkTurn(ctx, a.engineering, a.sessions, scope.SessionID, directive.Text, a.workBudgetOverride()); err != nil {
 				return nil, err
 			}
 		}

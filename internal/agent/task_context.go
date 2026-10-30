@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -154,32 +155,32 @@ func prepareTaskContext(ctx context.Context, cfg *config.ConfigStore, store *eng
 		return packet, err
 	}
 	seen := map[string]bool{}
+	terms := taskTerms(task)
 	add := func(path, kind, hash, content string) {
 		if seen[path] {
 			return
 		}
 		seen[path] = true
-		if len(packet.Sources) >= 16 {
+		if len(packet.Sources) >= contextMaxSources {
 			packet.Truncated = true
+			omit(&packet, path, kind, "source limit")
 			return
 		}
 		if !utf8.ValidString(content) {
 			packet.Gaps = append(packet.Gaps, "Invalid UTF-8 source omitted")
 			return
 		}
-		if len(content) > 4096 {
-			content = content[:4096]
-			for !utf8.ValidString(content) {
-				content = content[:len(content)-1]
-			}
+		excerpt, start, end, cut := excerptAround(content, terms, contextSourceBytes)
+		if cut {
 			packet.Truncated = true
 		}
-		source := ContextSource{Path: path, Hash: hash, Kind: kind, Content: content, StartLine: 1, EndLine: strings.Count(content, "\n") + 1}
+		source := ContextSource{Path: path, Hash: hash, Kind: kind, Content: excerpt, StartLine: start, EndLine: end}
 		packet.Sources = append(packet.Sources, source)
 		data, _ := json.Marshal(packet)
 		if len(data) > taskContextLimit-2048 {
 			packet.Sources = packet.Sources[:len(packet.Sources)-1]
 			packet.Truncated = true
+			omit(&packet, path, kind, "size budget")
 		}
 	}
 	for _, instruction := range instructions {
@@ -218,9 +219,13 @@ func prepareTaskContext(ctx context.Context, cfg *config.ConfigStore, store *eng
 			graph = codegraph.CodeGraph{}
 		}
 	}
-	read := func(path, hash, kind string) {
-		if len(packet.Sources) >= 16 {
-			packet.Truncated = true
+	// Candidates are collected per kind first and admitted with reserved
+	// shares, so a broad ownership cannot spend the whole budget on source
+	// before the tests and the callers that constrain it are considered.
+	var ownedC, testC, relatedC []contextCandidate
+	queued := map[string]bool{}
+	queue := func(list *[]contextCandidate, path, hash, kind string) {
+		if queued[path] || seen[path] {
 			return
 		}
 		data, err := engineering.ReadProjectEvidence(ctx, root, path)
@@ -230,16 +235,17 @@ func prepareTaskContext(ctx context.Context, cfg *config.ConfigStore, store *eng
 			}
 			return
 		}
-		add(path, kind, hash, string(data))
+		queued[path] = true
+		*list = append(*list, contextCandidate{path: path, hash: hash, kind: kind, content: string(data), score: termScore(string(data), terms)})
 	}
 	for _, file := range project.Files {
 		if owned(file.Path) && !file.Test {
-			read(file.Path, file.Fingerprint, "owned-source")
+			queue(&ownedC, file.Path, file.Fingerprint, "owned-source")
 		}
 	}
 	for _, file := range project.Files {
 		if file.Test && owned(file.Path) {
-			read(file.Path, file.Fingerprint, "test-candidate")
+			queue(&testC, file.Path, file.Fingerprint, "test-candidate")
 		}
 	}
 	nodes := make(map[string]codegraph.Node, len(graph.Nodes))
@@ -250,12 +256,19 @@ func prepareTaskContext(ctx context.Context, cfg *config.ConfigStore, store *eng
 		from, to := nodes[edge.From], nodes[edge.To]
 		if owned(from.Path) || owned(to.Path) {
 			if from.ID != "" {
-				read(from.Path, from.FileHash, "graph-related")
+				queue(&relatedC, from.Path, from.FileHash, "graph-related")
 			}
 			if to.ID != "" {
-				read(to.Path, to.FileHash, "graph-related")
+				queue(&relatedC, to.Path, to.FileHash, "graph-related")
 			}
 		}
+	}
+	for _, list := range []*[]contextCandidate{&ownedC, &testC, &relatedC} {
+		// Files that mention what the task is about come first; stable otherwise.
+		sort.SliceStable(*list, func(i, j int) bool { return (*list)[i].score > (*list)[j].score })
+	}
+	for _, c := range selectContext(len(packet.Sources), ownedC, testC, relatedC, &packet) {
+		add(c.path, c.kind, c.hash, c.content)
 	}
 	_, knowledge, err := store.ProjectKnowledge(ctx, root, 8)
 	if err != nil {

@@ -138,6 +138,7 @@ func diagnose(ctx context.Context, cfg *config.ConfigStore) []checkResult {
 		checkDatabase(ctx, cfg),
 		checkProviders(cfg),
 		checkModels(cfg),
+		{Name: "safe mode", Status: statusOK, Detail: "If custom configuration prevents startup, rerun with atlas --safe-mode to isolate hooks, skills, MCP and plugins"},
 	}
 	results = append(results, checkMCPCommands(cfg)...)
 	results = append(results, checkLSPCommands(cfg)...)

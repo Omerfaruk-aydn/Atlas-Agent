@@ -1,0 +1,13 @@
+{
+  "bench_tasks": 40,
+  "languages": {
+    "go": 20,
+    "python": 10,
+    "typescript": 10
+  },
+  "hidden_filenames_and_go_test_names_unique": true,
+  "prompt_goldens": 8,
+  "schema_contains_trace_and_ablation": true,
+  "authorization_template_unchanged": true,
+  "index_unchanged": true
+}

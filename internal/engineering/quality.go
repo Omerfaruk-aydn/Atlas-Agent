@@ -142,6 +142,14 @@ func SourceFingerprint(ctx context.Context, root string, excluded ...string) (st
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// ProjectFingerprint is SourceFingerprint without the files Atlas keeps for
+// itself (the work plan, per-session progress, locks, the runtime store): the
+// agent's own bookkeeping changes during every turn and says nothing about
+// whether the project's source changed.
+func ProjectFingerprint(ctx context.Context, root, storeDir string) (string, error) {
+	return SourceFingerprint(ctx, root, storeDir, filepath.Join(root, ".atlas"))
+}
+
 type limitedSnapshot struct {
 	data     []byte
 	exceeded bool

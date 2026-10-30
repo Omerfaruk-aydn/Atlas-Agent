@@ -1,0 +1,6 @@
+{
+  "name": "atlas-offline-bench-checkers",
+  "private": true,
+  "description": "Pinned local TypeScript checker; validation makes no model calls",
+  "devDependencies": { "typescript": "5.9.3" }
+}

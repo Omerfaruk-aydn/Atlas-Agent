@@ -1,0 +1,1 @@
+export function solve(s:string):string{if(!s.startsWith("/"))throw new Error("absolute path required");const out:string[]=[];for(const x of s.split("/")){if(!x||x===".")continue;if(x==="..")out.pop();else out.push(x);}return "/"+out.join("/");}

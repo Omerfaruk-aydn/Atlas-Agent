@@ -110,6 +110,13 @@ func (a *sessionAgent) injectAdvisorNote(sessionID, prompt string) string {
 // after the turn it reviews has already completed, so there is no request
 // left for an advisor failure to fail.
 func (a *sessionAgent) runAdvisorPass(ctx context.Context, sessionID, userPrompt, assistantText string) {
+	ctx, observation := startGate(ctx, "advisor")
+	outcome, reason := "fail_open", "review_incomplete"
+	if !a.harnessOptions().GateEnabled("advisor") {
+		observation.finish("skipped", "disabled_by_ablation")
+		return
+	}
+	defer func() { observation.finish(outcome, reason) }()
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("Advisor pass panicked", "session_id", sessionID, "panic", r)
@@ -125,14 +132,15 @@ func (a *sessionAgent) runAdvisorPass(ctx context.Context, sessionID, userPrompt
 	ctx = context.WithValue(ctx, tools.SessionIDContextKey, sessionID)
 	ctx, finish, budgetErr := a.engineeringContext(ctx, sessionID)
 	if budgetErr != nil {
+		outcome, reason = "skipped", "execution_budget"
 		slog.Info("Advisor skipped because execution budget is exhausted", "session_id", sessionID)
 		return
 	}
 	defer finish()
 	agent := fantasy.NewAgent(
-		advisorModel.Model,
+		observedModel(ctx, *advisorModel),
 		fantasy.WithSystemPrompt(advisorSystemPrompt),
-		fantasy.WithTools(guardTools(a.advisorTools.Copy(), a.engineering)...),
+		fantasy.WithTools(observedTools(guardTools(a.advisorTools.Copy(), a.engineering))...),
 		fantasy.WithUserAgent(userAgent),
 	)
 
@@ -148,7 +156,12 @@ func (a *sessionAgent) runAdvisorPass(ctx context.Context, sessionID, userPrompt
 		return
 	}
 
+	outcome, reason = "pass", "review_complete"
 	severity, note := parseAdvisorReply(result.Response.Content.Text())
+	if severity == "" {
+		outcome, reason = "fail_open", "invalid_report"
+		slog.Warn("Advisor reply had no usable verdict", "session_id", sessionID)
+	}
 	if severity == "" || severity == "NONE" {
 		return
 	}
@@ -203,6 +216,19 @@ func shouldEscalate(severity, threshold string) bool {
 // finished and errors are logged and swallowed: there is no live request
 // for a failed escalation to fail.
 func (a *sessionAgent) runEscalationPass(ctx context.Context, sessionID, userPrompt, assistantText, severity, advisorNote string) (note string, ok bool) {
+	if !a.harnessOptions().GateEnabled("escalator") {
+		_, observation := startGate(ctx, "escalator")
+		observation.finish("skipped", "disabled_by_ablation")
+		return "", false
+	}
+	ctx, observation := startGate(ctx, "escalator")
+	defer func() {
+		if ok {
+			observation.finish("pass", "review_complete")
+		} else {
+			observation.finish("fail_open", "escalation_unavailable")
+		}
+	}()
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("Escalation pass panicked", "session_id", sessionID, "panic", r)
@@ -214,9 +240,9 @@ func (a *sessionAgent) runEscalationPass(ctx context.Context, sessionID, userPro
 
 	escalateModel := a.escalateModel.Get().v
 	agent := fantasy.NewAgent(
-		escalateModel.Model,
+		observedModel(ctx, *escalateModel),
 		fantasy.WithSystemPrompt(escalateSystemPrompt),
-		fantasy.WithTools(guardTools(a.escalateTools.Copy(), a.engineering)...),
+		fantasy.WithTools(observedTools(guardTools(a.escalateTools.Copy(), a.engineering))...),
 		fantasy.WithUserAgent(userAgent),
 	)
 

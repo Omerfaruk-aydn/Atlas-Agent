@@ -82,7 +82,8 @@ func outcomeResult(name string, resp fantasy.ToolResponse, runErr error, mutatio
 
 // recordOutcome persists the call's phase and the evidence it produced. A
 // failure to persist is reported but never changes the tool's own result.
-func (t *guardedTool) recordOutcome(ctx context.Context, session, opID string, call fantasy.ToolCall, result outcome.Result, resp fantasy.ToolResponse) error {
+func (t *guardedTool) recordOutcome(ctx context.Context, session, opID string, call fantasy.ToolCall, result outcome.Result, resp fantasy.ToolResponse) (retErr error) {
+	defer traceEvidenceOutcome(ctx, time.Now(), result.Uncertain, &retErr)
 	phase := outcome.Classify(result)
 	record := outcome.Record{
 		OpID:        opID,
@@ -94,6 +95,8 @@ func (t *guardedTool) recordOutcome(ctx context.Context, session, opID string, c
 	}
 	if result.Mutation {
 		record.Subjects = outcomeSubjects(call)
+		// An MCP server acts on systems the source generation cannot see.
+		record.External = strings.HasPrefix(call.Name, "mcp_")
 	}
 	native, hasNative := tools.ResponseOutcome(resp)
 	if hasNative {

@@ -33,10 +33,6 @@ func (a *sessionAgent) SetRouter(rt *routerRuntime) {
 	a.router.Store(rt)
 }
 
-func sameModel(a, b Model) bool {
-	return a.ModelCfg.Provider == b.ModelCfg.Provider && a.ModelCfg.Model == b.ModelCfg.Model
-}
-
 func routerPrices(m Model) modelrouter.Prices {
 	c := m.CatwalkCfg
 	return modelrouter.Prices{

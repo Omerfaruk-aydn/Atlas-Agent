@@ -1,0 +1,19 @@
+{
+  "id": "fix-lease-renewal",
+  "prompt": "Lease validity is strict: expires==now is expired. Renew may extend an active lease by delta>0 from now, but may never shorten it. Keep the lease and renewal APIs consistent across both files. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "go",
+    "test",
+    "-p",
+    "1",
+    "-count=1",
+    "./..."
+  ],
+  "timeout_seconds": 180,
+  "language": "go",
+  "categories": [
+    "multi-file",
+    "interacting-changes",
+    "bug-fix"
+  ]
+}

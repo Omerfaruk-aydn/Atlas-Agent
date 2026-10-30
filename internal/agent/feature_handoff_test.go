@@ -203,7 +203,7 @@ func TestHandOffSavesTheHandoffAsTheSummary(t *testing.T) {
 
 	sess, err := env.sessions.Create(t.Context(), "solar")
 	require.NoError(t, err)
-	_, err = recordWorkTurn(t.Context(), store, sess.ID, "build a solar system", "")
+	_, err = recordWorkTurn(t.Context(), store, env.sessions, sess.ID, "build a solar system", "")
 	require.NoError(t, err)
 	_, err = env.messages.Create(t.Context(), sess.ID, messageParams("build a solar system"))
 	require.NoError(t, err)

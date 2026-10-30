@@ -1,0 +1,398 @@
+[
+  {
+    "path": "docs/agentic-roadmap-audit.md",
+    "hash": "7F652E6CCAF8D1680B5E171DCF369D28EDE227F70EDFDA029F435ABE74466DDC"
+  },
+  {
+    "path": "docs/agentic-roadmap-baseline.md",
+    "hash": "D25B3FB4137C3A38F3BBE432C33D39A379DE50813A920C5FA68781FC8B416448"
+  },
+  {
+    "path": "docs/agentic-roadmap-completion-flow.mmd",
+    "hash": "06C63FE701EF4A514C91D74DCEAA90C48A6E6076A0918E20A9A4EB6147F0E73C"
+  },
+  {
+    "path": "docs/agentic-roadmap-master-prompt.md",
+    "hash": "EB5D8C413696AA1A5444CDF54AB0B3B6662827390DD88C76B7DBD2CB59FA042E"
+  },
+  {
+    "path": "docs/agentic-roadmap-phase0-evidence/artifact-validation.json",
+    "hash": "C74A81F670DDDF4C73BB4E22B2AA7A76985191099604E5BC720AF9D953DF7825"
+  },
+  {
+    "path": "docs/agentic-roadmap-phase0-evidence/build-output.txt",
+    "hash": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+  },
+  {
+    "path": "docs/agentic-roadmap-phase0-evidence/build-result.json",
+    "hash": "75011255DAD89DEF33148CA66F1675DEB2D52BD6233ED78C51EBF9CB6E1351A1"
+  },
+  {
+    "path": "docs/agentic-roadmap-phase0-evidence/count-prompt-tokens.py",
+    "hash": "313AB7E29F1C9A07981B338A6F5493B29FB192C63789F40BC87565A761FC8D6B"
+  },
+  {
+    "path": "docs/agentic-roadmap-phase0-evidence/existing-files-sha256.json",
+    "hash": "B3EC5FB87AAF381B5EF89C0A91DBAD3AA680EE02BDE14E1B7C62534F79356698"
+  },
+  {
+    "path": "docs/agentic-roadmap-phase0-evidence/git-diff-stat-after.txt",
+    "hash": "5779333D3A7F2F36F8958E0E7E6B4B1423047D8BAB1A7F31F14F0F35A32AD98A"
+  },
+  {
+    "path": "docs/agentic-roadmap-phase0-evidence/git-diff-stat-before.txt",
+    "hash": "5779333D3A7F2F36F8958E0E7E6B4B1423047D8BAB1A7F31F14F0F35A32AD98A"
+  },
+  {
+    "path": "docs/agentic-roadmap-phase0-evidence/git-status-after.txt",
+    "hash": "01CA33A141D3BE860DCC835BA53302D7E660440F9431CBD5C31C4845D1720E7F"
+  },
+  {
+    "path": "docs/agentic-roadmap-phase0-evidence/git-status-before.txt",
+    "hash": "D74CC8EA1D8DF5ED2DBCD03F781747DC7A792ADF069E525F83B56A0760E26131"
+  },
+  {
+    "path": "docs/agentic-roadmap-phase0-evidence/measure-prompts.go.txt",
+    "hash": "3EBA24F0EB5992E065A7A6A26CF8C831BFC2D510BEFFF7564663D361A1081CAA"
+  },
+  {
+    "path": "docs/agentic-roadmap-phase0-evidence/preservation-result.json",
+    "hash": "848781601C267BB2AFB56A89A32CC8E0CD0D9E382D164D262EB9DC8669A8113C"
+  },
+  {
+    "path": "docs/agentic-roadmap-phase0-evidence/tests-output.txt",
+    "hash": "F5A18F654B7A4563E25CF3D552BFE926025CA758405192C4B9485C7914DA4389"
+  },
+  {
+    "path": "docs/agentic-roadmap-phase0-evidence/tests-result.json",
+    "hash": "58BB4B1B5AAFEDE79AFF60686B51111B0F1A4A53A7778C13FDC8B20031350ED1"
+  },
+  {
+    "path": "docs/agentic-roadmap-prompt-sizes.json",
+    "hash": "D85E45C693466AA2B5CCE9366EC4D1D34A1C79B6FF24840A25D31EF2EE860F94"
+  },
+  {
+    "path": "internal/agent/candidate_export_test.go",
+    "hash": "BB6109AADDC394AB6D1A3CE26AA93F028FD57E17A9278357AEC3FA2D28D5181F"
+  },
+  {
+    "path": "internal/agent/completion_binding_test.go",
+    "hash": "160C5F63707B2C8E4F29B0E27399469E8C52D74BCB9B2888D06C12B19D71CB4F"
+  },
+  {
+    "path": "internal/agent/completion_decision.go",
+    "hash": "E066E0F10408CA876CAF67C851DE84D9D59A10D5AF0DAF748BB45F749BE4BCBE"
+  },
+  {
+    "path": "internal/agent/completion_decision_test.go",
+    "hash": "75DD4588BE244ABB13ACCDDF30B388EE01CD7E6E38187F31DAABA6759E50784A"
+  },
+  {
+    "path": "internal/agent/completion_input.go",
+    "hash": "68B8D15B92E705F727975B73517F3C5BF12BA0C724049DEDEF6B92D79FC9AD4D"
+  },
+  {
+    "path": "internal/agent/completion_persistence_test.go",
+    "hash": "AFCFCE953896693A864636F9E812C85AB26BED7081B93BB5B51A2B3C0A84683B"
+  },
+  {
+    "path": "internal/agent/context_fit.go",
+    "hash": "C41C74318CFB873BF76E2411A14D16EEE766FE40CEAF7BD2C13258186CD5F30B"
+  },
+  {
+    "path": "internal/agent/context_fit_test.go",
+    "hash": "BAE70D8A1BDAE8AEE6E8659B1D74B38EDAFE24AFDF39A6BF910A8AD0B18A0068"
+  },
+  {
+    "path": "internal/agent/context_overflow_run_test.go",
+    "hash": "B42BEF7C9FDA697B27764A6745530A44650B9384FC68BBDA5EB572982907EA49"
+  },
+  {
+    "path": "internal/agent/context_window.go",
+    "hash": "983FCEF3CE985CF3A07FDC88E3FAB7A219D9A7D0045B0B8694D6C22252561AC6"
+  },
+  {
+    "path": "internal/agent/context_window_test.go",
+    "hash": "BE2C708ECF31607266D6FA7C519FEDF4CE2B2ED7F94A994166241B5FDDBE3106"
+  },
+  {
+    "path": "internal/agent/effect_tracking_test.go",
+    "hash": "AC504C169968E0A4F47E7A85EE9606EB6DE2B59852E6BA0965D7CCB2A7C9636E"
+  },
+  {
+    "path": "internal/agent/late_effects_test.go",
+    "hash": "BE917617F0033DAE9F68FAA2F4CA68638FC31B175FAFE37D0B1F66BEFCB1BA34"
+  },
+  {
+    "path": "internal/agent/review_status.go",
+    "hash": "A1E9ABFF0A2CFB0A1299BA1D5CA158961CF1DBCE5DDFA37EF576F123EAF6A049"
+  },
+  {
+    "path": "internal/agent/source_drift.go",
+    "hash": "7F7753DD16B979253E568C6FD3B34008EB806DE3296FD9F42C9A266DCDDFE85C"
+  },
+  {
+    "path": "internal/agent/task_context_select.go",
+    "hash": "53863F8EE874D1679564ADEAC88890BCEB8B2469A52B30C23F4FECF1D9928037"
+  },
+  {
+    "path": "internal/agent/task_context_select_test.go",
+    "hash": "C031B4236E26B89B2162ED17270A029A135706AD24EA33C4CAF3BF3BD0B11CD0"
+  },
+  {
+    "path": "internal/agent/tools/schema_contract_test.go",
+    "hash": "6576417567995C3D644C9F759A913DAD0C6333BB10321187E9F38A10113191FE"
+  },
+  {
+    "path": "internal/deps/atlas-llm/schema/contract_test.go",
+    "hash": "ACACBA124C0AEDA7F1ED3A1ED20CED0F09BF174AB4D15DB85A6CE981F68AE0D5"
+  },
+  {
+    "path": "internal/deps/atlas-llm/tool_input_validation_test.go",
+    "hash": "793A869B6DDF55165CC5692C68B8DF1F5C9F5770C2BBA93F19EA156DF34A3776"
+  },
+  {
+    "path": "internal/engineering/completion.go",
+    "hash": "CF08B8AE9E146E4EE8A65A2D09286D56B4128B01B0D45A14440046CBF84E7CB4"
+  },
+  {
+    "path": "internal/engineering/completion_test.go",
+    "hash": "D426457E7A35C8652A3784FE6B9A36176F4E9A25D4CBF59DED83EFAE6594D1C9"
+  },
+  {
+    "path": "internal/engineering/external_observation_test.go",
+    "hash": "EEC010A6B5B7B1185D6AAD84685CCBBC79923416052A3CC588D5310EABFCC093"
+  },
+  {
+    "path": "internal/engineering/method_outcomes.go",
+    "hash": "682418ACCEC671F87DCF0728B0E54E9A8291F61B9C34C8D44B2194EA2F2D3D32"
+  },
+  {
+    "path": "internal/engineering/method_outcomes_test.go",
+    "hash": "6DF360359268CD2724AF6104A1BDC8014A46C7F87F45CD64EBF4661ABEA612CF"
+  },
+  {
+    "path": "internal/engineering/work_evidence_test.go",
+    "hash": "901A35EFD58C6763DFC7ADAB1F08C2851B474F37967B56B57F45E720D8E0BD55"
+  },
+  {
+    "path": "internal/engineering/work_journal_test.go",
+    "hash": "92C2AA494086AE0891E959017B335DA3D0E8B934388AB770973F44DDE03AB1E6"
+  },
+  {
+    "path": "internal/engineering/work_signals.go",
+    "hash": "8EE9EC19CE939CE2499A5AA62FE6C53EE27ADE2E33E9CCE8A738130745F4158E"
+  },
+  {
+    "path": "internal/engineering/work_signals_test.go",
+    "hash": "7A25D95B83CD8FEED9F46C998BA240776AF85A7D2FCD8A36E7D9FDC2DBCDBF25"
+  },
+  {
+    "path": "internal/workplan/process_test.go",
+    "hash": "8131547D13CA58C58E56CCD724C6C5ECD33BBCD09754BED934A2221259F01DDD"
+  },
+  {
+    "path": "internal/workplan/scope.go",
+    "hash": "10F49495C6A2A63F634C9ED231663FF32160B008C2323BA2E76EB78830CA3743"
+  },
+  {
+    "path": "internal/workplan/scope_test.go",
+    "hash": "C22F34247206F84B92DB649756641EE49054CBECDA0C49CDD9051C95AC6A4B38"
+  },
+  {
+    "path": "docs/agent-quality-verification-2026-10-01.json",
+    "hash": "MISSING"
+  },
+  {
+    "path": "docs/agent-roles-verification-2026-10-02.json",
+    "hash": "MISSING"
+  },
+  {
+    "path": "docs/antigravity-models.md",
+    "hash": "47B00A721D36C5E2B6C7E60A55CB072183FEEA19AD300585896F95062E8221B6"
+  },
+  {
+    "path": "internal/agent/agent.go",
+    "hash": "EB1B14DF5BD0CC5D5ED7394A583FBDFE39607DF710A2DC41BE084D8DE9417B4A"
+  },
+  {
+    "path": "internal/agent/attempt_model.go",
+    "hash": "B73211144B83AF962615A558051BA8617EA60FDD4466F6A9104E075E71CAACA7"
+  },
+  {
+    "path": "internal/agent/capability_lifecycle_test.go",
+    "hash": "B718F47AFD9A04880420D8CDFB46BDCAF52A033884D158DC6E070CFA752C70D7"
+  },
+  {
+    "path": "internal/agent/contract_gate.go",
+    "hash": "0A87F27B3EACA179FBD059E44352F8972B2C69348DBBBA8ED6996915A5FEB252"
+  },
+  {
+    "path": "internal/agent/contract_outcome.go",
+    "hash": "D2C75307BB845D9FABC291A0AEF597766B91A353802311CFA7021682881E5013"
+  },
+  {
+    "path": "internal/agent/coordinator.go",
+    "hash": "1821BAE5C9F22E9F97D37859BE21261ECADEF6D43F41868EB1AFC4ADA502B66B"
+  },
+  {
+    "path": "internal/agent/delivery_context.go",
+    "hash": "B318F52FCF8F28E2503CE5C2A4EA22F9C1CB03EE7761BF0E652E76A322F7064D"
+  },
+  {
+    "path": "internal/agent/directives.go",
+    "hash": "AB7FA34F1AEC161B9D2811E197AB06FCD7801625A46BE80FD253077DA4DD3436"
+  },
+  {
+    "path": "internal/agent/error_memory.go",
+    "hash": "6D2B686E87092F58ED0C87FB7E0C46E0DC5F48FD43CB0974EA2DFBDB8F95BB91"
+  },
+  {
+    "path": "internal/agent/evaluator.go",
+    "hash": "DA8F54FAED90C03ABCAB03B364E2B426B1621EC3F39DFC79EE02273CEFB7C381"
+  },
+  {
+    "path": "internal/agent/evaluator_test.go",
+    "hash": "43F081ACE0D6B7C24DBFEA5DA4572B94B217382461AAA080F55B138790DA56E6"
+  },
+  {
+    "path": "internal/agent/feature_handoff_test.go",
+    "hash": "C8A10DE7D5DFE23926BE5B49F3B42BF84E1E5121FB677AAE569F06F2BB56DFEF"
+  },
+  {
+    "path": "internal/agent/goal.go",
+    "hash": "1BF86BDEB6AA0619833062E84D2BA2F9B31886E7500DD7C57D572D011DA80916"
+  },
+  {
+    "path": "internal/agent/goal_test.go",
+    "hash": "63B002F481235234160DB710BAEB8F7D91A192FD918B3C36DC85A195695F2E08"
+  },
+  {
+    "path": "internal/agent/learn_workflow.go",
+    "hash": "244E9FFDF7CE192AECF42200147BCCB26170E51C862871C61A67DE11E4E25358"
+  },
+  {
+    "path": "internal/agent/outcome_guard.go",
+    "hash": "7F5E76EB14E62DB686A2204A3A3F07580650AE2486AA11824FCEE04F7198777D"
+  },
+  {
+    "path": "internal/agent/outcome_tasks.go",
+    "hash": "5E4742644282F4710372AD06BC8D12FF23F576A6C4D4168A03EC71D63F5CB205"
+  },
+  {
+    "path": "internal/agent/plan_review.go",
+    "hash": "B7A6355474A8B861B991C730B366D59BD33DD9D738701344DE575EDB99CEECD5"
+  },
+  {
+    "path": "internal/agent/runtime_guard.go",
+    "hash": "BCB29E95B82AC08EFF601874A0DEDFE8C0702F717507AFE6459918D1FF7B016A"
+  },
+  {
+    "path": "internal/agent/task_context.go",
+    "hash": "791A4F9CBCA8AAF3323DBB01BB516867A8EB43AFAB022DE36EE69501B621F5EE"
+  },
+  {
+    "path": "internal/agent/tools/job_kill.go",
+    "hash": "9CDD99E532267F5300B51D83DB77A8E47FE43284D1ACC8DFE12053F560B56F1E"
+  },
+  {
+    "path": "internal/agent/tools/safe.go",
+    "hash": "8A092095E29754C3C7F69CF442717823FC42CC16BB510D9F733134D80770D2C9"
+  },
+  {
+    "path": "internal/agent/work_context.go",
+    "hash": "2AB3B4CE8FBC79D8EB7C4AA5947D6106F9DBD08AD2E4FF3862D30B2A346D58E7"
+  },
+  {
+    "path": "internal/agent/work_loop_test.go",
+    "hash": "42038FFD23609AE0960B4F3F98C276CEEFC22816FDC46E5AA084FB37B1E34CEA"
+  },
+  {
+    "path": "internal/agent/work_refresh_test.go",
+    "hash": "9E6C27522C2B1D3E8F64D71139127ACD67435AB9FA3A45C6A871802F776548B6"
+  },
+  {
+    "path": "internal/agent/work_workflow.go",
+    "hash": "92CA91D01C89765DD5CC968092C0898B92AB4F6D8315D94A279BA17A5B0589D1"
+  },
+  {
+    "path": "internal/agent/workflow_tool.go",
+    "hash": "FD525C26FBBDDF78AEA4B29D9D54DB93FD1E6D8CF54C897876FD3D807546A5CD"
+  },
+  {
+    "path": "internal/cmd/workflow.go",
+    "hash": "071228B1ED2369425811DBFCA34C373E7FCEF4A61A572C8015576B83B1428477"
+  },
+  {
+    "path": "internal/cmd/workflow_findings_test.go",
+    "hash": "A93E54D818491FF8EF5222035B002B215C7EEFA5D7C78CBD5F1A339FECF75429"
+  },
+  {
+    "path": "internal/deps/atlas-llm/agent.go",
+    "hash": "D23E4A828A00AE47A546F137310258771E97B7106AA8336B31A2F1D7E1A81E4D"
+  },
+  {
+    "path": "internal/deps/atlas-llm/providers/antigravity/account_models_test.go",
+    "hash": "CEF2039467F4DA411C80C19071B6C2E9A9452C3E76DF5EEAFD415BFF8F36DD33"
+  },
+  {
+    "path": "internal/deps/atlas-llm/providers/antigravity/antigravity.go",
+    "hash": "FE9EAAF9C6B09C039DF7006B6072DD650F66CA7D40A9BE0F3FE54B911DD52497"
+  },
+  {
+    "path": "internal/deps/atlas-llm/providers/antigravity/live_account_test.go",
+    "hash": "5EE15754C08ABBED88A7EAE9B221AF9DAAB692E32B731C0CDB238078AEC29541"
+  },
+  {
+    "path": "internal/deps/atlas-llm/schema/schema.go",
+    "hash": "58AFF55BB0230A7B9FEC5D6AF472846317E0C073F39B200687FD556A90066A39"
+  },
+  {
+    "path": "internal/deps/atlas-llm/tool.go",
+    "hash": "B215759AA08B08B460EE2C541361015C709F49AE4089D8D749D8860A0AFBF959"
+  },
+  {
+    "path": "internal/engineering/learned_methods.go",
+    "hash": "511B2F1736F0A27F88F7716C4779799EA413C33AED5C3AB64E9446D7820B0071"
+  },
+  {
+    "path": "internal/engineering/quality.go",
+    "hash": "CB840D95B86E988DA8E273B145612CB692FC9B174A29214DE06BDDD9B1BAAD7D"
+  },
+  {
+    "path": "internal/engineering/runtime.go",
+    "hash": "58D377D03BCE1D941EACC486B52B6B1D9D4ABE51C944EE4409E6391EB1914033"
+  },
+  {
+    "path": "internal/engineering/snapshot.go",
+    "hash": "E66B2B43F85A4719F49BE5DA6EB347E9E7862FD513D1F98800EF87470918C1D0"
+  },
+  {
+    "path": "internal/engineering/verification_journal.go",
+    "hash": "E70551BF322701BCF361210909821F00AADB3CE16920ED8F360F73B220105E18"
+  },
+  {
+    "path": "internal/engineering/work.go",
+    "hash": "865FFA8FB9E940C09A15A2EFF469C36D43801758D8CCB232E11AD63163801FB5"
+  },
+  {
+    "path": "internal/harnessmetrics/harnessmetrics.go",
+    "hash": "CD6AEBAA2A049741DD63E9A6A0CA27FDE00216363664865CA21D76F90F70D98A"
+  },
+  {
+    "path": "internal/outcome/outcome.go",
+    "hash": "7A14F30CD5BE64EE8B9CAC582DC71EF01F066B83A9764E594D82B3F31D0402F2"
+  },
+  {
+    "path": "internal/workplan/checkpoint.go",
+    "hash": "7F27E8E8841D49738D6EB58142A8BF13F1320F912A55E8ACF0258ED0A18F9162"
+  },
+  {
+    "path": "internal/workplan/metrics.go",
+    "hash": "D666873C957AA14F8E6DD7C38A5B7F992FD6A384385C889F5756836EB9B27C55"
+  },
+  {
+    "path": "internal/workplan/state.go",
+    "hash": "C4C3CAC9B812FB0D593564CD896ECCA8824A3FFBA1F7A9430B2B30ABE94E8DDC"
+  }
+]

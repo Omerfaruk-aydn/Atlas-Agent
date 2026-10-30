@@ -319,6 +319,7 @@ func (m *UI) staleWorkspaceRefreshCmds() []tea.Cmd {
 var permissionModeCycle = []permission.PermissionMode{
 	permission.ModeManual,
 	permission.ModeAutoAcceptEdits,
+	permission.ModeAutoApprove,
 	permission.ModePlan,
 	permission.ModeBypass,
 }

@@ -252,8 +252,118 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "FallbackPolicy": {
+      "properties": {
+        "on_transient": {
+          "type": "boolean",
+          "description": "Allow cross-provider fallback for retryable 5xx",
+          "default": false
+        },
+        "max_providers": {
+          "type": "integer",
+          "maximum": 4,
+          "minimum": 0,
+          "description": "Maximum additional providers used for transient fallback per turn. Zero selects one.",
+          "default": 1
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "Harness": {
       "properties": {
+        "evaluator_repair": {
+          "type": "boolean",
+          "description": "Allow one extra call to the configured evaluator to repair invalid JSON; otherwise end unverified immediately.",
+          "default": false
+        },
+        "stall_oracle": {
+          "type": "boolean",
+          "description": "Allow one configured escalator consultation during a stalled approach; adds a model call and requires an explicit escalator model.",
+          "default": false
+        },
+        "lint_fix": {
+          "type": "boolean",
+          "description": "Check new LSP errors after edits and enforce a configured fast linter. Opt-in; may execute project commands.",
+          "default": false
+        },
+        "lint_command": {
+          "type": "string",
+          "description": "Optional fast lint shell command run through normal permissions and hooks."
+        },
+        "lint_timeout_seconds": {
+          "type": "integer",
+          "maximum": 120,
+          "minimum": 0,
+          "description": "Time budget for each fast lint observation; zero selects 10 seconds.",
+          "default": 10
+        },
+        "completion_commands": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Opt-in build/test/type/secret-scan commands run before paid review through normal permissions and hooks."
+        },
+        "completion_timeout_seconds": {
+          "type": "integer",
+          "maximum": 600,
+          "minimum": 0,
+          "description": "Time budget for each completion check; zero selects 120 seconds and values above 600 are capped.",
+          "default": 120
+        },
+        "red_green": {
+          "type": "boolean",
+          "description": "Require an observed failing check followed by implementation changes and the same check passing.",
+          "default": false
+        },
+        "mutation": {
+          "type": "boolean",
+          "description": "Run bounded Go mutations in a disposable project copy before review; never mutate the working source.",
+          "default": false
+        },
+        "mutation_command": {
+          "type": "string",
+          "description": "Test command for mutation checks in the disposable copy; empty selects go test -p 1 -count=1 ./... ."
+        },
+        "mutation_max": {
+          "type": "integer",
+          "maximum": 32,
+          "minimum": 0,
+          "description": "Maximum deterministic changed-line mutants; zero selects 4.",
+          "default": 4
+        },
+        "mutation_timeout_seconds": {
+          "type": "integer",
+          "maximum": 600,
+          "minimum": 0,
+          "description": "Total mutation budget in seconds; zero selects 60.",
+          "default": 60
+        },
+        "fuzz_hints": {
+          "type": "boolean",
+          "description": "Offer one advisory property/fuzz test hint for changed parser/codec/numeric code.",
+          "default": true
+        },
+        "no_progress_steps": {
+          "type": "integer",
+          "maximum": 100,
+          "minimum": 0,
+          "description": "Steps without new verification/file/finding/contract evidence before strategy review; zero selects 8.",
+          "default": 8
+        },
+        "disabled_gates": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Opt-in experiment disabling named gates: evaluator, contract, advisor, goal_judge, escalator, lint_fix or mutation. Empty preserves configured gate policies."
+        },
+        "trace": {
+          "type": "boolean",
+          "description": "Record bounded local metadata-only turn traces without model payloads.",
+          "default": true
+        },
         "check_guard": {
           "type": "boolean",
           "description": "Send the work back once when a turn weakens its own checks: removed assertions or tests, new skip or focus markers, new lint suppressions, lowered coverage thresholds or loosened plan checks.",
@@ -293,6 +403,27 @@
           "type": "boolean",
           "description": "Tell the model how full its context is and how many steps the turn has taken.",
           "default": true
+        },
+        "attachment_reference_bytes": {
+          "type": "integer",
+          "maximum": 10485760,
+          "minimum": -1,
+          "description": "Send large on-disk text attachments as path and size with a short preview; zero selects 16384 and -1 disables references.",
+          "default": 16384
+        },
+        "idle_compact_minutes": {
+          "type": "integer",
+          "maximum": 10080,
+          "minimum": 0,
+          "description": "Compact large idle sessions after this many minutes; zero disables background compaction.",
+          "default": 0
+        },
+        "idle_compact_tokens": {
+          "type": "integer",
+          "maximum": 10000000,
+          "minimum": 0,
+          "description": "Minimum observed prompt and completion tokens before idle compaction; zero selects 32000.",
+          "default": 32000
         },
         "failure_corpus": {
           "type": "boolean",
@@ -341,6 +472,11 @@
           "type": "integer",
           "description": "Timeout in seconds for the hook command",
           "default": 30
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Fail closed when this hook cannot execute successfully. PreToolUse blocks the call and PostToolUse stops the turn.",
+          "default": false
         }
       },
       "additionalProperties": false,
@@ -709,6 +845,16 @@
           "type": "string",
           "description": "Active named usage profile"
         },
+        "output_style": {
+          "type": "string",
+          "enum": [
+            "default",
+            "concise",
+            "explanatory",
+            "learning"
+          ],
+          "description": "Response style: default"
+        },
         "work_budget": {
           "type": "string",
           "enum": [
@@ -1019,6 +1165,10 @@
           "examples": [
             300
           ]
+        },
+        "fallback_policy": {
+          "$ref": "#/$defs/FallbackPolicy",
+          "description": "Opt-in policy for transient cross-provider fallback. HTTP 429 fallback remains governed by model_fallbacks."
         },
         "model_roles": {
           "additionalProperties": {
@@ -2191,6 +2341,16 @@
           "type": "boolean",
           "description": "Have a reviewer critique a new or changed plan once before the work goes on.",
           "default": true
+        },
+        "review_policy": {
+          "type": "string",
+          "enum": [
+            "optional",
+            "risky",
+            "required"
+          ],
+          "description": "Plan review failure policy: optional preserves best-effort review, risky requires a valid verdict for plans with risky verification commands, required requires every enabled review.",
+          "default": "optional"
         },
         "prove_checks": {
           "type": "boolean",

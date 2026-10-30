@@ -26,6 +26,11 @@ func Init(workingDir, dataDir string, debug bool) (*ConfigStore, error) {
 	return store, nil
 }
 
+// InitSafe initializes the diagnostic, customization-free runtime.
+func InitSafe(workingDir, dataDir string, debug bool) (*ConfigStore, error) {
+	return LoadSafe(workingDir, dataDir, debug)
+}
+
 func ProjectNeedsInitialization(store *ConfigStore) (bool, error) {
 	if store == nil {
 		return false, fmt.Errorf("config not loaded")

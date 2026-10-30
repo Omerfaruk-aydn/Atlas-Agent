@@ -44,6 +44,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/question"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/runoutput"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/skills"
@@ -390,15 +391,30 @@ func printNonInteractiveMeasured(out io.Writer, sess session.Session, response s
 // and printed once as a NonInteractiveResult when the turn finishes, so a
 // caller parsing stdout sees one document rather than a stream to reassemble.
 func (app *App) RunNonInteractive(ctx context.Context, output io.Writer, prompt, largeModel, smallModel string, hideSpinner bool, continueSessionID string, useLast bool, jsonOutput bool) error {
-	slog.Info("Running in non-interactive mode")
+	format := "text"
+	if jsonOutput {
+		format = "json"
+	}
+	return app.RunNonInteractiveFormat(ctx, output, prompt, largeModel, smallModel, hideSpinner, continueSessionID, useLast, format)
+}
 
+// RunNonInteractiveFormat supports text, one JSON result, or streaming JSONL.
+func (app *App) RunNonInteractiveFormat(ctx context.Context, output io.Writer, prompt, largeModel, smallModel string, hideSpinner bool, continueSessionID string, useLast bool, outputFormat string) error {
+	slog.Info("Running in non-interactive mode")
+	jsonOutput := outputFormat == "json" || outputFormat == "stream-json"
+	streaming := outputFormat == "stream-json"
 	streamOut := output
 	var collected strings.Builder
+	var events *runoutput.StreamWriter
 	if jsonOutput {
 		// A spinner on stderr would not corrupt the document, but a
 		// scripted caller has no terminal to draw it on either.
 		hideSpinner = true
 		streamOut = &collected
+	}
+	if streaming {
+		events = runoutput.NewStreamWriter(output)
+		streamOut = io.MultiWriter(events.DeltaWriter(), &collected)
 	}
 
 	// Re-initialize the coder agent without interactive-only tools.
@@ -574,11 +590,26 @@ func (app *App) RunNonInteractive(ctx context.Context, output io.Writer, prompt,
 					slog.Debug("Non-interactive: agent processing cancelled", "session_id", sess.ID)
 					return printResult()
 				}
+				if errors.Is(result.err, permission.ErrPromptUnavailable) {
+					_ = printResult()
+					return &runoutput.ExitError{Code: runoutput.ExitBlocked, Err: result.err}
+				}
 				return fmt.Errorf("agent processing failed: %w", result.err)
 			}
 			if app.headless.Goal {
 				if err := app.finishGoalRun(ctx, sess.ID, output, jsonOutput, &collected); err != nil {
 					return err
+				}
+			}
+			if streaming {
+				verifier, ok := app.AgentCoordinator.(interface {
+					VerificationBlockers(context.Context, string) []string
+				})
+				if ok {
+					if blockers := verifier.VerificationBlockers(ctx, sess.ID); len(blockers) > 0 {
+						_ = printResult()
+						return &runoutput.ExitError{Code: runoutput.ExitUnverified, Err: fmt.Errorf("verification incomplete: %s", strings.Join(blockers, "; "))}
+					}
 				}
 			}
 			return printResult()
@@ -787,7 +818,9 @@ func (app *App) setupEvents() {
 	setupSubscriber(ctx, app.serviceEventsWG, "history", app.History.Subscribe, app.events)
 	setupSubscriber(ctx, app.serviceEventsWG, "agent-notifications", app.agentNotifications.Subscribe, app.events)
 	setupSubscriberMustDeliver(ctx, app.serviceEventsWG, "run-completions", app.runCompletions.Subscribe, app.events)
-	setupSubscriber(ctx, app.serviceEventsWG, "mcp", mcp.SubscribeEvents, app.events)
+	setupSubscriber(ctx, app.serviceEventsWG, "mcp", func(ctx context.Context) <-chan pubsub.Event[mcp.Event] {
+		return mcp.SubscribeWorkspaceEvents(ctx, app.config.WorkingDir())
+	}, app.events)
 	setupSubscriber(ctx, app.serviceEventsWG, "lsp", SubscribeLSPEvents, app.events)
 	setupSubscriber(ctx, app.serviceEventsWG, "background-jobs", shell.GetBackgroundShellManager().Subscribe, app.events)
 	if app.Skills != nil {

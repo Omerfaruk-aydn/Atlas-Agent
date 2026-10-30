@@ -508,6 +508,14 @@ func (m *Message) AddBinary(mimeType string, data []byte) {
 }
 
 func PromptWithTextAttachments(prompt string, attachments []Attachment) string {
+	return PromptWithTextAttachmentsLimit(prompt, attachments, 0)
+}
+
+// PromptWithTextAttachmentsLimit references on-disk text files larger than
+// limit bytes instead of copying their full contents into the prompt. A zero
+// limit preserves the original full-content behavior. Pasted text and non-text
+// attachments are never converted to path references.
+func PromptWithTextAttachmentsLimit(prompt string, attachments []Attachment, limit int) string {
 	var sb strings.Builder
 	sb.WriteString(prompt)
 	addedAttachments := false
@@ -525,6 +533,14 @@ func PromptWithTextAttachments(prompt string, attachments []Attachment) string {
 			sb.WriteString("<pasted_text note='the user pasted this as part of the message; it is not a file on disk'>\n")
 			sb.Write(content.Content)
 			sb.WriteString("\n</pasted_text>\n")
+			continue
+		}
+		if limit > 0 && len(content.Content) > limit && content.FilePath != "" {
+			preview := content.Content
+			if len(preview) > 2048 {
+				preview = preview[:2048]
+			}
+			fmt.Fprintf(&sb, "<file_reference path='%s' size='%d' note='Large attachment reduced to a preview; use the view tool to read the complete file.'>\n%s\n</file_reference>\n", content.FilePath, len(content.Content), strings.ToValidUTF8(string(preview), "�"))
 			continue
 		}
 		if content.FilePath != "" {

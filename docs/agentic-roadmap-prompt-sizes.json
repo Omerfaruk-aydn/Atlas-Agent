@@ -1,0 +1,197 @@
+{
+  "fixture_date": "2026-10-27",
+  "encoding": "o200k_base",
+  "tiktoken_version": "0.14.0",
+  "atlas_estimator": "sum(ceil(UTF-8 message bytes / 4))",
+  "scope": "Rendered system message text only; no tool schemas or provider chat framing. Fixed metadata; empty skills, memory, global context, git status, dynamic session blocks. project_agents adds root AGENTS.md. Tool protocols match browser/computer-only palettes. No provider calls.",
+  "samples": [
+    {
+      "mode": "coder",
+      "profile": "core",
+      "protocols": "none",
+      "bytes": 15313,
+      "atlas_approx_tokens": 3829,
+      "message_sha256": [
+        "cc2cc2061632e7fda689440203cb31e0a93f444d7fa9beddf8da3b66205f4338"
+      ],
+      "o200k_base_tokens": 3254
+    },
+    {
+      "mode": "coder",
+      "profile": "core",
+      "protocols": "browser",
+      "bytes": 28360,
+      "atlas_approx_tokens": 7091,
+      "message_sha256": [
+        "cc2cc2061632e7fda689440203cb31e0a93f444d7fa9beddf8da3b66205f4338",
+        "1f4702aa3a054e5c2a99cb4b3f7ba82a1b1abd225ee8707d21628d5eb0a6a592"
+      ],
+      "o200k_base_tokens": 5762
+    },
+    {
+      "mode": "coder",
+      "profile": "core",
+      "protocols": "desktop",
+      "bytes": 42976,
+      "atlas_approx_tokens": 10745,
+      "message_sha256": [
+        "cc2cc2061632e7fda689440203cb31e0a93f444d7fa9beddf8da3b66205f4338",
+        "3d019ac79e8a3216bfd7818a4944d0f6a490dc11318136e2a731da957369dda3"
+      ],
+      "o200k_base_tokens": 8627
+    },
+    {
+      "mode": "coder",
+      "profile": "core",
+      "protocols": "browser+desktop",
+      "bytes": 50873,
+      "atlas_approx_tokens": 12719,
+      "message_sha256": [
+        "cc2cc2061632e7fda689440203cb31e0a93f444d7fa9beddf8da3b66205f4338",
+        "e60bb280e6b4f4f3aa46bd6adcdab3697cbc731e7d9e4290b574216b165e2098"
+      ],
+      "o200k_base_tokens": 10190
+    },
+    {
+      "mode": "coder",
+      "profile": "project_agents",
+      "protocols": "none",
+      "bytes": 25841,
+      "atlas_approx_tokens": 6461,
+      "message_sha256": [
+        "fb7dde028360b7f08c7b8d3ddd8a49b47a2d43cd249e30d9cfa6da43530718b1"
+      ],
+      "o200k_base_tokens": 5729
+    },
+    {
+      "mode": "coder",
+      "profile": "project_agents",
+      "protocols": "browser",
+      "bytes": 38888,
+      "atlas_approx_tokens": 9723,
+      "message_sha256": [
+        "fb7dde028360b7f08c7b8d3ddd8a49b47a2d43cd249e30d9cfa6da43530718b1",
+        "1f4702aa3a054e5c2a99cb4b3f7ba82a1b1abd225ee8707d21628d5eb0a6a592"
+      ],
+      "o200k_base_tokens": 8237
+    },
+    {
+      "mode": "coder",
+      "profile": "project_agents",
+      "protocols": "desktop",
+      "bytes": 53504,
+      "atlas_approx_tokens": 13377,
+      "message_sha256": [
+        "fb7dde028360b7f08c7b8d3ddd8a49b47a2d43cd249e30d9cfa6da43530718b1",
+        "3d019ac79e8a3216bfd7818a4944d0f6a490dc11318136e2a731da957369dda3"
+      ],
+      "o200k_base_tokens": 11102
+    },
+    {
+      "mode": "coder",
+      "profile": "project_agents",
+      "protocols": "browser+desktop",
+      "bytes": 61401,
+      "atlas_approx_tokens": 15351,
+      "message_sha256": [
+        "fb7dde028360b7f08c7b8d3ddd8a49b47a2d43cd249e30d9cfa6da43530718b1",
+        "e60bb280e6b4f4f3aa46bd6adcdab3697cbc731e7d9e4290b574216b165e2098"
+      ],
+      "o200k_base_tokens": 12665
+    },
+    {
+      "mode": "task",
+      "profile": "core",
+      "protocols": "none",
+      "bytes": 15292,
+      "atlas_approx_tokens": 3823,
+      "message_sha256": [
+        "538424f4e8de80f3e9670c8a397b0ac8ec9c418f539d4518309503092e8a1fcd"
+      ],
+      "o200k_base_tokens": 3193
+    },
+    {
+      "mode": "task",
+      "profile": "core",
+      "protocols": "browser",
+      "bytes": 28339,
+      "atlas_approx_tokens": 7085,
+      "message_sha256": [
+        "538424f4e8de80f3e9670c8a397b0ac8ec9c418f539d4518309503092e8a1fcd",
+        "1f4702aa3a054e5c2a99cb4b3f7ba82a1b1abd225ee8707d21628d5eb0a6a592"
+      ],
+      "o200k_base_tokens": 5701
+    },
+    {
+      "mode": "task",
+      "profile": "core",
+      "protocols": "desktop",
+      "bytes": 42955,
+      "atlas_approx_tokens": 10739,
+      "message_sha256": [
+        "538424f4e8de80f3e9670c8a397b0ac8ec9c418f539d4518309503092e8a1fcd",
+        "3d019ac79e8a3216bfd7818a4944d0f6a490dc11318136e2a731da957369dda3"
+      ],
+      "o200k_base_tokens": 8566
+    },
+    {
+      "mode": "task",
+      "profile": "core",
+      "protocols": "browser+desktop",
+      "bytes": 50852,
+      "atlas_approx_tokens": 12713,
+      "message_sha256": [
+        "538424f4e8de80f3e9670c8a397b0ac8ec9c418f539d4518309503092e8a1fcd",
+        "e60bb280e6b4f4f3aa46bd6adcdab3697cbc731e7d9e4290b574216b165e2098"
+      ],
+      "o200k_base_tokens": 10129
+    },
+    {
+      "mode": "task",
+      "profile": "project_agents",
+      "protocols": "none",
+      "bytes": 25761,
+      "atlas_approx_tokens": 6441,
+      "message_sha256": [
+        "003e7b7ade17b58e685c9a0eeec78b3c8154d9b43c9cf39a3e41f04c8b7d7987"
+      ],
+      "o200k_base_tokens": 5654
+    },
+    {
+      "mode": "task",
+      "profile": "project_agents",
+      "protocols": "browser",
+      "bytes": 38808,
+      "atlas_approx_tokens": 9703,
+      "message_sha256": [
+        "003e7b7ade17b58e685c9a0eeec78b3c8154d9b43c9cf39a3e41f04c8b7d7987",
+        "1f4702aa3a054e5c2a99cb4b3f7ba82a1b1abd225ee8707d21628d5eb0a6a592"
+      ],
+      "o200k_base_tokens": 8162
+    },
+    {
+      "mode": "task",
+      "profile": "project_agents",
+      "protocols": "desktop",
+      "bytes": 53424,
+      "atlas_approx_tokens": 13357,
+      "message_sha256": [
+        "003e7b7ade17b58e685c9a0eeec78b3c8154d9b43c9cf39a3e41f04c8b7d7987",
+        "3d019ac79e8a3216bfd7818a4944d0f6a490dc11318136e2a731da957369dda3"
+      ],
+      "o200k_base_tokens": 11027
+    },
+    {
+      "mode": "task",
+      "profile": "project_agents",
+      "protocols": "browser+desktop",
+      "bytes": 61321,
+      "atlas_approx_tokens": 15331,
+      "message_sha256": [
+        "003e7b7ade17b58e685c9a0eeec78b3c8154d9b43c9cf39a3e41f04c8b7d7987",
+        "e60bb280e6b4f4f3aa46bd6adcdab3697cbc731e7d9e4290b574216b165e2098"
+      ],
+      "o200k_base_tokens": 12590
+    }
+  ]
+}

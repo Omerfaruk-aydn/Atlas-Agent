@@ -41,7 +41,7 @@ func Markdown(sess session.Session, msgs []message.Message) string {
 		renderMessage(&b, msg)
 	}
 
-	return b.String()
+	return RedactText(b.String())
 }
 
 // JSONMessage is one message in a JSON export. It flattens the parts a
@@ -106,7 +106,8 @@ func JSON(sess session.Session, msgs []message.Message) ([]byte, error) {
 		doc.Messages = append(doc.Messages, jm)
 	}
 
-	return json.MarshalIndent(doc, "", "  ")
+	data, err := json.MarshalIndent(doc, "", "  ")
+	return []byte(RedactText(string(data))), err
 }
 
 func renderMessage(b *strings.Builder, msg message.Message) {

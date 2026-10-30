@@ -19,16 +19,30 @@ type cliBridgeOutputContextKey struct{}
 func WithSecretFilter(tool fantasy.AgentTool) fantasy.AgentTool { return &secretFilteredTool{tool} }
 func (t *secretFilteredTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
 	r, err := t.AgentTool.Run(ctx, call)
-	if raw, _ := ctx.Value(cliBridgeOutputContextKey{}).(bool); raw && t.AgentTool.Info().Name == BashToolName {
+	name := t.AgentTool.Info().Name
+	protectedImage := protectedCredentialMedia(name, r)
+	var imageProof credentialImageProof
+	if protectedImage {
+		_ = json.Unmarshal([]byte(r.Metadata), &struct {
+			Proof *credentialImageProof `json:"credential_image_redaction"`
+		}{Proof: &imageProof})
+	}
+	if raw, _ := ctx.Value(cliBridgeOutputContextKey{}).(bool); raw && name == BashToolName {
 		return r, err
 	}
 	id := GetSessionFromContext(ctx)
-	if t.AgentTool.Info().Name == CLIBridgeToolName {
+	if name == CLIBridgeToolName {
 		r.Content = redactCLIBridgePayload(id, r.Content)
 		r.Metadata = redactCLIBridgePayload(id, r.Metadata)
 	} else {
 		r.Content = redactToolPayload(id, r.Content)
 		r.Metadata = redactToolPayload(id, r.Metadata)
+	}
+	// A registered secret can coincidentally be a substring of the proof's
+	// hexadecimal digest. Re-attest the unchanged bytes instead of allowing
+	// metadata redaction to invalidate a trusted browser's native proof.
+	if protectedImage {
+		r = withCredentialImageProof(r, imageProof.Masks)
 	}
 	if err != nil {
 		err = errors.New(vault.Redact(id, err.Error()))

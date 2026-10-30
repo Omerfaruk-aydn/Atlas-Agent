@@ -270,6 +270,19 @@ func (w *AppWorkspace) AgentAskSideQuestion(ctx context.Context, sessionID, ques
 	return answer.Text, answer.Model, nil
 }
 
+func (w *AppWorkspace) AgentHandoff(ctx context.Context, sessionID string) (session.Session, error) {
+	if w.app.AgentCoordinator == nil {
+		return session.Session{}, errors.New("agent coordinator not initialized")
+	}
+	coordinator, ok := w.app.AgentCoordinator.(interface {
+		Handoff(context.Context, string) (session.Session, error)
+	})
+	if !ok {
+		return session.Session{}, errors.New("session handoff is not supported by this coordinator")
+	}
+	return coordinator.Handoff(ctx, sessionID)
+}
+
 func (w *AppWorkspace) AgentSummarize(ctx context.Context, sessionID string) error {
 	if w.app.AgentCoordinator == nil {
 		return errors.New("agent coordinator not initialized")

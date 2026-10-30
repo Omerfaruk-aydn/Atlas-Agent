@@ -68,6 +68,7 @@ type BenchTask struct {
 // written to .atlas.json in each workspace, which wins over a repository's
 // own atlas.json and merges over the user's global configuration.
 type BenchVariant struct {
+	Gates  map[string]bool `json:"gates,omitempty"`
 	Name   string          `json:"name"`
 	Config json.RawMessage `json:"config,omitempty"`
 }
@@ -84,23 +85,25 @@ type BenchManifest struct {
 
 // BenchRecord is the outcome of one attempt of one task under one variant.
 type BenchRecord struct {
-	Task          string  `json:"task"`
-	Variant       string  `json:"variant"`
-	Model         string  `json:"model"`
-	Attempt       int     `json:"attempt"`
-	Passed        bool    `json:"passed"`
-	Score         float64 `json:"score"`
-	CheckOutput   string  `json:"check_output,omitempty"`
-	AgentError    string  `json:"agent_error,omitempty"`
-	ErrorKind     string  `json:"error_kind,omitempty"`
-	FinishReason  string  `json:"finish_reason,omitempty"`
-	SessionID     string  `json:"session_id,omitempty"`
-	Workspace     string  `json:"workspace"`
-	Tokens        int64   `json:"tokens"`
-	Cost          float64 `json:"cost_usd"`
-	ToolCalls     int64   `json:"tool_calls"`
-	ProviderSteps int64   `json:"provider_steps"`
-	DurationMS    int64   `json:"duration_ms"`
+	FailOpen            int     `json:"fail_open"`
+	GateMetricsMeasured bool    `json:"gate_metrics_measured"`
+	Task                string  `json:"task"`
+	Variant             string  `json:"variant"`
+	Model               string  `json:"model"`
+	Attempt             int     `json:"attempt"`
+	Passed              bool    `json:"passed"`
+	Score               float64 `json:"score"`
+	CheckOutput         string  `json:"check_output,omitempty"`
+	AgentError          string  `json:"agent_error,omitempty"`
+	ErrorKind           string  `json:"error_kind,omitempty"`
+	FinishReason        string  `json:"finish_reason,omitempty"`
+	SessionID           string  `json:"session_id,omitempty"`
+	Workspace           string  `json:"workspace"`
+	Tokens              int64   `json:"tokens"`
+	Cost                float64 `json:"cost_usd"`
+	ToolCalls           int64   `json:"tool_calls"`
+	ProviderSteps       int64   `json:"provider_steps"`
+	DurationMS          int64   `json:"duration_ms"`
 }
 
 // LoadBenchSuite reads every task of a suite directory, sorted by ID. Only
@@ -182,6 +185,9 @@ func ValidateBench(m BenchManifest, tasks []BenchTask) error {
 	}
 	names := map[string]bool{}
 	for _, v := range m.Variants {
+		if _, err := BenchGateConfig(v.Config, v.Gates); err != nil {
+			return fmt.Errorf("variant %s: %w", v.Name, err)
+		}
 		if !benchIDPattern.MatchString(v.Name) || names[v.Name] {
 			return errors.New("variant names must be unique lowercase letters, digits and dashes")
 		}
@@ -420,8 +426,13 @@ func runBenchAttempt(ctx context.Context, m BenchManifest, task BenchTask, varia
 		record.AgentError, record.ErrorKind = "prepare workspace: "+err.Error(), ErrorAgent
 		return record
 	}
-	if len(variant.Config) > 0 {
-		if err := os.WriteFile(filepath.Join(dir, ".atlas.json"), variant.Config, 0o644); err != nil {
+	variantConfig, configErr := BenchGateConfig(variant.Config, variant.Gates)
+	if configErr != nil {
+		record.AgentError, record.ErrorKind = configErr.Error(), ErrorAgent
+		return record
+	}
+	if len(variantConfig) > 0 {
+		if err := os.WriteFile(filepath.Join(dir, ".atlas.json"), variantConfig, 0o644); err != nil {
 			record.AgentError, record.ErrorKind = "write variant config: "+err.Error(), ErrorAgent
 			return record
 		}
@@ -448,6 +459,7 @@ func runBenchAttempt(ctx context.Context, m BenchManifest, task BenchTask, varia
 	record.SessionID, record.Cost = result.SessionID, result.Cost
 	record.Tokens = result.PromptTokens + result.CompletionTokens
 	record.ProviderSteps, record.ToolCalls, record.FinishReason = result.ProviderSteps, result.ToolCalls, result.FinishReason
+	record.FailOpen, record.GateMetricsMeasured = benchTraceFailures(filepath.Join(dir, ".atlas-eval-state"), result.SessionID)
 	switch {
 	case runErr != nil:
 		record.AgentError = runErr.Error()
@@ -495,19 +507,23 @@ type BenchTally struct {
 // provider did (rate limits, outages) are excluded from the pass rate and
 // counted separately: they say nothing about the harness.
 type BenchSummary struct {
-	Variant       string                `json:"variant"`
-	Runs          int                   `json:"runs"`
-	ProviderFails int                   `json:"provider_failures"`
-	Unreached     int                   `json:"unreached"`
-	Valid         int                   `json:"valid_runs"`
-	Passed        int                   `json:"passed"`
-	PassRate      float64               `json:"pass_rate"`
-	MeanScore     float64               `json:"mean_score"`
-	MeanCost      float64               `json:"mean_cost_usd"`
-	MeanTokens    float64               `json:"mean_tokens"`
-	MeanToolCalls float64               `json:"mean_tool_calls"`
-	MeanSeconds   float64               `json:"mean_seconds"`
-	PerTask       map[string]BenchTally `json:"per_task"`
+	PassAt1               float64               `json:"pass_at_1"`
+	PassAtK               float64               `json:"pass_at_k"`
+	FailOpen              int                   `json:"fail_open"`
+	GateMetricsUnmeasured int                   `json:"gate_metrics_unmeasured_runs"`
+	Variant               string                `json:"variant"`
+	Runs                  int                   `json:"runs"`
+	ProviderFails         int                   `json:"provider_failures"`
+	Unreached             int                   `json:"unreached"`
+	Valid                 int                   `json:"valid_runs"`
+	Passed                int                   `json:"passed"`
+	PassRate              float64               `json:"pass_rate"`
+	MeanScore             float64               `json:"mean_score"`
+	MeanCost              float64               `json:"mean_cost_usd"`
+	MeanTokens            float64               `json:"mean_tokens"`
+	MeanToolCalls         float64               `json:"mean_tool_calls"`
+	MeanSeconds           float64               `json:"mean_seconds"`
+	PerTask               map[string]BenchTally `json:"per_task"`
 }
 
 // SummarizeBench groups records by variant in order of first appearance.
@@ -551,8 +567,14 @@ func SummarizeBench(records []BenchRecord) []BenchSummary {
 		s.MeanSeconds += float64(r.DurationMS) / 1000
 	}
 	out := make([]BenchSummary, 0, len(order))
+	metrics := map[string]BenchMetric{}
+	for _, metric := range BenchMetrics(records) {
+		metrics[metric.Variant] = metric
+	}
 	for _, name := range order {
 		s := by[name]
+		m := metrics[name]
+		s.PassAt1, s.PassAtK, s.FailOpen, s.GateMetricsUnmeasured = m.PassAt1, m.PassAtK, m.FailOpen, m.Unmeasured
 		if s.Valid > 0 {
 			n := float64(s.Valid)
 			s.PassRate = float64(s.Passed) / n

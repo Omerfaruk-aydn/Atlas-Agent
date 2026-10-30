@@ -1,0 +1,19 @@
+{
+  "id": "fix-quoted-csv",
+  "prompt": "row parses a single CSV record with commas, quotes and escaped quotes. Preserve empty fields. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "python",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    ".",
+    "-p",
+    "test_atlas_*.py"
+  ],
+  "timeout_seconds": 180,
+  "language": "python",
+  "categories": [
+    "bug-fix"
+  ]
+}

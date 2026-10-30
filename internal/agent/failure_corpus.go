@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"slices"
@@ -68,12 +69,20 @@ func (a *sessionAgent) saveFailureCase(ctx context.Context, sessionID string, le
 
 // recordContractPassed records a holding contract with the project's kinds
 // and commands, the evidence behind strategy hints.
-func (a *sessionAgent) recordContractPassed(sessionID, root string, requirements []workplan.Requirement) {
+func (a *sessionAgent) recordContractPassed(sessionID, root string, requirements []workplan.Requirement, ledger ...*evaluatorLedger) {
 	commands := make([]string, 0, len(requirements))
 	for _, r := range requirements {
 		commands = append(commands, r.Command)
 	}
-	a.recordHarness(harnessmetrics.ContractPassed, sessionID, harnessmetrics.CheckAttrs(harnessmetrics.ProjectKinds(root), commands))
+	attrs := harnessmetrics.CheckAttrs(harnessmetrics.ProjectKinds(root), commands)
+	if len(ledger) > 0 && ledger[0] != nil {
+		attrs["origin_sequence"] = fmt.Sprint(ledger[0].seq)
+	}
+	attrs["origin_signature"] = workplan.Hash(strings.Join(commands, "\n"))
+	if trace := a.sessionTrace(sessionID); trace != nil && trace.trace != nil {
+		attrs["origin_turn"] = fmt.Sprint(trace.trace.Turn)
+	}
+	a.recordHarness(harnessmetrics.ContractPassed, sessionID, attrs)
 }
 
 // strategyHintLimit bounds the commands suggested.
@@ -95,6 +104,7 @@ func (a *sessionAgent) strategyHintsBlock(sessionID string) string {
 	if len(hints) == 0 {
 		return ""
 	}
+	a.recordHarness(harnessmetrics.Kind("rule_offered"), sessionID, map[string]string{"source": "strategy", "count": fmt.Sprint(len(hints))})
 	return "\n\n<known_checks>\nCommands that verified work on " + strings.Join(kinds, "/") + " projects here before: `" +
 		strings.Join(hints, "`, `") + "`. Consider them when choosing how to verify substantial work; check they apply first.\n</known_checks>"
 }

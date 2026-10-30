@@ -1,0 +1,30 @@
+[
+  {
+    "command": "go test -p 1 ./internal/agent ./internal/config ./internal/cmd/... ./internal/harnessmetrics ./internal/evaluation ./internal/shellconfig",
+    "exit_code": 0,
+    "seconds": 424.1240623
+  },
+  {
+    "command": "go build -p 1 ./...",
+    "exit_code": 0,
+    "seconds": 23.3540155
+  },
+  {
+    "command": "go vet -p 1 ./internal/agent ./internal/config ./internal/cmd/... ./internal/harnessmetrics ./internal/evaluation ./internal/shellconfig",
+    "exit_code": 0,
+    "seconds": 9.6250362
+  },
+  {
+    "command": "golangci-lint run --path-mode=abs --config=.golangci.yml --timeout=5m (changed packages)",
+    "exit_code": 0,
+    "seconds": 9.613267
+  },
+  {
+    "command": "go test -p 1 ./internal/harnessmetrics -run ^$ -bench BenchmarkTraceMetadataWrite -benchtime=100x",
+    "exit_code": 0
+  },
+  {
+    "command": "bash scripts/check_log_capitalization.sh",
+    "exit_code": 0
+  }
+]

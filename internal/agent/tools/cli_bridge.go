@@ -234,7 +234,15 @@ func (b *cliBridge) recordPrepared(ctx context.Context, prep clibridge.Prepared)
 	return err
 }
 
-func (b *cliBridge) execute(ctx context.Context, p CLIBridgeParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+func (b *cliBridge) execute(ctx context.Context, p CLIBridgeParams, call fantasy.ToolCall) (response fantasy.ToolResponse, err error) {
+	// Preparation and permission checks can observe cancellation before the
+	// guarded command starts. Preserve cancellation for the agent instead of
+	// converting it into an ordinary model-facing tool response.
+	defer func() {
+		if ctx.Err() != nil {
+			err = cmpErr(err, ctx.Err())
+		}
+	}()
 	session := GetSessionFromContext(ctx)
 	if b.Store == nil || session == "" {
 		return fantasy.NewTextErrorResponse("engineering store and session required"), nil

@@ -1,0 +1,13 @@
+{
+  "id": "fix-typescript-canonical-path",
+  "prompt": "solve normalizes absolute slash paths by dropping empty/dot segments and resolving parent segments without escaping root; reject relative paths. It is a path normalizer, not a URL parser. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "node",
+    "{suite}/../check-typescript.cjs"
+  ],
+  "timeout_seconds": 180,
+  "language": "typescript",
+  "categories": [
+    "bug-fix"
+  ]
+}

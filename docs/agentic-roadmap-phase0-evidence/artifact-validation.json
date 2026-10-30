@@ -1,0 +1,10 @@
+{
+  "audit_items": 40,
+  "unique_item_ids": true,
+  "diagram_matches_audit": true,
+  "prompt_fixtures": 16,
+  "python_helper_syntax": "pass",
+  "referenced_internal_paths_exist": true,
+  "document_links_resolve": true,
+  "baseline_has_no_pending_results": true
+}

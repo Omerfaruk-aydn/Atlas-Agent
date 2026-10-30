@@ -21,9 +21,13 @@ type guardedTool struct {
 	fantasy.AgentTool
 	store    *engineering.Store
 	sessions session.Service
+	// root is the project tree used to detect source changes made by opaque
+	// tools; scope.WriteRoot takes precedence for isolated workspaces.
+	root string
 }
 
-func (t *guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+func (t *guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (response fantasy.ToolResponse, runError error) {
+	defer traceRuntimeOutcome(ctx, call.Name, time.Now(), &response, &runError)
 	scope := engineering.GetScope(ctx, tools.GetSessionFromContext(ctx))
 	if call.Name == "verify" {
 		var params tools.VerifyParams
@@ -113,8 +117,19 @@ func (t *guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 			}
 		}
 	}
+	tracked, before, beforeErr := t.snapshotSource(ctx, scope, call)
 	resp, runErr := t.AgentTool.Run(ctx, call)
+	changed, after := false, ""
+	if tracked {
+		changed, after = t.sourceChanged(ctx, scope, before, beforeErr)
+	}
 	if ctx.Err() != nil && (runErr != nil || resp.IsError) || errors.Is(runErr, context.Canceled) || errors.Is(runErr, context.DeadlineExceeded) {
+		if changed {
+			// A cancelled opaque call may have written before it stopped.
+			noted, note := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			_ = t.store.NoteSourceChange(noted, scope.SessionID)
+			note()
+		}
 		abandoned, abandon := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		_ = t.recordOutcome(abandoned, scope.SessionID, id, call, outcomeResult(call.Name, resp, runErr, tools.CallMutates(call.Name, call.Input), true), resp)
 		abandon()
@@ -207,6 +222,15 @@ func (t *guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 	}
 	evidence, observed := operationOutcome(call.Name, resp, runErr)
 	passed := tools.ToolSucceeded(call.Name, resp, runErr)
+	if changed && !mutation {
+		if passed {
+			mutation = true
+		} else if err := t.store.NoteSourceChange(cleanup, scope.SessionID); err != nil {
+			// A failed or partial call that touched the tree still
+			// invalidates earlier checks.
+			return resp, err
+		}
+	}
 	if (call.Name == "data_boundary" || call.Name == tools.CLIBridgeToolName) && runErr == nil && !resp.IsError && !resp.StopTurn {
 		var meta struct {
 			Prepared bool `json:"prepared"`
@@ -223,7 +247,73 @@ func (t *guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.T
 	if err := t.store.FinishObserved(cleanup, scope.SessionID, id, passed, mutation, evidence, observed); err != nil {
 		return resp, fmt.Errorf("persist tool completion %s: %w", id, err)
 	}
+	if passed && !changed {
+		t.markVerifiedSource(cleanup, scope, call, after)
+	}
 	return resp, runErr
+}
+
+// snapshotSource fingerprints the tree before an opaque call that may change
+// it (bash, MCP, pipelines). Tools with their own mutation reporting and
+// known read-only commands are not snapshotted. An unreadable snapshot is
+// reported as such so the comparison fails closed.
+func (t *guardedTool) snapshotSource(ctx context.Context, scope engineering.Scope, call fantasy.ToolCall) (bool, string, error) {
+	root := scope.WriteRoot
+	if root == "" {
+		root = t.root
+	}
+	if root == "" || !tools.CallMutates(call.Name, call.Input) {
+		return false, "", nil
+	}
+	switch call.Name {
+	case "edit", "write", "multiedit", tools.ReplaceSymbolToolName, tools.RenameToolName, tools.LspRenameFileToolName, tools.LSPEditPlanToolName, "worktree", "undo_feature", tools.SkillManageToolName:
+		return false, "", nil
+	case tools.BashToolName:
+		if tools.BashReadOnly(call.Input) {
+			return false, "", nil
+		}
+	}
+	snapshot, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	fp, err := engineering.ProjectFingerprint(snapshot, root, t.store.Dir())
+	return true, fp, err
+}
+
+// sourceChanged reports whether the tree differs from the snapshot taken
+// before the call, and returns the fingerprint it observed ("" when it could
+// not be read).
+func (t *guardedTool) sourceChanged(ctx context.Context, scope engineering.Scope, before string, beforeErr error) (bool, string) {
+	after, err := t.fingerprint(ctx, scope)
+	return beforeErr != nil || err != nil || before != after, after
+}
+
+func (t *guardedTool) fingerprint(ctx context.Context, scope engineering.Scope) (string, error) {
+	root := scope.WriteRoot
+	if root == "" {
+		root = t.root
+	}
+	if root == "" {
+		return "", errors.New("no project root")
+	}
+	snapshot, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	return engineering.ProjectFingerprint(snapshot, root, t.store.Dir())
+}
+
+// markVerifiedSource remembers the tree as it was when a check passed, so
+// a later fingerprint comparison can expose changes nothing reported.
+func (t *guardedTool) markVerifiedSource(ctx context.Context, scope engineering.Scope, call fantasy.ToolCall, observed string) {
+	// A shell command was fingerprinted around the call only when it could
+	// change the tree; a read-only one is not a check worth a new snapshot.
+	if !engineering.IsVerificationTool(call.Name) && (call.Name != tools.BashToolName || observed == "") {
+		return
+	}
+	if observed == "" {
+		observed, _ = t.fingerprint(ctx, scope)
+	}
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	_ = t.store.RecordVerifiedSource(cleanup, scope.SessionID, observed)
 }
 
 func operationOutcome(tool string, response fantasy.ToolResponse, err error) (string, bool) {
@@ -400,6 +490,17 @@ func guardTools(ts []fantasy.AgentTool, store *engineering.Store, sessions ...se
 		}
 	}
 	return out
+}
+
+// trackSourceRoot lets guarded tools compare the project tree around opaque
+// calls (bash, MCP, pipelines) so a change they make stales earlier checks.
+func trackSourceRoot(ts []fantasy.AgentTool, root string) []fantasy.AgentTool {
+	for _, t := range ts {
+		if g, ok := t.(*guardedTool); ok {
+			g.root = root
+		}
+	}
+	return ts
 }
 
 func (a *sessionAgent) engineeringContext(ctx context.Context, sessionID string) (context.Context, func(), error) {

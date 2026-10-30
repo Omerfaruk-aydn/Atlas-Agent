@@ -42,6 +42,7 @@ import (
 	atlaslog "github.com/Omerfaruk-aydn/Atlas-Agent/internal/log"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/projects"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/proto"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/runoutput"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/server"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/skills"
@@ -62,6 +63,7 @@ func init() {
 	rootCmd.PersistentFlags().StringP("data-dir", "D", "", "Custom atlas data directory")
 	rootCmd.PersistentFlags().String("profile", "", "Usage profile: economical, research, implementation, review, ci or a configured profile")
 	rootCmd.PersistentFlags().BoolP("debug", "d", false, "Debug")
+	rootCmd.PersistentFlags().Bool("safe-mode", false, "Disable hooks, skills, MCP, custom context and other customizations")
 	rootCmd.PersistentFlags().StringVarP(&clientHost, "host", "H", server.DefaultHost(), "Connect to a specific atlas server host (for advanced users)")
 	rootCmd.Flags().BoolP("help", "h", false, "Help")
 	rootCmd.Flags().BoolP("yolo", "y", false, "Automatically accept all permissions (dangerous mode)")
@@ -228,7 +230,11 @@ func Execute() {
 		fang.WithVersion(version.Version),
 		fang.WithNotifySignal(os.Interrupt),
 	); err != nil {
-		os.Exit(1)
+		var exitErr *runoutput.ExitError
+		if errors.As(err, &exitErr) {
+			os.Exit(exitErr.Code)
+		}
+		os.Exit(runoutput.ExitFailure)
 	}
 }
 
@@ -376,7 +382,16 @@ func setupLocalWorkspace(cmd *cobra.Command) (workspace.Workspace, func(), error
 		return nil, nil, err
 	}
 
-	store, err := config.Init(cwd, dataDir, debug)
+	safeMode, _ := cmd.Flags().GetBool("safe-mode")
+	if safeMode && yolo {
+		return nil, nil, errors.New("--safe-mode cannot be combined with --yolo")
+	}
+	var store *config.ConfigStore
+	if safeMode {
+		store, err = config.InitSafe(cwd, dataDir, debug)
+	} else {
+		store, err = config.Init(cwd, dataDir, debug)
+	}
 	if err != nil {
 		return nil, nil, err
 	}

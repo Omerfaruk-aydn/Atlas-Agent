@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
@@ -32,6 +33,26 @@ func harnessDataDir(cfg *config.ConfigStore, workingDir string) func() string {
 func (a *sessionAgent) recordHarness(kind harnessmetrics.Kind, sessionID string, attrs map[string]string) {
 	if a.isSubAgent {
 		return
+	}
+	a.recordTraceSignal(sessionID, kind)
+	if a.sessions != nil && (kind == harnessmetrics.ContractSentBack || kind == harnessmetrics.ContractUnresolved || kind == harnessmetrics.CompletionDiverged) {
+		if current, err := a.sessions.Get(context.Background(), sessionID); err == nil {
+			if attrs == nil {
+				attrs = map[string]string{}
+			}
+			window := int64(0)
+			if a.largeModel != nil {
+				window = activeContextWindow(a.largeModel.Get())
+			}
+			used := current.PromptTokens + current.CompletionTokens
+			attrs["context_tokens"] = fmt.Sprint(used)
+			if window > 0 {
+				attrs["context_usage"] = fmt.Sprintf("%.4f", float64(used)/float64(window))
+			}
+			if kind == harnessmetrics.ContractUnresolved {
+				attrs["early_finish_signal"] = "unverified_completion"
+			}
+		}
 	}
 	a.harness.Record(kind, sessionID, attrs)
 }

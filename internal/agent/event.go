@@ -1,10 +1,12 @@
 package agent
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/event"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics"
 )
 
 func (a *sessionAgent) eventPromptSent(sessionID string) {
@@ -24,6 +26,16 @@ func (a *sessionAgent) eventPromptResponded(sessionID string, duration time.Dura
 }
 
 func (a *sessionAgent) eventTokensUsed(sessionID string, model Model, usage fantasy.Usage, cost float64) {
+	cacheInputs := usage.InputTokens + usage.CacheReadTokens
+	hitRate := 0.0
+	if cacheInputs > 0 {
+		hitRate = float64(usage.CacheReadTokens) / float64(cacheInputs)
+	}
+	a.recordHarness(harnessmetrics.PromptCache, sessionID, map[string]string{
+		"cache_read_tokens":     fmt.Sprint(usage.CacheReadTokens),
+		"cache_creation_tokens": fmt.Sprint(usage.CacheCreationTokens),
+		"cache_hit_rate":        fmt.Sprintf("%.4f", hitRate),
+	})
 	event.TokensUsed(
 		append(
 			a.eventCommon(sessionID, model),

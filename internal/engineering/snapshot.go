@@ -198,6 +198,17 @@ func (s *Store) Snapshot(ctx context.Context, root, id string, tasks []WorkflowT
 		}
 		if st.Work != nil {
 			view := st.Work.View(st)
+			view.Completion, err = s.CompletionStatus(ctx, id)
+			if err != nil {
+				return WorkflowSnapshot{}, err
+			}
+			if view.Completion != nil && view.Completion.Verdict == "complete" && view.Completion.TasksFingerprint != todoRevision {
+				view.Completion.Verdict = "unverified"
+				view.Completion.Reasons = append(view.Completion.Reasons, "task specifications changed since the saved completion decision")
+			}
+			if view.Phase == "deliver" && (view.Completion == nil || view.Completion.Verdict != "complete") {
+				view.Phase = "verify"
+			}
 			out.Work = &view
 		}
 		ids := make([]string, 0, len(st.RoleExecutions))

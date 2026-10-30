@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -172,4 +173,29 @@ func appendToolReply(prompt fantasy.Prompt, response *fantasy.Response) fantasy.
 		}
 	}
 	return append(prompt, fantasy.Message{Role: fantasy.MessageRoleAssistant, Content: parts}, fantasy.Message{Role: fantasy.MessageRoleTool, Content: results})
+}
+
+func TestArgonUsesCLIClientIdentity(t *testing.T) {
+	t.Parallel()
+	for model, wantCLI := range map[string]bool{"gemini-4-argon": true, "gemini-3.8-flash": false, "claude-sonnet-5-5": false} {
+		t.Run(model, func(t *testing.T) {
+			t.Parallel()
+			var gotUA string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotUA = r.Header.Get("User-Agent")
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = w.Write([]byte("data: " + `{"response":{"candidates":[{"content":{"parts":[{"text":"OK"}]},"finishReason":"STOP"}]}}` + "\n\n"))
+			}))
+			defer server.Close()
+			headers := map[string]string{"User-Agent": "antigravity/2.21.0 windows/amd64"}
+			m := &languageModel{modelID: model, options: options{apiKey: "test-token", project: "account-project", baseURL: server.URL, client: server.Client(), headers: headers}}
+			_, err := m.Generate(t.Context(), accountToolCall())
+			require.NoError(t, err)
+			if wantCLI {
+				require.True(t, strings.HasPrefix(gotUA, "antigravity/cli/"), gotUA)
+			} else {
+				require.Equal(t, "antigravity/2.21.0 windows/amd64", gotUA)
+			}
+		})
+	}
 }

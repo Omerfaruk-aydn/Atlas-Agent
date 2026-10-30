@@ -137,8 +137,30 @@ type Record struct {
 	Observed bool `json:"observed,omitempty"`
 	// Resolved records explicit reconciliation and prevents late responses
 	// from reviving an already inspected uncertain operation.
-	Resolved bool  `json:"resolved,omitempty"`
+	Resolved bool `json:"resolved,omitempty"`
+	// External marks a mutation whose effect lives outside the project tree
+	// (an MCP server, a remote system). It is tracked apart from the source
+	// generation: a tool's "ok" reply is only applied, and the effect needs
+	// its own observed result before it counts as verified.
+	External bool  `json:"external,omitempty"`
 	At       int64 `json:"at"`
+}
+
+// ExternalTarget names the system an MCP tool acts on ("mcp_<server>_<tool>"
+// gives "<server>"); it is empty for any other tool.
+func ExternalTarget(tool string) string {
+	rest, ok := strings.CutPrefix(tool, "mcp_")
+	if !ok {
+		return ""
+	}
+	server, _, _ := strings.Cut(rest, "_")
+	return server
+}
+
+// PendingExternal is an external effect that was reported applied but never
+// observed.
+func (r Record) PendingExternal() bool {
+	return r.External && r.Mutation && r.Phase == PhaseApplied && !r.Resolved
 }
 
 const (
@@ -194,7 +216,7 @@ func (l *Ledger) Record(r Record) {
 		for _, rec := range l.Records {
 			// Unresolved outcomes and reconciliation tombstones are retained:
 			// a late response must not revive an inspected operation.
-			if drop > 0 && !rec.Resolved && rec.Phase != PhaseUnknown && rec.Phase != PhaseDispatched {
+			if drop > 0 && !rec.Resolved && rec.Phase != PhaseUnknown && rec.Phase != PhaseDispatched && !rec.PendingExternal() {
 				drop--
 				continue
 			}
@@ -259,7 +281,7 @@ func (l *Ledger) Resolve(opID string, phase Phase) bool {
 	}
 	resolved := false
 	for i := range l.Records {
-		if l.Records[i].OpID == opID && (l.Records[i].Phase == PhaseUnknown || l.Records[i].Phase == PhaseDispatched) {
+		if l.Records[i].OpID == opID && (l.Records[i].Phase == PhaseUnknown || l.Records[i].Phase == PhaseDispatched || l.Records[i].PendingExternal()) {
 			l.Records[i].Phase = phase
 			l.Records[i].Resolved = true
 			resolved = true
@@ -496,6 +518,9 @@ func (l *Ledger) Requirements() []Requirement {
 	for _, r := range l.Records {
 		if r.Phase == PhaseDispatched && r.Mutation {
 			out = append(out, Requirement{ID: r.Tool + "#" + r.OpID, Description: "Background operation is running; observe its job output before depending on its result", Phase: PhaseDispatched})
+		}
+		if r.PendingExternal() {
+			out = append(out, Requirement{ID: "external:" + r.Tool + "#" + r.OpID, Description: "The tool reported success for an effect outside the project; observe the target system and resolve this operation with that evidence", Phase: PhaseApplied})
 		}
 	}
 	return out

@@ -248,6 +248,28 @@ independent verifiers. A finding that a verifier rejects is dropped.`,
 			o.yolo, _ = cmd.Flags().GetBool("yolo")
 			o.dataDir, _ = cmd.Flags().GetString("data-dir")
 
+			prNumber, _ := cmd.Flags().GetInt("pr")
+			publish, _ := cmd.Flags().GetBool("publish")
+			if prNumber > 0 {
+				if o.commit != "" || o.base != "" || o.spec != "" {
+					return errors.New("--pr cannot be combined with a target argument, --commit or --base")
+				}
+				minimum, _ := cmd.Flags().GetString("min-severity")
+				findings, err := pullRequestFindings(cmd.Context(), root, prNumber, minimum)
+				if err != nil {
+					return err
+				}
+				if publish {
+					if err := publishPRFindings(cmd.Context(), root, prNumber, findings); err != nil {
+						return err
+					}
+				}
+				return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{"findings": findings, "published": publish, "second_pass": true})
+			}
+			if publish {
+				return errors.New("--publish requires --pr")
+			}
+
 			if prepareOnly, _ := cmd.Flags().GetBool("prepare-only"); prepareOnly {
 				if o.spec == "" && !cmd.Flags().Changed("effort") {
 					prompt, truncated, err := prepareReview(cmd.Context(), root, o.commit, o.base)
@@ -297,6 +319,7 @@ independent verifiers. A finding that a verifier rejects is dropped.`,
 	command.Flags().Bool("comment", false, "Post the findings to the pull request as inline review comments (pull request targets only)")
 	command.Flags().Bool("json", false, "Print the report as JSON")
 	command.Flags().BoolP("yolo", "y", false, "With --fix, let the coding agent accept tool permissions without asking")
+	addPRReviewFlags(command)
 	command.MarkFlagsMutuallyExclusive("commit", "base")
 	return command
 }

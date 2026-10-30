@@ -1,0 +1,10 @@
+# github.com/Omerfaruk-aydn/Atlas-Agent/internal/config [github.com/Omerfaruk-aydn/Atlas-Agent/internal/config.test]
+internal\config\harness_observation_test.go:13:23: unset.GateEnabled undefined (type *Harness has no field or method GateEnabled)
+internal\config\harness_observation_test.go:14:14: unknown field DisabledGates in struct literal of type Harness
+internal\config\harness_observation_test.go:15:22: h.ValidateAblation undefined (type *Harness has no field or method ValidateAblation)
+internal\config\harness_observation_test.go:16:20: h.GateEnabled undefined (type *Harness has no field or method GateEnabled)
+internal\config\harness_observation_test.go:17:19: h.GateEnabled undefined (type *Harness has no field or method GateEnabled)
+internal\config\harness_observation_test.go:18:4: h.DisabledGates undefined (type *Harness has no field or method DisabledGates)
+internal\config\harness_observation_test.go:19:20: h.ValidateAblation undefined (type *Harness has no field or method ValidateAblation)
+FAIL	github.com/Omerfaruk-aydn/Atlas-Agent/internal/config [build failed]
+FAIL

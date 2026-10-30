@@ -121,6 +121,10 @@ type openEditorMsg struct {
 	Text string
 }
 
+type handoffCompletedMsg struct {
+	SessionID string
+}
+
 type shellResultMsg struct {
 	PendingID string // ID of the pending ShellItem to update.
 	Command   string
@@ -927,6 +931,23 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd := m.dispatchPromptQueueRefresh(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+	case specLoadedMsg:
+		if msg.err != nil {
+			cmds = append(cmds, util.ReportError(msg.err))
+		} else {
+			m.dialog.OpenDialog(dialog.NewSpec(m.com, msg.snapshot))
+		}
+	case specChangedMsg:
+		if msg.err != nil {
+			cmds = append(cmds, util.ReportError(msg.err))
+		} else {
+			m.dialog.CloseDialog(dialog.SpecID)
+			cmds = append(cmds, m.loadSpec())
+		}
+	case handoffCompletedMsg:
+		m.previousSessionID = m.currentSessionID()
+		cmds = append(cmds, m.loadSession(msg.SessionID))
+		cmds = append(cmds, util.ReportInfo(m.com.Text("Handoff ready. Continuing in a linked fresh session.")))
 	case loadSessionMsg:
 		if m.firstPrompt != nil && m.firstPrompt.user.SessionID != msg.session.ID {
 			m.clearFirstPromptPreview()
@@ -2414,6 +2435,13 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 		}
 
 	// Command dialog messages.
+	case dialog.ActionSpecApprove:
+		cmds = append(cmds, m.approveSpec(msg.Stage, msg.Digest))
+	case dialog.ActionSpecEdit:
+		cmds = append(cmds, m.editSpec(msg.Stage))
+	case dialog.ActionSpecReject:
+		m.dialog.CloseDialog(dialog.SpecID)
+		cmds = append(cmds, util.ReportInfo(m.com.Text("Specification stage rejected; revise it before implementation.")))
 	case dialog.ActionToggleYoloMode:
 		m.toggleYoloMode()
 		m.dialog.CloseDialog(dialog.CommandsID)
@@ -2520,6 +2548,13 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 			}
 			return nil
 		})
+		m.dialog.CloseDialog(dialog.CommandsID)
+	case dialog.ActionHandoff:
+		if m.isAgentBusy() {
+			cmds = append(cmds, util.ReportWarn(m.com.Text("Agent is busy, please wait before handing off the session...")))
+			break
+		}
+		cmds = append(cmds, m.createSessionHandoff(msg.SessionID))
 		m.dialog.CloseDialog(dialog.CommandsID)
 	case dialog.ActionFreshSession:
 		// Unlike ActionSummarize, this deliberately does not wait for an
@@ -2701,6 +2736,26 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 				status = "Auto-compact disabled -- summarize manually with /summarize"
 			}
 			return util.NewInfoMsg(status)
+		})
+		m.dialog.CloseDialog(dialog.CommandsID)
+	case dialog.ActionCycleOutputStyle:
+		cmds = append(cmds, func() tea.Msg {
+			cfg := m.com.Config()
+			if cfg == nil || cfg.Options == nil {
+				return util.ReportError(errors.New(m.com.Text("configuration not found")))()
+			}
+			styles := []string{"default", "concise", "explanatory", "learning"}
+			next := styles[0]
+			for i, style := range styles {
+				if cfg.Options.OutputStyle == style {
+					next = styles[(i+1)%len(styles)]
+					break
+				}
+			}
+			if err := m.com.Workspace.SetConfigField(config.ScopeGlobal, "options.output_style", next); err != nil {
+				return util.ReportError(err)()
+			}
+			return util.NewInfoMsg(fmt.Sprintf(m.com.Text("Output style: %s"), next))
 		})
 		m.dialog.CloseDialog(dialog.CommandsID)
 	case dialog.ActionQuit:
@@ -4697,6 +4752,8 @@ func permissionModeLabel(mode permission.PermissionMode) string {
 		return "plan (read-only)"
 	case permission.ModeAutoAcceptEdits:
 		return "auto-accept edits"
+	case permission.ModeAutoApprove:
+		return "auto-approve safe operations"
 	default:
 		return "manual"
 	}
@@ -5164,6 +5221,12 @@ func (m *UI) sendMessage(content string, attachments ...message.Attachment) tea.
 	if cmd, handled := m.interceptReviewCommand(content); handled {
 		return cmd
 	}
+	if routed, handled := explicitTurnCommand(content); handled {
+		if routed == "" {
+			return util.ReportWarn(m.com.Text("Provide a message after /steer or /queue."))
+		}
+		content = routed
+	}
 
 	// Start the turn timer.
 	common.StartTurn()
@@ -5473,6 +5536,8 @@ func (m *UI) openDialog(id string) tea.Cmd {
 		}
 	case dialog.LanguagesID:
 		m.dialog.OpenDialog(dialog.NewLanguages(m.com))
+	case dialog.SpecID:
+		cmds = append(cmds, m.loadSpec())
 	case dialog.FilePickerID:
 		if cmd := m.openFilesDialog(); cmd != nil {
 			cmds = append(cmds, cmd)

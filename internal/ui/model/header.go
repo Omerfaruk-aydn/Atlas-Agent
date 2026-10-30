@@ -145,6 +145,9 @@ func renderHeaderDetails(
 
 	var parts []string
 
+	if cfg := com.Config(); cfg != nil && cfg.Options != nil && cfg.Options.SafeMode {
+		parts = append(parts, t.LSP.ErrorDiagnostic.Render(com.Text("SAFE MODE — customizations disabled")))
+	}
 	if lspErrorCount > 0 {
 		parts = append(parts, t.LSP.ErrorDiagnostic.Render(fmt.Sprintf("%s%d", styles.LSPErrorIcon, lspErrorCount)))
 	}

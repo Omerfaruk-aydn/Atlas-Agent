@@ -55,20 +55,39 @@ function waitFor<T>(fn: () => T | undefined, ms: number, what: string): Promise<
   })
 }
 
-/** chromiumPath finds an installed Playwright Chromium, newest first, so
- * the tests run without downloading a browser. */
+/** chromiumPath finds Playwright Chromium or an ordinary installed Chrome.
+ * Every test still creates an isolated temporary browser profile. */
 export function chromiumPath(): string | undefined {
   if (process.env.ATLAS_E2E_CHROMIUM) return process.env.ATLAS_E2E_CHROMIUM
-  const dir = join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "ms-playwright")
-  if (!existsSync(dir)) return undefined
-  const builds = readdirSync(dir)
-    .filter((d) => /^chromium-\d+$/.test(d))
-    .sort((a, b) => Number(b.split("-")[1]) - Number(a.split("-")[1]))
-  for (const b of builds) {
-    const p = join(dir, b, "chrome-win64", "chrome.exe")
-    if (existsSync(p)) return p
+  const cache = process.platform === "win32"
+    ? join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "ms-playwright")
+    : process.platform === "darwin"
+      ? join(homedir(), "Library", "Caches", "ms-playwright")
+      : join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "ms-playwright")
+  if (existsSync(cache)) {
+    const builds = readdirSync(cache)
+      .filter((d) => /^chromium-\d+$/.test(d))
+      .sort((a, b) => Number(b.split("-")[1]) - Number(a.split("-")[1]))
+    const executable = process.platform === "win32"
+      ? join("chrome-win64", "chrome.exe")
+      : process.platform === "darwin"
+        ? join("chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium")
+        : join("chrome-linux64", "chrome")
+    for (const b of builds) {
+      const p = join(cache, b, executable)
+      if (existsSync(p)) return p
+    }
   }
-  return undefined
+  const installed = process.platform === "win32"
+    ? [
+        join(process.env.PROGRAMFILES ?? "C:\\Program Files", "Google", "Chrome", "Application", "chrome.exe"),
+        join(process.env["PROGRAMFILES(X86)"] ?? "C:\\Program Files (x86)", "Google", "Chrome", "Application", "chrome.exe"),
+        join(process.env.LOCALAPPDATA ?? join(homedir(), "AppData", "Local"), "Google", "Chrome", "Application", "chrome.exe"),
+      ]
+    : process.platform === "darwin"
+      ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]
+      : ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"]
+  return installed.find((p) => existsSync(p))
 }
 
 export async function startStack(): Promise<Stack> {

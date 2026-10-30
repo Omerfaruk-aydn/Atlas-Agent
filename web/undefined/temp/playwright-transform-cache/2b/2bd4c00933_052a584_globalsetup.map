@@ -1,0 +1,1 @@
+{"version":3,"names":["startStack","globalSetup"],"sources":["global-setup.ts"],"sourcesContent":["import { startStack } from \"./stack\"\n\nexport default async function globalSetup() {\n  await startStack()\n}\n"],"mappings":"AAAA,SAASA,UAAU,QAAQ,SAAS;AAEpC,eAAe,eAAeC,WAAWA,CAAA,EAAG;EAC1C,MAAMD,UAAU,CAAC,CAAC;AACpB","ignoreList":[]}

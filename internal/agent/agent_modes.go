@@ -243,7 +243,7 @@ func (c *coordinator) runArchitectEditor(ctx context.Context, args AgentParams, 
 	p.agentName = args.Architect
 	p.auto = false
 	p.toolCallID += "-architect"
-	p.prompt = "Design a concrete implementation plan for the following task. Inspect files using read-only tools. Do not execute commands or edit files. Specify exact files, bounded changes, acceptance criteria and verification.\n\n" + args.Prompt
+	p.prompt = "Design a concrete implementation plan for the following task. Inspect files using read-only tools. Do not execute commands or edit files. Return only one JSON object with changes:[{file,intent}], invariants:[...], verification:[...]. Every file must be inside these owned paths: " + strings.Join(args.OwnedPaths, ", ") + ". Do not broaden scope.\n\n" + args.Prompt
 	if c.engineering == nil {
 		return fantasy.NewTextErrorResponse("architect_edit requires ownership guards and durable storage"), nil
 	}
@@ -257,6 +257,9 @@ func (c *coordinator) runArchitectEditor(ctx context.Context, args AgentParams, 
 	}
 	if len(plan.Content) > 65536 {
 		return fantasy.NewTextErrorResponse("architect plan exceeds 64 KiB; narrow the task"), nil
+	}
+	if _, err := parseArchitectPlan(plan.Content, args.OwnedPaths); err != nil {
+		return fantasy.NewTextErrorResponse("invalid architect plan: " + err.Error()), nil
 	}
 	current, err := engineering.SourceFingerprint(ctx, root, c.engineering.Dir())
 	if err != nil {

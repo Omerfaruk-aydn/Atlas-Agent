@@ -1,0 +1,19 @@
+{
+  "id": "fix-placeholder-expansion",
+  "prompt": "expand substitutes ${NAME} only when NAME exists in the supplied map. Keep missing placeholders and literal dollar signs unchanged; do not read the process environment. Keep the public API and unrelated files unchanged. Add meaningful tests and run the project check.",
+  "check": [
+    "python",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    ".",
+    "-p",
+    "test_atlas_*.py"
+  ],
+  "timeout_seconds": 180,
+  "language": "python",
+  "categories": [
+    "bug-fix"
+  ]
+}

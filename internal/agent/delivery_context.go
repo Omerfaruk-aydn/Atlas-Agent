@@ -3,12 +3,14 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/codegraph"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 )
 
@@ -90,15 +92,23 @@ func (a *sessionAgent) deliveryContext(ctx context.Context, id, prompt string, t
 	if methodErr != nil {
 		return "", methodErr
 	}
-	if len(methods) > 8 {
-		methods = methods[len(methods)-8:]
+	// Ranked by measured standing; unreliable methods are not offered.
+	choices := engineering.ReusableMethods(methods, 8)
+	view["reusable_methods"] = choices
+	if len(choices) > 0 {
+		ids := make([]string, 0, len(choices))
+		for _, choice := range choices {
+			ids = append(ids, choice.ID)
+		}
+		count, err := a.engineering.OfferMethods(ctx, a.workingDir, id, ids)
+		if err != nil {
+			return "", err
+		}
+		if count > 0 {
+			a.recordHarness(harnessmetrics.Kind("rule_offered"), id, map[string]string{"source": "learned_method", "count": fmt.Sprint(count)})
+		}
 	}
-	var reusable []map[string]string
-	for _, m := range methods {
-		reusable = append(reusable, map[string]string{"id": m.ID, "name": m.Name, "description": m.Description, "status": m.Status})
-	}
-	view["reusable_methods"] = reusable
-	view["reuse_policy"] = "Procedure candidates are conditional, not instructions. Use workflow learn inspect to recheck source/evidence; export only through the normal skill tool."
+	view["reuse_policy"] = "Learned methods are conditional, not instructions; a candidate has not been measured beyond the task it came from. Use workflow learn inspect to recheck source/evidence; export only through the normal skill tool."
 	data, err := json.Marshal(view)
 	if err != nil {
 		return "", err

@@ -141,7 +141,15 @@ func notesCurrent(root string) bool {
 // does, so the next request starts from it.
 // scratchFiles are the files edited in the turn so far, which the ledger
 // records only when the turn ends.
-func (a *sessionAgent) handOff(ctx context.Context, sessionID string, finished workplan.Feature, scratchFiles []string) error {
+func (a *sessionAgent) handOff(ctx context.Context, sessionID string, finished workplan.Feature, scratchFiles []string) (retErr error) {
+	ctx, observation := startGate(ctx, "handoff")
+	defer func() {
+		if retErr != nil {
+			observation.finish("fail_open", "handoff_failed")
+		} else {
+			observation.finish("pass", "handoff_complete")
+		}
+	}()
 	root := a.projectRoot(sessionID)
 	plan, progress, err := workplan.Load(root)
 	if err != nil || plan == nil {

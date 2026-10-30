@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics"
@@ -41,6 +42,8 @@ type contractAlternatives struct {
 	// winner is the worktree whose check passed, kept until the project's
 	// own check passes.
 	winner string
+	// replayed bounds green-checkpoint recovery to one fresh strategy.
+	replayed bool
 }
 
 // prepareAlternatives creates the worktrees for command, or returns nil
@@ -60,7 +63,13 @@ func (a *sessionAgent) prepareAlternatives(ctx context.Context, sessionID string
 	prefix := probeName(sessionID)
 	prefix = prefix[:min(len(prefix), 8)]
 	alt := &contractAlternatives{command: command, root: a.ledgerRoot(ledger)}
-	for _, name := range []string{"a", "b"} {
+	attempts := 3
+	if a.taskContextConfig != nil && a.taskContextConfig.Config() != nil && a.taskContextConfig.Config().Options != nil {
+		if configured := a.taskContextConfig.Config().Options.MaxConcurrentSubAgents; configured > 3 {
+			attempts = min(5, configured)
+		}
+	}
+	for _, name := range []string{"a", "b", "c", "d", "e"}[:attempts] {
 		dir, err := workplan.AddWorktree(ctx, a.ledgerRoot(ledger), workplan.AlternativeDir, base, prefix+"-"+name)
 		if err != nil {
 			slog.Warn("Failed to prepare an alternative worktree", "error", err)
@@ -86,25 +95,18 @@ func (alt *contractAlternatives) relDir(dir string) string {
 
 // alternativesRequest is the instruction that goes with fresh worktrees.
 func (a *sessionAgent) alternativesRequest(alt *contractAlternatives) string {
-	first, second := alt.relDir(alt.dirs[0]), alt.relDir(alt.dirs[1])
 	var b strings.Builder
-	fmt.Fprintf(&b, "The same check has failed three times in a row: change approach rather than refine this one. "+
-		"Atlas checked the current project out twice, into %s and %s (installed dependencies and other ignored files are not copied; install them there first if the check needs them). ", first, second)
-	brief := func(dir, which string) string {
-		return fmt.Sprintf("Work only inside %s (absolute path %s): pass it as working_dir to bash and edit files under it. "+
-			"Take %s approach to make `%s` pass there, genuinely different from what has been tried so far (read %s/%s first). "+
-			"Stop when the check passes or the approach proves wrong, and report what you changed and the check's result.",
-			dir, filepath.ToSlash(filepath.Join(alt.root, dir)), which, alt.command, workplan.Dir, workplan.ProgressFile)
+	fmt.Fprintf(&b, "The same check has failed three times in a row. Atlas prepared %d isolated worktrees. Use a genuinely different approach in each; installed dependencies and ignored files are not copied.\n", len(alt.dirs))
+	for i, dir := range alt.dirs {
+		rel := alt.relDir(dir)
+		fmt.Fprintf(&b, "\nAttempt %c (%s, absolute %s): work only there. First map entry points, interfaces, consumers, tests and traps with codemap/project_map/impact_analysis; use that shared map to enrich the implementation. Run `%s`, inspect the full diff and write .atlas/alternative-summary.json with id, approach, files, checks, regressions, risks and diff. Use id %q.\n", 'A'+i, rel, filepath.ToSlash(filepath.Join(alt.root, dir)), alt.command, rel)
 	}
 	if a.agentToolAvailable() {
-		fmt.Fprintf(&b, "Start two sub-agents in parallel with the agent tool, one per worktree.\n\nBrief for the first: %q\n\nBrief for the second: %q\n\n",
-			brief(first, "one"), brief(second, "a second, different"))
+		fmt.Fprintf(&b, "\nRun these attempts as parallel sub-agents, bounded by MaxConcurrentSubAgents and the existing cost budget. Do not change the parent checkout.\n")
 	} else {
-		fmt.Fprintf(&b, "Try one approach in each worktree yourself, one after the other.\n\nFirst: %s\n\nSecond: %s\n\n",
-			brief(first, "one"), brief(second, "a second, different"))
+		fmt.Fprintf(&b, "\nTry the attempts sequentially. Do not change the parent checkout.\n")
 	}
-	fmt.Fprintf(&b, "When both are done, run `%s` yourself with working_dir set to each worktree, so Atlas can tell which one passes. "+
-		"Do not change the project itself meanwhile. Record both approaches and their outcome in %s/%s.", alt.command, workplan.Dir, workplan.ProgressFile)
+	fmt.Fprintf(&b, "When all are done, rerun `%s` in every worktree. Candidates with failing checks are eliminated; eligible candidates enter pairwise tournament selection. The winner will be applied and the full contract rerun in the parent.", alt.command)
 	return b.String()
 }
 
@@ -119,7 +121,7 @@ func (a *sessionAgent) settleAlternatives(ctx context.Context, sessionID string,
 	if alt.winner != "" {
 		return a.applyWinnerRequest(alt)
 	}
-	var passed string
+	var candidates []AlternativeSummary
 	ran := 0
 	for _, dir := range alt.dirs {
 		var latest *evaluatorCommand
@@ -132,15 +134,21 @@ func (a *sessionAgent) settleAlternatives(ctx context.Context, sessionID string,
 			continue
 		}
 		ran++
-		if !latest.failed && passed == "" {
-			passed = dir
+		if !latest.failed {
+			candidates = append(candidates, readAlternativeSummary(dir, alt.relDir(dir), alt.command))
 		}
 	}
+	winner := a.tournamentWinner(ctx, sessionID, candidates)
 	switch {
-	case passed != "":
-		alt.winner = passed
+	case winner != "":
 		for _, dir := range alt.dirs {
-			if dir != passed {
+			if alt.relDir(dir) == winner {
+				alt.winner = dir
+				break
+			}
+		}
+		for _, dir := range alt.dirs {
+			if dir != alt.winner {
 				_ = workplan.RemoveProbe(ctx, a.ledgerRoot(ledger), dir)
 			}
 		}
@@ -150,10 +158,49 @@ func (a *sessionAgent) settleAlternatives(ctx context.Context, sessionID string,
 		alt.asks++
 		return a.alternativesRequest(alt)
 	default:
+		if request := a.replayFromGreen(ctx, sessionID, ledger, alt); request != "" {
+			return request
+		}
 		a.dropAlternatives(ctx, ledger)
 		return "Neither alternative made the check pass. Compare what the attempts had in common: the cause is probably an assumption all of them share. " +
 			"Question it explicitly (re-read the failing output and the code it points to, check the environment and the check itself), then fix the project directly."
 	}
+}
+
+// replayFromGreen gives one failed attempt a clean checkpoint and a different
+// strategy. It only replaces Atlas-owned worktrees, never the user's checkout.
+func (a *sessionAgent) replayFromGreen(ctx context.Context, sessionID string, ledger *evaluatorLedger, alt *contractAlternatives) string {
+	if alt.replayed {
+		return ""
+	}
+	greens, err := workplan.Greens(a.ledgerRoot(ledger))
+	if err != nil {
+		return ""
+	}
+	green, ok := workplan.LastGreenPassing(greens, alt.command)
+	if !ok {
+		return ""
+	}
+	var failed *evaluatorCommand
+	for _, recorded := range ledger.runs {
+		run := recorded
+		if run.failed && workplan.Satisfies(run.command, alt.command) && slices.ContainsFunc(alt.dirs, func(dir string) bool { return sameDir(a.ledgerRoot(ledger), run.dir, dir) }) && (failed == nil || run.seq > failed.seq) {
+			failed = &run
+		}
+	}
+	if failed == nil {
+		return ""
+	}
+	dir := alt.dirs[0]
+	if _, err := workplan.AddWorktree(ctx, a.ledgerRoot(ledger), workplan.AlternativeDir, green.Commit, filepath.Base(dir)+"-replay"); err != nil {
+		return ""
+	}
+	alt.replayed = true
+	alt.dirs = []string{filepath.Join(a.ledgerRoot(ledger), workplan.Dir, workplan.AlternativeDir, filepath.Base(dir)+"-replay")}
+	alt.asks = 0
+	ledger.extraRounds++
+	a.recordHarness(harnessmetrics.AlternativesPrepared, sessionID, map[string]string{"replay": "true", "checkpoint": short(green.Commit)})
+	return fmt.Sprintf("All isolated approaches failed. Replay from the last green checkpoint %s instead of restarting. Work only in %s. Previous failure:\n%s\nChoose a materially different strategy, preserve the checks, write .atlas/alternative-summary.json with id %q, then run `%s` with working_dir set to that worktree.", short(green.Commit), alt.relDir(alt.dirs[0]), failed.tail, alt.relDir(alt.dirs[0]), alt.command)
 }
 
 func (a *sessionAgent) applyWinnerRequest(alt *contractAlternatives) string {

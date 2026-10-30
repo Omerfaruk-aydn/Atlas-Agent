@@ -26,7 +26,7 @@ tasks:
       - task: lint:log
       - golangci-lint run --path-mode=abs --config=".golangci.yml" --timeout=5m
     env:
-      GOEXPERIMENT: null
+      GOEXPERIMENT: ""
 
   lint:log:
     desc: Check that log messages start with capital letters
@@ -38,7 +38,7 @@ tasks:
     cmds:
       - golangci-lint run --path-mode=abs --config=".golangci.yml" --timeout=5m --fix
     env:
-      GOEXPERIMENT: null
+      GOEXPERIMENT: ""
 
   relaybin:
     desc: Bundle the Linux relay that /rc installs
@@ -99,6 +99,13 @@ tasks:
     cmds:
       - npx playwright test
 
+  web:e2e:browser-use:
+    desc: Deterministic web regressions using Atlas browser-use and the fake model
+    deps: [build:web-dev]
+    dir: web
+    cmds:
+      - npm run e2e:browser-use
+
   web:dev:
     desc: Vite dev server proxying to `atlas-agent web --port 7788 --dev-origin http://localhost:5173`
     dir: web
@@ -145,7 +152,14 @@ tasks:
       - ./Atlas-Agent{{exeExt}} {{.CLI_ARGS}}
 
   test:
-    desc: Run tests
+    desc: Run tests without the race detector
+    cmds:
+      - go test -failfast ./... {{.CLI_ARGS}}
+
+  test:race:
+    desc: Run tests with the race detector and CGO enabled
+    env:
+      CGO_ENABLED: 1
     cmds:
       - go test -race -failfast ./... {{.CLI_ARGS}}
 
@@ -235,8 +249,6 @@ tasks:
         msg: "Git is dirty"
       - sh: 'gh run list --workflow build.yml --commit $(git rev-parse HEAD) --status success --json conclusion -q ".[0].conclusion" | grep -q success'
         msg: "Test build for this commit failed or not present"
-      - sh: 'gh run list --workflow snapshot.yml --commit $(git rev-parse HEAD) --status success --json conclusion -q ".[0].conclusion" | grep -q success'
-        msg: "Snapshot build for this commit failed or not present"
     cmds:
       - task: fetch-tags
       - git commit --allow-empty -m "{{.NEXT}}"

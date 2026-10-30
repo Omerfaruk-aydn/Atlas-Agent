@@ -1,0 +1,9 @@
+D:\Atlas\internal\evaluation\retention_test.go:23:1: File is not properly formatted (gofumpt)
+	contradictory:=ScoreRetention(cases[0],cases[0].Summary+"\nAll tests passed.")
+^
+D:\Atlas\internal\agent\agent.go:1835:6: QF1001: could apply De Morgan's law (staticcheck)
+		if !(errors.As(err, &overflow) && !isCancelErr && !call.overflowRetried && !a.disableAutoSummarize.Get()) {
+		   ^
+2 issues:
+* gofumpt: 1
+* staticcheck: 1

@@ -1,0 +1,41 @@
+name: Atlas verified change
+description: Run Atlas with an explicit permission policy and machine-readable evidence.
+inputs:
+  prompt:
+    description: Task for Atlas.
+    required: true
+  permission-policy:
+    description: Path to a reviewed headless permission JSON file.
+    required: true
+  provider-api-key:
+    description: Provider credential. Pass only from GitHub Actions secrets.
+    required: true
+  provider:
+    description: Provider environment prefix, for example OPENAI or ANTHROPIC.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Build Atlas
+      shell: bash
+      run: go build -o "$RUNNER_TEMP/atlas${EXE_EXT}" .
+      env:
+        CGO_ENABLED: "0"
+        GOEXPERIMENT: greenteagc
+        EXE_EXT: ${{ runner.os == 'Windows' && '.exe' || '' }}
+    - name: Run verified task
+      shell: bash
+      env:
+        ATLAS_PROVIDER_KEY: ${{ inputs.provider-api-key }}
+        ATLAS_PROVIDER: ${{ inputs.provider }}
+      run: |
+        if [[ ! "$ATLAS_PROVIDER" =~ ^[A-Z][A-Z0-9_]*$ ]]; then
+          echo "Invalid provider environment prefix" >&2
+          exit 1
+        fi
+        export "${ATLAS_PROVIDER}_API_KEY=$ATLAS_PROVIDER_KEY"
+        "$RUNNER_TEMP/atlas${EXE_EXT}" run \
+          --output-format stream-json \
+          --permission-policy "${{ inputs.permission-policy }}" \
+          "${{ inputs.prompt }}"
+        EXE_EXT: ${{ runner.os == 'Windows' && '.exe' || '' }}

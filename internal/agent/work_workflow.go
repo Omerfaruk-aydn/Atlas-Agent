@@ -94,10 +94,21 @@ func (c *coordinator) workWorkflow(ctx context.Context, p WorkflowParams, call f
 		if st.Work != nil {
 			work = *st.Work
 		}
-		return workResponse(map[string]any{"work": work, "source_generation": st.Generation, "recent_operations": engineering.RecentOperations(st, 12)})
+		completion, err := c.engineering.CompletionStatus(ctx, id)
+		if err != nil {
+			return fantasy.ToolResponse{}, err
+		}
+		return workResponse(map[string]any{"work": work, "completion": completion, "source_generation": st.Generation, "recent_operations": engineering.RecentOperations(st, 12)})
 	}
 	var result any
 	now := time.Now()
+	if p.WorkAction == "contract_advance" {
+		// A verification is about to be bound to an item: first expose any
+		// change made since the check that nothing reported.
+		if c.cfg != nil {
+			noteSourceDrift(ctx, c.engineering, c.cfg.WorkingDir(), id)
+		}
+	}
 	_, err := c.engineering.UpdateWork(ctx, id, func(w *engineering.WorkState, st engineering.State) error {
 		var err error
 		switch p.WorkAction {
@@ -106,9 +117,9 @@ func (c *coordinator) workWorkflow(ctx context.Context, p WorkflowParams, call f
 		case "contract_advance":
 			ops := in.OperationIDs
 			if len(ops) == 0 && in.Status == engineering.ItemVerified {
-				latest, ok := engineering.LatestCheck(st)
-				if !ok {
-					return errors.New("no passing check observed at the current source generation; run the relevant check first")
+				latest, err := w.LatestCheckFor(st, in.ItemID)
+				if err != nil {
+					return err
 				}
 				ops = []string{latest.ID}
 			}

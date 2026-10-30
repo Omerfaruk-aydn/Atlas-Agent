@@ -1,0 +1,1 @@
+export function solve(obj:Record<string,unknown>,keys:string[]):Record<string,unknown>{const out:Record<string,unknown>=Object.create(null);for(const k of keys)if(Object.prototype.hasOwnProperty.call(obj,k))out[k]=obj[k];return out;}

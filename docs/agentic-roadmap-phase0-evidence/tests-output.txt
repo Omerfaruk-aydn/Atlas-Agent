@@ -1,0 +1,9 @@
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent	86.222s
+?   	github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/agenttest	[no test files]
+?   	github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/notify	[no test files]
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/prompt	7.685s
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools	378.481s
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools/mcp	9.288s
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/config	9.123s
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/cmd	15.818s
+ok  	github.com/Omerfaruk-aydn/Atlas-Agent/internal/cmd/clientserverrace	0.939s

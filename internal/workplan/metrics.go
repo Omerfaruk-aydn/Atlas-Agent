@@ -2,9 +2,6 @@ package workplan
 
 import (
 	"encoding/json"
-	"errors"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"time"
@@ -31,24 +28,18 @@ type FeatureCost struct {
 type Costs map[string]FeatureCost
 
 // LoadCosts reads the recorded costs; a missing file is an empty record.
-func LoadCosts(root string) (Costs, error) {
-	data, err := os.ReadFile(filepath.Join(root, Dir, MetricsFile))
-	if errors.Is(err, fs.ErrNotExist) {
-		return Costs{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	costs := Costs{}
-	if err := json.Unmarshal(data, &costs); err != nil {
-		return Costs{}, nil //nolint:nilerr // A corrupt record restarts the count.
-	}
-	return costs, nil
+func LoadCosts(root string) (Costs, error) { return sessionCosts(root) }
+
+// AddTurn charges one turn to the first open feature of the plan at root,
+// in the project-wide record. Sessions use AddTurnFor.
+func AddTurn(root string, elapsed time.Duration, tokens int64) error {
+	return AddTurnFor(root, "", elapsed, tokens)
 }
 
-// AddTurn charges one turn to the first open feature of the plan at root.
-// It does nothing without a plan or an open feature.
-func AddTurn(root string, elapsed time.Duration, tokens int64) error {
+// AddTurnFor charges one turn to the first open feature of the plan, in the
+// session's own record, so concurrent sessions never overwrite each other's
+// counts. It does nothing without a plan or an open feature.
+func AddTurnFor(root, session string, elapsed time.Duration, tokens int64) error {
 	plan, _, err := Load(root)
 	if err != nil || plan == nil {
 		return err
@@ -57,20 +48,23 @@ func AddTurn(root string, elapsed time.Duration, tokens int64) error {
 	if len(open) == 0 {
 		return nil
 	}
-	costs, err := LoadCosts(root)
-	if err != nil {
-		return err
-	}
-	cost := costs[open[0].ID]
-	cost.Turns++
-	cost.Millis += elapsed.Milliseconds()
-	cost.Tokens += max(tokens, 0)
-	costs[open[0].ID] = cost
-	data, err := json.MarshalIndent(costs, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(root, Dir, MetricsFile), data, 0o644)
+	path := filepath.Join(sessionDir(root, session), MetricsFile)
+	return withFileLock(path, func() error {
+		costs, err := loadCostsAt(path)
+		if err != nil {
+			return err
+		}
+		cost := costs[open[0].ID]
+		cost.Turns++
+		cost.Millis += elapsed.Milliseconds()
+		cost.Tokens += max(tokens, 0)
+		costs[open[0].ID] = cost
+		data, err := json.MarshalIndent(costs, "", "  ")
+		if err != nil {
+			return err
+		}
+		return writeFileAtomic(path, data, 0o644)
+	})
 }
 
 // costWarningFactor is how many times the median finished feature the

@@ -1,6 +1,7 @@
 package engineering
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -20,8 +21,11 @@ import (
 // progress points at observed operations in the same execution state;
 // nothing here is accepted on the model's word alone.
 type WorkState struct {
-	Turns       []UserTurn       `json:"turns,omitempty"`
-	Items       []WorkItem       `json:"items,omitempty"`
+	Turns []UserTurn `json:"turns,omitempty"`
+	Items []WorkItem `json:"items,omitempty"`
+	// Archive keeps closed items out of the active set (and out of the
+	// per-turn view) without losing them.
+	Archive     []WorkItem       `json:"archive,omitempty"`
 	Methods     []MethodDecision `json:"methods,omitempty"`
 	Hypotheses  []Hypothesis     `json:"hypotheses,omitempty"`
 	Experiments []Experiment     `json:"experiments,omitempty"`
@@ -78,6 +82,9 @@ type WorkItem struct {
 	Evidence     []EvidenceRef `json:"evidence,omitempty"`
 	SupersededBy string        `json:"superseded_by,omitempty"`
 	UpdatedAt    int64         `json:"updated_at"`
+	// AcceptanceCheck optionally pins the check tool that can verify the
+	// item; empty accepts any check whose class fits the item kind.
+	AcceptanceCheck string `json:"acceptance_check,omitempty"`
 }
 
 // EvidenceRef binds a claim to an observed operation and the source
@@ -196,6 +203,7 @@ const (
 	maxWorkTurns       = 24
 	maxWorkTurnText    = 24 * 1024
 	maxWorkItems       = 48
+	maxWorkArchive     = 512
 	maxWorkMethods     = 24
 	maxWorkHypotheses  = 12
 	maxWorkExperiments = 24
@@ -303,11 +311,49 @@ func (w *WorkState) AddItem(kind, text, origin string, turns []int, now time.Tim
 		return WorkItem{}, errors.New("origin must be user, agent_proposal or assumption")
 	}
 	if len(w.Items) >= maxWorkItems {
-		return WorkItem{}, errors.New("contract item limit reached; supersede or decline obsolete items first")
+		w.archiveClosed()
+	}
+	if len(w.Items) >= maxWorkItems {
+		return WorkItem{}, fmt.Errorf("%d open contract items; finish, supersede or decline some before adding more", len(w.Items))
 	}
 	item := WorkItem{ID: w.next("R"), Kind: kind, Text: text, Origin: origin, SourceTurns: turns, Status: ItemOpen, UpdatedAt: now.UnixMilli()}
 	w.Items = append(w.Items, item)
 	return item, nil
+}
+
+// archiveClosed moves items that no longer drive work (superseded, declined,
+// then delivered) from the active set to the archive, so closing an item
+// gives capacity back while its history and evidence stay referenceable. The
+// archive is bounded; only its oldest entries are ever dropped.
+func (w *WorkState) archiveClosed() {
+	for _, closed := range [][]string{{ItemSuperseded, ItemDeclined}, {ItemDelivered}} {
+		kept := w.Items[:0:0]
+		for _, item := range w.Items {
+			if slices.Contains(closed, item.Status) {
+				w.Archive = append(w.Archive, item)
+				continue
+			}
+			kept = append(kept, item)
+		}
+		w.Items = kept
+		if len(w.Items) < maxWorkItems {
+			break
+		}
+	}
+	if extra := len(w.Archive) - maxWorkArchive; extra > 0 {
+		w.Archive = slices.Clone(w.Archive[extra:])
+	}
+}
+
+// ArchivedItem finds a closed item by ID, for references from evidence,
+// supersession chains and reports.
+func (w *WorkState) ArchivedItem(id string) (WorkItem, bool) {
+	for _, item := range w.Archive {
+		if item.ID == id {
+			return item, true
+		}
+	}
+	return WorkItem{}, false
 }
 
 // Supersede replaces an item after a user correction. A user requirement
@@ -352,6 +398,11 @@ func findWorkOperation(st State, ref string) (Operation, bool) {
 			return op, true
 		}
 	}
+	// The rolling list is only the recent working set; older observed
+	// operations are still evidence and come from the journal.
+	if st.journal != nil {
+		return st.journal(ref)
+	}
 	return Operation{}, false
 }
 
@@ -390,6 +441,61 @@ func verificationOperation(st State, op Operation) bool {
 		}
 	}
 	return false
+}
+
+// Evidence classes say which claims a check can support. A passing linter
+// shows the code is well formed; it does not show behavior or a user flow.
+const (
+	evidenceStatic   = "static"
+	evidenceBehavior = "behavior"
+)
+
+func evidenceClass(tool string) string {
+	if tool == "lint_run" {
+		return evidenceStatic
+	}
+	return evidenceBehavior
+}
+
+// evidenceFits reports whether a verified check can support the item. A
+// deliverable or constraint may rest on any observed check; a behavior or an
+// uncertainty needs a check that exercises behavior, and an item that names
+// an AcceptanceCheck needs that check.
+func evidenceFits(item WorkItem, op Operation) error {
+	if item.AcceptanceCheck != "" && op.Tool != item.AcceptanceCheck {
+		return fmt.Errorf("item %s names %s as its acceptance check; operation %s is %s", item.ID, item.AcceptanceCheck, op.ID, op.Tool)
+	}
+	if (item.Kind == "behavior" || item.Kind == "uncertainty") && evidenceClass(op.Tool) == evidenceStatic {
+		return fmt.Errorf("%s is a static check and cannot verify %s item %s; run a check that exercises the behavior (test_run, scenario, api_probe, ui_verify, verify)", op.Tool, item.Kind, item.ID)
+	}
+	return nil
+}
+
+// LatestCheckFor returns the newest passing current check that can support
+// the item, not merely the newest check of any kind.
+func (w *WorkState) LatestCheckFor(st State, id string) (Operation, error) {
+	item := w.item(id)
+	if item == nil {
+		return Operation{}, errors.New("unknown item")
+	}
+	var reason error
+	for i := len(st.Operations) - 1; i >= 0; i-- {
+		op := st.Operations[i]
+		if !verificationOperation(st, op) {
+			continue
+		}
+		if err := evidenceFits(*item, op); err != nil {
+			if reason == nil {
+				reason = err
+			}
+			continue
+		}
+		return op, nil
+	}
+	if reason != nil {
+		return Operation{}, reason
+	}
+	return Operation{}, errors.New("no passing check observed at the current source generation; run the relevant check first")
 }
 
 // RecentOperations lists finished operations newest first, for citing.
@@ -431,6 +537,9 @@ func observed(st State, ids []string) ([]EvidenceRef, error) {
 func (w *WorkState) Advance(st State, id, status string, ops []string, now time.Time) error {
 	item := w.item(id)
 	if item == nil {
+		if archived, ok := w.ArchivedItem(id); ok {
+			return fmt.Errorf("item %s is %s and archived", id, archived.Status)
+		}
 		return errors.New("unknown item")
 	}
 	if item.Status == ItemSuperseded || item.Status == ItemDeclined {
@@ -446,10 +555,21 @@ func (w *WorkState) Advance(st State, id, status string, ops []string, now time.
 			return errors.New("implemented requires at least one completed operation")
 		}
 	case ItemVerified:
+		var mismatch error
 		ok := slices.ContainsFunc(refs, func(r EvidenceRef) bool {
 			op, _ := findWorkOperation(st, r.OperationID)
-			return verificationOperation(st, op)
+			if !verificationOperation(st, op) {
+				return false
+			}
+			if err := evidenceFits(*item, op); err != nil {
+				mismatch = cmp.Or(mismatch, err)
+				return false
+			}
+			return true
 		})
+		if !ok && mismatch != nil {
+			return mismatch
+		}
 		if !ok {
 			return fmt.Errorf("verified requires a passing check (%s) observed at the current source generation %d; rerun the check after the last change", strings.Join(checkTools, ", "), st.Generation)
 		}
@@ -1069,27 +1189,28 @@ func ValidPhase(s string) bool {
 // WorkView is the compact projection shown to the model every turn and to
 // the user in the workflow panel.
 type WorkView struct {
-	Budget      WorkBudget        `json:"budget"`
-	Phase       string            `json:"phase,omitempty"`
-	Waiting     string            `json:"waiting,omitempty"`
-	Generation  uint64            `json:"source_generation"`
-	Requested   []WorkItemView    `json:"requested,omitempty"`
-	Proposed    []WorkItemView    `json:"proposed,omitempty"`
-	Assumptions []WorkItemView    `json:"assumptions,omitempty"`
-	LastTurn    *UserTurn         `json:"last_user_turn,omitempty"`
-	Method      *MethodDecision   `json:"method,omitempty"`
-	Hypotheses  []Hypothesis      `json:"hypotheses,omitempty"`
-	Experiments []Experiment      `json:"pending_experiments,omitempty"`
-	Candidates  []CandidateView   `json:"candidates,omitempty"`
-	Suite       *CandidateSuite   `json:"suite,omitempty"`
-	Selection   string            `json:"selection,omitempty"`
-	Attempts    []FailedAttempt   `json:"recent_failed_attempts,omitempty"`
-	Questions   []OpenQuestion    `json:"open_questions,omitempty"`
-	NextChecks  []string          `json:"next_checks,omitempty"`
-	Omitted     map[string]int    `json:"omitted,omitempty"`
-	Recovered   *StateRecovery    `json:"state_recovered,omitempty"`
-	Counts      map[string]int    `json:"status_counts,omitempty"`
-	Extra       map[string]string `json:"notes,omitempty"`
+	Completion  *CompletionCheckpoint `json:"completion,omitempty"`
+	Budget      WorkBudget            `json:"budget"`
+	Phase       string                `json:"phase,omitempty"`
+	Waiting     string                `json:"waiting,omitempty"`
+	Generation  uint64                `json:"source_generation"`
+	Requested   []WorkItemView        `json:"requested,omitempty"`
+	Proposed    []WorkItemView        `json:"proposed,omitempty"`
+	Assumptions []WorkItemView        `json:"assumptions,omitempty"`
+	LastTurn    *UserTurn             `json:"last_user_turn,omitempty"`
+	Method      *MethodDecision       `json:"method,omitempty"`
+	Hypotheses  []Hypothesis          `json:"hypotheses,omitempty"`
+	Experiments []Experiment          `json:"pending_experiments,omitempty"`
+	Candidates  []CandidateView       `json:"candidates,omitempty"`
+	Suite       *CandidateSuite       `json:"suite,omitempty"`
+	Selection   string                `json:"selection,omitempty"`
+	Attempts    []FailedAttempt       `json:"recent_failed_attempts,omitempty"`
+	Questions   []OpenQuestion        `json:"open_questions,omitempty"`
+	NextChecks  []string              `json:"next_checks,omitempty"`
+	Omitted     map[string]int        `json:"omitted,omitempty"`
+	Recovered   *StateRecovery        `json:"state_recovered,omitempty"`
+	Counts      map[string]int        `json:"status_counts,omitempty"`
+	Extra       map[string]string     `json:"notes,omitempty"`
 }
 
 type WorkItemView struct {
@@ -1114,6 +1235,19 @@ type CandidateView struct {
 // view stays small; the full records remain readable through the tool.
 func (w *WorkState) View(st State) WorkView {
 	v := WorkView{Budget: w.Budget, Phase: w.Phase, Waiting: w.Waiting, Generation: st.Generation, NextChecks: w.NextChecks, Recovered: st.Recovered, Suite: w.Suite, Selection: w.Selection, Counts: map[string]int{}, Omitted: map[string]int{}}
+	if st.Completion != nil {
+		completion := *st.Completion
+		if completion.Verdict == "complete" && !completion.CompleteAt(st) {
+			completion.Verdict = "unverified"
+		}
+		v.Completion = &completion
+	}
+	if v.Phase == "deliver" && (v.Completion == nil || v.Completion.Verdict != "complete") {
+		v.Phase = "verify"
+	}
+	if len(w.Archive) > 0 {
+		v.Omitted["archived_items"] = len(w.Archive)
+	}
 	if n := len(w.Turns); n > 0 {
 		last := w.Turns[n-1]
 		if len(last.Text) > 280 {
@@ -1196,7 +1330,9 @@ func (s *Store) UpdateWork(ctx context.Context, id string, fn func(w *WorkState,
 		if st.Work == nil {
 			st.Work = &WorkState{}
 		}
-		if err := fn(st.Work, *st); err != nil {
+		view := *st
+		view.journal = func(ref string) (Operation, bool) { return s.JournaledOperation(ctx, id, ref) }
+		if err := fn(st.Work, view); err != nil {
 			return err
 		}
 		out = *st.Work

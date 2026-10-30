@@ -31,6 +31,7 @@ func TestLiveThirdPartyAccount(t *testing.T) {
 		model string
 		limit int64
 	}{
+		{"gemini-4-argon", 65536},
 		{"claude-sonnet-5-5", 128000},
 		{"claude-opus-5-5", 128000},
 		{"gpt-oss-120b", 32768},

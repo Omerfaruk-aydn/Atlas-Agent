@@ -1,0 +1,49 @@
+name: Atlas issue task
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: read
+
+concurrency:
+  group: atlas-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  atlas:
+    if: github.event.issue.pull_request == null && startsWith(github.event.comment.body, '/atlas ')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: ./deploy/github-action
+        with:
+          prompt: ${{ github.event.comment.body }}
+          permission-policy: deploy/github-action/permissions.json
+          provider: OPENAI
+          provider-api-key: ${{ secrets.OPENAI_API_KEY }}
+      - name: Create a draft pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: atlas/issue-${{ github.event.issue.number }}-${{ github.run_id }}
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No changes; no pull request created."
+            exit 0
+          fi
+          git switch -c "$BRANCH"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: address issue #${{ github.event.issue.number }}"
+          git push -u origin "$BRANCH"
+          gh pr create --draft --title "Atlas: issue #${{ github.event.issue.number }}" \
+            --body "Closes #${{ github.event.issue.number }}. Review Atlas JSONL logs and verify the change before marking ready." \
+            --head "$BRANCH"

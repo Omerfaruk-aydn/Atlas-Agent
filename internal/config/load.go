@@ -44,10 +44,25 @@ const defaultCatwalkURL = ""
 // Load loads the configuration from the default paths and returns a
 // ConfigStore that owns both the pure-data Config and all runtime state.
 func Load(workingDir, dataDir string, debug bool) (*ConfigStore, error) {
-	// Migrate deprecated disable_notifications before loading config.
-	migrateDisableNotifications()
+	return load(workingDir, dataDir, debug, false)
+}
+
+// LoadSafe loads providers and models without executing shell configuration
+// or enabling user/project customizations. It is intended for diagnostics.
+func LoadSafe(workingDir, dataDir string, debug bool) (*ConfigStore, error) {
+	return load(workingDir, dataDir, debug, true)
+}
+
+func load(workingDir, dataDir string, debug, safeMode bool) (*ConfigStore, error) {
+	// Safe mode has no migration or shell-execution side effects.
+	if !safeMode {
+		migrateDisableNotifications()
+	}
 
 	configPaths := lookupConfigs(workingDir)
+	if safeMode {
+		configPaths = slices.DeleteFunc(slices.Clone(configPaths), isShellConfig)
+	}
 
 	cfg, loadedPaths, err := loadFromConfigPaths(context.Background(), configPaths)
 	if err != nil {
@@ -83,6 +98,9 @@ func Load(workingDir, dataDir string, debug bool) (*ConfigStore, error) {
 			store.loadedPaths = append(store.loadedPaths, store.workspacePath)
 		}
 	}
+	if safeMode {
+		cfg.applySafeMode()
+	}
 
 	// Validate hooks after all config merging is complete so workspace
 	// hooks also get their matcher regexes compiled.
@@ -98,6 +116,9 @@ func Load(workingDir, dataDir string, debug bool) (*ConfigStore, error) {
 		return nil, fmt.Errorf("invalid execution configuration: %w", err)
 	}
 	if err := cfg.ValidateLanguage(); err != nil {
+		return nil, err
+	}
+	if err := cfg.Options.Harness.ValidateAblation(); err != nil {
 		return nil, err
 	}
 	if err := cfg.Options.Voice.Validate(); err != nil {

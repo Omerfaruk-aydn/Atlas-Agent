@@ -145,6 +145,11 @@ func (h *hookedTool) runPostHooks(ctx context.Context, sessionID string, call fa
 			resp.Content += "\n\nTurn halted by hook. Reason: " + result.Reason
 		}
 	}
+	if result.RequiredFailure {
+		resp.StopTurn = true
+		resp.IsError = true
+		resp.Content += "\n\nRequired PostToolUse hook failed after the tool ran; its effect cannot be rolled back."
+	}
 	resp.Metadata = mergeHookMetadata(resp.Metadata, result)
 	return resp, nil
 }
@@ -152,12 +157,13 @@ func (h *hookedTool) runPostHooks(ctx context.Context, sessionID string, call fa
 // buildHookMetadata creates a HookMetadata from an AggregateResult.
 func buildHookMetadata(result hooks.AggregateResult) hooks.HookMetadata {
 	return hooks.HookMetadata{
-		HookCount:    result.HookCount,
-		Decision:     result.Decision.String(),
-		Halt:         result.Halt,
-		Reason:       result.Reason,
-		InputRewrite: result.UpdatedInput != "",
-		Hooks:        result.Hooks,
+		HookCount:       result.HookCount,
+		Decision:        result.Decision.String(),
+		Halt:            result.Halt,
+		Reason:          result.Reason,
+		InputRewrite:    result.UpdatedInput != "",
+		RequiredFailure: result.RequiredFailure,
+		Hooks:           result.Hooks,
 	}
 }
 

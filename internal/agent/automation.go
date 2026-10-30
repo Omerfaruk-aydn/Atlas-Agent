@@ -44,6 +44,7 @@ func (c *coordinator) automationLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			c.idleCompactionTick(ctx)
 			if err := c.AutomationTick(ctx); err != nil && ctx.Err() == nil {
 				slog.Warn("Automation tick failed", "error", err)
 			}

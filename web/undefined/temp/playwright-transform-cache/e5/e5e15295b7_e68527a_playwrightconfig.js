@@ -1,0 +1,28 @@
+import { defineConfig, devices } from "@playwright/test";
+import { chromiumPath } from "./e2e/stack";
+
+// End-to-end tests run the real binary (see e2e/stack.ts); there is no
+// mocked API anywhere in this suite.
+const executablePath = chromiumPath();
+export default defineConfig({
+  testDir: "./e2e",
+  outputDir: "./test-results/artifacts",
+  globalSetup: "./e2e/global-setup.ts",
+  globalTeardown: "./e2e/global-teardown.ts",
+  fullyParallel: false,
+  workers: 1,
+  timeout: 90000,
+  expect: {
+    timeout: 20000
+  },
+  reporter: [["list"]],
+  use: {
+    ...devices["Desktop Chrome"],
+    launchOptions: executablePath ? {
+      executablePath
+    } : {},
+    trace: "retain-on-failure",
+    screenshot: "only-on-failure"
+  }
+});
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6WyJkZWZpbmVDb25maWciLCJkZXZpY2VzIiwiY2hyb21pdW1QYXRoIiwiZXhlY3V0YWJsZVBhdGgiLCJ0ZXN0RGlyIiwib3V0cHV0RGlyIiwiZ2xvYmFsU2V0dXAiLCJnbG9iYWxUZWFyZG93biIsImZ1bGx5UGFyYWxsZWwiLCJ3b3JrZXJzIiwidGltZW91dCIsImV4cGVjdCIsInJlcG9ydGVyIiwidXNlIiwibGF1bmNoT3B0aW9ucyIsInRyYWNlIiwic2NyZWVuc2hvdCJdLCJzb3VyY2VzIjpbInBsYXl3cmlnaHQuY29uZmlnLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IGRlZmluZUNvbmZpZywgZGV2aWNlcyB9IGZyb20gXCJAcGxheXdyaWdodC90ZXN0XCJcbmltcG9ydCB7IGNocm9taXVtUGF0aCB9IGZyb20gXCIuL2UyZS9zdGFja1wiXG5cbi8vIEVuZC10by1lbmQgdGVzdHMgcnVuIHRoZSByZWFsIGJpbmFyeSAoc2VlIGUyZS9zdGFjay50cyk7IHRoZXJlIGlzIG5vXG4vLyBtb2NrZWQgQVBJIGFueXdoZXJlIGluIHRoaXMgc3VpdGUuXG5jb25zdCBleGVjdXRhYmxlUGF0aCA9IGNocm9taXVtUGF0aCgpXG5cbmV4cG9ydCBkZWZhdWx0IGRlZmluZUNvbmZpZyh7XG4gIHRlc3REaXI6IFwiLi9lMmVcIixcbiAgb3V0cHV0RGlyOiBcIi4vdGVzdC1yZXN1bHRzL2FydGlmYWN0c1wiLFxuICBnbG9iYWxTZXR1cDogXCIuL2UyZS9nbG9iYWwtc2V0dXAudHNcIixcbiAgZ2xvYmFsVGVhcmRvd246IFwiLi9lMmUvZ2xvYmFsLXRlYXJkb3duLnRzXCIsXG4gIGZ1bGx5UGFyYWxsZWw6IGZhbHNlLFxuICB3b3JrZXJzOiAxLFxuICB0aW1lb3V0OiA5MF8wMDAsXG4gIGV4cGVjdDogeyB0aW1lb3V0OiAyMF8wMDAgfSxcbiAgcmVwb3J0ZXI6IFtbXCJsaXN0XCJdXSxcbiAgdXNlOiB7XG4gICAgLi4uZGV2aWNlc1tcIkRlc2t0b3AgQ2hyb21lXCJdLFxuICAgIGxhdW5jaE9wdGlvbnM6IGV4ZWN1dGFibGVQYXRoID8geyBleGVjdXRhYmxlUGF0aCB9IDoge30sXG4gICAgdHJhY2U6IFwicmV0YWluLW9uLWZhaWx1cmVcIixcbiAgICBzY3JlZW5zaG90OiBcIm9ubHktb24tZmFpbHVyZVwiLFxuICB9LFxufSlcbiJdLCJtYXBwaW5ncyI6IkFBQUEsU0FBU0EsWUFBWSxFQUFFQyxPQUFPLFFBQVEsa0JBQWtCO0FBQ3hELFNBQVNDLFlBQVksUUFBUSxhQUFhOztBQUUxQztBQUNBO0FBQ0EsTUFBTUMsY0FBYyxHQUFHRCxZQUFZLENBQUMsQ0FBQztBQUVyQyxlQUFlRixZQUFZLENBQUM7RUFDMUJJLE9BQU8sRUFBRSxPQUFPO0VBQ2hCQyxTQUFTLEVBQUUsMEJBQTBCO0VBQ3JDQyxXQUFXLEVBQUUsdUJBQXVCO0VBQ3BDQyxjQUFjLEVBQUUsMEJBQTBCO0VBQzFDQyxhQUFhLEVBQUUsS0FBSztFQUNwQkMsT0FBTyxFQUFFLENBQUM7RUFDVkMsT0FBTyxFQUFFLEtBQU07RUFDZkMsTUFBTSxFQUFFO0lBQUVELE9BQU8sRUFBRTtFQUFPLENBQUM7RUFDM0JFLFFBQVEsRUFBRSxDQUFDLENBQUMsTUFBTSxDQUFDLENBQUM7RUFDcEJDLEdBQUcsRUFBRTtJQUNILEdBQUdaLE9BQU8sQ0FBQyxnQkFBZ0IsQ0FBQztJQUM1QmEsYUFBYSxFQUFFWCxjQUFjLEdBQUc7TUFBRUE7SUFBZSxDQUFDLEdBQUcsQ0FBQyxDQUFDO0lBQ3ZEWSxLQUFLLEVBQUUsbUJBQW1CO0lBQzFCQyxVQUFVLEVBQUU7RUFDZDtBQUNGLENBQUMsQ0FBQyIsImlnbm9yZUxpc3QiOltdfQ==

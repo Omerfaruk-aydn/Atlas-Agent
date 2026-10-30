@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	sessionExportOutput string
-	sessionExportFormat string
+	sessionExportOutput  string
+	sessionExportFormat  string
+	sessionExportPreview bool
 )
 
 var sessionExportCmd = &cobra.Command{
@@ -27,7 +28,8 @@ var sessionExportCmd = &cobra.Command{
 
 func init() {
 	sessionExportCmd.Flags().StringVarP(&sessionExportOutput, "output", "o", "", "file to write to (default: stdout)")
-	sessionExportCmd.Flags().StringVar(&sessionExportFormat, "format", "markdown", "output format: markdown or json")
+	sessionExportCmd.Flags().StringVar(&sessionExportFormat, "format", "markdown", "output format: markdown, html or json")
+	sessionExportCmd.Flags().BoolVar(&sessionExportPreview, "preview", false, "Preview the redacted export without writing a file")
 	sessionCmd.AddCommand(sessionExportCmd)
 }
 
@@ -54,6 +56,8 @@ func runSessionExport(cmd *cobra.Command, args []string) error {
 	switch sessionExportFormat {
 	case "markdown", "":
 		doc = export.Markdown(sess, msgs)
+	case "html":
+		doc = export.HTML(sess, msgs)
 	case "json":
 		raw, err := export.JSON(sess, msgs)
 		if err != nil {
@@ -61,10 +65,10 @@ func runSessionExport(cmd *cobra.Command, args []string) error {
 		}
 		doc = string(raw)
 	default:
-		return fmt.Errorf("unknown format %q: use markdown or json", sessionExportFormat)
+		return fmt.Errorf("unknown format %q: use markdown, html or json", sessionExportFormat)
 	}
 
-	if sessionExportOutput == "" {
+	if sessionExportOutput == "" || sessionExportPreview {
 		_, err := fmt.Fprint(cmd.OutOrStdout(), doc)
 		return err
 	}

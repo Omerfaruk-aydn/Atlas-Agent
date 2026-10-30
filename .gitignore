@@ -91,3 +91,6 @@ internal/webui/build/*
 web/node_modules/
 web/test-results/
 web/playwright-report/
+
+# Built release binaries from local verification runs must not be committed.
+/artifacts/*/release/*/atlas-agent-*

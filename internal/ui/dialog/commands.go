@@ -509,6 +509,7 @@ func (c *Commands) defaultCommands() []*CommandItem {
 	// Only show compact command if there's an active session
 	if c.hasSession {
 		commands = append(commands, NewCommandItem(c.com.Styles, "summarize", "Summarize Session", "", ActionSummarize{SessionID: c.sessionID}).WithAliases("compact").WithSlash("/compact").WithSummary("Summarize the session to free up context"))
+		commands = append(commands, NewCommandItem(c.com.Styles, "handoff", "Handoff to Fresh Session", "", ActionHandoff{SessionID: c.sessionID}).WithSlash("/handoff").WithSummary("Continue in a linked fresh session with the durable work context"))
 		commands = append(commands, NewCommandItem(c.com.Styles, "fresh", "Refresh Session (recover from a stuck run)", "", ActionFreshSession{SessionID: c.sessionID}).WithSlash("/fresh").WithSummary("Recover a session stuck mid-run"))
 		commands = append(commands, NewCommandItem(c.com.Styles, "interrupt_correct", "Interrupt + Correct", "f10", ActionInterruptWithCorrection{}).WithSlash("/correct").WithSummary("Interrupt the run and correct the prompt"))
 	}
@@ -615,6 +616,8 @@ func (c *Commands) defaultCommands() []*CommandItem {
 		NewCommandItem(c.com.Styles, "workflow-controls", "Agent Controls", "alt+w", ActionOpenDialog{DialogID: "workflow-controls"}).WithSlash("/workflow").WithSummary("Inspect tasks, budgets and revision-checked controls"),
 		NewCommandItem(c.com.Styles, "context-inspector", "Context Inspector", "", ActionOpenDialog{DialogID: "context-inspector"}).WithSlash("/context").WithSummary("Inspect request sources and token estimates; pin files or exclude tool outputs"),
 		NewCommandItem(c.com.Styles, "usage-profiles", "Usage Profiles", "", ActionOpenDialog{DialogID: "usage-profiles"}).WithSlash("/profiles").WithSummary("Select model, tools, execution limits and output expectations together"),
+		NewCommandItem(c.com.Styles, "output-style", "Cycle Output Style", "", ActionCycleOutputStyle{}).WithSlash("/style").WithSummary("Cycle default, concise, explanatory and learning response styles"),
+		NewCommandItem(c.com.Styles, "spec", "Specification Review", "", ActionOpenDialog{DialogID: SpecID}).WithSlash("/spec").WithSummary("Review, approve or edit requirements, design and tasks"),
 		NewCommandItem(c.com.Styles, "agent-batches", "Agent Batches", "", ActionOpenDialog{DialogID: "agent-batches"}).WithSlash("/batches").WithSummary("Inspect durable per-item results and failed batch rows"),
 		NewCommandItem(c.com.Styles, "interactions", "Browser & Desktop Control", "", ActionOpenDialog{DialogID: "interactions"}).WithSlash("/interactions").WithSummary("Inspect action history; pause for manual authentication and resume control"),
 		NewCommandItem(c.com.Styles, "resume-use", "Resume Browser & Desktop", "", ActionResumeInteraction{}).WithSlash("/resume-use").WithSummary("Return control after a manual step and continue the task"),

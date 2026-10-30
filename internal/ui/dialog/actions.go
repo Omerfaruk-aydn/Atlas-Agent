@@ -84,8 +84,12 @@ type (
 	}
 	ActionToggleTransparentBackground struct{}
 	ActionToggleAutoCompact           struct{}
+	ActionCycleOutputStyle            struct{}
 	ActionInitializeProject           struct{}
 	ActionSummarize                   struct {
+		SessionID string
+	}
+	ActionHandoff struct {
 		SessionID string
 	}
 	// ActionShowGoal reports what the session is working towards.

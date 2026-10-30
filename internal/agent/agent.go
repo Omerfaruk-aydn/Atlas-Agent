@@ -332,7 +332,10 @@ type sessionAgent struct {
 	shellNudgesGiven *csync.Map[string, bool]
 	// harness records harness events for the stats report (see
 	// internal/harnessmetrics).
-	harness     *harnessmetrics.Recorder
+	harness *harnessmetrics.Recorder
+	// router is the automatic model router, nil while options.router is
+	// off. See model_router.go.
+	router      atomic.Pointer[routerRuntime]
 	isYolo      bool
 	permissions permission.Service
 	notify      pubsub.Publisher[notify.Notification]
@@ -1266,6 +1269,9 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			if outcomeErr != nil {
 				return callContext, prepared, outcomeErr
 			}
+			// The router picks this step's model before anything below reads
+			// chain.Current(). See model_router.go.
+			a.routeStep(call.SessionID, call.Prompt, chain, largeModel, options, currentSession.PromptTokens, promptPrefix != "")
 			stepMessagesIn := filterTurnReasoning(options.Messages, reasoningOrigins, originOf(chain.Current()))
 			prepared.Messages = withRuntimeOutcomes(stepMessagesIn, outcomeBlock)
 			prepared.Messages = withRemoteContext(prepared.Messages, a.remoteContextBlock())
@@ -1397,8 +1403,8 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				return callContext, prepared, err
 			}
 			callContext = context.WithValue(callContext, tools.MessageIDContextKey, assistantMsg.ID)
-			callContext = context.WithValue(callContext, tools.SupportsImagesContextKey, largeModel.CatwalkCfg.SupportsImages)
-			callContext = context.WithValue(callContext, tools.ModelNameContextKey, largeModel.CatwalkCfg.Name)
+			callContext = context.WithValue(callContext, tools.SupportsImagesContextKey, chain.Current().CatwalkCfg.SupportsImages)
+			callContext = context.WithValue(callContext, tools.ModelNameContextKey, chain.Current().CatwalkCfg.Name)
 			currentAssistant = &assistantMsg
 			return callContext, prepared, err
 		},
@@ -1607,6 +1613,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			// misreport cost.
 			previousCost := updatedSession.Cost
 			a.updateSessionUsage(chain.Current(), &updatedSession, usage, a.openrouterCost(stepResult.ProviderMetadata), estimated)
+			a.noteRouterStep(call.SessionID, chain, largeModel, usage, estimated)
 			if a.engineering != nil {
 				scope := engineering.GetScope(ctx, call.SessionID)
 				if err := a.engineering.Charge(context.WithoutCancel(ctx), scope.SessionID, scope.TaskID, engineeringTokens(usage), max(0, updatedSession.Cost-previousCost), 0); err != nil {

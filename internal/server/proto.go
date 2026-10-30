@@ -1328,6 +1328,36 @@ func (c *controllerV1) handlePostWorkspaceAgentSessionGoal(w http.ResponseWriter
 	w.WriteHeader(http.StatusOK)
 }
 
+// handlePostWorkspaceAgentSessionBtw answers a side question about a
+// session without adding it to the session.
+//
+//	@Summary		Ask a side question
+//	@Tags			agent
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path	string							true	"Workspace ID"
+//	@Param			sid		path	string							true	"Session ID"
+//	@Param			request	body	proto.AgentSideQuestionRequest	true	"Question"
+//	@Success		200		{object}	proto.AgentSideQuestionResponse
+//	@Failure		400		{object}	proto.Error
+//	@Failure		404		{object}	proto.Error
+//	@Failure		500		{object}	proto.Error
+//	@Router			/workspaces/{id}/agent/sessions/{sid}/btw [post]
+func (c *controllerV1) handlePostWorkspaceAgentSessionBtw(w http.ResponseWriter, r *http.Request) {
+	var req proto.AgentSideQuestionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		c.server.logError(r, "Failed to decode side question request", "error", err)
+		jsonError(w, http.StatusBadRequest, "failed to decode request")
+		return
+	}
+	resp, err := c.backend.AskSideQuestion(r.Context(), r.PathValue("id"), r.PathValue("sid"), req.Question)
+	if err != nil {
+		c.handleError(w, r, err)
+		return
+	}
+	jsonEncode(w, resp)
+}
+
 // handlePostWorkspaceAgentSessionSummarize summarizes a session.
 //
 //	@Summary		Summarize session

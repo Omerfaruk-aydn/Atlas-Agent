@@ -149,6 +149,19 @@ type AgentGoalStatus struct {
 	Budget int    `json:"budget,omitempty"`
 }
 
+// AgentSideQuestionRequest asks a question that is answered in a separate
+// read-only context and never added to the session.
+type AgentSideQuestionRequest struct {
+	Question string `json:"question"`
+}
+
+// AgentSideQuestionResponse is the answer to a side question. Model names
+// the model that wrote it.
+type AgentSideQuestionResponse struct {
+	Answer string `json:"answer"`
+	Model  string `json:"model,omitempty"`
+}
+
 // LSPStartRequest represents a request to start an LSP for a path.
 type LSPStartRequest struct {
 	Path string `json:"path"`

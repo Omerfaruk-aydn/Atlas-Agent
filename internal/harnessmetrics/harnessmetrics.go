@@ -193,6 +193,8 @@ type Summary struct {
 	// Checks lists, per project kind, the commands that verified work
 	// most often.
 	Checks map[string][]string
+	// Router is what the automatic model router did.
+	Router RouterTotals
 }
 
 // Summarize aggregates events.
@@ -215,6 +217,7 @@ func Summarize(events []Event) Summary {
 		}
 	}
 	s.Sessions = len(sessions)
+	s.Router = RouterSavings(events, "")
 	s.Checks = map[string][]string{}
 	for kind, counts := range checksByKind(events) {
 		for _, c := range counts[:min(len(counts), 5)] {
@@ -278,6 +281,11 @@ func Format(s Summary, since time.Time) string {
 	line("found nothing", fmt.Sprintf("%d (%s)", c[ToolSearchEmpty], ratio(c[ToolSearchEmpty], searches)))
 	line("rescued by closest match", count(ToolSearchClosest))
 	line("shell nudges (followed)", fmt.Sprintf("%d (%s)", c[NudgeGiven], ratio(c[NudgeFollowed], c[NudgeGiven])))
+
+	if line := FormatRouterSavings(s.Router); line != "" {
+		section("\nModel router")
+		b.WriteString("  " + line + "\n")
+	}
 
 	section("\nContext and loops")
 	line("compactions", count(Compaction))

@@ -259,6 +259,17 @@ func (w *AppWorkspace) AgentSetGoal(ctx context.Context, sessionID, goal string)
 	return w.app.AgentCoordinator.StartGoal(ctx, sessionID, goal)
 }
 
+func (w *AppWorkspace) AgentAskSideQuestion(ctx context.Context, sessionID, question string) (string, string, error) {
+	if w.app.AgentCoordinator == nil {
+		return "", "", errors.New("agent coordinator not initialized")
+	}
+	answer, err := w.app.AgentCoordinator.AskSideQuestion(ctx, sessionID, question)
+	if err != nil {
+		return "", "", err
+	}
+	return answer.Text, answer.Model, nil
+}
+
 func (w *AppWorkspace) AgentSummarize(ctx context.Context, sessionID string) error {
 	if w.app.AgentCoordinator == nil {
 		return errors.New("agent coordinator not initialized")

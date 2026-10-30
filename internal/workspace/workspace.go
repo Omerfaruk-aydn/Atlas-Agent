@@ -214,6 +214,11 @@ type Workspace interface {
 	// where it keeps taking turns of its own until the goal is reached
 	// or its budget runs out. An empty goal ends the run.
 	AgentSetGoal(ctx context.Context, sessionID, goal string) error
+	// AgentAskSideQuestion answers question in a separate read-only
+	// context without adding anything to the session, so it works while
+	// the session's own run is busy. sessionID may be empty before a
+	// session exists. Returns the answer and the model that wrote it.
+	AgentAskSideQuestion(ctx context.Context, sessionID, question string) (answer, model string, err error)
 	UpdateAgentModel(ctx context.Context) error
 	InitCoderAgent(ctx context.Context) error
 	InitCoderAgentNonInteractive(ctx context.Context) error

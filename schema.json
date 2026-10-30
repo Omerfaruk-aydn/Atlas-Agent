@@ -992,6 +992,10 @@
           "$ref": "#/$defs/Memory",
           "description": "Bounds on the prose the agent carries between sessions"
         },
+        "project_model": {
+          "$ref": "#/$defs/ProjectModel",
+          "description": "Living project model: modules, entry points, test map, ownership and decisions kept under the data directory"
+        },
         "agent_models": {
           "additionalProperties": {
             "type": "string"
@@ -1045,6 +1049,14 @@
           "$ref": "#/$defs/Evaluator",
           "description": "An independent reviewer that checks a turn which changed files before it ends. A failing verdict sends its findings back to the agent to fix. Runs on the \"evaluator\" model role, else the \"advisor\" role, else the session's large model."
         },
+        "product_verify": {
+          "$ref": "#/$defs/ProductVerify",
+          "description": "Product verification for web/UI work: before a turn that changed UI files ends, open the locally served app at three viewports, check console errors, failed requests, accessibility and load time, drive the flows in .atlas/verify.json and have a vision model review screenshots. Evidenced findings are sent back to the agent. Off by default."
+        },
+        "router": {
+          "$ref": "#/$defs/Router",
+          "description": "Automatic model router. Per agent step it sends reading, searching and simple edits to a cheap fast model and design, debugging and failing-test work to the strong model, using a deterministic heuristic. Off by default."
+        },
         "work_plan": {
           "$ref": "#/$defs/WorkPlan",
           "description": "What Atlas does around a work plan (.atlas/work.json). Every option is on unless set to false."
@@ -1073,6 +1085,91 @@
           },
           "type": "array",
           "description": "List of tools that don't require permission prompts"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ProductVerify": {
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "off",
+            "auto",
+            "always"
+          ],
+          "description": "When to verify: off (default), auto (only for web/UI work: UI files changed or a UI request) or always (whenever a local app is running).",
+          "default": "off"
+        },
+        "url": {
+          "type": "string",
+          "description": "Address of the running app, such as http://localhost:5173. Only local addresses are accepted (localhost, 127.0.0.1, ::1, *.localhost, *.test). Empty finds it from the request, dev-server output or .atlas/verify.json."
+        },
+        "max_rounds": {
+          "type": "integer",
+          "description": "How many times one request can be sent back for blocking findings before it ends with them reported. 0 uses the default.",
+          "default": 2
+        },
+        "block_on": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "description": "Lowest severity of an evidenced finding that blocks completion. Vision findings block only at high.",
+          "default": "medium"
+        },
+        "load_budget_ms": {
+          "type": "integer",
+          "description": "Longest accepted page load in milliseconds. Negative disables the check. 0 uses the default.",
+          "default": 5000
+        },
+        "max_console_errors": {
+          "type": "integer",
+          "description": "Console errors tolerated per page before they become findings.",
+          "default": 0
+        },
+        "max_failed_requests": {
+          "type": "integer",
+          "description": "Failed requests tolerated per page before they become findings.",
+          "default": 0
+        },
+        "axe_path": {
+          "type": "string",
+          "description": "Path to axe.min.js from the axe-core package. Empty looks in node_modules/axe-core and .atlas/vendor, and falls back to a built-in subset of rules.",
+          "examples": [
+            "node_modules/axe-core/axe.min.js"
+          ]
+        },
+        "vision_review": {
+          "type": "boolean",
+          "description": "Have a vision-capable model review screenshots at three viewports for layout defects. Needs a model that accepts images.",
+          "default": true
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ProjectModel": {
+      "properties": {
+        "inject": {
+          "type": "boolean",
+          "description": "Put a compact summary of the project model into the system prompt when a model exists and the summary is small enough.",
+          "default": true
+        },
+        "auto_refresh": {
+          "type": "boolean",
+          "description": "Bring an existing project model up to date when a session starts, within a few seconds.",
+          "default": true
+        },
+        "max_summary_bytes": {
+          "type": "integer",
+          "maximum": 8000,
+          "minimum": 200,
+          "description": "Largest summary placed in the system prompt. A larger one is left out.",
+          "default": 2400
         }
       },
       "additionalProperties": false,
@@ -1314,6 +1411,47 @@
         "results_file",
         "policy"
       ]
+    },
+    "Router": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Turn the model router on.",
+          "default": false
+        },
+        "fast_role": {
+          "type": "string",
+          "description": "Model role for cheap steps (reading, searching, summarizing, simple edits). Defaults to the \"fast\" role, then the \"small\" model.",
+          "default": "fast",
+          "examples": [
+            "fast"
+          ]
+        },
+        "strong_role": {
+          "type": "string",
+          "description": "Model role for demanding steps. Empty uses the session's large model."
+        },
+        "min_dwell_steps": {
+          "type": "integer",
+          "description": "Fewest steps between two model switches, to keep prompt caches warm. 0 uses the default.",
+          "default": 3,
+          "examples": [
+            4
+          ]
+        },
+        "downshift_streak": {
+          "type": "integer",
+          "description": "Consecutive read-only steps required before moving from the strong to the fast model. 0 uses the default.",
+          "default": 2
+        },
+        "error_streak": {
+          "type": "integer",
+          "description": "Consecutive steps with failing tool calls that escalate to the strong model. 0 uses the default.",
+          "default": 2
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
     },
     "Sandbox": {
       "properties": {

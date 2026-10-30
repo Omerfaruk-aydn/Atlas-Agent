@@ -233,6 +233,26 @@ func (b *Backend) GoalStatus(workspaceID, sessionID string) (proto.AgentGoalStat
 	return proto.AgentGoalStatus{Active: ok, Goal: goal, Used: used, Budget: budget}, nil
 }
 
+// AskSideQuestion answers a question in a separate read-only context
+// without touching the session's history. It does not wait for the
+// session's own run, which may still be going.
+func (b *Backend) AskSideQuestion(ctx context.Context, workspaceID, sessionID, question string) (proto.AgentSideQuestionResponse, error) {
+	ws, err := b.GetWorkspace(workspaceID)
+	if err != nil {
+		return proto.AgentSideQuestionResponse{}, err
+	}
+
+	if ws.AgentCoordinator == nil {
+		return proto.AgentSideQuestionResponse{}, ErrAgentNotInitialized
+	}
+
+	answer, err := ws.AgentCoordinator.AskSideQuestion(ctx, sessionID, question)
+	if err != nil {
+		return proto.AgentSideQuestionResponse{}, err
+	}
+	return proto.AgentSideQuestionResponse{Answer: answer.Text, Model: answer.Model}, nil
+}
+
 // QueuedPrompts returns the number of queued prompts for the session.
 func (b *Backend) QueuedPrompts(workspaceID, sessionID string) (int, error) {
 	ws, err := b.GetWorkspace(workspaceID)

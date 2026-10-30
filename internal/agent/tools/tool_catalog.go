@@ -65,7 +65,7 @@ var toolCategoryByName = map[string]string{
 	"agent": "agents", "delegate": "agents", "orchestrate": "agents", "debate": "agents", "vibe": "agents",
 	"todos": "planning", "goal": "planning", "requirement_trace": "planning", "exit_plan_mode": "planning", "question": "planning",
 	"memory": "memory", "facts": "memory", "session_search": "memory", "context_select": "memory",
-	"code_query": "code", "code_map": "code", "project_map": "code", "dead_code": "code", "type_hierarchy": "code", "import_graph": "code",
+	"code_query": "code", "code_map": "code", "project_map": "code", "project_model": "code", "dead_code": "code", "type_hierarchy": "code", "import_graph": "code",
 	"impact_analysis": "code", "code_metrics": "code", "api_surface": "code", "anti_pattern_scan": "code", "todo_scan": "code",
 	"verify": "testing", "test_select": "testing", "mutation_test": "testing", "test_run": "testing", "coverage_report": "testing",
 	"lint_run": "testing", "bug_reproduce": "testing", "repro_minimize": "testing", "benchmark_compare": "testing",
@@ -74,15 +74,15 @@ var toolCategoryByName = map[string]string{
 	"worktree": "git", "changelog_gen": "git", "pr_describe": "git", "pre_commit_guard": "git", "audit_trail": "git", "github_pr_view": "git",
 	"atlas_config": "config", "atlas_info": "config", "atlas_logs": "config", "usage": "config", "skill_manage": "config",
 	"workflow": "workflow", "scenario": "workflow",
-	"scan_secrets": "quality", "security_scan": "quality", "dep_audit": "quality", "docker_build_explain": "quality",
+	"scan_secrets": "quality", "security_scan": "quality", "security_verify": "quality", "dep_audit": "quality", "docker_build_explain": "quality",
 	"k8s_manifest_lint": "quality", "terraform_lint": "quality", "ci_cd_pipeline_debugger": "quality",
 	"cloud_resource_costs": "quality", "env_var_audit": "quality", "metric_export": "quality",
-	"api_probe": "testing", "contract_diff": "code", "migration_rehearse": "testing",
+	"api_probe": "testing", "contract_diff": "code", "migration_rehearse": "testing", "rehearse": "testing",
 	"stress_journey": "testing", "undo_feature": "git", "handover": "docs",
 	"time_lab": "testing", "dataset_forge": "testing", "assumption_check": "testing", "data_boundary": "quality",
 	"cli_bridge": "shell",
 	"doc_index":  "docs", "generate_docstring": "docs",
-	"agent_jobs": "platform", "task_board": "platform", "source_memory": "memory",
+	"agent_jobs": "platform", "task_board": "platform", "source_memory": "memory", "attempt": "agents",
 	"list_mcp_resources": "mcp", "read_mcp_resource": "mcp",
 	"isolated_desktop": "devices", "android": "devices", "remote_node": "devices", "remote_support": "devices", "screen_mark": "devices", "app_loop": "devices",
 	"integrations": "mcp", "local_app": "apps",
@@ -313,6 +313,9 @@ func IntentTools(text string) []string {
 	}
 	if strings.Contains(folded, "guvenlik tara") || strings.Contains(folded, "security scan") {
 		add("security_scan")
+	}
+	if strings.Contains(folded, "security audit") || strings.Contains(folded, "guvenlik denetim") || strings.Contains(folded, "proof test") {
+		add("security_scan", "security_verify")
 	}
 	// Device intents need the device or environment named; a word like
 	// "markdown" or "node.js" must not load device schemas.

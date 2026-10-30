@@ -39,6 +39,10 @@ func (s *stubCoordinator) StartGoal(context.Context, string, string) error { ret
 func (s *stubCoordinator) ClearGoal(context.Context, string) error         { return nil }
 func (s *stubCoordinator) GoalStatus(string) (string, int, int, bool)      { return "", 0, 0, false }
 
+func (s *stubCoordinator) AskSideQuestion(context.Context, string, string) (agent.SideAnswer, error) {
+	return agent.SideAnswer{}, nil
+}
+
 func (s *stubCoordinator) BeginAccepted(sessionID string) *agent.AcceptedRun {
 	return nil
 }

@@ -101,6 +101,14 @@ What you have learned about this codebase that is not evident from reading it.
 {{end}}
 {{end}}
 
+{{if .ProjectModel}}
+# Project model
+A summary of this project's structure, kept up to date from its files and history. It is a snapshot taken when the session started and is a guide, not a substitute for reading code. Query it with the `project_model` tool: `impact` before changing a file shows what depends on it, which tests to run and who owns it.
+<project_model>
+{{.ProjectModel}}
+</project_model>
+{{end}}
+
 {{if or .Config.Options.MaxSessionCost .Config.Options.MaxStepsPerTurn .Config.Options.AllowedDomains .Config.Options.BlockedDomains}}
 # Operating constraints
 This workspace has limits configured. They are enforced outside your control, so plan around them rather than discovering them mid-turn.

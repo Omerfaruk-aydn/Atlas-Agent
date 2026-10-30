@@ -354,6 +354,16 @@ func (w *ClientWorkspace) AgentSetGoal(ctx context.Context, sessionID, goal stri
 	return w.client.SetAgentGoal(ctx, w.workspaceID(), sessionID, goal)
 }
 
+// AgentAskSideQuestion relays the question to the server, whose
+// coordinator answers it in a scratch context.
+func (w *ClientWorkspace) AgentAskSideQuestion(ctx context.Context, sessionID, question string) (string, string, error) {
+	resp, err := w.client.AskAgentSideQuestion(ctx, w.workspaceID(), sessionID, question)
+	if err != nil {
+		return "", "", err
+	}
+	return resp.Answer, resp.Model, nil
+}
+
 func (w *ClientWorkspace) AgentSummarize(ctx context.Context, sessionID string) error {
 	return w.client.AgentSummarizeSession(ctx, w.workspaceID(), sessionID)
 }

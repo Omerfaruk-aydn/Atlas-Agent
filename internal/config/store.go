@@ -20,6 +20,8 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/claude"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/codex"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/copilot"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/kimi"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/minimax"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/muse"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -600,6 +602,8 @@ func (s *ConfigStore) SetProviderAPIKey(scope Scope, providerID string, apiKey a
 				providerConfig.SetupGitHubCopilot()
 			case string(catwalk.InferenceProviderChatGPT):
 				providerConfig.SetupChatGPT()
+			case string(catwalk.InferenceProviderKimiCode):
+				providerConfig.SetupKimiCode()
 			case string(catwalk.InferenceProviderAntigravity):
 				providerConfig.SetupAntigravity()
 			case string(catwalk.InferenceProviderClaude):
@@ -932,6 +936,12 @@ func (s *ConfigStore) exchange(ctx context.Context, providerID, refreshToken str
 		return claude.RefreshToken(ctx, refreshToken)
 	case string(catwalk.InferenceProviderMuse):
 		return muse.RefreshToken(ctx, refreshToken)
+	case string(catwalk.InferenceProviderKimiCode):
+		return kimi.RefreshToken(ctx, refreshToken)
+	case string(catwalk.InferenceProviderMiniMaxPlan):
+		return minimax.RefreshToken(ctx, minimax.Global, refreshToken)
+	case string(catwalk.InferenceProviderMiniMaxPlanCN):
+		return minimax.RefreshToken(ctx, minimax.China, refreshToken)
 	default:
 		return nil, fmt.Errorf("OAuth refresh not supported for provider %s", providerID)
 	}
@@ -974,6 +984,8 @@ func (s *ConfigStore) applyToken(providerConfig ProviderConfig, token *oauth.Tok
 		providerConfig.SetupGitHubCopilot()
 	case string(catwalk.InferenceProviderChatGPT):
 		providerConfig.SetupChatGPT()
+	case string(catwalk.InferenceProviderKimiCode):
+		providerConfig.SetupKimiCode()
 	case string(catwalk.InferenceProviderAntigravity):
 		providerConfig.SetupAntigravity()
 	case string(catwalk.InferenceProviderClaude):

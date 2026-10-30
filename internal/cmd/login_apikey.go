@@ -12,46 +12,89 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/catwalk"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/embedded"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-term"
+	minimaxoauth "github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/minimax"
 	"github.com/spf13/cobra"
 )
 
 var loginAliases = map[string]string{
-	"mimo":                "xiaomi",
-	"alibaba-coding-plan": "alibaba-coding",
-	"qwen-coding-plan":    "alibaba-coding",
-	"alibaba-token-plan":  "alibaba-token-plan-sgp",
-	"qwen-token-plan":     "alibaba-token-plan-sgp",
-	"alibaba-token-team":  "alibaba-token-plan-team-sgp",
-	"kimi-code":           "kimi-coding",
-	"kimi-code-global":    "kimi-coding-global",
-	"qiniu":               "qiniucloud",
-	"qiniu-plan":          "qiniu-token-plan",
-	"minimax-mplan":       "minimax-m-plan",
-	"zai-coding-plan":     "zai",
-	"xiaomi-token-plan":   "xiaomi-token-plan-sgp",
-	"mimo-token-plan":     "xiaomi-token-plan-sgp",
-	"opencode":            "opencode-zen",
-	"minimax-token-plan":  "minimax-coding",
-	"github":              "copilot",
-	"github-copilot":      "copilot",
-	"codex":               "chatgpt",
-	"codex-ide":           "openai",
-	"claude-plan":         "claude",
-	"grok-web":            "grok",
-	"supergrok":           "grok",
-	"codeium":             "windsurf",
-	"jb-ai":               "jetbrains",
-	"augmentcode":         "augment",
-	"factory-ai":          "factory",
-	"muse-code":           "muse",
+	"mimo":                 "xiaomi",
+	"alibaba-coding-plan":  "alibaba-coding",
+	"qwen-coding-plan":     "alibaba-coding",
+	"alibaba-token-plan":   "alibaba-token-plan-sgp",
+	"qwen-token-plan":      "alibaba-token-plan-sgp",
+	"alibaba-token-team":   "alibaba-token-plan-team-sgp",
+	"qiniu":                "qiniucloud",
+	"qiniu-plan":           "qiniu-token-plan",
+	"minimax-mplan":        "minimax-m-plan",
+	"zai-coding-plan":      "zai",
+	"xiaomi-token-plan":    "xiaomi-token-plan-sgp",
+	"mimo-token-plan":      "xiaomi-token-plan-sgp",
+	"opencode":             "opencode-zen",
+	"minimax-token-plan":   "minimax-coding",
+	"github":               "copilot",
+	"github-copilot":       "copilot",
+	"codex":                "chatgpt",
+	"codex-ide":            "openai",
+	"claude-plan":          "claude",
+	"grok-web":             "grok",
+	"supergrok":            "grok",
+	"codeium":              "windsurf",
+	"jb-ai":                "jetbrains",
+	"augmentcode":          "augment",
+	"factory-ai":           "factory",
+	"muse-code":            "muse",
+	"kimi":                 "kimi-code",
+	"kimi-plan":            "kimi-code",
+	"kimi-membership":      "kimi-code",
+	"minimax":              "minimax-plan",
+	"minimax-global":       "minimax-plan",
+	"minimax-subscription": "minimax-plan",
+	"minimax-cn":           "minimax-plan-cn",
+	"minimaxi":             "minimax-plan-cn",
 }
 
 var accountLoginProviders = []string{
-	"copilot", "chatgpt", "antigravity", "claude", "muse",
+	"copilot", "chatgpt", "antigravity", "claude", "muse", "kimi-code", "minimax-plan", "minimax-plan-cn",
 }
 
 var unavailableAccountProviders = []string{
 	"grok", "windsurf", "jetbrains", "augment", "factory", "coderabbit", "zed",
+}
+
+// miniMaxAPILoginName is the login name of the generic MiniMax API-key
+// provider (catalog id "minimax"), since the bare name "minimax" now means
+// the subscription sign-in.
+const miniMaxAPILoginName = "minimax-api"
+
+// loginName returns the name users type to log in to catalog provider id.
+func loginName(id string) string {
+	if id == "minimax" {
+		return miniMaxAPILoginName
+	}
+	return id
+}
+
+// applyMiniMaxRegion folds --region into the resolved provider id for the
+// MiniMax subscription logins and reports the matching OAuth region.
+func applyMiniMaxRegion(provider, regionFlag string) (string, minimaxoauth.Region, error) {
+	isPlan := provider == "minimax-plan" || provider == "minimax-plan-cn"
+	if regionFlag == "" {
+		if provider == "minimax-plan-cn" {
+			return provider, minimaxoauth.China, nil
+		}
+		return provider, minimaxoauth.Global, nil
+	}
+	if !isPlan {
+		return provider, minimaxoauth.Global, fmt.Errorf("--region applies only to the MiniMax subscription login (minimax); %s does not use it", provider)
+	}
+	region, err := minimaxoauth.ParseRegion(regionFlag)
+	if err != nil {
+		return provider, region, err
+	}
+	if region == minimaxoauth.China {
+		return "minimax-plan-cn", region, nil
+	}
+	return "minimax-plan", region, nil
 }
 
 func resolveLoginAlias(id string) string {
@@ -68,7 +111,9 @@ func isAccountLoginProvider(id string) bool {
 
 func apiKeyLoginProvider(id string) (catwalk.Provider, bool) {
 	id = resolveLoginAlias(id)
-	if isAccountLoginProvider(id) {
+	if id == miniMaxAPILoginName {
+		id = "minimax"
+	} else if isAccountLoginProvider(id) {
 		return catwalk.Provider{}, false
 	}
 	for _, p := range embedded.GetAll() {
@@ -84,7 +129,7 @@ func addAPIKeyLoginCompletions() {
 		return slices.Contains(unavailableAccountProviders, resolveLoginAlias(id))
 	})
 	for _, p := range embedded.GetAll() {
-		id := string(p.ID)
+		id := loginName(string(p.ID))
 		if _, ok := apiKeyLoginProvider(id); ok && !slices.Contains(loginCmd.ValidArgs, id) {
 			loginCmd.ValidArgs = append(loginCmd.ValidArgs, id)
 		}
@@ -108,14 +153,37 @@ func listLoginProviders(out io.Writer) error {
 	w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(w, "PROVIDER\tAUTHENTICATION")
 	for _, id := range accountLoginProviders {
-		fmt.Fprintf(w, "%s\tAccount sign-in\n", id)
+		fmt.Fprintf(w, "%s\t%s\n", id, accountLoginNote(id))
 	}
 	for _, p := range embedded.GetAll() {
-		if _, ok := apiKeyLoginProvider(string(p.ID)); ok {
-			fmt.Fprintf(w, "%s\tAPI / plan key (%s)\n", p.ID, p.Name)
+		if _, ok := apiKeyLoginProvider(loginName(string(p.ID))); ok {
+			fmt.Fprintf(w, "%s\tAPI / plan key (%s)\n", loginName(string(p.ID)), p.Name)
 		}
 	}
-	return w.Flush()
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	notes := []string{
+		"kimi = Kimi Code subscription login (no API key); kimi-coding = Kimi API key.",
+		"minimax = MiniMax subscription login (no API key); minimax-coding = API key.",
+		"minimax-api = generic MiniMax pay-per-token API key; minimax-token-plan = alias of minimax-coding (API key).",
+	}
+	_, err := fmt.Fprintln(out, "\nNote: "+strings.Join(notes, "\n      "))
+	return err
+}
+
+// accountLoginNote describes how an account sign-in provider authenticates.
+func accountLoginNote(id string) string {
+	if id == "kimi-code" {
+		return "Account sign-in (Kimi Code subscription, no API key; alias: kimi)"
+	}
+	switch id {
+	case "minimax-plan":
+		return "Account sign-in (MiniMax Token Plan subscription, no API key; alias: minimax)"
+	case "minimax-plan-cn":
+		return "Account sign-in (MiniMax Token Plan subscription, China; aliases: minimax-cn, minimax --region cn)"
+	}
+	return "Account sign-in"
 }
 
 const maxLoginKeyBytes = 16 * 1024

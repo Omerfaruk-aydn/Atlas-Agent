@@ -29,6 +29,9 @@ type UsageStats struct {
 	TotalCost             float64
 	TotalPromptTokens     int64
 	TotalCompletionTokens int64
+	// RouterSaving is the model router's one-line summary for this session
+	// ("router saved ~$0.0123 ..."); empty when the router did nothing.
+	RouterSaving string
 }
 
 // Usage shows a token/cost breakdown for the current session alongside a
@@ -121,6 +124,9 @@ func (d *Usage) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		d.row(innerWidth, d.com.Text("Completion tokens"), humanize.Comma(s.CompletionTokens)),
 		d.row(innerWidth, d.com.Text("Context used"), fmt.Sprintf(d.com.Text("%.1f%% of %s"), contextPct, humanize.Comma(s.ContextWindow))),
 		d.row(innerWidth, d.com.Text("Cost"), formatUsageCost(s.Cost, s.EstimatedUsage)),
+	}
+	if s.RouterSaving != "" {
+		sessionLines = append(sessionLines, t.Resource.AdditionalText.Render(s.RouterSaving))
 	}
 	rc.AddPart(lipgloss.JoinVertical(lipgloss.Left, sessionLines...))
 

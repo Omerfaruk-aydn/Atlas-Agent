@@ -39,3 +39,15 @@ requires.
 Go dependencies are listed in `go.mod`; their licenses are in each module's
 source. The vendored model and provider libraries under `internal/deps/` keep
 their own license files.
+
+## Product verification
+
+Product verification (`internal/webverify`, see
+[docs/product-verification.md](docs/product-verification.md)) can inject
+[axe-core](https://github.com/dequelabs/axe-core) (MPL-2.0, Copyright Deque
+Systems, Inc.) into the pages it checks. Atlas does not include or
+redistribute axe-core: it reads `axe.min.js` from the user's own project
+(`node_modules/axe-core`, `.atlas/vendor/` or the `axe_path` setting) and
+evaluates it in the page being tested. Without it, a small built-in rule set
+written for Atlas runs instead. A project that copies `axe.min.js` into
+`.atlas/vendor/` must keep axe-core's license header and MPL-2.0 notice with it.

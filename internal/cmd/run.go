@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/app"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/client"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-ansi"
@@ -105,6 +106,14 @@ atlas run --continue "Follow up on your last response"
 		if jsonOut && useClientServer() {
 			return errors.New("--json is not supported in client/server mode")
 		}
+		permissionsPolicy, _ := cmd.Flags().GetString("permissions")
+		goalMode, _ := cmd.Flags().GetBool("goal")
+		if !app.ValidHeadlessPermissions(permissionsPolicy) {
+			return fmt.Errorf("unknown --permissions %q (use configured, readonly, edits or auto)", permissionsPolicy)
+		}
+		if (permissionsPolicy != "" || goalMode) && useClientServer() {
+			return errors.New("--permissions and --goal are local per-run options; disable client/server mode for this run")
+		}
 		if cmd.Flags().Changed("role") && useClientServer() {
 			return errors.New("--role is a local per-run override; disable client/server mode for this run")
 		}
@@ -182,6 +191,7 @@ atlas run --continue "Follow up on your last response"
 			sessionID = sess.ID
 		}
 
+		appWs.App().SetHeadless(app.HeadlessOptions{Permissions: permissionsPolicy, Goal: goalMode})
 		return appWs.App().RunNonInteractive(ctx, os.Stdout, prompt, largeModel, smallModel, quiet || verbose, sessionID, useLast, jsonOut)
 	},
 }
@@ -189,6 +199,8 @@ atlas run --continue "Follow up on your last response"
 func init() {
 	runCmd.Flags().String("role", "", "Run with a specialist role contract; none disables the configured mode. An explicit --model keeps its model choice")
 	runCmd.Flags().BoolP("yolo", "y", false, "Automatically accept tool permissions for this non-interactive run")
+	runCmd.Flags().String("permissions", "", "Unattended permission policy: configured (deny what the configuration does not allow), readonly, edits or auto. Default approves every tool call")
+	runCmd.Flags().Bool("goal", false, "Treat the prompt as a goal and keep taking turns until a verifier confirms it is met")
 	runCmd.Flags().BoolP("quiet", "q", false, "Hide spinner")
 	runCmd.Flags().BoolP("verbose", "v", false, "Show logs")
 	runCmd.Flags().StringP("model", "m", "", "Model to use. Accepts 'model' or 'provider/model' to disambiguate models with the same name across providers")

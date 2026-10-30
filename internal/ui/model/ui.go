@@ -41,6 +41,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-widgets/v2/textarea"
 	xstrings "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-xstrings"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/event"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/history"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/home"
@@ -175,9 +176,11 @@ type (
 
 // UI represents the main user interface model.
 type UI struct {
-	voice        voiceState
-	devices      devicesState
-	draftGen     uint64
+	voice    voiceState
+	devices  devicesState
+	draftGen uint64
+	// sideQuestion is the "/btw" question in flight; see btw.go.
+	sideQuestion sideQuestionState
 	workflow     workflowPanel
 	com          *common.Common
 	session      *session.Session
@@ -877,6 +880,10 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Just triggers a redraw; Draw recomputes OpenProgress itself.
 		if m.dialog.HasDialogs() && m.dialog.OpenProgress() < 1 {
 			cmds = append(cmds, dialogFadeTickCmd())
+		}
+	case sideQuestionDoneMsg:
+		if cmd := m.handleSideQuestionDone(msg); cmd != nil {
+			cmds = append(cmds, cmd)
 		}
 	case goalSetMsg:
 		switch {
@@ -2571,10 +2578,18 @@ func (m *UI) dispatchDialogAction(action dialog.Action) tea.Cmd {
 		if cmd := m.handleSaveUsageProfile(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+	case dialog.ActionShowSideQuestionHelp:
+		if cmd := m.handleShowSideQuestionHelp(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	case dialog.ActionDismissSideQuestion:
+		m.dismissSideQuestion()
 	case dialog.ActionShowGoal:
 		if cmd := m.handleShowGoal(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+	case dialog.ActionReview:
+		cmds = append(cmds, m.handleReviewAction(msg))
 	case dialog.ActionOpenAutoCompactThresholdForm:
 		if cmd := m.handleOpenAutoCompactThresholdForm(); cmd != nil {
 			cmds = append(cmds, cmd)
@@ -3006,6 +3021,10 @@ func (m *UI) openAuthenticationDialog(provider catwalk.Provider, model config.Se
 		dlg, cmd = dialog.NewOAuthClaude(m.com, isOnboarding, provider, model, modelType)
 	case catwalk.InferenceProviderMuse:
 		dlg, cmd = dialog.NewOAuthMuse(m.com, isOnboarding, provider, model, modelType)
+	case catwalk.InferenceProviderKimiCode:
+		dlg, cmd = dialog.NewOAuthKimi(m.com, isOnboarding, provider, model, modelType)
+	case catwalk.InferenceProviderMiniMaxPlan, catwalk.InferenceProviderMiniMaxPlanCN:
+		dlg, cmd = dialog.NewOAuthMiniMax(m.com, isOnboarding, provider, model, modelType)
 	default:
 		dlg, cmd = dialog.NewAPIKeyInput(m.com, isOnboarding, provider, model, modelType)
 	}
@@ -5129,11 +5148,20 @@ func (m *UI) sendMessage(content string, attachments ...message.Attachment) tea.
 		return util.ReportError(err)
 	}
 
+	// "/btw <question>" is answered on the side and is never sent to the
+	// agent, so it works while the agent is busy.
+	if cmd, handled := m.interceptSideQuestionCommand(content); handled {
+		return cmd
+	}
+
 	// "/goal <what to reach>" sets the goal instead of being sent as a
 	// prompt. Handled here rather than in the completions popup because
 	// the popup filters on one word: by the time a goal has a space in
 	// it, the popup is no longer the thing receiving the keystrokes.
 	if cmd, handled := m.interceptGoalCommand(content); handled {
+		return cmd
+	}
+	if cmd, handled := m.interceptReviewCommand(content); handled {
 		return cmd
 	}
 
@@ -5813,7 +5841,19 @@ func (m *UI) openUsageDialog() tea.Cmd {
 		stats.ContextWindow = model.CatwalkCfg.ContextWindow
 	}
 	ws := m.com.Workspace
+	dataDir := ""
+	if opts := m.com.Config().Options; opts != nil {
+		dataDir = opts.DataDirectory
+	}
+	sessionID := m.session.ID
 	return func() tea.Msg {
+		// The router's savings come from the harness event log; a missing
+		// log just means there is nothing to show.
+		if dataDir != "" {
+			if events, err := harnessmetrics.Load(dataDir, time.Time{}); err == nil {
+				stats.RouterSaving = harnessmetrics.FormatRouterSavings(harnessmetrics.RouterSavings(events, sessionID))
+			}
+		}
 		// Totals are a nice-to-have; on error just show the per-session
 		// stats already in hand instead of failing the whole dialog.
 		if sessions, err := ws.ListSessions(context.Background()); err == nil {

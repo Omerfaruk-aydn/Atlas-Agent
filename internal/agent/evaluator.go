@@ -186,6 +186,12 @@ type evaluatorLedger struct {
 	learned       []learnedFix
 	// recalled are the error signatures whose remembered fix was shown.
 	recalled map[string]bool
+	// productRounds counts the product verification send-backs,
+	// productChecked is lastEdit+1 when verification last ran for the
+	// current code, and productNote is its summary for the reviewer.
+	productRounds  int
+	productChecked int
+	productNote    string
 }
 
 // editRecord is one code change, summarized.
@@ -565,6 +571,9 @@ func (l *evaluatorLedger) review(report string) string {
 			sb.WriteString("- " + note + "\n")
 		}
 	}
+	if l.productNote != "" {
+		sb.WriteString("\nProduct verification in the running app: " + l.productNote + "\n")
+	}
 	if l.lastFailed && l.findings != "" {
 		fmt.Fprintf(&sb, "\nYour previous verdict (round %d) failed the work with:\n%s\nCheck whether each finding is now fixed or credibly refuted by the agent.\n", l.rounds, l.findings)
 	}
@@ -621,6 +630,13 @@ func (a *sessionAgent) evaluateTurn(ctx context.Context, sessionID, report strin
 	if decision, stop := a.checkContract(ctx, sessionID, ledger); stop {
 		if decision.Unresolved != "" {
 			a.saveFailureCase(ctx, sessionID, ledger, "contract", decision.Unresolved)
+		}
+		ledger.mu.Unlock()
+		return decision
+	}
+	if decision, stop := a.checkProduct(ctx, sessionID, ledger); stop {
+		if decision.Unresolved != "" {
+			a.saveFailureCase(ctx, sessionID, ledger, "product", decision.Unresolved)
 		}
 		ledger.mu.Unlock()
 		return decision

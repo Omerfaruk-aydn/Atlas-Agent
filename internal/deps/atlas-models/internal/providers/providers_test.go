@@ -46,3 +46,72 @@ func TestMuseCatalogEntry(t *testing.T) {
 		require.True(t, m.SupportsImages, "model %s supports image input", want)
 	}
 }
+
+// kimi-code is the OAuth (membership) twin of the kimi-coding API-key
+// provider: same models, but served over the OpenAI-compatible endpoint
+// and with no api_key, since the OAuth access token is the bearer.
+func TestKimiCodeCatalogEntry(t *testing.T) {
+	byID := map[catwalk.InferenceProvider]catwalk.Provider{}
+	for _, p := range GetAll() {
+		byID[p.ID] = p
+	}
+	entry, ok := byID[catwalk.InferenceProviderKimiCode]
+	require.True(t, ok, "the embedded catalog must include kimi-code")
+	require.Equal(t, "Kimi Code (subscription)", entry.Name)
+	require.Equal(t, catwalk.TypeOpenAICompat, entry.Type)
+	require.Equal(t, "https://api.kimi.com/coding/v1", entry.APIEndpoint)
+	require.Empty(t, entry.APIKey, "OAuth providers carry no static key")
+
+	key, ok := byID[catwalk.InferenceKimiCoding]
+	require.True(t, ok)
+	require.Equal(t, catwalk.TypeAnthropic, key.Type, "the API-key provider is unchanged")
+	require.NotEmpty(t, key.APIKey)
+
+	want := make([]string, 0, len(key.Models))
+	for _, m := range key.Models {
+		want = append(want, m.ID)
+	}
+	got := make([]string, 0, len(entry.Models))
+	for _, m := range entry.Models {
+		got = append(got, m.ID)
+	}
+	require.Equal(t, want, got, "kimi-code mirrors the kimi-coding model list")
+	require.Equal(t, key.DefaultLargeModelID, entry.DefaultLargeModelID)
+	require.Equal(t, key.DefaultSmallModelID, entry.DefaultSmallModelID)
+}
+
+// minimax-plan and minimax-plan-cn are the OAuth (subscription) twins of
+// minimax-coding: same Anthropic-compatible models, no static api_key, one
+// account provider per region.
+func TestMiniMaxPlanCatalogEntries(t *testing.T) {
+	byID := map[catwalk.InferenceProvider]catwalk.Provider{}
+	for _, p := range GetAll() {
+		byID[p.ID] = p
+	}
+	key, ok := byID["minimax-coding"]
+	require.True(t, ok)
+	require.NotEmpty(t, key.APIKey, "the API-key provider is unchanged")
+
+	for id, endpoint := range map[catwalk.InferenceProvider]string{
+		catwalk.InferenceProviderMiniMaxPlan:   "https://api.minimax.io/anthropic",
+		catwalk.InferenceProviderMiniMaxPlanCN: "https://api.minimax.cn/anthropic",
+	} {
+		entry, ok := byID[id]
+		require.True(t, ok, "the embedded catalog must include %s", id)
+		require.Equal(t, catwalk.TypeAnthropic, entry.Type, id)
+		require.Equal(t, endpoint, entry.APIEndpoint, id)
+		require.Empty(t, entry.APIKey, "OAuth providers carry no static key: %s", id)
+		require.Contains(t, entry.Name, "(subscription)", id)
+
+		var want, got []string
+		for _, m := range key.Models {
+			want = append(want, m.ID)
+		}
+		for _, m := range entry.Models {
+			got = append(got, m.ID)
+		}
+		require.Equal(t, want, got, "%s mirrors the minimax-coding model list", id)
+		require.Equal(t, key.DefaultLargeModelID, entry.DefaultLargeModelID, id)
+		require.Equal(t, key.DefaultSmallModelID, entry.DefaultSmallModelID, id)
+	}
+}

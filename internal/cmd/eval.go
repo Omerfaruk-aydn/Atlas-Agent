@@ -140,6 +140,7 @@ func newEvalCommand() *cobra.Command {
 	command.AddCommand(newPromptComparisonCommand())
 	command.AddCommand(newEvalBenchCommand())
 	command.AddCommand(newEvalCorpusCommand())
+	command.AddCommand(newEvalImproveCommand())
 	return command
 }
 

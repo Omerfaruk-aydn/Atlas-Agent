@@ -394,6 +394,8 @@ func (c *Config) configureProviders(ctx context.Context, store *ConfigStore, env
 			prepared.SetupGitHubCopilot()
 		case p.ID == catwalk.InferenceProviderChatGPT && config.OAuthToken != nil:
 			prepared.SetupChatGPT()
+		case p.ID == catwalk.InferenceProviderKimiCode && config.OAuthToken != nil:
+			prepared.SetupKimiCode()
 		case p.ID == catwalk.InferenceProviderAntigravity && config.OAuthToken != nil:
 			prepared.SetupAntigravity()
 		case p.ID == catwalk.InferenceProviderClaude && config.OAuthToken != nil:

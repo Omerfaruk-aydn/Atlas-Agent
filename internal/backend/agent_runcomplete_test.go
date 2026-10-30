@@ -48,6 +48,10 @@ func (c *errorCoordinator) StartGoal(context.Context, string, string) error   { 
 func (c *errorCoordinator) ClearGoal(context.Context, string) error           { return nil }
 func (c *errorCoordinator) GoalStatus(string) (string, int, int, bool)        { return "", 0, 0, false }
 
+func (c *errorCoordinator) AskSideQuestion(context.Context, string, string) (agent.SideAnswer, error) {
+	return agent.SideAnswer{}, nil
+}
+
 func (c *errorCoordinator) Summarize(context.Context, string) error       { return nil }
 func (c *errorCoordinator) Model() agent.Model                            { return agent.Model{} }
 func (c *errorCoordinator) UpdateModels(context.Context) error            { return nil }

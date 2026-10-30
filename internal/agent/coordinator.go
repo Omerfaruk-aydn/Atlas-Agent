@@ -51,6 +51,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/copilot"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/projectmodel"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/question"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/sandbox"
@@ -162,6 +163,10 @@ type Coordinator interface {
 	// GoalStatus reports the goal a session is working towards and how
 	// far into its budget it is. ok is false when no run is active.
 	GoalStatus(sessionID string) (goal string, used, budget int, ok bool)
+	// AskSideQuestion answers a question in a separate read-only
+	// context without touching the session's history or prompt. It is
+	// safe to call while the session is busy. See btw.go.
+	AskSideQuestion(ctx context.Context, sessionID, question string) (SideAnswer, error)
 	Cancel(sessionID string)
 	CancelAll()
 	IsSessionBusy(sessionID string) bool
@@ -988,6 +993,9 @@ func (c *coordinator) buildAgent(ctx context.Context, prompt *prompt.Prompt, age
 		return nil
 	})
 
+	if !isSubAgent {
+		c.applyRouter(initCtx, result)
+	}
 	return result, nil
 }
 
@@ -1118,6 +1126,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		tools.NewAtlasInfoTool(c.cfg, c.lspManager, c.allSkills, c.activeSkills, c.skillTracker),
 		tools.NewAPIProbeTool(c.cfg.WorkingDir(), c.permissions, urlPolicy(c.cfg)),
 		tools.NewMigrationRehearseTool(c.cfg.WorkingDir(), c.permissions),
+		tools.NewRehearseTool(c.cfg.WorkingDir(), c.cfg.Config().Options.DataDirectory, c.permissions),
 		tools.NewAtlasConfigTool(c.permissions, c.cfg, c.cfg.WorkingDir()),
 		tools.NewAtlasLogsTool(logFile),
 		tools.NewJobOutputTool(c.cfg.WorkingDir()),
@@ -1246,6 +1255,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 			tools.NewAPISurfaceTool(c.cfg.WorkingDir()),
 			tools.NewAntiPatternScanTool(c.cfg.WorkingDir()),
 			tools.NewSecurityScanTool(c.cfg.WorkingDir()),
+			tools.NewSecurityVerifyTool(c.cfg.WorkingDir()),
 			tools.NewGenerateDocstringTool(c.cfg.WorkingDir()),
 			tools.NewGenerateTestsTool(c.cfg.WorkingDir()),
 			tools.NewSemanticCodeSearchTool(c.cfg.WorkingDir()),
@@ -1356,6 +1366,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		}
 		allTools = append(allTools, tools.NewProjectMapTool(c.cfg.WorkingDir(), c.engineering, graphProviders...),
 			tools.NewCodeMapTool(c.cfg.WorkingDir(), c.codeMap),
+			tools.NewProjectModelTool(projectmodel.NewService(c.cfg.WorkingDir(), c.cfg.Config().Options.DataDirectory, c.codeMap, c.facts), c.permissions),
 			tools.NewDesignSystemTool(c.cfg.WorkingDir(), tools.DesignServices{Invoke: invoke, Permissions: c.permissions}),
 			tools.NewStressJourneyTool(c.cfg.WorkingDir(), c.engineering, invoke),
 			tools.NewTimeLabTool(c.cfg.WorkingDir(), c.engineering, invoke),
@@ -1395,6 +1406,9 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 	}))
 	if c.stateStore() != nil {
 		allTools = append(allTools, tools.NewPlatformTools(c.stateStore(), c.cfg.WorkingDir(), c.platformScope(), c.permissions)...)
+	}
+	if !isSubAgent {
+		allTools = append(allTools, tools.NewAttemptTool(c.cfg.WorkingDir(), c.cfg.Config().Options.DataDirectory, c.permissions, c.cfg.Config))
 	}
 	allTools = append(allTools, tools.NewToolPipeline(dispatchComputer, c.engineering))
 	return allTools, nil
@@ -2465,6 +2479,7 @@ func (c *coordinator) UpdateModels(ctx context.Context) error {
 	c.currentAgent.SetAdvisorOptions(advisorModel, advisorTools, advisorEveryNTurns, advisorNotifyThreshold)
 	c.currentAgent.SetEscalateOptions(escalateModel, escalateTools, escalateThreshold)
 	c.currentAgent.SetEvaluatorOptions(c.buildEvaluator(ctx, large, advisorModel))
+	c.applyRouter(ctx, c.currentAgent)
 
 	// The goal judge (see judgeGoal) reuses the advisor model just built
 	// above unless a "goal" role names its own -- refresh it here too so

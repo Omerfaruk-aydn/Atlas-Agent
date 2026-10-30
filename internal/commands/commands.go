@@ -65,6 +65,7 @@ func LoadCustomCommands(cfg *config.Config) ([]CustomCommand, error) {
 		return nil, err
 	}
 	loaded = append(loaded, qualityCommands()...)
+	loaded = append(loaded, attemptCommands()...)
 	return append(loaded, cliBridgeCommands()...), nil
 }
 

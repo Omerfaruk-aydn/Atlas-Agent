@@ -117,6 +117,16 @@ func save(root string, entries []Entry) error {
 	return os.Rename(tmp, path(root))
 }
 
+// List returns every remembered error, most recently seen first.
+func List(root string) []Entry {
+	if root == "" {
+		return nil
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	return load(root)
+}
+
 // Lookup returns the remembered fix for signature.
 func Lookup(root, signature string) (Entry, bool) {
 	if root == "" || signature == "" {

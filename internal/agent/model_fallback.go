@@ -22,6 +22,10 @@ import (
 type modelChain struct {
 	models []Model // models[0] is the primary; the rest are the configured fallbacks, in order.
 	active int     // index into models of the model currently in use.
+	// routed, when set, is the model the automatic router picked for the
+	// current step. It applies only while the chain is on its primary
+	// (active == 0): a 429 failover always wins over routing.
+	routed *Model
 }
 
 // newModelChain builds a chain of primary followed by fallbacks, starting
@@ -57,13 +61,27 @@ func (s stickyFallback) activeIndex(now time.Time) int {
 
 // Current is the model presently in use.
 func (c *modelChain) Current() Model {
+	if c.routed != nil && c.active == 0 {
+		return *c.routed
+	}
 	return c.models[c.active]
+}
+
+// Route sets the model the router chose for the coming step, or clears it
+// when m is nil. It has no effect once the chain has failed over.
+func (c *modelChain) Route(m *Model) {
+	c.routed = m
 }
 
 // RefreshModels replaces clients rebuilt after credential renewal without
 // changing this turn's selected model, fallback order, or active index.
 func (c *modelChain) RefreshModels(primary Model, fallbacks []Model) {
 	candidates := append([]Model{primary}, fallbacks...)
+	if c.routed != nil && primary.Model != nil && c.routed.ModelCfg.Provider == primary.ModelCfg.Provider && c.routed.ModelCfg.Model == primary.ModelCfg.Model {
+		routed := *c.routed
+		routed.Model = primary.Model
+		c.routed = &routed
+	}
 	for i, current := range c.models {
 		for _, candidate := range candidates {
 			if candidate.Model != nil && current.ModelCfg.Provider == candidate.ModelCfg.Provider && current.ModelCfg.Model == candidate.ModelCfg.Model {

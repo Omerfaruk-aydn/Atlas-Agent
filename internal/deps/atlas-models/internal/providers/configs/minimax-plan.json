@@ -1,0 +1,46 @@
+{
+  "name": "MiniMax Token Plan (subscription)",
+  "id": "minimax-plan",
+  "type": "anthropic",
+  "api_endpoint": "https://api.minimax.io/anthropic",
+  "default_large_model_id": "MiniMax-M3",
+  "default_small_model_id": "MiniMax-M2.7",
+  "models": [
+    {
+      "id": "MiniMax-M3",
+      "name": "MiniMax-M3 (Token Plan, 1M context)",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 1000000,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true
+    },
+    {
+      "id": "MiniMax-M2.7",
+      "name": "MiniMax-M2.7 (Token Plan)",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 200000,
+      "default_max_tokens": 128000,
+      "can_reason": true,
+      "supports_attachments": false
+    },
+    {
+      "id": "MiniMax-M2.7-highspeed",
+      "name": "MiniMax-M2.7 Highspeed (Token Plan)",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 200000,
+      "default_max_tokens": 128000,
+      "can_reason": true,
+      "supports_attachments": false
+    }
+  ]
+}

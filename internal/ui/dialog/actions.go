@@ -94,6 +94,13 @@ type (
 	ActionShowGoal struct {
 		SessionID string
 	}
+	// ActionReview starts a review of the uncommitted changes. Reviews of
+	// other targets are typed inline: "/review <target> [effort]".
+	ActionReview struct{}
+	// ActionShowSideQuestionHelp explains how to ask a side question.
+	// The question itself is typed inline -- "/btw <question>" -- like
+	// "/goal", so picking the command from a list has nothing to ask.
+	ActionShowSideQuestionHelp struct{}
 	// ActionFreshSession is a message indicating the user wants to
 	// recover a session that looks stuck or stale: cancel whatever is
 	// running, then reload the session's messages from the backend so

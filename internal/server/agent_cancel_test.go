@@ -83,9 +83,12 @@ func (s *runCoordinator) Summarize(context.Context, string) error {
 func (s *runCoordinator) StartGoal(context.Context, string, string) error { return nil }
 func (s *runCoordinator) ClearGoal(context.Context, string) error         { return nil }
 func (s *runCoordinator) GoalStatus(string) (string, int, int, bool)      { return "", 0, 0, false }
-func (s *runCoordinator) Model() agent.Model                              { return agent.Model{} }
-func (s *runCoordinator) UpdateModels(context.Context) error              { return nil }
-func (s *runCoordinator) GenerateTitle(context.Context, string, string)   {}
+func (s *runCoordinator) AskSideQuestion(context.Context, string, string) (agent.SideAnswer, error) {
+	return agent.SideAnswer{}, nil
+}
+func (s *runCoordinator) Model() agent.Model                            { return agent.Model{} }
+func (s *runCoordinator) UpdateModels(context.Context) error            { return nil }
+func (s *runCoordinator) GenerateTitle(context.Context, string, string) {}
 
 func (s *runCoordinator) capturedCtx() context.Context {
 	s.mu.Lock()

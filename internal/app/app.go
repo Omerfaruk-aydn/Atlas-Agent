@@ -86,6 +86,10 @@ type App struct {
 
 	config *config.ConfigStore
 
+	// headless tunes the permission policy and goal mode of an unattended
+	// non-interactive run (see headless.go).
+	headless HeadlessOptions
+
 	serviceEventsWG *sync.WaitGroup
 	eventsCtx       context.Context
 	events          *pubsub.Broker[tea.Msg]
@@ -479,7 +483,15 @@ func (app *App) RunNonInteractive(ctx context.Context, output io.Writer, prompt,
 
 	// Automatically approve all permission requests for this non-interactive
 	// session.
-	app.Permissions.AutoApproveSession(sess.ID)
+	runCtx, err := app.applyHeadlessPermissions(ctx, sess.ID)
+	if err != nil {
+		return err
+	}
+	if app.headless.Goal {
+		if err := app.AgentCoordinator.StartGoal(ctx, sess.ID, prompt); err != nil {
+			return fmt.Errorf("failed to start goal: %w", err)
+		}
+	}
 
 	// Report session identity to herdr.
 	app.ReportCurrentSession(sess.ID)
@@ -501,7 +513,7 @@ func (app *App) RunNonInteractive(ctx context.Context, output io.Writer, prompt,
 		done <- response{
 			result: result,
 		}
-	}(ctx, sess.ID, prompt)
+	}(runCtx, sess.ID, prompt)
 
 	messageEvents := app.Messages.Subscribe(ctx)
 	messageReadBytes := make(map[string]int)
@@ -563,6 +575,11 @@ func (app *App) RunNonInteractive(ctx context.Context, output io.Writer, prompt,
 					return printResult()
 				}
 				return fmt.Errorf("agent processing failed: %w", result.err)
+			}
+			if app.headless.Goal {
+				if err := app.finishGoalRun(ctx, sess.ID, output, jsonOutput, &collected); err != nil {
+					return err
+				}
 			}
 			return printResult()
 

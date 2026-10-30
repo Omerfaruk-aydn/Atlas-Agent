@@ -185,8 +185,17 @@ var ioNetConfig []byte
 //go:embed configs/kimi.json
 var kimiCodingConfig []byte
 
+//go:embed configs/kimi-code.json
+var kimiCodeConfig []byte
+
 //go:embed configs/kimi-coding-global.json
 var kimiCodingGlobalConfig []byte
+
+//go:embed configs/minimax-plan.json
+var miniMaxPlanConfig []byte
+
+//go:embed configs/minimax-plan-cn.json
+var miniMaxPlanCNConfig []byte
 
 //go:embed configs/minimax.json
 var miniMaxConfig []byte
@@ -275,6 +284,9 @@ var providerRegistry = []ProviderFunc{
 	zAIProvider,
 	kimiCodingProvider,
 	kimiCodingGlobalProvider,
+	kimiCodeProvider,
+	miniMaxPlanProvider,
+	miniMaxPlanCNProvider,
 	miniMaxProvider,
 	miniMaxChinaProvider,
 	miniMaxCodingProvider,
@@ -543,6 +555,18 @@ func ioNetProvider() catwalk.Provider {
 
 func kimiCodingProvider() catwalk.Provider {
 	return loadProviderFromConfig(kimiCodingConfig)
+}
+
+func kimiCodeProvider() catwalk.Provider {
+	return loadProviderFromConfig(kimiCodeConfig)
+}
+
+func miniMaxPlanProvider() catwalk.Provider {
+	return loadProviderFromConfig(miniMaxPlanConfig)
+}
+
+func miniMaxPlanCNProvider() catwalk.Provider {
+	return loadProviderFromConfig(miniMaxPlanCNConfig)
 }
 
 func kimiCodingGlobalProvider() catwalk.Provider {

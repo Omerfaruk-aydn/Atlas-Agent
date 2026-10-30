@@ -8,6 +8,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/antigravity"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/copilot"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/kimi"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/speech"
 	"github.com/invopop/jsonschema"
 )
@@ -228,6 +230,24 @@ func (c *ProviderConfig) SetupChatGPT() {
 		c.ExtraHeaders["chatgpt-account-id"] = c.OAuthToken.AccountID
 	}
 	c.ExtraHeaders["originator"] = "codex_cli_rs"
+}
+
+// SetupKimiCode configures the X-Msh-* identification headers a Kimi Code
+// OAuth session sends on every inference request, mirroring the official
+// Kimi Code CLI. The OAuth access token itself is the bearer key.
+func (c *ProviderConfig) SetupKimiCode() {
+	if c.OAuthToken == nil {
+		return
+	}
+	if c.ExtraHeaders == nil {
+		c.ExtraHeaders = map[string]string{}
+	}
+	maps.Copy(c.ExtraHeaders, kimi.Headers())
+}
+
+func init() {
+	// The Kimi device id lives next to the global data file.
+	kimi.DataDir = func() string { return filepath.Dir(GlobalConfigData()) }
 }
 
 // SetupAntigravity records the Cloud project id a signed-in Antigravity
@@ -646,6 +666,7 @@ type Options struct {
 	NotificationSounds map[string]string `json:"notification_sounds,omitempty" jsonschema:"description=WAV files that replace the built-in sounds of the sound notification style\\, keyed by event (permission\\, question\\, finished)"`
 	DisabledSkills     []string          `json:"disabled_skills,omitempty" jsonschema:"description=List of skill names to disable and hide from the agent,example=crush-config"`
 	Memory             *Memory           `json:"memory,omitempty" jsonschema:"description=Bounds on the prose the agent carries between sessions"`
+	ProjectModel       *ProjectModel     `json:"project_model,omitempty" jsonschema:"description=Living project model: modules\\, entry points\\, test map\\, ownership and decisions kept under the data directory"`
 	// AgentModels overrides which model type (large or small) a built-in
 	// agent uses, keyed by agent ID (coder, task). An agent not named here
 	// keeps its default. Unknown agent IDs and invalid model types are
@@ -701,6 +722,11 @@ type Options struct {
 	// finished. It runs on the "evaluator" model role, then the "advisor"
 	// role, then the session's own large model with a fresh context.
 	Evaluator *Evaluator `json:"evaluator,omitempty" jsonschema:"description=An independent reviewer that checks a turn which changed files before it ends. A failing verdict sends its findings back to the agent to fix. Runs on the \"evaluator\" model role\\, else the \"advisor\" role\\, else the session's large model."`
+	// ProductVerify opens the running web app in Atlas's own browser
+	// before web/UI work counts as done. See product_verify.go.
+	ProductVerify *ProductVerify `json:"product_verify,omitempty" jsonschema:"description=Product verification for web/UI work: before a turn that changed UI files ends\\, open the locally served app at three viewports\\, check console errors\\, failed requests\\, accessibility and load time\\, drive the flows in .atlas/verify.json and have a vision model review screenshots. Evidenced findings are sent back to the agent. Off by default."`
+	// Router picks, step by step, between a fast model and the strong one.
+	Router *Router `json:"router,omitempty" jsonschema:"description=Automatic model router. Per agent step it sends reading\\, searching and simple edits to a cheap fast model and design\\, debugging and failing-test work to the strong model\\, using a deterministic heuristic. Off by default."`
 	// WorkPlan tunes what Atlas does around a work plan (.atlas/work.json)
 	// when one exists: reviewing the plan, proving checks can fail,
 	// recording checkpoints, an adversarial pass after each finished
@@ -931,6 +957,38 @@ type Evaluator struct {
 	MaxRounds int `json:"max_rounds,omitempty" jsonschema:"description=How many times one request can be sent back for fixes before the turn ends with the remaining findings reported. 0 uses the default.,default=2,example=3"`
 }
 
+// Router holds settings for the automatic model router. See Options.Router
+// and docs/model-router.md.
+type Router struct {
+	Enabled bool `json:"enabled,omitempty" jsonschema:"description=Turn the model router on.,default=false"`
+	// FastRole names the model role cheap steps run on. It may be any
+	// model_roles entry or "small"; with no such role the small model is
+	// used.
+	FastRole string `json:"fast_role,omitempty" jsonschema:"description=Model role for cheap steps (reading\\, searching\\, summarizing\\, simple edits). Defaults to the \"fast\" role\\, then the \"small\" model.,default=fast,example=fast"`
+	// StrongRole names the model role demanding steps run on. Empty uses
+	// the session's own large model.
+	StrongRole string `json:"strong_role,omitempty" jsonschema:"description=Model role for demanding steps. Empty uses the session's large model."`
+	// MinDwellSteps is the fewest steps between two switches.
+	MinDwellSteps int `json:"min_dwell_steps,omitempty" jsonschema:"description=Fewest steps between two model switches\\, to keep prompt caches warm. 0 uses the default.,default=3,example=4"`
+	// DownshiftStreak is how many read-only steps in a row precede a move
+	// back to the fast model.
+	DownshiftStreak int `json:"downshift_streak,omitempty" jsonschema:"description=Consecutive read-only steps required before moving from the strong to the fast model. 0 uses the default.,default=2"`
+	// ErrorStreak is how many failing steps in a row escalate to the strong
+	// model.
+	ErrorStreak int `json:"error_streak,omitempty" jsonschema:"description=Consecutive steps with failing tool calls that escalate to the strong model. 0 uses the default.,default=2"`
+}
+
+// FastRoleName returns the configured fast role, defaulting to "fast".
+func (r *Router) FastRoleName() string {
+	if r == nil || strings.TrimSpace(r.FastRole) == "" {
+		return "fast"
+	}
+	return strings.TrimSpace(r.FastRole)
+}
+
+// IsEnabled reports whether the router is on.
+func (r *Router) IsEnabled() bool { return r != nil && r.Enabled }
+
 // defaultEvaluatorRounds and maxEvaluatorRounds bound Evaluator.MaxRounds.
 const (
 	defaultEvaluatorRounds = 2
@@ -956,6 +1014,31 @@ func (e Evaluator) Rounds() int {
 type Memory struct {
 	ProjectLimit int `json:"project_limit,omitempty" jsonschema:"description=Character limit for the project memory store (MEMORY.md). Negative means unbounded.,default=3200"`
 	UserLimit    int `json:"user_limit,omitempty" jsonschema:"description=Character limit for the user profile store (USER.md). Negative means unbounded.,default=2000"`
+}
+
+// ProjectModel configures the living project model (see
+// docs/project-model.md). The model is built on demand with the
+// project_model tool or `project model build`; these options only govern how
+// an existing model reaches the system prompt.
+type ProjectModel struct {
+	Inject          *bool `json:"inject,omitempty" jsonschema:"description=Put a compact summary of the project model into the system prompt when a model exists and the summary is small enough.,default=true"`
+	AutoRefresh     *bool `json:"auto_refresh,omitempty" jsonschema:"description=Bring an existing project model up to date when a session starts\\, within a few seconds.,default=true"`
+	MaxSummaryBytes int   `json:"max_summary_bytes,omitempty" jsonschema:"description=Largest summary placed in the system prompt. A larger one is left out.,default=2400,minimum=200,maximum=8000"`
+}
+
+// InjectEnabled reports whether the summary goes into the system prompt.
+func (p *ProjectModel) InjectEnabled() bool { return p == nil || defaultOn(p.Inject) }
+
+// AutoRefreshEnabled reports whether an existing model is refreshed at
+// session start.
+func (p *ProjectModel) AutoRefreshEnabled() bool { return p == nil || defaultOn(p.AutoRefresh) }
+
+// SummaryBytes is the size limit of the prompt summary.
+func (p *ProjectModel) SummaryBytes() int {
+	if p == nil || p.MaxSummaryBytes <= 0 {
+		return 2400
+	}
+	return min(max(p.MaxSummaryBytes, 200), 8000)
 }
 
 type MCPs map[string]MCPConfig
@@ -1787,6 +1870,7 @@ func allToolNames() []string {
 		"workflow",
 		"verify",
 		"project_map",
+		"project_model",
 		"tool_search",
 		"code_query",
 		"bug_reproduce",
@@ -1802,6 +1886,7 @@ func allToolNames() []string {
 		"contract_diff",
 		"requirement_trace",
 		"migration_rehearse",
+		"rehearse",
 		"mutation_test",
 		"worktree",
 		"ui_verify",
@@ -1845,6 +1930,7 @@ func allToolNames() []string {
 		"agent_jobs",
 		"task_board",
 		"source_memory",
+		"attempt",
 		"tool_pipeline",
 		"team_send",
 		"team_read",
@@ -1858,6 +1944,7 @@ func allToolNames() []string {
 		"api_surface",
 		"anti_pattern_scan",
 		"security_scan",
+		"security_verify",
 		"generate_docstring",
 		"generate_tests",
 		"semantic_code_search",

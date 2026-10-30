@@ -142,6 +142,10 @@ atlas eval corpus export <case-id> --suite bench/corpus
 atlas eval corpus export <case-id> --suite bench/corpus --check go,test,./...
 ```
 
+`atlas eval improve` mines the corpus into hard tasks automatically, A/B tests
+a harness variant against the baseline and writes a proposal without applying
+anything; see [eval-improve.md](eval-improve.md).
+
 ## Options
 
 Everything on this page is on by default and can be turned off:

@@ -593,6 +593,25 @@ func (c *Client) SetAgentGoal(ctx context.Context, id string, sessionID string, 
 	return nil
 }
 
+// AskAgentSideQuestion asks a question that is answered in a separate
+// read-only context and never added to the session.
+func (c *Client) AskAgentSideQuestion(ctx context.Context, id string, sessionID string, question string) (proto.AgentSideQuestionResponse, error) {
+	var out proto.AgentSideQuestionResponse
+	body := jsonBody(proto.AgentSideQuestionRequest{Question: question})
+	rsp, err := c.post(ctx, fmt.Sprintf("/workspaces/%s/agent/sessions/%s/btw", id, sessionID), nil, body, http.Header{"Content-Type": []string{"application/json"}})
+	if err != nil {
+		return out, fmt.Errorf("failed to ask side question: %w", err)
+	}
+	defer rsp.Body.Close()
+	if err := checkStatus(rsp); err != nil {
+		return out, fmt.Errorf("failed to ask side question: %w", err)
+	}
+	if err := json.NewDecoder(rsp.Body).Decode(&out); err != nil {
+		return out, fmt.Errorf("failed to decode side question answer: %w", err)
+	}
+	return out, nil
+}
+
 // GetAgentGoal reports the autonomous run of a session.
 func (c *Client) GetAgentGoal(ctx context.Context, id string, sessionID string) (proto.AgentGoalStatus, error) {
 	var status proto.AgentGoalStatus

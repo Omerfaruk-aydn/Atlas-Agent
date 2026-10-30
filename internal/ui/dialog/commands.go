@@ -496,8 +496,11 @@ func (c *Commands) defaultCommands() []*CommandItem {
 		// opens one, the same way sending a prompt does, so hiding the
 		// command until after the first message made it look missing on
 		// the one screen where someone is most likely to reach for it.
+		NewCommandItem(c.com.Styles, "btw", "Ask a Side Question", "", ActionShowSideQuestionHelp{}).WithAliases("aside", "side question").WithSlash("/btw").WithSummary("Ask a quick question in a separate read-only context, without touching this conversation"),
 		NewCommandItem(c.com.Styles, "goal", "Set Session Goal", "", ActionShowGoal{SessionID: c.sessionID}).WithAliases("objective", "autonomous").WithSlash("/goal").WithSummary("Work towards a goal, taking turns unprompted until it is reached"),
 	}
+
+	commands = append(commands, NewCommandItem(c.com.Styles, "review", "Review Changes", "", ActionReview{}).WithSlash("/review").WithSummary("Review uncommitted changes, a branch or a PR: /review [target] [effort]"))
 
 	// Leaving a sub-agent's session you stepped into. The key for this
 	// (f3) only shows in the expanded help, so without a palette entry

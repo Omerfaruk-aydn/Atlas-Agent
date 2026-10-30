@@ -19,6 +19,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/execution"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/fsext"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/rehearsal"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell"
 )
 
@@ -213,6 +214,10 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 		// inside the permission service (Safe: true), so ModePlan can
 		// still deny a nominally-safe command instead of it silently
 		// bypassing the check entirely.
+		description := fmt.Sprintf("Execute command: %s", cmp.Or(params.Command, fmt.Sprint(params.Argv)))
+		if risk, risky := rehearsal.Classify(cmp.Or(params.Command, strings.Join(params.Argv, " "))); risky {
+			description += "\n" + risk.Hint()
+		}
 		p, err := permissions.Request(
 			ctx,
 			permission.CreatePermissionRequest{
@@ -221,7 +226,7 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 				ToolCallID:  call.ID,
 				ToolName:    BashToolName,
 				Action:      "execute",
-				Description: fmt.Sprintf("Execute command: %s", cmp.Or(params.Command, fmt.Sprint(params.Argv))),
+				Description: description,
 				Params:      BashPermissionsParams(params),
 				Safe:        isSafeReadOnly,
 			},

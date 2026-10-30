@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/clipboard"
@@ -22,6 +23,8 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/factory"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/grok"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/jetbrains"
+	kimioauth "github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/kimi"
+	minimaxoauth "github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/minimax"
 	museoauth "github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/muse"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/windsurf"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/zed"
@@ -37,8 +40,9 @@ var loginCmd = &cobra.Command{
 	Long: `Login ATLAS-AGENT to a specified platform.
 	The platform should be provided as an argument.
 	Account sign-in platforms include copilot, chatgpt, antigravity, claude,
-	and muse. API and Token Plan providers can
-	also be configured here, including xiaomi, xiaomi-token-plan-sgp,
+	muse, kimi (Kimi Code subscription, no API key), and minimax (MiniMax Token
+	Plan subscription, no API key; --region cn for China). API and Token
+	Plan providers can also be configured here, including xiaomi, xiaomi-token-plan-sgp,
 	xiaomi-token-plan-ams, xiaomi-token-plan-cn, and opencode-go.
 	Use login --list for the full list. API keys are entered without echo,
 	or read from standard input with --api-key-stdin.
@@ -65,6 +69,19 @@ atlas login claude
 # Authenticate with a Meta Muse Code subscription
 atlas login muse
 
+# Authenticate with a Kimi Code membership (OAuth, no API key)
+atlas login kimi
+
+# Use a Kimi API key instead (pay-per-token provider kimi-coding)
+atlas login kimi-coding
+
+# Authenticate with a MiniMax Token Plan subscription (OAuth, no API key)
+atlas login minimax
+atlas login minimax --region cn
+
+# Use a MiniMax Token Plan API key instead (provider minimax-coding)
+atlas login minimax-coding
+
 # Force re-authentication even if already logged in
 atlas login -f copilot
   `,
@@ -85,6 +102,15 @@ atlas login -f copilot
 		"zed",
 		"muse",
 		"muse-code",
+		"kimi",
+		"kimi-code",
+		"kimi-plan",
+		"kimi-membership",
+		"minimax",
+		"minimax-plan",
+		"minimax-plan-cn",
+		"minimax-cn",
+		"minimaxi",
 	},
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -95,6 +121,11 @@ atlas login -f copilot
 		provider := "copilot"
 		if len(args) > 0 {
 			provider = resolveLoginAlias(args[0])
+		}
+		regionFlag, _ := cmd.Flags().GetString("region")
+		provider, miniMaxRegion, err := applyMiniMaxRegion(provider, regionFlag)
+		if err != nil {
+			return err
 		}
 		if slices.Contains(unavailableAccountProviders, provider) {
 			return fmt.Errorf("%s account sign-in is unavailable: model calls are not implemented; use login --list for supported providers", provider)
@@ -142,6 +173,10 @@ atlas login -f copilot
 			return loginZed(ws, force)
 		case "muse", "muse-code":
 			return loginMuse(ws, force)
+		case "kimi", "kimi-code", "kimi-plan", "kimi-membership":
+			return loginKimi(ws, force)
+		case "minimax-plan", "minimax-plan-cn":
+			return loginMiniMax(ws, force, miniMaxRegion)
 		default:
 			return fmt.Errorf("unknown platform: %s", args[0])
 		}
@@ -151,6 +186,7 @@ atlas login -f copilot
 func init() {
 	loginCmd.Flags().BoolP("force", "f", false, "Force re-authentication even if already logged in")
 	loginCmd.Flags().Bool("api-key-stdin", false, "Read an API or Token Plan key from standard input")
+	loginCmd.Flags().String("region", "", "MiniMax subscription region: global (default) or cn")
 	loginCmd.Flags().Bool("list", false, "List API-key providers and account sign-in platforms")
 	addAPIKeyLoginCompletions()
 }
@@ -896,5 +932,126 @@ func loginMuse(ws workspace.Workspace, force bool) error {
 
 	fmt.Println()
 	fmt.Println("You're now authenticated with Meta Muse!")
+	return nil
+}
+
+// loginKimi signs in to a Kimi Code membership with the OAuth device-code
+// flow the official Kimi Code CLI uses. No API key is involved: the OAuth
+// access token is the bearer credential.
+func loginKimi(ws workspace.Workspace, force bool) error {
+	loginCtx := getLoginContext()
+
+	if !force {
+		cfg := ws.Config()
+		if cfg != nil {
+			if pc, ok := cfg.Providers.Get("kimi-code"); ok && pc.OAuthToken != nil {
+				fmt.Println("You are already logged in to Kimi Code.")
+				fmt.Println("Use --force to re-authenticate.")
+				return nil
+			}
+		}
+	}
+
+	fmt.Println("Requesting device code from Kimi...")
+	dc, err := kimioauth.RequestDeviceCode(loginCtx)
+	if err != nil {
+		return err
+	}
+
+	clipboard.WriteText(dc.UserCode)
+	fmt.Println()
+	fmt.Println("The following code should be on clipboard already:")
+	fmt.Println()
+	lipgloss.Println(lipgloss.NewStyle().Bold(true).Render(dc.UserCode))
+	fmt.Println()
+	fmt.Println("Press enter to open this URL and authenticate with your Kimi account:")
+	fmt.Println()
+	verifyURL := dc.VerificationURL()
+	lipgloss.Println(lipgloss.NewStyle().Hyperlink(verifyURL, "id=kimi").Render(verifyURL))
+	fmt.Println()
+	waitEnter()
+	if err := browser.OpenURL(verifyURL); err != nil {
+		fmt.Println("Could not open the URL. You'll need to manually open the URL in your browser.")
+	}
+
+	fmt.Println("Waiting for authorization...")
+
+	token, err := kimioauth.PollForToken(loginCtx, dc)
+	if err != nil {
+		return err
+	}
+
+	if err := ws.SetProviderAPIKey(config.ScopeGlobal, "kimi-code", token); err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Println("You're now authenticated with Kimi Code!")
+	return nil
+}
+
+// loginMiniMax signs in to a MiniMax Token Plan (coding plan) subscription
+// with the OAuth device-code flow the official MiniMax CLI uses. No API key
+// is involved: the OAuth access token is the credential. Global and China
+// accounts are separate, so the region picks the provider id.
+func loginMiniMax(ws workspace.Workspace, force bool, region minimaxoauth.Region) error {
+	loginCtx := getLoginContext()
+
+	providerID := "minimax-plan"
+	label := "MiniMax Token Plan"
+	if region == minimaxoauth.China {
+		providerID = "minimax-plan-cn"
+		label = "MiniMax Token Plan (China)"
+	}
+
+	if !force {
+		cfg := ws.Config()
+		if cfg != nil {
+			if pc, ok := cfg.Providers.Get(providerID); ok && pc.OAuthToken != nil {
+				fmt.Printf("You are already logged in to %s.\n", label)
+				fmt.Println("Use --force to re-authenticate.")
+				return nil
+			}
+		}
+	}
+
+	fmt.Printf("Requesting device code from MiniMax (%s)...\n", region)
+	dc, err := minimaxoauth.RequestDeviceCode(loginCtx, region)
+	if err != nil {
+		if !strings.Contains(err.Error(), "minimax-coding") {
+			err = fmt.Errorf("%w\n%s", err, minimaxoauth.SignInFallbackHint)
+		}
+		return err
+	}
+
+	clipboard.WriteText(dc.UserCode)
+	fmt.Println()
+	fmt.Println("The following code should be on clipboard already:")
+	fmt.Println()
+	lipgloss.Println(lipgloss.NewStyle().Bold(true).Render(dc.UserCode))
+	fmt.Println()
+	fmt.Println("Press enter to open this URL and authenticate with your MiniMax account:")
+	fmt.Println()
+	verifyURL := dc.VerificationURL()
+	lipgloss.Println(lipgloss.NewStyle().Hyperlink(verifyURL, "id=minimax").Render(verifyURL))
+	fmt.Println()
+	waitEnter()
+	if err := browser.OpenURL(verifyURL); err != nil {
+		fmt.Println("Could not open the URL. You'll need to manually open the URL in your browser.")
+	}
+
+	fmt.Println("Waiting for authorization...")
+
+	token, err := minimaxoauth.PollForToken(loginCtx, region, dc)
+	if err != nil {
+		return err
+	}
+
+	if err := ws.SetProviderAPIKey(config.ScopeGlobal, providerID, token); err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Printf("You're now authenticated with %s!\n", label)
 	return nil
 }

@@ -49,6 +49,13 @@ atlas logout antigravity
 		"chatgpt",
 		"codex",
 		"antigravity",
+		"kimi",
+		"kimi-code",
+		"minimax",
+		"minimax-plan",
+		"minimax-plan-cn",
+		"minimax-cn",
+		"minimaxi",
 	},
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -97,6 +104,12 @@ atlas logout antigravity
 			return logoutChatGPT(c, ws.ID)
 		case "antigravity":
 			return logoutAntigravity(c, ws.ID)
+		case "kimi", "kimi-code", "kimi-plan", "kimi-membership":
+			return logoutKimi(c, ws.ID)
+		case "minimax", "minimax-plan", "minimax-global", "minimax-subscription":
+			return logoutMiniMax(c, ws.ID, "minimax-plan", "MiniMax Token Plan")
+		case "minimax-plan-cn", "minimax-cn", "minimaxi":
+			return logoutMiniMax(c, ws.ID, "minimax-plan-cn", "MiniMax Token Plan (China)")
 		default:
 			return fmt.Errorf("unknown platform: %s", provider)
 		}
@@ -145,6 +158,34 @@ func logoutChatGPT(c *client.Client, wsID string) error {
 	return nil
 }
 
+func logoutKimi(c *client.Client, wsID string) error {
+	ctx := getLogoutContext()
+
+	if err := cmp.Or(
+		c.RemoveConfigField(ctx, wsID, config.ScopeGlobal, "providers.kimi-code.api_key"),
+		c.RemoveConfigField(ctx, wsID, config.ScopeGlobal, "providers.kimi-code.oauth"),
+	); err != nil {
+		return err
+	}
+
+	fmt.Println(logoutHeaderStyle.Render("Successfully logged out of Kimi Code."))
+	return nil
+}
+
+func logoutMiniMax(c *client.Client, wsID, providerID, label string) error {
+	ctx := getLogoutContext()
+
+	if err := cmp.Or(
+		c.RemoveConfigField(ctx, wsID, config.ScopeGlobal, "providers."+providerID+".api_key"),
+		c.RemoveConfigField(ctx, wsID, config.ScopeGlobal, "providers."+providerID+".oauth"),
+	); err != nil {
+		return err
+	}
+
+	fmt.Println(logoutHeaderStyle.Render("Successfully logged out of " + label + "."))
+	return nil
+}
+
 func logoutAntigravity(c *client.Client, wsID string) error {
 	ctx := getLogoutContext()
 
@@ -175,10 +216,13 @@ func pickLoggedInProvider(c *client.Client, wsID string) (string, error) {
 	// Only OAuth-based providers support login/logout. Keep this list in sync
 	// with the switch in RunE and the login command.
 	oauthProviders := map[string]string{
-		"hyper":       "Hyper",
-		"copilot":     "GitHub Copilot",
-		"chatgpt":     "ChatGPT",
-		"antigravity": "Antigravity",
+		"hyper":           "Hyper",
+		"copilot":         "GitHub Copilot",
+		"chatgpt":         "ChatGPT",
+		"antigravity":     "Antigravity",
+		"kimi-code":       "Kimi Code",
+		"minimax-plan":    "MiniMax Token Plan",
+		"minimax-plan-cn": "MiniMax Token Plan (China)",
 	}
 
 	var loggedIn []loggedInProvider

@@ -222,6 +222,10 @@ func (c *scriptedCoordinator) StartGoal(context.Context, string, string) error {
 func (c *scriptedCoordinator) ClearGoal(context.Context, string) error         { return nil }
 func (c *scriptedCoordinator) GoalStatus(string) (string, int, int, bool)      { return "", 0, 0, false }
 
+func (c *scriptedCoordinator) AskSideQuestion(context.Context, string, string) (agent.SideAnswer, error) {
+	return agent.SideAnswer{}, nil
+}
+
 func (c *scriptedCoordinator) Model() agent.Model                            { return agent.Model{} }
 func (c *scriptedCoordinator) UpdateModels(context.Context) error            { return nil }
 func (c *scriptedCoordinator) GenerateTitle(context.Context, string, string) {}

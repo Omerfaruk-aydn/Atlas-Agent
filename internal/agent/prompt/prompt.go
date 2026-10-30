@@ -49,6 +49,9 @@ type PromptDat struct {
 	// loadMemory for why they are not refreshed.
 	ProjectMemory string
 	UserMemory    string
+	// ProjectModel is the compact summary of the living project model, set
+	// only when a model exists and its summary is small enough.
+	ProjectModel string
 }
 
 type ContextFile struct {
@@ -205,6 +208,7 @@ func (p *Prompt) promptData(ctx context.Context, provider, model string, store *
 		RoleSkillGuidance: roleSkillGuidance,
 		ProjectMemory:     loadMemory(store, memory.ScopeProject),
 		UserMemory:        loadMemory(store, memory.ScopeUser),
+		ProjectModel:      loadProjectModel(ctx, store),
 	}
 	if isGit {
 		var err error

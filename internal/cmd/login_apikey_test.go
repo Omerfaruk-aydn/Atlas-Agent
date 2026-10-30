@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
+	minimaxoauth "github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/minimax"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
@@ -84,4 +85,102 @@ func TestListLoginProviders(t *testing.T) {
 	for _, want := range []string{"xiaomi-token-plan-ams", "xiaomi", "chatgpt", "copilot", "opencode-go"} {
 		require.Contains(t, out.String(), want)
 	}
+}
+
+func TestKimiLoginAliasesAndModes(t *testing.T) {
+	t.Parallel()
+	for _, id := range []string{"kimi", "kimi-code", "kimi-plan", "kimi-membership"} {
+		require.Equal(t, "kimi-code", resolveLoginAlias(id), id)
+		require.True(t, isAccountLoginProvider(id), id)
+		_, usesKey := apiKeyLoginProvider(id)
+		require.False(t, usesKey, id)
+	}
+	for _, id := range []string{"kimi-coding", "kimi-coding-global"} {
+		p, usesKey := apiKeyLoginProvider(id)
+		require.True(t, usesKey, id)
+		require.Equal(t, id, string(p.ID))
+		require.False(t, isAccountLoginProvider(id), id)
+	}
+	for _, id := range []string{"kimi", "kimi-plan", "kimi-membership", "kimi-code", "kimi-coding", "kimi-coding-global"} {
+		require.Contains(t, loginCmd.ValidArgs, id)
+	}
+}
+
+func TestListLoginProvidersExplainsKimi(t *testing.T) {
+	t.Parallel()
+	var out bytes.Buffer
+	require.NoError(t, listLoginProviders(&out))
+	text := out.String()
+	require.Contains(t, text, "kimi-code")
+	require.Contains(t, text, "Kimi Code subscription, no API key")
+	require.Contains(t, text, "kimi-coding")
+	require.Contains(t, text, "kimi = Kimi Code subscription login (no API key); kimi-coding = Kimi API key.")
+}
+
+func TestMiniMaxLoginAliasesAndModes(t *testing.T) {
+	t.Parallel()
+	for id, want := range map[string]string{
+		"minimax":              "minimax-plan",
+		"minimax-global":       "minimax-plan",
+		"minimax-subscription": "minimax-plan",
+		"minimax-plan":         "minimax-plan",
+		"minimax-cn":           "minimax-plan-cn",
+		"minimaxi":             "minimax-plan-cn",
+		"minimax-plan-cn":      "minimax-plan-cn",
+	} {
+		require.Equal(t, want, resolveLoginAlias(id), id)
+		require.True(t, isAccountLoginProvider(id), id)
+		_, usesKey := apiKeyLoginProvider(id)
+		require.False(t, usesKey, id)
+		require.Contains(t, loginCmd.ValidArgs, id)
+	}
+	// The API-key paths stay reachable and unchanged.
+	require.Equal(t, "minimax-coding", resolveLoginAlias("minimax-token-plan"))
+	for id, want := range map[string]string{
+		"minimax-coding":     "minimax-coding",
+		"minimax-token-plan": "minimax-coding",
+		"minimax-china":      "minimax-china",
+		"minimax-m-plan":     "minimax-m-plan",
+		"minimax-api":        "minimax",
+	} {
+		p, usesKey := apiKeyLoginProvider(id)
+		require.True(t, usesKey, id)
+		require.Equal(t, want, string(p.ID), id)
+		require.False(t, isAccountLoginProvider(id), id)
+	}
+}
+
+func TestApplyMiniMaxRegion(t *testing.T) {
+	t.Parallel()
+	id, region, err := applyMiniMaxRegion("minimax-plan", "")
+	require.NoError(t, err)
+	require.Equal(t, "minimax-plan", id)
+	require.Equal(t, minimaxoauth.Global, region)
+
+	id, region, err = applyMiniMaxRegion("minimax-plan", "cn")
+	require.NoError(t, err)
+	require.Equal(t, "minimax-plan-cn", id)
+	require.Equal(t, minimaxoauth.China, region)
+
+	id, region, err = applyMiniMaxRegion("minimax-plan-cn", "")
+	require.NoError(t, err)
+	require.Equal(t, "minimax-plan-cn", id)
+	require.Equal(t, minimaxoauth.China, region)
+
+	_, _, err = applyMiniMaxRegion("minimax-plan", "mars")
+	require.Error(t, err)
+	_, _, err = applyMiniMaxRegion("minimax-coding", "cn")
+	require.ErrorContains(t, err, "--region")
+}
+
+func TestListLoginProvidersExplainsMiniMax(t *testing.T) {
+	t.Parallel()
+	var out bytes.Buffer
+	require.NoError(t, listLoginProviders(&out))
+	text := out.String()
+	require.Contains(t, text, "minimax-plan")
+	require.Contains(t, text, "MiniMax Token Plan subscription, no API key")
+	require.Contains(t, text, "minimax-coding")
+	require.Contains(t, text, "minimax-api")
+	require.Contains(t, text, "minimax = MiniMax subscription login (no API key); minimax-coding = API key.")
 }

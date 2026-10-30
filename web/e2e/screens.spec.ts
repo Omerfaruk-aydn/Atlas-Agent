@@ -26,11 +26,11 @@ test("screenshots", async ({ browser }) => {
   await setup.locator("[data-slot='home-panel'] [data-action='home-new-session']").click()
   await expect(setup).toHaveURL(/[?&]draft=/)
   const box = setup.locator("[data-component='composer'] [role='textbox']")
-  for (const prompt of ["Explain `main.go:3` with a table and code [[big]]", "Run the build [[bash]]", "[[write docs/notes.md]]"]) {
+  for (const prompt of ["Explain `main.go:3` with a table and code [[big]]", "Run the build [[bash]]", "[[permission]]"]) {
     await box.fill(prompt)
     await box.press("Enter")
     // The prompt box goes away while a permission request is pending.
-    if (prompt.includes("write")) break
+    if (prompt.includes("permission")) break
     await expect(box).toHaveText("")
     // The send button turns into Stop while the run is in flight.
     await expect(setup.getByRole("button", { name: "Stop" })).toBeHidden({ timeout: 30_000 })

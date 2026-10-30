@@ -143,6 +143,50 @@ func handleOption(ctx context.Context, args []string, stdin io.Reader, stdout, s
 		return nil
 	}
 
+	if key == "harness-disable-gate" {
+		if val != "evaluator" && val != "contract" && val != "advisor" && val != "goal_judge" && val != "escalator" && val != "lint_fix" && val != "mutation" {
+			return usage(stderr, "unsupported harness gate ablation")
+		}
+		harness := childMap(o, "harness")
+		harness["disabled_gates"] = appendArr(harness, "disabled_gates", val)
+		return nil
+	}
+
+	if key == "harness-trace" || key == "harness-lint-fix" || key == "harness-mutation" || key == "harness-red-green" || key == "harness-fuzz-hints" || key == "harness-stall-oracle" || key == "harness-evaluator-repair" {
+		enabled := true
+		if val != "" {
+			parsed, err := parseBool(val)
+			if err != nil {
+				return usage(stderr, "option harness-trace expects true/false")
+			}
+			enabled = parsed
+		}
+		childMap(o, "harness")[strings.ReplaceAll(strings.TrimPrefix(key, "harness-"), "-", "_")] = enabled
+		return nil
+	}
+	if key == "harness-lint-command" || key == "harness-mutation-command" || key == "harness-completion-command" {
+		name := strings.ReplaceAll(strings.TrimPrefix(key, "harness-"), "-", "_")
+		h := childMap(o, "harness")
+		if key == "harness-completion-command" {
+			h["completion_commands"] = appendArr(h, "completion_commands", val)
+		} else {
+			h[name] = val
+		}
+		return nil
+	}
+	if key == "harness-lint-timeout-seconds" || key == "harness-completion-timeout-seconds" || key == "harness-mutation-max" || key == "harness-mutation-timeout-seconds" || key == "harness-no-progress-steps" || key == "harness-attachment-reference-bytes" || key == "harness-idle-compact-minutes" || key == "harness-idle-compact-tokens" {
+		n, err := strconv.Atoi(val)
+		minimum := 0
+		if key == "harness-attachment-reference-bytes" {
+			minimum = -1
+		}
+		if err != nil || n < minimum {
+			return usage(stderr, "harness budget expects an integer within the configured limit")
+		}
+		childMap(o, "harness")[strings.ReplaceAll(strings.TrimPrefix(key, "harness-"), "-", "_")] = n
+		return nil
+	}
+
 	if key == "attribution-generated-with" {
 		bv := true
 		if val != "" {

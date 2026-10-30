@@ -1,0 +1,15 @@
+import { existsSync } from "node:fs";
+import { loadStack, stateFile } from "./stack";
+
+// Stops exactly the processes the setup started, nothing else.
+export default async function globalTeardown() {
+  if (!existsSync(stateFile)) return;
+  for (const pid of loadStack().pids.reverse()) {
+    try {
+      process.kill(pid);
+    } catch {
+      // Already gone.
+    }
+  }
+}
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6WyJleGlzdHNTeW5jIiwibG9hZFN0YWNrIiwic3RhdGVGaWxlIiwiZ2xvYmFsVGVhcmRvd24iLCJwaWQiLCJwaWRzIiwicmV2ZXJzZSIsInByb2Nlc3MiLCJraWxsIl0sInNvdXJjZXMiOlsiZ2xvYmFsLXRlYXJkb3duLnRzIl0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IGV4aXN0c1N5bmMgfSBmcm9tIFwibm9kZTpmc1wiXG5pbXBvcnQgeyBsb2FkU3RhY2ssIHN0YXRlRmlsZSB9IGZyb20gXCIuL3N0YWNrXCJcblxuLy8gU3RvcHMgZXhhY3RseSB0aGUgcHJvY2Vzc2VzIHRoZSBzZXR1cCBzdGFydGVkLCBub3RoaW5nIGVsc2UuXG5leHBvcnQgZGVmYXVsdCBhc3luYyBmdW5jdGlvbiBnbG9iYWxUZWFyZG93bigpIHtcbiAgaWYgKCFleGlzdHNTeW5jKHN0YXRlRmlsZSkpIHJldHVyblxuICBmb3IgKGNvbnN0IHBpZCBvZiBsb2FkU3RhY2soKS5waWRzLnJldmVyc2UoKSkge1xuICAgIHRyeSB7XG4gICAgICBwcm9jZXNzLmtpbGwocGlkKVxuICAgIH0gY2F0Y2gge1xuICAgICAgLy8gQWxyZWFkeSBnb25lLlxuICAgIH1cbiAgfVxufVxuIl0sIm1hcHBpbmdzIjoiQUFBQSxTQUFTQSxVQUFVLFFBQVEsU0FBUztBQUNwQyxTQUFTQyxTQUFTLEVBQUVDLFNBQVMsUUFBUSxTQUFTOztBQUU5QztBQUNBLGVBQWUsZUFBZUMsY0FBY0EsQ0FBQSxFQUFHO0VBQzdDLElBQUksQ0FBQ0gsVUFBVSxDQUFDRSxTQUFTLENBQUMsRUFBRTtFQUM1QixLQUFLLE1BQU1FLEdBQUcsSUFBSUgsU0FBUyxDQUFDLENBQUMsQ0FBQ0ksSUFBSSxDQUFDQyxPQUFPLENBQUMsQ0FBQyxFQUFFO0lBQzVDLElBQUk7TUFDRkMsT0FBTyxDQUFDQyxJQUFJLENBQUNKLEdBQUcsQ0FBQztJQUNuQixDQUFDLENBQUMsTUFBTTtNQUNOO0lBQUE7RUFFSjtBQUNGIiwiaWdub3JlTGlzdCI6W119

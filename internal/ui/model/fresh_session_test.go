@@ -78,7 +78,7 @@ func (w *freshSessionWorkspace) ListMessages(context.Context, string) ([]message
 	return nil, nil
 }
 
-func newFreshSessionTestUI(ws *freshSessionWorkspace) *UI {
+func newFreshSessionTestUI(ws workspace.Workspace) *UI {
 	com := common.DefaultCommon(ws)
 
 	ta := textarea.New()

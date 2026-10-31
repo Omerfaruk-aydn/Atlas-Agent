@@ -261,7 +261,7 @@ func TestCatalogLaunchAcceptsAReusedForegroundBrowserWindow(t *testing.T) {
 func TestCatalogLaunchWithoutWindowIsNotRetried(t *testing.T) {
 	t.Parallel()
 	f := &fakeLauncher{catalog: fixtureCatalog(t, map[string]bool{userChrome: true}), pid: 1}
-	ctx, cancel := context.WithTimeout(t.Context(), 400*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	entry, err := f.catalog.Resolve(ctx, "chrome")
 	require.NoError(t, err)

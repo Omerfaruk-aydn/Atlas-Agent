@@ -304,6 +304,11 @@ func (s *ConfigStore) configPath(scope Scope) (string, error) {
 	}
 }
 
+// ConfigFilePath returns the file that writes for the given scope land in.
+func (s *ConfigStore) ConfigFilePath(scope Scope) (string, error) {
+	return s.configPath(scope)
+}
+
 // HasConfigField checks whether a key exists in the config file for the given
 // scope.
 func (s *ConfigStore) HasConfigField(scope Scope, key string) bool {

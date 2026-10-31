@@ -45,6 +45,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/question"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/runoutput"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/secretprompt"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/skills"
@@ -69,6 +70,7 @@ type App struct {
 	History     history.Service
 	Permissions permission.Service
 	Questions   question.Service
+	Secrets     secretprompt.Service
 	FileTracker filetracker.Service
 
 	AgentCoordinator agent.Coordinator
@@ -135,6 +137,7 @@ func New(ctx context.Context, conn *sql.DB, store *config.ConfigStore, skillsMgr
 		History:     files,
 		Permissions: permission.NewPermissionService(store.WorkingDir(), skipPermissionsRequests, allowedTools),
 		Questions:   question.NewService(),
+		Secrets:     secretprompt.NewService(),
 		FileTracker: filetracker.NewService(q),
 		LSPManager:  lsp.NewManager(store),
 		Skills:      skillsMgr,
@@ -815,6 +818,8 @@ func (app *App) setupEvents() {
 	setupSubscriberMustDeliver(ctx, app.serviceEventsWG, "permissions-notifications", app.Permissions.SubscribeNotifications, app.events)
 	setupSubscriberMustDeliver(ctx, app.serviceEventsWG, "question-batches", app.Questions.Subscribe, app.events)
 	setupSubscriberMustDeliver(ctx, app.serviceEventsWG, "question-notifications", app.Questions.SubscribeNotifications, app.events)
+	setupSubscriberMustDeliver(ctx, app.serviceEventsWG, "secret-prompts", app.Secrets.Subscribe, app.events)
+	setupSubscriberMustDeliver(ctx, app.serviceEventsWG, "secret-prompt-notifications", app.Secrets.SubscribeNotifications, app.events)
 	setupSubscriber(ctx, app.serviceEventsWG, "history", app.History.Subscribe, app.events)
 	setupSubscriber(ctx, app.serviceEventsWG, "agent-notifications", app.agentNotifications.Subscribe, app.events)
 	setupSubscriberMustDeliver(ctx, app.serviceEventsWG, "run-completions", app.runCompletions.Subscribe, app.events)
@@ -914,6 +919,7 @@ func (app *App) initCoderAgent(ctx context.Context, interactive bool) error {
 		Messages:    app.Messages,
 		Permissions: app.Permissions,
 		Questions:   app.Questions,
+		Secrets:     app.Secrets,
 		History:     app.History,
 		FileTracker: app.FileTracker,
 		LSPManager:  app.LSPManager,
@@ -939,6 +945,10 @@ func (app *App) Subscribe(program *tea.Program) {
 		slog.Info("TUI subscription panic: attempting graceful shutdown")
 		program.Quit()
 	})
+
+	// A terminal UI is attached, so the masked key prompt can be shown.
+	app.Secrets.SetAvailable(true)
+	defer app.Secrets.SetAvailable(false)
 
 	app.tuiWG.Add(1)
 	tuiCtx, tuiCancel := context.WithCancel(app.globalCtx)

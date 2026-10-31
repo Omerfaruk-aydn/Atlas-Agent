@@ -12,6 +12,8 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/providersetup"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/secretprompt"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/subagents"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -55,6 +57,16 @@ type AtlasConfigParams struct {
 	Description     string    `json:"description,omitempty"`
 	Instructions    string    `json:"instructions,omitempty"`
 	PreferredSkills *[]string `json:"preferred_skills,omitempty" description:"Skill names to associate with save_subagent; omitted preserves existing bindings, an empty list clears them."`
+
+	// add_provider.
+	ID             string   `json:"id,omitempty" description:"add_provider: provider id; lowercase letters, digits, - and _ only."`
+	Type           string   `json:"type,omitempty" description:"add_provider: API type, openai-compat (default), openai, anthropic or google."`
+	BaseURL        string   `json:"base_url,omitempty" description:"add_provider: the provider API base URL, taken from its documentation (never guessed)."`
+	APIKeyEnv      string   `json:"api_key_env,omitempty" description:"add_provider: NAME of an environment variable that holds the API key. Never put the key itself in any field."`
+	DiscoverModels *bool    `json:"discover_models,omitempty" description:"add_provider: list models from the endpoint (default true)."`
+	Models         []string `json:"models,omitempty" description:"add_provider: explicit model ids."`
+	Overwrite      bool     `json:"overwrite,omitempty" description:"add_provider: replace an existing provider with the same id."`
+	AllowInsecure  bool     `json:"allow_insecure,omitempty" description:"add_provider: allow plain http to a non-local host (the key is then sent unencrypted)."`
 }
 
 // AtlasConfigPermissionParams is what the permission prompt shows.
@@ -74,10 +86,16 @@ var atlasConfigReadOnly = map[string]bool{
 
 var atlasConfigActions = []string{
 	"list", "set_role", "set_model", "enable_tool", "disable_tool", "set_field", "get_field",
-	"save_subagent", "delete_subagent", "list_subagents",
+	"save_subagent", "delete_subagent", "list_subagents", "add_provider",
 }
 
-func NewAtlasConfigTool(permissions permission.Service, cfg *config.ConfigStore, workingDir string) fantasy.AgentTool {
+// NewAtlasConfigTool builds the tool. secrets is optional: when it is nil or
+// unavailable, add_provider can only use an environment variable for the key.
+func NewAtlasConfigTool(permissions permission.Service, cfg *config.ConfigStore, workingDir string, secrets ...secretprompt.Service) fantasy.AgentTool {
+	var secretSvc secretprompt.Service
+	if len(secrets) > 0 {
+		secretSvc = secrets[0]
+	}
 	return fantasy.NewAgentTool(
 		AtlasConfigToolName,
 		atlasConfigDescription,
@@ -91,6 +109,12 @@ func NewAtlasConfigTool(permissions permission.Service, cfg *config.ConfigStore,
 			scope, scopeName, err := atlasConfigScope(params.Scope)
 			if err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+
+			if action == "add_provider" {
+				if _, err := providersetup.Prepare(addProviderParams(params)); err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
 			}
 
 			if !atlasConfigReadOnly[action] {
@@ -136,6 +160,8 @@ func NewAtlasConfigTool(permissions permission.Service, cfg *config.ConfigStore,
 				return atlasConfigDeleteSubagent(cfg, params)
 			case "list_subagents":
 				return fantasy.NewTextResponse(atlasConfigListSubagents(cfg)), nil
+			case "add_provider":
+				return atlasConfigAddProvider(ctx, cfg, scope, scopeName, params, call.ID, secretSvc), nil
 			default:
 				return atlasConfigSetField(cfg, scope, scopeName, params)
 			}
@@ -180,6 +206,8 @@ func atlasConfigDescribe(action string, p AtlasConfigParams, scopeName string) s
 		return fmt.Sprintf("Save the %q subagent (%s)", p.Name, scopeName)
 	case "delete_subagent":
 		return fmt.Sprintf("Delete the %q subagent", p.Name)
+	case "add_provider":
+		return describeAddProvider(p, scopeName)
 	default:
 		return action
 	}

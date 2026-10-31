@@ -256,6 +256,13 @@ type Workspace interface {
 	// QuestionCancel cancels the pending question.
 	QuestionCancel() bool
 
+	// SecretPromptSubmit resolves a pending masked key prompt. The value goes
+	// straight to the Go caller waiting for it and is never published.
+	SecretPromptSubmit(id, secret string) bool
+
+	// SecretPromptCancel dismisses a pending masked key prompt.
+	SecretPromptCancel(id string) bool
+
 	// FileTracker
 	FileTrackerRecordRead(ctx context.Context, sessionID, path string)
 	FileTrackerLastReadTime(ctx context.Context, sessionID, path string) time.Time

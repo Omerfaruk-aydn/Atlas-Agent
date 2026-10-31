@@ -50,6 +50,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/question"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/secretprompt"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/skills"
@@ -6509,4 +6510,18 @@ func (m *UI) startBannerAnim() tea.Cmd {
 	m.bannerGen++
 	m.bannerTicking = true
 	return bannerTick(m.bannerGen, bannerIdleDelay)
+}
+
+// openSecretPrompt shows the masked key prompt. The typed value goes to the
+// workspace directly and is never turned into a message.
+func (m *UI) openSecretPrompt(req secretprompt.Request) {
+	if m.dialog.ContainsDialog(dialog.SecretPromptID) {
+		// One prompt at a time; the waiting caller is told it was declined.
+		m.com.Workspace.SecretPromptCancel(req.ID)
+		return
+	}
+	d := dialog.NewSecretPrompt(m.com, req)
+	d.OnSubmit = func(id, secret string) { m.com.Workspace.SecretPromptSubmit(id, secret) }
+	d.OnCancel = func(id string) { m.com.Workspace.SecretPromptCancel(id) }
+	m.dialog.OpenDialogWithGrace(d)
 }

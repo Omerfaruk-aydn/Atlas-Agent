@@ -678,3 +678,13 @@ func (w *AppWorkspace) Store() *config.ConfigStore {
 
 // Compile-time check that AppWorkspace implements Workspace.
 var _ Workspace = (*AppWorkspace)(nil)
+
+// -- Secret prompts --
+
+func (w *AppWorkspace) SecretPromptSubmit(id, secret string) bool {
+	return w.app.Secrets.Submit(id, secret)
+}
+
+func (w *AppWorkspace) SecretPromptCancel(id string) bool {
+	return w.app.Secrets.Cancel(id)
+}

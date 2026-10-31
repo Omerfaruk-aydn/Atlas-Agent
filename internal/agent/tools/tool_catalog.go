@@ -354,6 +354,11 @@ func IntentTools(text string) []string {
 	if strings.Contains(folded, "atlas ayar") || strings.Contains(folded, "atlas settings") {
 		add("atlas_config")
 	}
+	for _, phrase := range []string{"provider ekle", "saglayici ekle", "saglayiciyi kur", "add a provider", "add provider", "add a custom provider", "custom provider", "set up provider", "setup provider", "fetch its models", "modellerini cek"} {
+		if strings.Contains(folded, phrase) {
+			add("atlas_config")
+		}
+	}
 	for _, phrase := range []string{"uygulamasi olustur", "uygulama olustur", "uygulamasi yap", "uygulama yap", "yerel uygulama", "create an app", "build an app", "build me an app", "local app", "atlas-app.json"} {
 		if strings.Contains(folded, phrase) {
 			add("local_app")

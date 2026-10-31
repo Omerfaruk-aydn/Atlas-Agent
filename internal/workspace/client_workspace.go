@@ -1657,3 +1657,12 @@ func protoQuestionsToDomain(qs []proto.QuestionItem) []question.Question {
 	}
 	return out
 }
+
+// SecretPromptSubmit is unsupported over the client/server protocol: a
+// secret is never serialized onto the event stream, so the server reports
+// the prompt as unavailable and add_provider falls back to an environment
+// variable.
+func (w *ClientWorkspace) SecretPromptSubmit(string, string) bool { return false }
+
+// SecretPromptCancel is a no-op for the same reason.
+func (w *ClientWorkspace) SecretPromptCancel(string) bool { return false }

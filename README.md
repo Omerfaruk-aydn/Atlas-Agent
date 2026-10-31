@@ -309,6 +309,7 @@ Everything below is a subcommand of `atlas-agent`.
 | `atlas-agent models roles` | Show which model each named role resolves to. |
 | `atlas-agent provider list` | List configured providers. |
 | `atlas-agent provider test` | Check that a provider actually answers. |
+| `atlas-agent provider add <id>` | Add a custom provider: probe it, list its models, save it (key never in chat). See [docs/provider-setup.md](docs/provider-setup.md). |
 | `atlas-agent provider usage [name]` | Token and cost usage per provider. |
 | `atlas-agent update-providers [path-or-url]` | Refresh the embedded provider/model catalog. |
 | `atlas-agent login [platform]` | Sign in to a coding plan (Copilot, ChatGPT, Antigravity, …). |
@@ -1099,11 +1100,13 @@ from the chat with `atlas_config`. `atlas-agent schema` prints the full JSON sch
 
 Config directories:
 
-| Platform | Path |
-| --- | --- |
-| Windows | `%APPDATA%\atlas-agent` |
-| macOS | `~/Library/Application Support/atlas-agent` |
-| Linux | `~/.config/atlas-agent` |
+| What | Windows | macOS / Linux |
+| --- | --- | --- |
+| Config you edit by hand | `%USERPROFILE%\.config\atlas\atlas.json` | `~/.config/atlas/atlas.json` |
+| Config Atlas writes (`atlas_config`, `login`, `provider add`) | `%LOCALAPPDATA%\atlas\atlas.json` | `~/.local/share/atlas/atlas.json` |
+
+Both are loaded and merged; `XDG_CONFIG_HOME` moves the first. `atlas-agent config paths` shows
+which files were found.
 
 Workspace config lives in `.atlas/` in the project root.
 
@@ -1386,7 +1389,7 @@ ollama pull qwen2.5-coder:14b
 ```
 
 ```jsonc
-// ~/.config/atlas-agent/atlas.json  (or %APPDATA%\atlas-agent\atlas.json)
+// ~/.config/atlas/atlas.json  (Windows: %USERPROFILE%\.config\atlas\atlas.json)
 {
   "providers": {
     "ollama": {
@@ -1411,7 +1414,21 @@ models do noticeably better.
 
 Same shape as the Ollama example: a `base_url`, an `api_key`, and a `models` list. vLLM, LM Studio,
 llama.cpp's server, a corporate gateway, or a provider Atlas Agent has never heard of all work this
-way — declare it in the config file, or ask the agent to (`atlas_config`).
+way. You do not have to write the file by hand:
+
+```bash
+atlas-agent provider add acme --base-url https://api.acme.example/v1 --api-key-env ACME_API_KEY
+```
+
+or tell the agent "set up provider acme, fetch its models, the key is in `ACME_API_KEY`, find the
+API URL yourself" and it does the same through `atlas_config`. Either way the endpoint is probed and
+its models are listed before anything is saved, and your API key never passes through the model.
+See [docs/provider-setup.md](docs/provider-setup.md).
+
+Editing the file directly still works. The one you edit by hand is `~/.config/atlas/atlas.json`
+(Windows: `%USERPROFILE%\.config\atlas\atlas.json`); what `provider add`, `login` and `atlas_config`
+write is `%LOCALAPPDATA%\atlas\atlas.json` on Windows and `~/.local/share/atlas/atlas.json`
+elsewhere. Both are merged.
 
 ### Mixing providers deliberately
 

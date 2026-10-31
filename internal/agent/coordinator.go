@@ -55,6 +55,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/question"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/sandbox"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/secretprompt"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/skills"
@@ -204,6 +205,7 @@ type coordinator struct {
 	messages    message.Service
 	permissions permission.Service
 	questions   question.Service
+	secrets     secretprompt.Service
 	history     history.Service
 	filetracker filetracker.Service
 	lspManager  *lsp.Manager
@@ -255,6 +257,8 @@ type CoordinatorOptions struct {
 	Messages    message.Service
 	Permissions permission.Service
 	Questions   question.Service
+	// Secrets is optional; without it add_provider needs an env var.
+	Secrets     secretprompt.Service
 	History     history.Service
 	FileTracker filetracker.Service
 	LSPManager  *lsp.Manager
@@ -299,6 +303,7 @@ func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, 
 		messages:     opts.Messages,
 		permissions:  opts.Permissions,
 		questions:    opts.Questions,
+		secrets:      opts.Secrets,
 		history:      opts.History,
 		filetracker:  opts.FileTracker,
 		lspManager:   opts.LSPManager,
@@ -1141,7 +1146,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		tools.NewAPIProbeTool(c.cfg.WorkingDir(), c.permissions, urlPolicy(c.cfg)),
 		tools.NewMigrationRehearseTool(c.cfg.WorkingDir(), c.permissions),
 		tools.NewRehearseTool(c.cfg.WorkingDir(), c.cfg.Config().Options.DataDirectory, c.permissions),
-		tools.NewAtlasConfigTool(c.permissions, c.cfg, c.cfg.WorkingDir()),
+		tools.NewAtlasConfigTool(c.permissions, c.cfg, c.cfg.WorkingDir(), c.secrets),
 		tools.NewAtlasLogsTool(logFile),
 		tools.NewJobOutputTool(c.cfg.WorkingDir()),
 		tools.NewJobKillTool(),

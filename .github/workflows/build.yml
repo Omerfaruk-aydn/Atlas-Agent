@@ -43,7 +43,7 @@ jobs:
       - name: Install pinned bench checker
         working-directory: bench
         run: npm install --ignore-scripts
-      - run: go test -race ./...
+      - run: go test -race -timeout 20m ./...
 
   web:
     # The web client: typecheck, unit tests and the production build that

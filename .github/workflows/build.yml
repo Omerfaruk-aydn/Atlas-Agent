@@ -41,7 +41,8 @@ jobs:
         if: runner.os == 'Windows'
         run: go test -race -count=1 ./internal/computer ./internal/ui/model -run 'TestWindowsAutomationReadAndFixtureOCR|TestWorkflowPanelRealPTYResizeStopAndClose'
       - name: Install pinned bench checker
-        run: npm --prefix bench install --ignore-scripts
+        working-directory: bench
+        run: npm install --ignore-scripts
       - run: go test -race ./...
 
   web:

@@ -195,16 +195,19 @@ func (w *funcToolWrapper[TInput]) SetParallel(parallel bool) {
 }
 
 func (w *funcToolWrapper[TInput]) Info() ToolInfo {
-	if w.schema.Required == nil {
-		w.schema.Required = []string{}
+	// Work on a copy: Info is called from concurrent goroutines and must not
+	// write to the shared schema.
+	sc := w.schema
+	if sc.Required == nil {
+		sc.Required = []string{}
 	}
 	return ToolInfo{
 		Name:        w.name,
 		Description: w.description,
-		Parameters:  schema.ToParameters(w.schema),
-		Required:    w.schema.Required,
+		Parameters:  schema.ToParameters(sc),
+		Required:    sc.Required,
 		Parallel:    w.parallel,
-		Contract:    schema.ValidationParameters(w.schema),
+		Contract:    schema.ValidationParameters(sc),
 		Unknown:     w.unknown,
 	}
 }

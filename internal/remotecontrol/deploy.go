@@ -55,7 +55,7 @@ $SUDO mkdir -p "$B"
 for f in compose.yaml Caddyfile .env state.json bin; do
   if [ -e "$D/$f" ]; then $SUDO cp -a "$D/$f" "$B/"; fi
 done
-$SUDO sh -c 'cd "$1" && ls -1 | sort | head -n -3 | while read -r old; do rm -rf -- "$old"; done' sh "$D/backups"
+$SUDO sh -c 'cd "$1" && ls -1 | sort -r | tail -n +4 | while read -r old; do rm -rf -- "$old"; done' sh "$D/backups"
 echo ok
 `
 

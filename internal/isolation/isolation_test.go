@@ -166,6 +166,7 @@ func TestLeaseLifecycleOwnsOnlyItsProcesses(t *testing.T) {
 	if testing.Short() {
 		t.Skip("starts helper processes")
 	}
+	skipWithoutProcessIdentity(t)
 	devices := t.TempDir()
 	f := &fakePlatform{t: t, facts: availableFacts()}
 	exe, err := os.Executable()
@@ -226,6 +227,7 @@ func TestSandboxClosedOutsideAtlasIsReportedFailed(t *testing.T) {
 	if testing.Short() {
 		t.Skip("starts helper processes")
 	}
+	skipWithoutProcessIdentity(t)
 	devices := t.TempDir()
 	f := &fakePlatform{t: t, facts: availableFacts()}
 	exe, _ := os.Executable()
@@ -241,4 +243,13 @@ func TestSandboxClosedOutsideAtlasIsReportedFailed(t *testing.T) {
 		s, err := m.Status(st.Lease.ID)
 		return err == nil && s.Record.State == taskstate.Failed
 	}, 5*time.Second, 100*time.Millisecond)
+}
+
+// skipWithoutProcessIdentity skips on systems where procown cannot read a
+// process start time, such as macOS: ownership checks fail closed there.
+func skipWithoutProcessIdentity(t *testing.T) {
+	t.Helper()
+	if _, err := procown.CreationTime(os.Getpid()); err != nil {
+		t.Skipf("process identity unavailable: %v", err)
+	}
 }

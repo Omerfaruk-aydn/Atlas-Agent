@@ -60,8 +60,8 @@ jobs:
       - run: npm --prefix web test
       - run: npm --prefix web run build
 
-    # Pinned to 24.04: Playwright does not support Chromium on Ubuntu 26.04 yet.
-    # Ubuntu is the supported CI target. Missing Go or Chromium dependencies
+  browser-regression:
+    # Ubuntu 24.04 is pinned: Playwright lacks Chromium support on 26.04. Missing Go or Chromium dependencies
     # fail this job; an unsupported driver is never reported as a pass/skip.
     runs-on: ubuntu-24.04
     steps:

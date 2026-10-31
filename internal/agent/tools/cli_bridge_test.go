@@ -388,18 +388,18 @@ func TestCLIBridgeTimeoutAndCancellation(t *testing.T) {
 	// The canceled run is recorded as the call unwinds, which can trail the
 	// return on a loaded machine.
 	var outcomes []clibridge.Outcome
-	require.Eventually(t, func() bool {
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(50 * time.Millisecond) {
 		records, err := h.store.ListRecords(h.ctx, clibridge.RunNamespace("bridge-session"))
-		if err != nil {
-			return false
-		}
+		require.NoError(t, err)
 		outcomes = outcomes[:0]
 		for id := range records {
 			stored, _ := h.stored(t, id)
 			outcomes = append(outcomes, stored.Outcome)
 		}
-		return len(outcomes) == 2
-	}, 10*time.Second, 50*time.Millisecond)
+		if len(outcomes) == 2 || time.Now().After(deadline) {
+			break
+		}
+	}
 	require.ElementsMatch(t, []clibridge.Outcome{clibridge.OutcomeTimeout, clibridge.OutcomeCanceled}, outcomes)
 	require.EqualValues(t, 2, h.starts.Load(), "neither run was retried")
 }

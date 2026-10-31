@@ -380,7 +380,12 @@ func TestCLIBridgeTimeoutAndCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(h.ctx)
 	go func() {
-		time.Sleep(500 * time.Millisecond)
+		// Cancel once the second process is running; canceling earlier
+		// stops the call before any run is recorded.
+		for h.starts.Load() < 2 {
+			time.Sleep(10 * time.Millisecond)
+		}
+		time.Sleep(200 * time.Millisecond)
 		cancel()
 	}()
 	_, err := h.call(t, ctx, CLIBridgeParams{Action: "run", Profile: "fixture", Operation: "sleep", Args: []string{"seconds=30"}})

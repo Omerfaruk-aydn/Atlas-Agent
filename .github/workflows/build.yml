@@ -75,6 +75,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
+      - name: Enable sandboxed Chrome user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: npm --prefix web ci
       - name: Validate runner and assertion contracts
         run: go test -race -count=1 ./internal/agent/tools ./internal/webui/webtest -run 'TestBrowserWorkflow|TestBrowserPipeline|TestBrowserRegression'

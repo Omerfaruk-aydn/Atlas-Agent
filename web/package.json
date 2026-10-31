@@ -35,7 +35,7 @@
     "@tanstack/solid-query": "5.91.4",
     "@tanstack/solid-virtual": "^3.13.37",
     "diff": "^8.0.4",
-    "dompurify": "^3.4.14",
+    "dompurify": "^3.4.17",
     "effect": "4.0.1",
     "fuzzysort": "3.1.0",
     "katex": "0.16.47",

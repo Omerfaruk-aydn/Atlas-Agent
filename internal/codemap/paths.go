@@ -92,6 +92,12 @@ func (m *Map) resolvePath(fi int, target string) pathTarget {
 			return t
 		}
 		file = "/" + rel
+	} else if strings.HasPrefix(file, "/") {
+		// /home/me/project/src/x.go: the same, on a disk with no drive
+		// letter.
+		if rel, ok := m.projectRelative(file); ok {
+			file = "/" + rel
+		}
 	}
 	switch {
 	case file == "":

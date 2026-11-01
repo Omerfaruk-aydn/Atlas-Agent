@@ -307,7 +307,9 @@ func mergeModels(explicit []string, discovered []catwalk.Model) []catwalk.Model 
 		if m, ok := byID[id]; ok {
 			out = append(out, m)
 		} else {
-			out = append(out, catwalk.Model{ID: id, Name: id})
+			m := catwalk.Model{ID: id, Name: id}
+			applyCatalogReasoning(&m)
+			out = append(out, m)
 		}
 	}
 	for _, m := range discovered {
@@ -355,6 +357,9 @@ func (r *Result) Summary() string {
 		}
 	}
 	b.WriteString("\n")
+	if n := reasoningCount(r.Models); n > 0 {
+		fmt.Fprintf(&b, "  reasoning effort: %d of %d models\n", n, len(r.Models))
+	}
 	for _, n := range r.Notes {
 		fmt.Fprintf(&b, "Note: %s\n", n)
 	}

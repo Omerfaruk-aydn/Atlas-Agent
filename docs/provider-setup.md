@@ -119,3 +119,21 @@ are left at their defaults; nothing is invented.
 Files you edit by hand live elsewhere (`%USERPROFILE%\.config\atlas\atlas.json` on Windows,
 `~/.config/atlas/atlas.json` otherwise) and are merged with these. `atlas-agent config paths` lists
 what was found.
+
+## Reasoning effort
+
+While listing models the tool also records which of them support reasoning effort, using only what
+the endpoint already told it. No model call is made to find out.
+
+- The `/models` metadata is read best-effort: OpenRouter-style `supported_parameters` containing
+  `reasoning`, `reasoning_effort` or `include_reasoning`; flags such as `reasoning`,
+  `supports_reasoning`, `can_reason`, `thinking` or `capabilities.reasoning`; and level lists such
+  as `reasoning_efforts`, `reasoning_levels` or `supported_reasoning_efforts`.
+- Only levels Atlas knows are kept (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`).
+  If a model is reported as reasoning without usable levels, `low`, `medium` and `high` are used.
+  The default effort is `medium` when offered, otherwise the middle level.
+- If the metadata says nothing, a model whose id exactly matches a model in the built-in catalog
+  reuses that model's reasoning settings. This also applies to ids you pass in `models`.
+- Every other model stays standard, with no reasoning fields. Support is never guessed.
+
+The summary reports `reasoning effort: N of M models` when any model qualifies.

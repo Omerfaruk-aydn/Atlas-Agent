@@ -239,6 +239,9 @@ type listEntry struct {
 	MaxModelLen     int64 `json:"max_model_len"`
 	MaxOutputTokens int64 `json:"max_output_tokens"`
 	MaxCompletion   int64 `json:"max_completion_tokens"`
+
+	// Reasoning metadata, in whatever shape the server uses.
+	entryReasoning
 }
 
 func parseModels(typ catwalk.Type, body []byte) ([]catwalk.Model, error) {
@@ -283,6 +286,7 @@ func parseModels(typ catwalk.Type, body []byte) ([]catwalk.Model, error) {
 		if typ == catwalk.TypeAnthropic && m.DefaultMaxTokens == 0 {
 			m.DefaultMaxTokens = firstPositive(e.MaxTokens)
 		}
+		applyReasoning(&m, readReasoning(e.entryReasoning))
 		models = append(models, m)
 	}
 	return models, nil

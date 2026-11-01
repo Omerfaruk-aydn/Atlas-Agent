@@ -1251,6 +1251,13 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case pubsub.Event[question.Notification]:
 		m.handleQuestionNotification(msg.Payload)
+	case pubsub.Event[secretprompt.Request]:
+		m.openSecretPrompt(msg.Payload)
+	case pubsub.Event[secretprompt.Notification]:
+		// The request was resolved elsewhere or its caller gave up.
+		if sp, ok := m.dialog.Dialog(dialog.SecretPromptID).(*dialog.SecretPrompt); ok && sp.RequestID() == msg.Payload.ID {
+			m.dialog.CloseDialog(dialog.SecretPromptID)
+		}
 	case cancelTimerExpiredMsg:
 		m.isCanceling = false
 	case tea.TerminalVersionMsg:

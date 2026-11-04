@@ -49,6 +49,10 @@ func (a *sessionAgent) checkRedGreen(ctx context.Context, sessionID string, l *e
 		gate.finish("unverified", "requirement_contract_unavailable")
 		return evaluatorDecision{Unverified: "Red-to-green evidence could not be bound to the work contract"}, true
 	}
+	// Load returns a nil plan when the session has no work contract.
+	if plan == nil {
+		plan = &workplan.Plan{}
+	}
 	for i := range l.redGreen {
 		l.redGreen[i].RequirementIDs = nil
 		for _, feature := range plan.Features {

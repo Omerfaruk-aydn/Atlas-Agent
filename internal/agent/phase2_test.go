@@ -148,6 +148,19 @@ func TestRedGreenMustProveAContractRequirement(t *testing.T) {
 	require.Equal(t, []string{"F1"}, l.redGreen[0].RequirementIDs)
 }
 
+func TestRedGreenWithoutWorkPlanDoesNotPanic(t *testing.T) {
+	t.Parallel()
+	a, env, _ := newWorkLoopAgent(t, &scriptedModel{})
+	enabled := true
+	a.taskContextConfig = config.NewTestStore(&config.Config{Options: &config.Options{Harness: &config.Harness{RedGreen: &enabled, CompletionCommands: []string{"go test ./..."}}}}).Scoped(env.workingDir)
+	l := &evaluatorLedger{root: env.workingDir, changed: true, lastEdit: 2, redGreen: []workplan.RedEvidence{{Command: "go test ./...", GreenSequence: 3}}}
+	require.NotPanics(t, func() {
+		decision, stop := a.checkRedGreen(t.Context(), "no-plan", l)
+		require.False(t, stop)
+		require.Empty(t, decision.Unverified)
+	})
+}
+
 func TestChangedFileSecretScanBlocksWithoutLeakingValue(t *testing.T) {
 	t.Parallel()
 	a, env, _ := newWorkLoopAgent(t, &scriptedModel{})

@@ -1,0 +1,58 @@
+name: Desktop app
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - '.github/workflows/app.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - '.github/workflows/app.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  app:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run package
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        with:
+          name: atlas-app-windows-x64
+          path: app/dist/atlas-app-windows-x64.zip
+          if-no-files-found: error
+      # The release job creates the release; this one waits for it to exist.
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 30); do
+            if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+              gh release upload "$GITHUB_REF_NAME" dist/atlas-app-windows-x64.zip --clobber
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "The release $GITHUB_REF_NAME did not appear in time." >&2
+          exit 1

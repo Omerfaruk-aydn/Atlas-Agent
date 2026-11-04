@@ -22,7 +22,8 @@ func TestAntigravityCatalogEffortReachesAccountAdapter(t *testing.T) {
 	require.NotEmpty(t, provider.Models)
 	var tested int
 	for _, model := range provider.Models {
-		if model.ID != "claude-sonnet-5-5" && model.ID != "claude-opus-5-5" && model.ID != "gpt-oss-120b" {
+		// gpt-oss-120b retired on 2026-11-02 and is no longer selectable.
+		if model.ID != "claude-sonnet-5-5" && model.ID != "claude-opus-5-5" {
 			continue
 		}
 		tested++
@@ -44,5 +45,5 @@ func TestAntigravityCatalogEffortReachesAccountAdapter(t *testing.T) {
 			})
 		}
 	}
-	require.Equal(t, 3, tested)
+	require.Equal(t, 2, tested)
 }

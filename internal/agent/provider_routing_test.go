@@ -107,7 +107,7 @@ func TestOpenCodeGoogleRequestPath(t *testing.T) {
 
 func TestUnavailableProviderRejectsBeforeResolvingCredentials(t *testing.T) {
 	coord := &coordinator{}
-	for _, typ := range []catwalk.Type{catwalk.TypeGrokWeb, catwalk.TypeWindsurf, catwalk.TypeJetBrains, catwalk.TypeAugment, catwalk.TypeFactory, catwalk.TypeCodeRabbit, catwalk.TypeZed} {
+	for _, typ := range []catwalk.Type{catwalk.TypeWindsurf, catwalk.TypeJetBrains, catwalk.TypeAugment, catwalk.TypeFactory, catwalk.TypeCodeRabbit, catwalk.TypeZed} {
 		_, err := coord.buildProvider(config.ProviderConfig{ID: string(typ), Type: typ}, config.SelectedModel{}, false)
 		require.ErrorContains(t, err, "model calls are not implemented")
 	}

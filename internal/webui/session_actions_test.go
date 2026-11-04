@@ -1,12 +1,14 @@
 package webui
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/proto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -101,4 +103,65 @@ func TestFollowUpGoesIntoTheRunningTurn(t *testing.T) {
 
 	status, _ := b.raw(http.MethodPost, promptPath, map[string]any{"prompt": "no run id"})
 	require.Equal(t, http.StatusBadRequest, status, "an ordinary prompt still needs a run ID")
+}
+
+// A server from an older build has no such route: that is told apart from a
+// message that does not exist, so the app can say what to do about it.
+func TestRewindBeforeTellsAnOldServerFromAMissingMessage(t *testing.T) {
+	require.True(t, routeMissing(&upstreamError{Status: http.StatusNotFound, Message: "404 page not found"}))
+	require.False(t, routeMissing(&upstreamError{Status: http.StatusNotFound, Message: "session not found"}))
+	require.False(t, routeMissing(&upstreamError{Status: http.StatusBadGateway, Message: "page not found"}))
+
+	h := newHarness(t)
+	b := h.signIn()
+	ws := b.open(h.project)
+	sess := b.newSession(ws.ID)
+	path := wsPath(ws.ID, "/sessions/"+sess.ID+"/rewind/before")
+
+	status, _ := b.raw(http.MethodPost, path, map[string]any{})
+	require.Equal(t, http.StatusBadRequest, status)
+	status, _ = b.raw(http.MethodPost, path, map[string]any{"up_to_message_id": "missing"})
+	require.NotEqual(t, http.StatusNotImplemented, status, "this server has the route")
+	require.GreaterOrEqual(t, status, 400)
+}
+
+// Editing a message: the chat branches from just before it, the new version
+// goes out there, and the original chat keeps what it had.
+func TestEditedMessageBranchesFromJustBeforeIt(t *testing.T) {
+	h := newHarness(t)
+	b := h.signIn()
+	ws := b.open(h.project)
+	ev := b.events(ws.ID, 0)
+	sess := b.newSession(ws.ID)
+	b.run(ev, ws.ID, sess.ID, "first question")
+	h.waitIdle(ws.ID, sess.ID, 30*time.Second)
+	b.run(ev, ws.ID, sess.ID, "second question")
+	h.waitIdle(ws.ID, sess.ID, 30*time.Second)
+
+	source := b.messages(ws.ID, sess.ID)
+	target := ""
+	for _, m := range source {
+		if string(m.Role) == "user" {
+			target = m.ID
+		}
+	}
+	require.NotEmpty(t, target)
+
+	var result proto.RewindResult
+	path := wsPath(ws.ID, "/sessions/", sess.ID, "/rewind/before")
+	require.Equal(t, http.StatusOK, b.json(http.MethodPost, path, map[string]any{"up_to_message_id": target}, &result))
+
+	text := func(sid string) string {
+		raw, err := json.Marshal(b.messages(ws.ID, sid))
+		require.NoError(t, err)
+		return string(raw)
+	}
+	require.Contains(t, text(result.Session.ID), "first question")
+	require.NotContains(t, text(result.Session.ID), "second question")
+
+	b.run(ev, ws.ID, result.Session.ID, "edited question")
+	h.waitIdle(ws.ID, result.Session.ID, 30*time.Second)
+	require.Contains(t, text(result.Session.ID), "edited question")
+	require.NotContains(t, text(sess.ID), "edited question")
+	require.Len(t, b.messages(ws.ID, sess.ID), len(source))
 }

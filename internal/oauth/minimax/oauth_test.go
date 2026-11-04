@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -22,10 +23,10 @@ func setup(t *testing.T, h http.HandlerFunc) {
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	t.Setenv("MINIMAX_OAUTH_HOST", srv.URL)
-	oldPoll, oldBackoff := minPollIntervalSecs, retryBackoff
-	minPollIntervalSecs = 0
+	oldPoll, oldBackoff := minPollInterval, retryBackoff
+	minPollInterval = 0
 	retryBackoff = time.Millisecond
-	t.Cleanup(func() { minPollIntervalSecs, retryBackoff = oldPoll, oldBackoff })
+	t.Cleanup(func() { minPollInterval, retryBackoff = oldPoll, oldBackoff })
 }
 
 func TestAuthHostByRegion(t *testing.T) {
@@ -60,8 +61,15 @@ func TestPKCEChallengeMatchesVerifier(t *testing.T) {
 		challengeFor("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"))
 }
 
-func TestDeviceFlowSendsPKCEAndVerifier(t *testing.T) {
+// deviceResponse is the body the live server sends, field for field.
+func deviceResponse(state string) string {
+	return fmt.Sprintf(`{"base_resp":{"status_code":0,"status_msg":"success"},"expired_in":%d,"interval":3000,"state":%q,"user_code":"AB-CD","verification_uri":"https://v?user_code=AB-CD"}`, time.Now().Add(5*time.Minute).UnixMilli(), state)
+}
+
+func TestDeviceFlowFollowsTheLiveServer(t *testing.T) {
 	var challenge string
+	var polls atomic.Int32
+	expiry := time.Now().Add(time.Hour)
 	setup(t, func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, r.ParseForm())
 		switch r.URL.Path {
@@ -72,25 +80,49 @@ func TestDeviceFlowSendsPKCEAndVerifier(t *testing.T) {
 			require.Contains(t, r.Header.Get("Content-Type"), "application/x-www-form-urlencoded")
 			challenge = r.Form.Get("code_challenge")
 			require.NotEmpty(t, challenge)
-			_, _ = w.Write([]byte(`{"device_code":"dc","user_code":"AB-CD","verification_uri":"https://v","verification_uri_complete":"https://v?c=AB-CD","expires_in":600,"interval":1}`))
+			_, _ = w.Write([]byte(deviceResponse(r.Form.Get("state"))))
 		case "/oauth2/token":
 			require.Equal(t, deviceGrantType, r.Form.Get("grant_type"))
-			require.Equal(t, "dc", r.Form.Get("device_code"))
+			require.Equal(t, "AB-CD", r.Form.Get("user_code"))
 			require.Equal(t, clientID, r.Form.Get("client_id"))
 			require.Equal(t, challenge, challengeFor(r.Form.Get("code_verifier")), "verifier must hash to the challenge")
-			_, _ = w.Write([]byte(`{"access_token":"at","refresh_token":"rt","expires_in":3600}`))
+			if polls.Add(1) == 1 {
+				_, _ = w.Write([]byte(`{"status":"pending"}`))
+				return
+			}
+			_, _ = fmt.Fprintf(w, `{"status":"success","access_token":"at","refresh_token":"rt","expired_in":%d}`, expiry.UnixMilli())
 		default:
 			t.Errorf("unexpected path %s", r.URL.Path)
 		}
 	})
 	dc, err := RequestDeviceCode(context.Background(), Global)
 	require.NoError(t, err)
-	require.Equal(t, "https://v?c=AB-CD", dc.VerificationURL())
+	require.Equal(t, "https://v?user_code=AB-CD", dc.VerificationURL())
+	dc.Interval = 1
 	tok, err := PollForToken(context.Background(), Global, dc)
 	require.NoError(t, err)
 	require.Equal(t, "at", tok.AccessToken)
 	require.Equal(t, "rt", tok.RefreshToken)
-	require.NotZero(t, tok.ExpiresAt)
+	require.InDelta(t, expiry.Unix(), tok.ExpiresAt, 2, "expired_in is an absolute time in milliseconds")
+	require.EqualValues(t, 2, polls.Load())
+}
+
+func TestDeviceCodeRefusesTheWrongState(t *testing.T) {
+	setup(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(deviceResponse("other"))) })
+	_, err := RequestDeviceCode(context.Background(), Global)
+	require.ErrorContains(t, err, "wrong state")
+}
+
+func TestPollUnknownStatusEndsTheSignIn(t *testing.T) {
+	setup(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"status":"denied"}`)) })
+	_, err := PollForToken(context.Background(), Global, &DeviceCode{UserCode: "c"})
+	require.ErrorContains(t, err, "denied")
+}
+
+func TestPollStopsAtTheDeadline(t *testing.T) {
+	setup(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"status":"pending"}`)) })
+	_, err := PollForToken(context.Background(), Global, &DeviceCode{UserCode: "c", ExpiredIn: time.Now().Add(20 * time.Millisecond).UnixMilli()})
+	require.ErrorContains(t, err, "timed out")
 }
 
 func TestRequestDeviceCodeErrors(t *testing.T) {
@@ -105,7 +137,7 @@ func TestRequestDeviceCodeErrors(t *testing.T) {
 
 	setup(t, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{"user_code":"x"}`)) })
 	_, err = RequestDeviceCode(context.Background(), Global)
-	require.ErrorContains(t, err, "missing device_code")
+	require.ErrorContains(t, err, "missing verification_uri")
 }
 
 func TestPollPendingSlowDownThenSuccess(t *testing.T) {
@@ -119,7 +151,7 @@ func TestPollPendingSlowDownThenSuccess(t *testing.T) {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(`{"error":"slow_down"}`))
 		default:
-			_, _ = w.Write([]byte(`{"access_token":"at","expires_in":60}`))
+			_, _ = w.Write([]byte(`{"status":"success","access_token":"at"}`))
 		}
 	})
 	// slow_down adds 5s to the interval; keep the test fast by making the
@@ -127,7 +159,7 @@ func TestPollPendingSlowDownThenSuccess(t *testing.T) {
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
-	tok, err := PollForToken(ctx, Global, &DeviceCode{DeviceCode: "dc", ExpiresIn: 60})
+	tok, err := PollForToken(ctx, Global, &DeviceCode{UserCode: "c"})
 	require.NoError(t, err)
 	require.Equal(t, "at", tok.AccessToken)
 	require.GreaterOrEqual(t, time.Since(start), 5*time.Second, "slow_down must lengthen the interval")
@@ -146,7 +178,7 @@ func TestPollTerminalErrors(t *testing.T) {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte(payload))
 		})
-		_, err := PollForToken(context.Background(), Global, &DeviceCode{DeviceCode: "dc"})
+		_, err := PollForToken(context.Background(), Global, &DeviceCode{UserCode: "c"})
 		check(t, err)
 	}
 }
@@ -158,7 +190,7 @@ func TestPollContextCancel(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	_, err := PollForToken(ctx, Global, &DeviceCode{DeviceCode: "dc"})
+	_, err := PollForToken(ctx, Global, &DeviceCode{UserCode: "c"})
 	require.Error(t, err)
 }
 
@@ -169,7 +201,7 @@ func TestRefreshToken(t *testing.T) {
 		require.Equal(t, "refresh_token", r.Form.Get("grant_type"))
 		require.Equal(t, "old", r.Form.Get("refresh_token"))
 		require.Equal(t, clientID, r.Form.Get("client_id"))
-		_, _ = w.Write([]byte(`{"access_token":"new","expires_in":100}`))
+		_, _ = w.Write([]byte(`{"status":"success","access_token":"new"}`))
 	})
 	tok, err := RefreshToken(context.Background(), China, "old")
 	require.NoError(t, err)
@@ -200,7 +232,7 @@ func TestRefreshTokenRetriesTransient(t *testing.T) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		_, _ = w.Write([]byte(`{"access_token":"new","refresh_token":"r2","expires_in":1}`))
+		_, _ = w.Write([]byte(`{"status":"success","access_token":"new","refresh_token":"r2"}`))
 	})
 	tok, err := RefreshToken(context.Background(), Global, "old")
 	require.NoError(t, err)

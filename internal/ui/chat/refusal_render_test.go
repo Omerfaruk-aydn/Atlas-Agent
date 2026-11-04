@@ -9,56 +9,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestRefusalFinishRendersBanner asserts that a content-filter finish
-// (Anthropic stop_reason=refusal mapped through fantasy) paints a
-// visible REFUSED banner rather than an empty assistant turn. The
-// agent persists only the reason, so the banner text comes from the
-// TUI's canonical refusal copy.
-func TestRefusalFinishRendersBanner(t *testing.T) {
+// TestContentFilterDoesNotAddBanner asserts that a provider content
+// filter does not make the CLI invent a REFUSED banner. Any text the
+// provider actually returned is the only text on the turn.
+func TestContentFilterDoesNotAddBanner(t *testing.T) {
 	sty := styles.AtlasPantera()
 	msg := &message.Message{
 		ID:   "refusal-1",
 		Role: message.Assistant,
 		Parts: []message.ContentPart{
 			message.Finish{
-				Reason: message.FinishReasonContentFilter,
-				Time:   testFinishTime,
-			},
-		},
-	}
-
-	require.True(t, ShouldRenderAssistantMessage(msg),
-		"empty-body refusal turns must still render so the banner is visible")
-
-	item := NewAssistantMessageItem(&sty, msg).(*AssistantMessageItem)
-	out := item.Render(80)
-	require.Contains(t, out, refusalTagLabel, "banner tag")
-	require.Contains(t, out, refusalTitle, "title")
-	require.Contains(t, strings.ToLower(out), "safety classifier", "details")
-}
-
-// TestRefusalPersistedCopyWins asserts that when a finish part does
-// carry its own message/details (e.g. a future provider that supplies
-// them), the persisted copy takes precedence over the TUI defaults.
-func TestRefusalPersistedCopyWins(t *testing.T) {
-	sty := styles.AtlasPantera()
-	msg := &message.Message{
-		ID:   "refusal-2",
-		Role: message.Assistant,
-		Parts: []message.ContentPart{
-			message.Finish{
 				Reason:  message.FinishReasonContentFilter,
-				Message: "Custom refusal title",
-				Details: "Custom refusal details.",
+				Message: "The request was rejected because it was considered high risk",
 				Time:    testFinishTime,
 			},
 		},
 	}
+
+	require.False(t, msg.IsErrorLike())
 	item := NewAssistantMessageItem(&sty, msg).(*AssistantMessageItem)
 	out := item.Render(80)
-	require.Contains(t, out, refusalTagLabel)
-	require.Contains(t, out, "Custom refusal title")
-	require.Contains(t, out, "Custom refusal details.")
+	require.NotContains(t, out, "REFUSED")
+	require.NotContains(t, strings.ToLower(out), "safety classifier")
+	require.NotContains(t, out, "high risk")
 }
 
 // TestErrorEmptyDetailsNoTrailingBlock locks in the behavior that an

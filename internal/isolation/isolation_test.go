@@ -81,10 +81,27 @@ func TestWSBEscapesPathsAndKeepsTheBinaryReadOnly(t *testing.T) {
 	require.Contains(t, xml, "<ReadOnly>true</ReadOnly>")
 	require.Contains(t, xml, "<ClipboardRedirection>Disable</ClipboardRedirection>")
 	require.Contains(t, xml, GuestBinDir+`\atlas.exe node serve --isolated-exchange `+GuestExchangeDir)
+	require.NotContains(t, xml, GuestLaunchCmd)
 	// The bin mapping is the read-only one.
 	bin := strings.Index(xml, `A&amp;B\bin`)
 	ro := strings.Index(xml[bin:], "<ReadOnly>")
 	require.True(t, strings.HasPrefix(xml[bin+ro:], "<ReadOnly>true"))
+}
+
+func TestWSBDefersTheBrowserUntilTheDesktopExists(t *testing.T) {
+	t.Parallel()
+	xml, err := WSB(`C:\bin`, `C:\ex`, StartOptions{ChromeDir: `C:\Program Files\Google\Chrome\Application`, ChromeProfile: `C:\profiles\chrome`})
+	require.NoError(t, err)
+	require.Contains(t, xml, `C:\Program Files\Google\Chrome\Application`)
+	require.Contains(t, xml, GuestChromeDir)
+	require.Contains(t, xml, `cmd.exe /c `+GuestLaunchCmd)
+	script := browserLaunchScript()
+	require.Contains(t, script, GuestChromeExe)
+	require.NotContains(t, script, "--no-sandbox")
+	require.Contains(t, script, "--hide-crash-restore-bubble")
+	require.Contains(t, script, "--start-maximized")
+	require.Contains(t, script, "msedge.exe")
+	require.Contains(t, script, `ping -n 8`)
 }
 
 // fakePlatform simulates a guest: Launch starts an in-process node server

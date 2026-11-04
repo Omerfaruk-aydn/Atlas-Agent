@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -32,6 +33,28 @@ func TestGuardStopsRepeatedFailuresBeforeExecutingAgain(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, resp.StopTurn)
 	require.Equal(t, 3, calls)
+}
+
+// Unreadable execution state is reported to the model without ending the
+// turn; only deliberate refusals (pause, budget, repeated failure) stop it.
+func TestGuardReportsUnavailableStateWithoutStoppingTheTurn(t *testing.T) {
+	t.Parallel()
+	blocker := filepath.Join(t.TempDir(), "state")
+	require.NoError(t, os.WriteFile(blocker, []byte("not a directory"), 0o644))
+	calls := 0
+	inner := fantasy.NewAgentTool("view", "test", func(context.Context, struct{}, fantasy.ToolCall) (fantasy.ToolResponse, error) {
+		calls++
+		return fantasy.NewTextResponse("ok"), nil
+	})
+	guard := &guardedTool{AgentTool: inner, store: engineering.NewStore(blocker)}
+	ctx := context.WithValue(t.Context(), tools.SessionIDContextKey, "s")
+
+	resp, err := guard.Run(ctx, fantasy.ToolCall{ID: "c", Name: "view", Input: "{}"})
+	require.NoError(t, err)
+	require.True(t, resp.IsError)
+	require.False(t, resp.StopTurn)
+	require.Contains(t, resp.Content, "was not started")
+	require.Zero(t, calls)
 }
 
 func TestGuardSemanticRecoveryAccountsForMutationAfterBudgetExhaustion(t *testing.T) {

@@ -40,7 +40,7 @@ type harness struct {
 	project  string
 }
 
-func newHarness(t *testing.T) *harness {
+func newHarness(t *testing.T, configure ...func(*Options)) *harness {
 	t.Helper()
 	llm := webtest.NewFakeLLM()
 	llm.SlowDelay = 60 * time.Millisecond
@@ -59,12 +59,16 @@ func newHarness(t *testing.T) *harness {
 	upstream, err := client.NewClient(project, "tcp", hs.Listener.Addr().String())
 	require.NoError(t, err)
 
-	gw, err := New(Options{
+	opts := Options{
 		Upstream:      upstream,
-		Assets:        fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>Atlas</title>")}, "assets/app.js": {Data: []byte("console.log(1)")}},
+		Assets:        fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>Atlas</title>")}, "dots.html": {Data: []byte("<!doctype html><title>Atlas Dots</title>")}, "assets/app.js": {Data: []byte("console.log(1)")}},
 		ServerAddress: "tcp://" + hs.Listener.Addr().String(),
 		Version:       "test",
-	})
+	}
+	for _, fn := range configure {
+		fn(&opts)
+	}
+	gw, err := New(opts)
 	require.NoError(t, err)
 	ln, err := gw.Listen("127.0.0.1:0")
 	require.NoError(t, err)

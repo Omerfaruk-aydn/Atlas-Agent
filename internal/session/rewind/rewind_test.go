@@ -120,6 +120,41 @@ func TestForkAtEndsWithTheMessage(t *testing.T) {
 	require.Zero(t, written+deleted, "files already in their restored state are not counted")
 }
 
+// Editing a message: the fork stops short of it and the files go back to
+// how they were before it, so the new version starts from the same place.
+func TestForkBeforeEndsJustBeforeTheMessage(t *testing.T) {
+	h := newHarness(t)
+	ctx := t.Context()
+	path := filepath.Join(t.TempDir(), "a.txt")
+
+	src, err := h.sessions.Create(ctx, "original")
+	require.NoError(t, err)
+	u1 := h.say(t, src.ID, message.User, "first")
+	a1 := h.say(t, src.ID, message.Assistant, "answered first")
+	_, err = h.files.Create(ctx, src.ID, path, "baseline", "")
+	require.NoError(t, err)
+	_, err = h.files.CreateVersion(ctx, src.ID, path, "after-1", a1.ID)
+	require.NoError(t, err)
+	u2 := h.say(t, src.ID, message.User, "second")
+	a2 := h.say(t, src.ID, message.Assistant, "answered second")
+	_, err = h.files.CreateVersion(ctx, src.ID, path, "after-2", a2.ID)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, []byte("after-2"), 0o644))
+
+	result, err := h.rewind.ForkBefore(ctx, src.ID, u2.ID)
+	require.NoError(t, err)
+	require.Equal(t, []string{"first", "answered first"}, texts(t, h, result.Session.ID))
+	require.Equal(t, "after-1", readFile(t, path))
+	require.Equal(t, "original", result.Session.Title)
+	require.Len(t, texts(t, h, src.ID), 4, "the source session is untouched")
+
+	// The first message has nothing before it: the fork starts empty.
+	first, err := h.rewind.ForkBefore(ctx, src.ID, u1.ID)
+	require.NoError(t, err)
+	require.Empty(t, texts(t, h, first.Session.ID))
+	require.Equal(t, "baseline", readFile(t, path))
+}
+
 func TestForkOfAForkStillRestoresFiles(t *testing.T) {
 	h := newHarness(t)
 	ctx := t.Context()

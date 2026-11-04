@@ -49,9 +49,11 @@ both can be logged in at once.
 - Client id `659cf4c1-615c-45f6-a5f6-4bf15eb476e5`, scope
   `openid profile coding_plan`.
 - Device flow: `POST /oauth2/device/code` with `code_challenge` (S256 of a
-  random 32-byte base64url verifier), then polling `POST /oauth2/token` with
-  the device-code grant and `code_verifier`. `authorization_pending` and
-  `slow_down` are honored; `access_denied` and `expired_token` end the login.
+  random 32-byte base64url verifier) and a random `state`, then polling
+  `POST /oauth2/token` with the device-code grant, `user_code` and
+  `code_verifier`. The server is not RFC 8628: it sends no `device_code`,
+  `interval` is in milliseconds, `expired_in` is an absolute Unix time in
+  milliseconds, and polling answers 200 with `status` `pending` or `success`.
 - Refresh uses the `refresh_token` grant; 429/5xx are retried, while a
   rejected token asks you to log in again. Atlas refreshes using its standard
   buffer (a tenth of the lifetime, at least 30 seconds); `mmx` uses five
@@ -78,7 +80,8 @@ so both can coexist.
 
 ## Status
 
-The flow follows the public `mmx-cli` source (v1.0.28). It has been exercised
-against local test servers only, not against the live MiniMax service.
+The flow follows the public `mmx-cli` source (v1.0.28). The device-code and
+pending responses were checked against the live MiniMax service on 2026-11-04;
+a finished sign-in and a refresh were not.
 
 Package: `internal/oauth/minimax`.

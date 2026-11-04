@@ -1,0 +1,1065 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atlas Dots</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0b0b0c;
+  --surface: #111113;
+  --surface-2: #17171a;
+  --surface-3: #1e1e22;
+  --line: #232327;
+  --line-strong: #2e2e33;
+  --text: #ededef;
+  --muted: #8d8d95;
+  --faint: #5c5c64;
+  --accent: #ff6a3d;
+  --accent-soft: rgba(255, 106, 61, .12);
+  --ok: #3dd68c;
+  --warn: #f5b83d;
+  --danger: #ff5a5a;
+  --radius: 12px;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --sans: "Inter", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 400 14px/1.5 var(--sans);
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+input, textarea { font: inherit; color: inherit; }
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+.app {
+  display: grid;
+  grid-template-columns: 248px minmax(420px, 1fr) minmax(440px, 46%);
+  height: 100vh;
+}
+
+/* Sidebar */
+.side {
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 12px;
+  gap: 24px;
+  min-height: 0;
+}
+.brand {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px;
+  font-weight: 600; letter-spacing: -.01em; font-size: 15px;
+}
+.brand i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: block; }
+.side h6 {
+  font: 500 11px/1 var(--mono); color: var(--faint);
+  text-transform: uppercase; letter-spacing: .08em;
+  padding: 0 8px 8px;
+}
+.dot-list { display: flex; flex-direction: column; gap: 2px; }
+.dot-item {
+  display: grid; grid-template-columns: 32px 1fr; gap: 10px; align-items: center;
+  padding: 8px; border-radius: 10px; text-align: left;
+  transition: background .18s var(--ease);
+  position: relative;
+}
+.dot-item:hover { background: var(--surface-2); }
+.dot-item[aria-current="true"] { background: var(--surface-3); }
+.mini-orb {
+  width: 32px; height: 32px; border-radius: 50%;
+  position: relative; display: grid; place-items: center;
+}
+.mini-orb::after {
+  content: ""; position: absolute; right: -1px; bottom: -1px;
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 2px solid var(--bg); background: var(--st, var(--faint));
+}
+.mini-orb .eyes { display: flex; gap: 5px; }
+.mini-orb .eyes span { width: 3px; height: 6px; border-radius: 2px; background: #1a1a1c; }
+.dot-item b { font-weight: 500; display: block; }
+.dot-item small { color: var(--muted); font-size: 12px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.side .spacer { flex: 1; }
+.new-dot {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px; border-radius: 10px; color: var(--muted);
+  border: 1px dashed var(--line-strong);
+  transition: color .18s var(--ease), border-color .18s var(--ease);
+}
+.new-dot:hover { color: var(--text); border-color: var(--faint); }
+.usage { padding: 0 8px; display: grid; gap: 8px; }
+.usage-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.usage-row span:last-child { font-family: var(--mono); color: var(--text); }
+.bar { height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--text); border-radius: 2px; transition: width .4s var(--ease); }
+
+/* Center */
+.main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.head {
+  display: flex; align-items: center; gap: 12px;
+  height: 56px; padding: 0 20px; border-bottom: 1px solid var(--line);
+}
+.head h1 { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.head .role { color: var(--muted); }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 10px; border-radius: 12px;
+  font: 500 12px/1 var(--sans);
+  background: var(--surface-2); color: var(--muted);
+}
+.pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.working { color: var(--ok); }
+.pill.waiting { color: var(--warn); }
+.pill.thinking, .pill.speaking, .pill.listening { color: var(--text); }
+.head .grow { flex: 1; }
+.btn {
+  height: 32px; padding: 0 12px; border-radius: 8px;
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--line-strong); color: var(--text);
+  font-weight: 500; font-size: 13px;
+  transition: background .16s var(--ease), border-color .16s var(--ease), transform .16s var(--ease);
+}
+.btn:hover { background: var(--surface-2); }
+.btn:active { transform: scale(.98); }
+.btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+.btn.primary:hover { background: #fff; }
+.btn.primary:disabled { opacity: .35; cursor: not-allowed; }
+.btn.ghost { border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--text); }
+.full-badge {
+  display: none; align-items: center; gap: 8px;
+  height: 28px; padding: 0 6px 0 10px; border-radius: 8px;
+  background: var(--accent-soft); color: var(--accent);
+  font: 500 12px/1 var(--sans);
+}
+.full-badge.on { display: inline-flex; animation: pop .3s var(--ease); }
+.full-badge time { font-family: var(--mono); opacity: .8; }
+.full-badge button { width: 20px; height: 20px; border-radius: 5px; display: grid; place-items: center; }
+.full-badge button:hover { background: rgba(255, 106, 61, .18); }
+@keyframes pop { from { opacity: 0; transform: scale(.94); } }
+
+.stage {
+  flex: 0 0 auto;
+  display: grid; place-items: center;
+  padding: 28px 0 12px;
+  position: relative;
+}
+#orb { width: 196px; height: 196px; overflow: visible; }
+.state-line {
+  margin-top: 10px; height: 18px;
+  font: 400 12px/18px var(--mono); color: var(--muted);
+  text-align: center;
+}
+
+.chat {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 8px 20px 16px;
+  display: flex; flex-direction: column; gap: 14px;
+  scroll-behavior: smooth;
+}
+.msg { max-width: 82%; animation: rise .28s var(--ease); }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+.msg.user {
+  align-self: flex-end; background: var(--surface-3);
+  padding: 9px 13px; border-radius: 14px 14px 4px 14px;
+}
+.msg.dot { align-self: flex-start; color: #d9d9dd; }
+.msg.dot .who { font: 500 11px/1 var(--mono); color: var(--faint); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .06em; }
+.msg.event {
+  align-self: center; font: 400 12px/1.4 var(--mono); color: var(--faint);
+  display: flex; align-items: center; gap: 8px;
+}
+.msg.event::before, .msg.event::after { content: ""; width: 24px; height: 1px; background: var(--line-strong); }
+.caret { display: inline-block; width: 7px; height: 14px; background: var(--text); vertical-align: -2px; margin-left: 2px; animation: caret 1s steps(2) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+
+.composer { padding: 12px 20px 20px; }
+.composer-box {
+  display: flex; align-items: flex-end; gap: 8px;
+  background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 14px; padding: 8px 8px 8px 14px;
+  transition: border-color .18s var(--ease);
+}
+.composer-box:focus-within { border-color: var(--faint); }
+.composer textarea {
+  flex: 1; resize: none; border: 0; background: none; outline: none;
+  height: 22px; max-height: 120px; padding: 0; margin: 6px 0; line-height: 22px;
+  overflow: hidden;
+}
+.composer textarea::placeholder { color: var(--faint); }
+.icon-btn {
+  width: 34px; height: 34px; border-radius: 10px; flex: none;
+  display: grid; place-items: center; color: var(--muted);
+  transition: background .16s var(--ease), color .16s var(--ease);
+}
+.icon-btn:hover { background: var(--surface-3); color: var(--text); }
+.icon-btn.send { background: var(--text); color: var(--bg); }
+.icon-btn.send:hover { background: #fff; }
+.icon-btn.mic.on { background: var(--accent); color: #fff; }
+.hint { margin-top: 8px; font-size: 12px; color: var(--faint); display: flex; gap: 16px; }
+.hint kbd { font: 400 11px var(--mono); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line-strong); color: var(--muted); }
+
+/* Right: computer */
+.pc {
+  border-left: 1px solid var(--line);
+  display: flex; flex-direction: column; min-height: 0; min-width: 0;
+  background: var(--surface);
+}
+.pc-head {
+  height: 56px; padding: 0 16px 0 20px;
+  display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.pc-head h2 { font-size: 13px; font-weight: 500; }
+.pc-head .host { font: 400 12px var(--mono); color: var(--faint); }
+.live { display: inline-flex; align-items: center; gap: 6px; font: 500 11px/1 var(--mono); color: var(--danger); letter-spacing: .06em; }
+.live i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: blinkrec 1.6s ease-in-out infinite; }
+.live.off { color: var(--faint); }
+.live.off i { animation: none; }
+@keyframes blinkrec { 50% { opacity: .25; } }
+
+.screen-wrap { padding: 16px 16px 0; }
+.screen {
+  aspect-ratio: 16 / 10; border-radius: 10px; overflow: hidden;
+  background: #1b1c1f; border: 1px solid var(--line-strong);
+  position: relative;
+}
+.screen.taken { box-shadow: 0 0 0 2px var(--accent); }
+.desk-bar {
+  height: 22px; background: #121315; display: flex; align-items: center;
+  justify-content: space-between; padding: 0 10px;
+  font: 400 10px var(--mono); color: #77777f;
+}
+.win {
+  position: absolute; inset: 34px 18px 18px 18px;
+  background: #f6f5f2; border-radius: 7px; overflow: hidden;
+  color: #1d1d1f; box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+  display: flex; flex-direction: column;
+}
+.win-bar { height: 26px; background: #e8e6e1; display: flex; align-items: center; gap: 10px; padding: 0 10px; flex: none; }
+.win-bar .lights { display: flex; gap: 5px; }
+.win-bar .lights i { width: 8px; height: 8px; border-radius: 50%; background: #c9c6bf; }
+.url {
+  flex: 1; height: 16px; border-radius: 4px; background: #f6f5f2;
+  font: 400 9.5px/16px var(--mono); color: #6a6a70; padding: 0 8px;
+  white-space: nowrap; overflow: hidden;
+}
+.sheet { padding: 12px 14px; font-size: 10.5px; flex: 1; }
+.sheet h3 { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+.sheet p { color: #77777c; font-size: 10px; margin-bottom: 10px; }
+.sheet table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.sheet th { text-align: left; font-weight: 500; color: #77777c; padding: 5px 6px; border-bottom: 1px solid #dedbd4; }
+.sheet td { padding: 5px 6px; border-bottom: 1px solid #ebe8e2; transition: background .25s var(--ease); }
+.sheet td.num { text-align: right; font-family: var(--mono); font-size: 10px; }
+.sheet tr.active td { background: rgba(255, 106, 61, .10); }
+.sheet .up { color: #c2410c; font-weight: 600; }
+.sheet .flat { color: #8a8a90; }
+.term {
+  position: absolute; inset: 34px 18px 18px 18px; border-radius: 7px;
+  background: #0f1012; border: 1px solid #2a2b2f;
+  font: 400 10.5px/1.6 var(--mono); color: #b9b9c0; padding: 12px 14px;
+  overflow: hidden; white-space: pre;
+}
+.term .g { color: var(--ok); } .term .r { color: var(--danger); } .term .d { color: #6b6b73; }
+.sleep {
+  position: absolute; inset: 22px 0 0 0; display: grid; place-items: center; text-align: center;
+  color: var(--muted);
+}
+.sleep b { display: block; color: var(--text); font-weight: 500; margin-bottom: 4px; }
+.sleep small { font-family: var(--mono); font-size: 12px; }
+.cursor { position: absolute; left: 0; top: 0; width: 14px; height: 18px; pointer-events: none; z-index: 3; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .4)); }
+.takeover-note {
+  position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+  background: var(--accent); color: #fff; font: 500 11px/1 var(--sans);
+  padding: 7px 10px; border-radius: 7px; display: none; z-index: 4;
+}
+.screen.taken .takeover-note { display: block; animation: pop .25s var(--ease); }
+
+.pc-tools { display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+
+.section-title {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px 8px;
+  font: 500 11px/1 var(--mono); color: var(--faint); text-transform: uppercase; letter-spacing: .08em;
+}
+.section-title span:last-child { text-transform: none; letter-spacing: 0; }
+
+.approval {
+  margin: 4px 16px 0; padding: 14px; border-radius: var(--radius);
+  background: var(--surface-2); border: 1px solid var(--line-strong);
+  animation: rise .3s var(--ease);
+}
+.approval .top { display: flex; align-items: center; gap: 8px; color: var(--warn); font-size: 12px; font-weight: 500; margin-bottom: 8px; }
+.approval h4 { font-size: 14px; font-weight: 500; margin-bottom: 8px; }
+.approval dl { display: grid; grid-template-columns: 56px 1fr; gap: 4px 10px; font-size: 12.5px; margin-bottom: 12px; }
+.approval dt { color: var(--faint); }
+.approval dd { color: #cfcfd4; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.approval .actions { display: flex; gap: 8px; }
+
+.timeline { flex: 1; overflow-y: auto; padding: 4px 20px 20px; min-height: 0; }
+.step { display: grid; grid-template-columns: 44px 16px 1fr; gap: 8px; padding: 6px 0; font-size: 13px; animation: rise .3s var(--ease); }
+.step time { font: 400 11.5px/20px var(--mono); color: var(--faint); }
+.step .rail { position: relative; display: grid; justify-items: center; }
+.step .rail i { width: 7px; height: 7px; border-radius: 50%; margin-top: 7px; background: var(--faint); position: relative; z-index: 1; }
+.step .rail::after { content: ""; position: absolute; top: 18px; bottom: -14px; width: 1px; background: var(--line-strong); }
+.step:last-child .rail::after { display: none; }
+.step.now .rail i { background: var(--ok); box-shadow: 0 0 0 4px rgba(61, 214, 140, .15); }
+.step.ok .rail i { background: var(--muted); }
+.step.auto .rail i { background: var(--accent); }
+.step p { color: #cfcfd4; line-height: 20px; }
+.step small { display: block; color: var(--faint); font-size: 12px; }
+
+/* Modal */
+.scrim {
+  position: fixed; inset: 0; background: rgba(5, 5, 6, .66);
+  display: grid; place-items: center; padding: 16px;
+  opacity: 0; pointer-events: none; transition: opacity .2s var(--ease); z-index: 10;
+}
+.scrim.open { opacity: 1; pointer-events: auto; }
+.modal {
+  width: min(480px, 100%); background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 16px; padding: 24px;
+  transform: translateY(8px) scale(.985); transition: transform .26s var(--ease);
+}
+.scrim.open .modal { transform: none; }
+.modal .ico { width: 36px; height: 36px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; margin-bottom: 16px; }
+.modal h3 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; margin-bottom: 6px; }
+.modal > p { color: var(--muted); margin-bottom: 16px; }
+.risks { list-style: none; padding: 0; display: grid; gap: 8px; margin-bottom: 20px; }
+.risks li { display: grid; grid-template-columns: 18px 1fr; gap: 10px; font-size: 13px; color: #d4d4d8; }
+.risks li svg { margin-top: 2px; color: var(--accent); }
+.field-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; display: block; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 3px; background: var(--bg); border-radius: 9px; border: 1px solid var(--line); margin-bottom: 16px; }
+.seg button { height: 30px; border-radius: 7px; font-size: 13px; color: var(--muted); transition: background .16s var(--ease), color .16s var(--ease); }
+.seg button[aria-pressed="true"] { background: var(--surface-3); color: var(--text); }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: #d4d4d8; margin-bottom: 16px; cursor: pointer; }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; margin-top: 2px; }
+.text-in {
+  width: 100%; height: 38px; padding: 0 12px; border-radius: 9px;
+  background: var(--bg); border: 1px solid var(--line-strong); outline: none;
+  margin-bottom: 20px; transition: border-color .16s var(--ease);
+}
+.text-in:focus { border-color: var(--faint); }
+.modal .actions { display: flex; justify-content: flex-end; gap: 8px; }
+.btn.danger { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger:disabled { opacity: .35; cursor: not-allowed; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 12px);
+  background: var(--surface-3); border: 1px solid var(--line-strong);
+  padding: 10px 14px; border-radius: 10px; font-size: 13px;
+  opacity: 0; transition: opacity .2s var(--ease), transform .26s var(--ease); z-index: 20; pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 1180px) {
+  body { overflow: auto; }
+  .app { grid-template-columns: 220px 1fr; grid-template-rows: 100vh auto; height: auto; }
+  .pc { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); min-height: 720px; }
+}
+@media (max-width: 720px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 100vh auto; }
+  .side { border-right: 0; border-bottom: 1px solid var(--line); padding: 12px 16px; gap: 12px; }
+  .side h6, .side .spacer, .usage, .new-dot { display: none; }
+  .dot-list { flex-direction: row; overflow-x: auto; }
+  .dot-item { grid-template-columns: 32px auto; }
+  .dot-item small { display: none; }
+  .head { padding: 0 16px; }
+  .head .role, .head #fullBtn span { display: none; }
+  .chat, .composer { padding-left: 16px; padding-right: 16px; }
+  .hint { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><i></i>atlas dots</div>
+    <div>
+      <h6>Dotların</h6>
+      <nav class="dot-list" id="dotList"></nav>
+    </div>
+    <div class="spacer"></div>
+    <div class="usage">
+      <div class="usage-row"><span>Bugünkü harcama</span><span id="spend">$3,42 / $10</span></div>
+      <div class="bar"><i id="spendBar" style="width:34%"></i></div>
+    </div>
+    <button class="new-dot" id="newDot">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      Yeni dot
+    </button>
+  </aside>
+
+  <main class="main">
+    <header class="head">
+      <h1 id="dotName">Selin</h1>
+      <span class="role" id="dotRole">Araştırma</span>
+      <span class="pill working" id="statePill"><i></i><span>Çalışıyor</span></span>
+      <span class="grow"></span>
+      <span class="full-badge" id="fullBadge">
+        Tam yetki <time id="fullLeft">23:59</time>
+        <button id="fullOff" aria-label="Tam yetkiyi kapat">
+          <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </span>
+      <button class="btn" id="fullBtn">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1.5l5.5 2v4.2c0 3.2-2.3 5.8-5.5 6.8-3.2-1-5.5-3.6-5.5-6.8V3.5L8 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        <span>Yetkiler</span>
+      </button>
+    </header>
+
+    <section class="stage" aria-label="Karakter">
+      <svg id="orb" viewBox="-110 -110 220 220" role="img" aria-label="Dot karakteri">
+        <defs>
+          <radialGradient id="shade" cx="-.28" cy="-.34" r="1.15">
+            <stop offset="0" stop-color="#fff" stop-opacity=".55"/>
+            <stop offset=".45" stop-color="#fff" stop-opacity="0"/>
+            <stop offset="1" stop-color="#000" stop-opacity=".28"/>
+          </radialGradient>
+        </defs>
+        <circle id="ring" r="96" fill="none" stroke="var(--line-strong)" stroke-width="1.5"/>
+        <g id="orbits"></g>
+        <g id="body">
+          <ellipse id="shadow" cx="0" cy="98" rx="46" ry="5" fill="#000" opacity=".5"/>
+          <circle id="skin" r="72" fill="#e9e2d6"/>
+          <circle r="72" fill="url(#shade)"/>
+          <g id="face">
+            <rect id="eyeL" x="-25" y="-16" width="11" height="22" rx="5.5" fill="#18181a"/>
+            <rect id="eyeR" x="14" y="-16" width="11" height="22" rx="5.5" fill="#18181a"/>
+            <rect id="mouth" x="-9" y="20" width="18" height="4" rx="2" fill="#18181a"/>
+          </g>
+        </g>
+      </svg>
+      <div class="state-line" id="stateLine">rakip fiyatlarını karşılaştırıyor</div>
+    </section>
+
+    <section class="chat" id="chat" aria-live="polite"></section>
+
+    <footer class="composer">
+      <div class="composer-box">
+        <textarea id="input" rows="1" placeholder="Selin'e bir şey söyle"></textarea>
+        <button class="icon-btn mic" id="mic" aria-label="Sesli konuş">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M3 7.5a5 5 0 0010 0M8 12.5v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </button>
+        <button class="icon-btn send" id="send" aria-label="Gönder">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="hint"><span><kbd>Enter</kbd> gönder</span><span><kbd>Space</kbd> basılı tut, konuş</span></div>
+    </footer>
+  </main>
+
+  <aside class="pc">
+    <div class="pc-head">
+      <h2>Bilgisayar</h2>
+      <span class="host" id="host">selin-pc</span>
+      <span class="grow" style="flex:1"></span>
+      <span class="live" id="live"><i></i>CANLI</span>
+    </div>
+    <div class="screen-wrap">
+      <div class="screen" id="screen">
+        <div class="desk-bar"><span id="deskApp">Chromium</span><span id="clock">09:14</span></div>
+        <div id="screenBody"></div>
+        <svg class="cursor" id="cursor" viewBox="0 0 14 18"><path d="M1 1l11.5 9.2-5.2.6 3 5.6-2.2 1.1-3-5.7L1 15.4z" fill="#fff" stroke="#111" stroke-width="1"/></svg>
+        <div class="takeover-note">Kontrol sende · dot bekliyor</div>
+      </div>
+    </div>
+    <div class="pc-tools">
+      <button class="btn" id="takeBtn">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 2l9.5 7.6-4.3.5 2.5 4.6-1.8.9-2.5-4.7L3 13.4z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+        <span>Kontrolü al</span>
+      </button>
+      <button class="btn ghost" id="replayBtn">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2.5 8a5.5 5.5 0 105.5-5.5H5M5 1v3h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Tekrar izle
+      </button>
+    </div>
+    <div id="approvalSlot"></div>
+    <div class="section-title"><span>Zaman çizelgesi</span><span id="runCost">bu iş · $0,38</span></div>
+    <div class="timeline" id="timeline"></div>
+  </aside>
+</div>
+
+<div class="scrim" id="scrim" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="ico">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M8 1.5l5.5 2v4.2c0 3.2-2.3 5.8-5.5 6.8-3.2-1-5.5-3.6-5.5-6.8V3.5L8 1.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </div>
+    <h3 id="mTitle">Selin'e tam yetki ver</h3>
+    <p>Bu mod açıkken Selin senden onay beklemeden aşağıdakilerin hepsini yapar.</p>
+    <ul class="risks">
+      <li><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.5" fill="currentColor"/></svg>Kasadaki şifrelerle her sitede oturum açar</li>
+      <li><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.5" fill="currentColor"/></svg>Senin adına e-posta ve mesaj gönderir, paylaşım yapar</li>
+      <li><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.5" fill="currentColor"/></svg>Hesap ayarlarını değiştirir, dosya siler</li>
+      <li><svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.5" fill="currentColor"/></svg>Kart limitleri içinde ödeme yapar</li>
+    </ul>
+    <span class="field-label">Süre</span>
+    <div class="seg" id="durSeg">
+      <button aria-pressed="false" data-min="60">1 saat</button>
+      <button aria-pressed="true" data-min="1440">24 saat</button>
+      <button aria-pressed="false" data-min="0">Kalıcı</button>
+    </div>
+    <label class="check"><input type="checkbox" id="ack"> Riskleri anladım. Her eylem zaman çizelgesine yazılır ve modu istediğim an kapatabilirim.</label>
+    <label class="field-label" for="typed" id="typedLabel">Onaylamak için <b>Selin</b> yaz</label>
+    <input class="text-in" id="typed" autocomplete="off" spellcheck="false">
+    <div class="actions">
+      <button class="btn ghost" id="mCancel">Vazgeç</button>
+      <button class="btn danger" id="mConfirm" disabled>Tam yetkiyi aç</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const STATUS = {
+  working:   { label: "Çalışıyor", color: "var(--ok)" },
+  waiting:   { label: "Onay bekliyor", color: "var(--warn)" },
+  sleeping:  { label: "Uyuyor", color: "var(--faint)" },
+  thinking:  { label: "Düşünüyor", color: "var(--text)" },
+  speaking:  { label: "Konuşuyor", color: "var(--text)" },
+  listening: { label: "Dinliyor", color: "var(--accent)" },
+};
+
+const dots = {
+  selin: {
+    name: "Selin", role: "Araştırma", tint: "#e9e2d6", host: "selin-pc",
+    status: "working", line: "rakip fiyatlarını karşılaştırıyor", screen: "sheet", cost: "$0,38",
+    sideText: "Rakip fiyatları · 4/6",
+    messages: [
+      { from: "event", text: "08:00 · cron ile uyandı" },
+      { from: "dot", text: "Günaydın. Her sabahki fiyat kontrolüne başladım. Altı rakipten dördüne baktım, şimdiye kadar tek dikkat çeken Kuzey Kahve: 250 g çekirdekte %6,2 zam yapmış." },
+      { from: "user", text: "Eşiği geçen olursa tedarikçiye de haber ver." },
+      { from: "dot", text: "Tamam. Kalan iki siteyi bitirince tedarikçiye kısa bir e-posta taslağı hazırlayıp onayına sunacağım." },
+    ],
+    steps: [
+      { t: "08:00", text: "Cron ile uyandı", sub: "Her gün 08:00 · fiyat kontrolü", k: "ok" },
+      { t: "08:01", text: "Fiyat tablosunu açtı", sub: "sheets · Rakip fiyatları — Kasım", k: "ok" },
+      { t: "08:03", text: "Kuzey Kahve kontrol edildi", sub: "250 g çekirdek ₺389 → ₺413 · %6,2", k: "ok" },
+      { t: "08:06", text: "Liman Roastery kontrol edildi", sub: "Değişim yok", k: "ok" },
+      { t: "09:14", text: "Ada Kavurma sayfası açık", sub: "Fiyatlar okunuyor", k: "now" },
+    ],
+    approval: null,
+  },
+  deniz: {
+    name: "Deniz", role: "Kod", tint: "#cfd8d3", host: "deniz-pc",
+    status: "waiting", line: "PR birleştirme onayı bekliyor", screen: "term", cost: "$1,12",
+    sideText: "PR #214 · onay bekliyor",
+    messages: [
+      { from: "event", text: "06:42 · CI başarısız oldu" },
+      { from: "dot", text: "Gece CI kırmızıya dönmüştü. Sebep ödeme testinde saat dilimi varsayımıydı. Düzelttim, testler yeşil. PR #214'ü birleştirmek için onayını bekliyorum." },
+    ],
+    steps: [
+      { t: "06:42", text: "CI hatası ile uyandı", sub: "webhook · checkout_test.go", k: "ok" },
+      { t: "06:44", text: "Repoyu güncelledi", sub: "git pull · main", k: "ok" },
+      { t: "06:51", text: "Hatayı yeniden üretti", sub: "TestRefundWindow · UTC+3'te kırılıyor", k: "ok" },
+      { t: "07:03", text: "Düzeltmeyi yazdı, testler geçti", sub: "214 test · 0 hata", k: "ok" },
+      { t: "07:05", text: "Birleştirme onayı istedi", sub: "Telefona bildirim gönderildi", k: "now" },
+    ],
+    approval: {
+      title: "PR #214 main'e birleştirilsin mi?",
+      rows: [["Repo", "kahve-dukkani/api"], ["Dal", "fix/refund-timezone"], ["Değişim", "2 dosya · +18 −6"]],
+      done: "PR #214 birleştirildi",
+    },
+  },
+  ece: {
+    name: "Ece", role: "Sosyal medya", tint: "#e4d3cf", host: "ece-pc",
+    status: "sleeping", line: "yarın 10:00'da uyanacak", screen: "sleep", cost: "$0,00",
+    sideText: "Yarın 10:00'da uyanacak",
+    messages: [
+      { from: "dot", text: "Haftalık içerik planı hazır: üç gönderi, ikisi demleme rehberi. Görselleri yarın sabah üretip onayına sunacağım." },
+      { from: "event", text: "Dün 18:20 · uykuya geçti" },
+    ],
+    steps: [
+      { t: "17:40", text: "Haftalık plan hazırlandı", sub: "3 gönderi · Notion", k: "ok" },
+      { t: "18:20", text: "Uykuya geçti", sub: "Sonraki tetikleyici: yarın 10:00", k: "ok" },
+    ],
+    approval: null,
+  },
+};
+
+let current = "selin";
+let full = {}; // dotId -> expiry ms or Infinity
+const $ = (id) => document.getElementById(id);
+
+/* ---------- Sidebar ---------- */
+function renderList() {
+  $("dotList").innerHTML = Object.entries(dots).map(([id, d]) => `
+    <button class="dot-item" data-id="${id}" aria-current="${id === current}">
+      <span class="mini-orb" style="background:${d.tint};--st:${STATUS[d.status].color}">
+        <span class="eyes"><span></span><span></span></span>
+      </span>
+      <span><b>${d.name}</b><small>${full[id] ? "Tam yetki · " : ""}${d.sideText}</small></span>
+    </button>`).join("");
+  $("dotList").querySelectorAll(".dot-item").forEach((b) => b.onclick = () => select(b.dataset.id));
+}
+
+/* ---------- Header / state ---------- */
+function setState(state, line) {
+  const d = dots[current];
+  orb.state = state;
+  const pill = $("statePill");
+  pill.className = "pill " + state;
+  pill.querySelector("span").textContent = STATUS[state].label;
+  if (line !== undefined) $("stateLine").textContent = line;
+}
+
+/* ---------- Chat ---------- */
+function addMsg(m, animate = true) {
+  const el = document.createElement("div");
+  el.className = "msg " + m.from;
+  if (!animate) el.style.animation = "none";
+  if (m.from === "dot") el.innerHTML = `<div class="who">${dots[current].name}</div><div class="body"></div>`;
+  const body = m.from === "dot" ? el.querySelector(".body") : el;
+  body.textContent = m.text;
+  $("chat").appendChild(el);
+  $("chat").scrollTop = $("chat").scrollHeight;
+  return body;
+}
+
+function speak(text, after) {
+  const el = document.createElement("div");
+  el.className = "msg dot";
+  el.innerHTML = `<div class="who">${dots[current].name}</div><div class="body"></div>`;
+  $("chat").appendChild(el);
+  const body = el.querySelector(".body");
+  const caret = document.createElement("span");
+  caret.className = "caret";
+  setState("speaking", "konuşuyor");
+  let i = 0;
+  const owner = current;
+  (function tick() {
+    if (current !== owner) return;
+    if (i >= text.length) {
+      caret.remove();
+      orb.mouthTarget = 0;
+      dots[owner].messages.push({ from: "dot", text });
+      after && after();
+      return;
+    }
+    const ch = text[i++];
+    body.textContent = text.slice(0, i);
+    body.appendChild(caret);
+    orb.mouthTarget = /[aeıioöuü]/i.test(ch) ? .55 + Math.random() * .45 : /[\s]/.test(ch) ? .05 : /[.,;:!?]/.test(ch) ? 0 : .22;
+    $("chat").scrollTop = $("chat").scrollHeight;
+    setTimeout(tick, /[.,!?]/.test(ch) ? 160 : 26);
+  })();
+}
+
+function reply(text) {
+  const t = text.toLowerCase();
+  const d = dots[current];
+  if (d.status === "sleeping") {
+    return `Uyandım. ${t.includes("görsel") ? "Görselleri şimdi üretmeye başlıyorum." : "Bunu hemen ele alıyorum, bitince sana haber vereceğim."}`;
+  }
+  if (t.includes("ne yapıyorsun") || t.includes("durum")) {
+    return current === "selin"
+      ? "Ada Kavurma'nın fiyat sayfasındayım. Altı siteden beşincisi. Kuzey Kahve hâlâ eşiği geçen tek rakip."
+      : "PR #214 hazır, testler yeşil. Senin onayını bekliyorum, onaylarsan birleştirip dağıtımı izleyeceğim.";
+  }
+  if (t.includes("dur") || t.includes("bekle")) return "Durdum. Kaldığım yeri not ettim, \"devam\" dediğinde oradan sürdürürüm.";
+  return "Anladım. Şu anki işi bitirir bitirmez buna geçiyorum, ilerlemeyi zaman çizelgesinden izleyebilirsin.";
+}
+
+function send() {
+  const input = $("input");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  autoGrow();
+  const m = { from: "user", text };
+  dots[current].messages.push(m);
+  addMsg(m);
+  const owner = current;
+  setState("thinking", "düşünüyor");
+  setTimeout(() => {
+    if (current !== owner) return;
+    const d = dots[current];
+    const wasSleeping = d.status === "sleeping";
+    speak(reply(text), () => {
+      if (wasSleeping) {
+        d.status = "working"; d.screen = "sheet"; d.line = "yeni görev üzerinde çalışıyor"; d.sideText = "Yeni görev";
+        addStep({ text: "Mesajla uyandı", sub: "Kullanıcı isteği", k: "now" });
+        renderScreen(); renderList(); setLive();
+      }
+      setState(d.status, d.line);
+    });
+  }, 700 + Math.random() * 500);
+}
+
+/* ---------- Timeline ---------- */
+function stepHTML(s) {
+  return `<div class="step ${s.k}"><time>${s.t}</time><span class="rail"><i></i></span><div><p>${s.text}</p>${s.sub ? `<small>${s.sub}</small>` : ""}</div></div>`;
+}
+function renderTimeline() {
+  $("timeline").innerHTML = dots[current].steps.map(stepHTML).join("");
+  $("timeline").scrollTop = $("timeline").scrollHeight;
+  $("runCost").textContent = "bu iş · " + dots[current].cost;
+}
+function nowHM() {
+  const n = new Date();
+  return String(n.getHours()).padStart(2, "0") + ":" + String(n.getMinutes()).padStart(2, "0");
+}
+function addStep(s) {
+  const d = dots[current];
+  d.steps.forEach((x) => { if (x.k === "now") x.k = "ok"; });
+  d.steps.push({ t: nowHM(), ...s });
+  renderTimeline();
+}
+
+/* ---------- Approval ---------- */
+function renderApproval() {
+  const d = dots[current];
+  const slot = $("approvalSlot");
+  if (!d.approval) { slot.innerHTML = ""; return; }
+  if (full[current]) { autoApprove(); return; }
+  const a = d.approval;
+  slot.innerHTML = `
+    <div class="approval">
+      <div class="top"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4"/><path d="M8 4.8V8l2 1.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>Onay bekliyor · telefona da gönderildi</div>
+      <h4>${a.title}</h4>
+      <dl>${a.rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
+      <div class="actions">
+        <button class="btn primary" id="approve">Onayla</button>
+        <button class="btn" id="deny">Reddet</button>
+      </div>
+    </div>`;
+  $("approve").onclick = () => resolveApproval(true);
+  $("deny").onclick = () => resolveApproval(false);
+}
+function resolveApproval(ok, auto = false) {
+  const d = dots[current];
+  const a = d.approval;
+  d.approval = null;
+  $("approvalSlot").innerHTML = "";
+  addStep({ text: ok ? a.done : "Kullanıcı reddetti", sub: auto ? "Tam yetki ile onaysız yapıldı" : ok ? "Onaylandı" : "İş durduruldu", k: auto ? "auto" : "now" });
+  d.status = ok ? "working" : "sleeping";
+  d.line = ok ? "dağıtımı izliyor" : "talimat bekliyor";
+  d.sideText = ok ? "Dağıtım izleniyor" : "Talimat bekliyor";
+  setState(d.status, d.line);
+  renderList();
+  setLive();
+}
+function autoApprove() {
+  resolveApproval(true, true);
+  toast(`${dots[current].name} tam yetki ile devam etti`);
+}
+
+/* ---------- Computer screen ---------- */
+const sheetRows = [
+  ["Kuzey Kahve", "₺389", "₺413", "%6,2", "up"],
+  ["Liman Roastery", "₺420", "₺420", "—", "flat"],
+  ["Mavi Fincan", "₺365", "₺372", "%1,9", "flat"],
+  ["Tepe Kahvecisi", "₺405", "₺405", "—", "flat"],
+  ["Ada Kavurma", "₺398", "…", "", "flat"],
+  ["Rüzgâr Coffee", "₺412", "…", "", "flat"],
+];
+function renderScreen() {
+  const d = dots[current];
+  const body = $("screenBody");
+  $("host").textContent = d.host;
+  $("cursor").style.display = d.screen === "sleep" ? "none" : "block";
+  if (d.screen === "sheet") {
+    $("deskApp").textContent = "Chromium";
+    body.innerHTML = `
+      <div class="win">
+        <div class="win-bar"><span class="lights"><i></i><i></i><i></i></span><span class="url">sheets.atlas.local/rakip-fiyatlari-kasim</span></div>
+        <div class="sheet">
+          <h3>Rakip fiyatları — 3 Kasım</h3>
+          <p>250 g çekirdek kahve · eşik %5</p>
+          <table>
+            <thead><tr><th>Rakip</th><th class="num">Dün</th><th class="num">Bugün</th><th class="num">Değişim</th></tr></thead>
+            <tbody>${sheetRows.map((r) => `<tr><td>${r[0]}</td><td class="num">${r[1]}</td><td class="num">${r[2]}</td><td class="num ${r[4]}">${r[3]}</td></tr>`).join("")}</tbody>
+          </table>
+        </div>
+      </div>`;
+  } else if (d.screen === "term") {
+    $("deskApp").textContent = "Terminal";
+    body.innerHTML = `<div class="term"><span class="d">~/kahve-dukkani/api (fix/refund-timezone)</span>
+$ go test ./...
+<span class="g">ok</span>   kahve-dukkani/api/checkout   0.412s
+<span class="g">ok</span>   kahve-dukkani/api/payments   0.288s
+<span class="g">ok</span>   kahve-dukkani/api/orders     0.351s
+<span class="d">214 test · 0 hata</span>
+
+$ gh pr create --fill
+<span class="g">✓</span> PR #214 açıldı
+<span class="d">  fix: refund window uses store timezone</span>
+
+<span class="d">Birleştirme için onay bekleniyor…</span></div>`;
+  } else {
+    $("deskApp").textContent = "";
+    body.innerHTML = `<div class="sleep"><div><b>${d.name} uyuyor</b><small>Sonraki tetikleyici · yarın 10:00</small></div></div>`;
+  }
+}
+function setLive() {
+  const on = dots[current].status !== "sleeping";
+  $("live").className = "live" + (on ? "" : " off");
+  $("live").lastChild.textContent = on ? "CANLI" : "UYKUDA";
+}
+
+/* Cursor that moves like a person: eased arcs, short dwell. */
+const cur = { x: 120, y: 120, tx: 120, ty: 120, sx: 120, sy: 120, t: 1, dur: 600 };
+let row = 0, taken = false;
+function cursorTargets() {
+  const sc = $("screen").getBoundingClientRect();
+  const d = dots[current];
+  if (d.screen === "sheet") {
+    const rows = $("screenBody").querySelectorAll("tbody tr");
+    if (!rows.length) return null;
+    rows.forEach((r) => r.classList.remove("active"));
+    const r = rows[row % rows.length];
+    r.classList.add("active");
+    const cell = r.children[2].getBoundingClientRect();
+    row++;
+    return { x: cell.left - sc.left + cell.width * .6, y: cell.top - sc.top + cell.height * .55 };
+  }
+  if (d.screen === "term") {
+    return { x: sc.width * (.25 + Math.random() * .5), y: sc.height * (.55 + Math.random() * .3) };
+  }
+  return null;
+}
+function nextCursor() {
+  if (!taken && dots[current].status !== "sleeping") {
+    const p = cursorTargets();
+    if (p) {
+      cur.sx = cur.x; cur.sy = cur.y; cur.tx = p.x; cur.ty = p.y; cur.t = 0;
+      cur.dur = 450 + Math.hypot(p.x - cur.x, p.y - cur.y) * 1.6;
+    }
+  }
+  setTimeout(nextCursor, 1500 + Math.random() * 900);
+}
+const easeInOut = (t) => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+/* ---------- Character ---------- */
+const orb = {
+  state: "working",
+  eye: { x: 0, y: 0, vx: 0, vy: 0 },
+  mouth: 0, mouthV: 0, mouthTarget: 0,
+  blink: 0, nextBlink: performance.now() + 2500,
+  mouse: { x: 0, y: 0, has: false },
+  glanceUntil: 0,
+};
+const els = {
+  body: $("body"), eyeL: $("eyeL"), eyeR: $("eyeR"), mouth: $("mouth"),
+  ring: $("ring"), orbits: $("orbits"), skin: $("skin"), shadow: $("shadow"), face: $("face"),
+};
+els.orbits.innerHTML = [0, 1, 2].map(() => `<circle r="3.2" fill="var(--text)" opacity="0"/>`).join("");
+const orbitDots = [...els.orbits.children];
+
+document.addEventListener("pointermove", (e) => {
+  const r = $("orb").getBoundingClientRect();
+  orb.mouse.x = (e.clientX - (r.left + r.width / 2)) / 300;
+  orb.mouse.y = (e.clientY - (r.top + r.height / 2)) / 300;
+  orb.mouse.has = true;
+});
+
+function spring(o, key, vkey, target, k, damp) {
+  o[vkey] += (target - o[key]) * k;
+  o[vkey] *= damp;
+  o[key] += o[vkey];
+}
+
+function frame(now) {
+  const s = orb.state;
+  const breathe = Math.sin(now / 1100) * (s === "speaking" ? .006 : .012);
+
+  // Where the eyes look depends on what the dot is doing.
+  let tx = 0, ty = 0;
+  if (s === "thinking") { tx = .65; ty = -.8; }
+  else if (s === "working" && now > orb.glanceUntil) { tx = .9; ty = .15; }
+  else if (s === "sleeping") { tx = 0; ty = .3; }
+  else if (orb.mouse.has) { tx = Math.max(-1, Math.min(1, orb.mouse.x)); ty = Math.max(-1, Math.min(1, orb.mouse.y)); }
+  if (s === "working" && Math.random() < .002) orb.glanceUntil = now + 1400;
+  if (s === "working" && now < orb.glanceUntil && orb.mouse.has) { tx = orb.mouse.x; ty = orb.mouse.y; }
+  spring(orb.eye, "x", "vx", tx * 9, .09, .72);
+  spring(orb.eye, "y", "vy", ty * 7, .09, .72);
+
+  // Blink.
+  if (now > orb.nextBlink) { orb.blink = now; orb.nextBlink = now + 2200 + Math.random() * 4200; }
+  const bt = (now - orb.blink) / 150;
+  let lid = bt >= 0 && bt <= 1 ? 1 - Math.sin(bt * Math.PI) : 1;
+  if (s === "sleeping") lid = .1;
+  if (s === "listening") lid = Math.min(lid, 1.08);
+
+  // Mouth.
+  const mt = s === "speaking" ? orb.mouthTarget : 0;
+  spring(orb, "mouth", "mouthV", mt, .35, .55);
+  const mh = 4 + Math.max(0, orb.mouth) * 13;
+  const mw = 18 - Math.max(0, orb.mouth) * 4;
+
+  const ex = orb.eye.x, ey = orb.eye.y;
+  const eh = 22 * lid;
+  els.eyeL.setAttribute("x", -25 + ex); els.eyeR.setAttribute("x", 14 + ex);
+  [els.eyeL, els.eyeR].forEach((e) => { e.setAttribute("y", -16 + ey + (22 - eh) / 2); e.setAttribute("height", Math.max(2, eh)); });
+  els.mouth.setAttribute("x", -mw / 2 + ex * .6); els.mouth.setAttribute("y", 20 + ey * .5);
+  els.mouth.setAttribute("width", mw); els.mouth.setAttribute("height", mh); els.mouth.setAttribute("rx", Math.min(mw, mh) / 2);
+  els.face.setAttribute("transform", `translate(${ex * .25} ${ey * .25})`);
+  const sy = 1 + breathe, sx = 1 - breathe * .5;
+  els.skin.parentNode.setAttribute("transform", `translate(0 ${-breathe * 300}) scale(${sx} ${sy})`);
+  els.shadow.setAttribute("rx", 46 - breathe * 400);
+
+  // Ring and orbit dots communicate state without words.
+  let ringR = 96, ringOp = .9, stroke = "var(--line-strong)", dash = "none";
+  if (s === "listening") { ringR = 92 + Math.abs(Math.sin(now / 140)) * 8 * (.4 + Math.random() * .6); stroke = "var(--accent)"; }
+  if (s === "working") { stroke = "var(--ok)"; ringOp = .5; dash = "2 10"; }
+  if (s === "waiting") { stroke = "var(--warn)"; ringOp = .45 + Math.sin(now / 500) * .25; }
+  if (s === "speaking") { ringR = 96 + orb.mouth * 3; stroke = "var(--faint)"; }
+  if (s === "sleeping") ringOp = .35;
+  els.ring.setAttribute("r", ringR);
+  els.ring.setAttribute("stroke", stroke);
+  els.ring.setAttribute("opacity", ringOp);
+  els.ring.setAttribute("stroke-dasharray", dash);
+  els.ring.setAttribute("transform", s === "working" ? `rotate(${now / 60})` : "");
+  orbitDots.forEach((c, i) => {
+    const a = now / 380 + i * 2.094;
+    const on = s === "thinking";
+    const op = +c.getAttribute("opacity");
+    c.setAttribute("opacity", op + ((on ? .9 - i * .25 : 0) - op) * .12);
+    c.setAttribute("cx", Math.cos(a) * 96); c.setAttribute("cy", Math.sin(a) * 96);
+  });
+
+  // Computer cursor.
+  if (cur.t < 1) {
+    cur.t = Math.min(1, cur.t + 16 / cur.dur);
+    const k = easeInOut(cur.t);
+    const arc = Math.sin(k * Math.PI) * 18;
+    cur.x = cur.sx + (cur.tx - cur.sx) * k;
+    cur.y = cur.sy + (cur.ty - cur.sy) * k - arc;
+  }
+  $("cursor").style.transform = `translate(${cur.x}px, ${cur.y}px)`;
+
+  requestAnimationFrame(frame);
+}
+
+/* ---------- Selection ---------- */
+function select(id) {
+  current = id;
+  const d = dots[id];
+  $("dotName").textContent = d.name;
+  $("dotRole").textContent = d.role;
+  $("input").placeholder = `${d.name}'e bir şey söyle`;
+  els.skin.setAttribute("fill", d.tint);
+  $("chat").innerHTML = "";
+  d.messages.forEach((m) => addMsg(m, false));
+  setState(d.status, d.line);
+  renderList(); renderTimeline(); renderScreen(); renderApproval(); setLive(); renderFull();
+  row = 0;
+}
+
+/* ---------- Full access ---------- */
+let durMin = 1440;
+function openModal() {
+  const d = dots[current];
+  $("mTitle").textContent = `${d.name}'e tam yetki ver`;
+  $("scrim").querySelector(".modal > p").textContent = `Bu mod açıkken ${d.name} senden onay beklemeden aşağıdakilerin hepsini yapar.`;
+  $("typedLabel").innerHTML = `Onaylamak için <b>${d.name}</b> yaz`;
+  $("ack").checked = false; $("typed").value = ""; validate();
+  $("scrim").classList.add("open"); $("scrim").setAttribute("aria-hidden", "false");
+  setTimeout(() => $("ack").focus(), 50);
+}
+function closeModal() { $("scrim").classList.remove("open"); $("scrim").setAttribute("aria-hidden", "true"); }
+function validate() {
+  $("mConfirm").disabled = !($("ack").checked && $("typed").value.trim().toLocaleLowerCase("tr") === dots[current].name.toLocaleLowerCase("tr"));
+}
+$("durSeg").querySelectorAll("button").forEach((b) => b.onclick = () => {
+  $("durSeg").querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+  durMin = +b.dataset.min;
+});
+$("ack").onchange = validate;
+$("typed").oninput = validate;
+$("mCancel").onclick = closeModal;
+$("scrim").onclick = (e) => { if (e.target === $("scrim")) closeModal(); };
+$("mConfirm").onclick = () => {
+  full[current] = durMin ? Date.now() + durMin * 60000 : Infinity;
+  closeModal();
+  addStep({ text: "Tam yetki modu açıldı", sub: durMin ? `${durMin / 60} saat boyunca` : "Kalıcı · sen kapatana kadar", k: "auto" });
+  renderFull(); renderList();
+  if (dots[current].approval) setTimeout(autoApprove, 600);
+};
+$("fullOff").onclick = () => {
+  delete full[current];
+  addStep({ text: "Tam yetki modu kapatıldı", sub: "Onay kuralları geri geldi", k: "ok" });
+  renderFull(); renderList();
+  toast("Tam yetki kapatıldı");
+};
+function renderFull() {
+  const on = !!full[current];
+  $("fullBadge").classList.toggle("on", on);
+  $("fullBtn").style.display = on ? "none" : "";
+  tickFull();
+}
+function tickFull() {
+  const exp = full[current];
+  if (!exp) return;
+  if (exp === Infinity) { $("fullLeft").textContent = "kalıcı"; return; }
+  const left = Math.max(0, exp - Date.now());
+  const h = Math.floor(left / 3600000), m = Math.floor(left / 60000) % 60;
+  $("fullLeft").textContent = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+setInterval(tickFull, 15000);
+$("fullBtn").onclick = openModal;
+
+/* ---------- Misc controls ---------- */
+let toastT;
+function toast(text) {
+  $("toast").textContent = text; $("toast").classList.add("show");
+  clearTimeout(toastT); toastT = setTimeout(() => $("toast").classList.remove("show"), 2200);
+}
+$("takeBtn").onclick = () => {
+  taken = !taken;
+  $("screen").classList.toggle("taken", taken);
+  $("takeBtn").querySelector("span").textContent = taken ? "Kontrolü bırak" : "Kontrolü al";
+  if (taken) addStep({ text: "Kullanıcı kontrolü aldı", sub: `${dots[current].name} duraklatıldı`, k: "ok" });
+  else addStep({ text: "Kontrol dota geri verildi", sub: "Kaldığı yerden devam ediyor", k: "now" });
+};
+$("replayBtn").onclick = () => toast("Tekrar izleme: bugünkü 1 sa 14 dk, 12× hızla");
+$("newDot").onclick = () => toast("Yeni dot oluşturma akışı bir sonraki ekran");
+
+let micOn = false, micPrev;
+function setMic(on) {
+  if (on === micOn) return;
+  micOn = on;
+  $("mic").classList.toggle("on", on);
+  if (on) { micPrev = orb.state; setState("listening", "dinliyor"); }
+  else {
+    setState(micPrev, dots[current].line);
+    $("input").value = "Şu an ne yapıyorsun?";
+    send();
+  }
+}
+$("mic").onclick = () => setMic(!micOn);
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && document.activeElement === document.body && !e.repeat) { e.preventDefault(); setMic(true); }
+  if (e.key === "Escape") closeModal();
+});
+document.addEventListener("keyup", (e) => { if (e.code === "Space" && micOn && document.activeElement === document.body) setMic(false); });
+
+function autoGrow() { const t = $("input"); t.style.height = "22px"; t.style.height = Math.min(120, t.scrollHeight) + "px"; }
+$("input").addEventListener("input", autoGrow);
+$("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+$("send").onclick = send;
+
+setInterval(() => { $("clock").textContent = nowHM(); }, 30000);
+$("clock").textContent = nowHM();
+
+select("selin");
+requestAnimationFrame(frame);
+setTimeout(nextCursor, 600);
+</script>
+</body>
+</html>

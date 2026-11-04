@@ -1,0 +1,33 @@
+# The desktop app ships inside the CLI's release, unsigned, so the build is a
+# plain folder that scripts/package.mjs zips. There is no separate installer.
+appId: dev.atlas.agent
+productName: Atlas
+directories:
+  output: dist
+  buildResources: build
+files:
+  - main/**
+  - preload/**
+  - build/icon.png
+  - build/icon.ico
+  - package.json
+extraResources:
+  # The gateway serves these from disk, so they stay outside the asar.
+  - from: renderer/dist
+    to: renderer
+asar: true
+npmRebuild: false
+win:
+  target:
+    - target: dir
+      arch: [x64]
+  icon: build/icon.ico
+  # Unsigned: nothing to sign, and no signing tools to fetch.
+  signAndEditExecutable: true
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  enableEmbeddedAsarIntegrityValidation: true

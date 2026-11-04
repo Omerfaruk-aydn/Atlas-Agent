@@ -26,12 +26,14 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/codemap"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/connections"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/credentials"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/csync"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/schema"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-models/pkg/catwalk"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/discover"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/dots"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/envprobe"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/execution"
@@ -73,7 +75,6 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/coderabbit"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/factory"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/google"
-	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/grokweb"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/jetbrains"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/muse"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/openai"
@@ -1178,6 +1179,11 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 	if c.localApps != nil {
 		allTools = append(allTools, tools.NewLocalAppTool(c.localApps, c.permissions))
 	}
+	if c.cfg.Config().Tools.VoiceCalls.Enabled {
+		allTools = append(allTools, tools.NewVoiceCallTools(dialVoiceService, c.permissions)...)
+	}
+	allTools = append(allTools, tools.NewConnectedAccountTools(connections.New(c.cfg, filepath.Dir(config.GlobalConfigData())))...)
+	allTools = append(allTools, tools.NewMailboxTool(filepath.Dir(config.GlobalConfigData())))
 
 	// Question tool is interactive-only and not available to sub-agents.
 	if !isSubAgent && c.interactive && ctx.Value(tools.ScheduledTurnKey{}) != true {
@@ -1186,7 +1192,10 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 
 	// Browser tool is opt-in: it launches an external Chrome/Chromium
 	// process and can reach any URL the permission prompt allows.
-	if c.cfg.Config().Tools.Browser.IsEnabled() {
+	// A dot's workspace is the exception. Its browser is a private
+	// profile, not the owner's, and the screen tab has nothing to
+	// show unless the tool is there.
+	if c.cfg.Config().Tools.Browser.IsEnabled() || dots.IsWorkspace(c.cfg.WorkingDir()) {
 		tools.InitCaptchaChain(c.cfg.Config().Tools.Captcha)
 		allTools = append(allTools, tools.NewBrowserTool(c.permissions, c.cfg.WorkingDir(), c.cfg.Config().Tools.Browser, &vault.Store{State: c.stateStore(), Namespace: c.platformScope() + "/vault"}))
 	}
@@ -1222,13 +1231,24 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 	// desktop. The backend reports unsupported platforms itself, so the
 	// tool registers wherever it is enabled and degrades to a clear
 	// error off Windows.
-	if c.cfg.Config().Tools.Computer.IsEnabled() {
+	if dotWorkspace := dots.IsWorkspace(c.cfg.WorkingDir()); c.cfg.Config().Tools.Computer.IsEnabled() || dotWorkspace {
+		// A dot must not receive the host desktop. Its computer tool
+		// drives the private browser recorded in the workspace, and
+		// refuses to start when that screen cannot be opened.
+		var desk computer.Backend
+		if dotWorkspace {
+			desk = dots.NewScreenBackend(c.cfg.WorkingDir())
+		} else {
+			desk = computer.OpenOrNil()
+		}
 		allTools = append(allTools, tools.NewComputerTool(
 			c.permissions,
 			c.cfg.WorkingDir(),
 			c.cfg.Config().Tools.Computer,
-			computer.OpenOrNil(),
-			func() bool { return c.cfg.Config().Tools.Computer.IsEnabled() },
+			desk,
+			func() bool {
+				return dotWorkspace || c.cfg.Config().Tools.Computer.IsEnabled()
+			},
 			dispatchComputer,
 		))
 	}
@@ -1483,6 +1503,7 @@ func (c *coordinator) filterTools(allTools []fantasy.AgentTool, agent config.Age
 	remoteTarget := func() (string, string) { return c.support.ActiveController().ActiveRemote() }
 	for i, tool := range filteredTools {
 		tool = tools.WithRemoteLocalGuard(tool, remoteTarget, remoteAcks)
+		tool = tools.WithVoicePolicy(tool)
 		filteredTools[i] = tools.WithSecretFilter(tools.WithImageDelivery(tool))
 	}
 	filteredTools = wrapToolsWithHooks(filteredTools, preRunner, postRunner, isSubAgent)
@@ -1494,6 +1515,11 @@ func (c *coordinator) filterTools(allTools []fantasy.AgentTool, agent config.Age
 	// tool that hangs, and the timeout should cover both.
 	filteredTools = wrapToolsWithTimeout(filteredTools,
 		time.Duration(c.cfg.Config().Options.ToolTimeout)*time.Second)
+
+	// A tool error ends the turn in the agent loop; report it to the model
+	// instead. Inside the desktop guard so its failure classification and
+	// replay control see these failures too.
+	filteredTools = wrapToolsWithRecovery(filteredTools)
 
 	// Outermost, shared by the main agent, sub-agents and every nested
 	// computer/pipeline dispatch: failure classification, replay control for
@@ -1910,7 +1936,7 @@ func (c *coordinator) buildOpenaiProvider(providerID, baseURL, apiKey string, he
 		// downstream could tell one from another.
 		openai.WithName(providerID),
 	}
-	if providerID == string(catwalk.InferenceProviderOpenCodeGo) || providerID == string(catwalk.InferenceProviderOpenCodeZen) || providerID == string(catwalk.InferenceProviderMetaAPI) || providerID == "perplexity-agent" {
+	if providerID == string(catwalk.InferenceProviderOpenCodeGo) || providerID == string(catwalk.InferenceProviderOpenCodeZen) || providerID == string(catwalk.InferenceProviderMetaAPI) || providerID == string(catwalk.InferenceProviderGrokWeb) || providerID == "perplexity-agent" {
 		opts = append(opts, openai.WithResponsesAPIFunc(func(string) bool { return true }))
 	}
 	if c.cfg.Config().Options.Debug {
@@ -2110,24 +2136,9 @@ func (c *coordinator) buildClaudeProvider(baseURL, apiKey string, headers map[st
 	return claude.New(opts...)
 }
 
-// buildGrokWebProvider wires a SuperGrok subscription into a
-// fantasy.Provider for the grok.com console backend. Same caveat as
-// claude: the request envelope is a TODO until the real
-// grok.com backend is captured.
-func (c *coordinator) buildGrokWebProvider(baseURL, apiKey string, headers map[string]string, options map[string]string) (fantasy.Provider, error) {
-	opts := []grokweb.Option{
-		grokweb.WithAccessToken(apiKey),
-		grokweb.WithAccountID(options["account_id"]),
-	}
-	if baseURL != "" {
-		opts = append(opts, grokweb.WithBaseURL(baseURL))
-	}
-	return grokweb.New(opts...)
-}
-
 // buildWindsurfProvider wires a Windsurf Pro/Teams subscription into
 // a fantasy.Provider for the Codeium/Windsurf backend. Same caveat
-// as claude/grokweb: the request envelope is a TODO.
+// as claude: the request envelope is a TODO.
 func (c *coordinator) buildWindsurfProvider(baseURL, apiKey string, headers map[string]string, options map[string]string) (fantasy.Provider, error) {
 	opts := []windsurf.Option{
 		windsurf.WithAccessToken(apiKey),
@@ -2324,8 +2335,6 @@ func (c *coordinator) buildProvider(providerCfg config.ProviderConfig, model con
 		return c.buildAntigravityProvider(baseURL, apiKey, headers, providerCfg.ExtraParams)
 	case claude.Name:
 		return c.buildClaudeProvider(baseURL, apiKey, headers, providerCfg.ExtraParams)
-	case grokweb.Name:
-		return c.buildGrokWebProvider(baseURL, apiKey, headers, providerCfg.ExtraParams)
 	case windsurf.Name:
 		return c.buildWindsurfProvider(baseURL, apiKey, headers, providerCfg.ExtraParams)
 	case jetbrains.Name:

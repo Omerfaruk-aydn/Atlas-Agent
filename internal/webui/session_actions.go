@@ -3,8 +3,10 @@ package webui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/proto"
 )
@@ -14,6 +16,7 @@ import (
 // does the work; the gateway only adds the workspace and session IDs.
 func (g *Gateway) registerSessionActions(api *http.ServeMux) {
 	api.HandleFunc("POST /api/workspaces/{id}/sessions/{sid}/rewind/preview", g.withHub(g.handleRewind("/rewind/preview")))
+	api.HandleFunc("POST /api/workspaces/{id}/sessions/{sid}/rewind/before", g.withHub(g.handleRewind("/rewind/before")))
 	api.HandleFunc("POST /api/workspaces/{id}/sessions/{sid}/rewind", g.withHub(g.handleRewind("/rewind")))
 	api.HandleFunc("GET /api/workspaces/{id}/sessions/{sid}/user-messages", g.withHub(g.relayGet("/sessions/{sid}/messages/user")))
 	api.HandleFunc("GET /api/workspaces/{id}/sessions/{sid}/files", g.withHub(g.relayGet("/sessions/{sid}/filetracker/files")))
@@ -46,8 +49,8 @@ func (g *Gateway) handleSetGoal(w http.ResponseWriter, r *http.Request, h *hub) 
 	writeJSON(w, http.StatusOK, struct{}{})
 }
 
-// handleRewind forks a session at a user message, or, for the preview,
-// reports how many files that would write and delete.
+// handleRewind forks a session at or just before a user message, or, for the
+// preview, reports how many files that would write and delete.
 func (g *Gateway) handleRewind(suffix string) func(http.ResponseWriter, *http.Request, *hub) {
 	return func(w http.ResponseWriter, r *http.Request, h *hub) {
 		var req proto.RewindRequest
@@ -63,6 +66,10 @@ func (g *Gateway) handleRewind(suffix string) func(http.ResponseWriter, *http.Re
 		var out json.RawMessage
 		path := "/workspaces/" + url.PathEscape(h.workspaceID()) + "/sessions/" + url.PathEscape(r.PathValue("sid")) + suffix
 		if err := g.sendJSON(ctx, http.MethodPost, path, nil, req, &out); err != nil {
+			if routeMissing(err) {
+				writeError(w, http.StatusNotImplemented, "the running Atlas server is an older version")
+				return
+			}
 			writeUpstreamError(w, err)
 			return
 		}
@@ -70,4 +77,12 @@ func (g *Gateway) handleRewind(suffix string) func(http.ResponseWriter, *http.Re
 		w.Header().Set("Cache-Control", "no-store")
 		_, _ = w.Write(out)
 	}
+}
+
+// routeMissing reports whether the server has no such route at all, as a
+// server still running from an older build answers, rather than a missing
+// session or message.
+func routeMissing(err error) bool {
+	var ue *upstreamError
+	return errors.As(err, &ue) && ue.Status == http.StatusNotFound && strings.Contains(ue.Message, "page not found")
 }

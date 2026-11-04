@@ -394,25 +394,25 @@ func (s *Store) Begin(ctx context.Context, session, call, tool, input, task stri
 			return "", err
 		}
 		if slices.Contains(board.HeldTasks, task) {
-			return "", fmt.Errorf("task paused by user")
+			return "", refused(fmt.Errorf("task paused by user"))
 		}
 	}
 	err = s.Update(ctx, session, func(st *State) error {
 		if st.Paused && (tool == "agent" || tool == "delegate" || tool == "orchestrate" || tool == "debate") {
-			return fmt.Errorf("workflow dispatch is paused")
+			return refused(fmt.Errorf("workflow dispatch is paused"))
 		}
 		if err := st.Limits.Check(st.Usage); err != nil {
-			return err
+			return refused(err)
 		}
 		account := st.Tasks[task]
 		if task != "" {
 			if err := account.Limits.Check(account.Usage); err != nil {
-				return err
+				return refused(err)
 			}
 		}
 		fp := fingerprint(task+"\x00"+tool, input, st.Generation)
 		if st.Failures[fp] >= 3 {
-			return errors.New("identical tool call failed three times without a successful change. Change the approach or inspect the cause; it will not be executed again")
+			return refused(errors.New("identical tool call failed three times without a successful change. Change the approach or inspect the cause; it will not be executed again"))
 		}
 		if len(st.Operations) >= 256 {
 			kept := make([]Operation, 0, 256)
@@ -422,7 +422,7 @@ func (s *Store) Begin(ctx context.Context, session, call, tool, input, task stri
 				}
 			}
 			if len(kept) >= 128 {
-				return errors.New("too many unresolved operations; inspect recovery status")
+				return refused(errors.New("too many unresolved operations; inspect recovery status"))
 			}
 			for _, op := range st.Operations[max(0, len(st.Operations)-64):] {
 				if op.Status != "running" && !unknownOperationOutcome(st, op.ID) {

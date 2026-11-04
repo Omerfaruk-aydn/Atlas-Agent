@@ -24,21 +24,21 @@ func (s *service) CompareAndSwapTodos(ctx context.Context, id, expectedFingerpri
 	}
 	previous := s.fromDBItem(raw)
 	if TodosFingerprint(previous.Todos) != expectedFingerprint {
-		return Session{}, fmt.Errorf("task graph revision conflict")
+		return Session{}, rejected(fmt.Errorf("task graph revision conflict"))
 	}
 	if err := ValidateTaskGraph(todos); err != nil {
-		return Session{}, err
+		return Session{}, rejected(err)
 	}
 	for _, todo := range todos {
 		if err := ValidateTodo(todo); err != nil {
-			return Session{}, err
+			return Session{}, rejected(err)
 		}
 	}
 	next := previous
 	next.Todos = todos
 	if s.completionGate != nil {
 		if err := s.completionGate(ctx, previous, next); err != nil {
-			return Session{}, err
+			return Session{}, rejected(err)
 		}
 	}
 	encoded, err := marshalTodos(todos)

@@ -41,8 +41,7 @@ const (
 	FinishReasonError     FinishReason = "error"
 	// FinishReasonContentFilter is a provider safety/refusal stop
 	// (Anthropic stop_reason=refusal, OpenAI content_filter, etc.).
-	// The TUI renders this as a REFUSED banner rather than a silent
-	// empty turn.
+	// The CLI records the reason and does not add its own text.
 	FinishReasonContentFilter FinishReason = "content_filter"
 
 	// Should never happen
@@ -275,15 +274,11 @@ func (m *Message) FinishReason() FinishReason {
 	return ""
 }
 
-// IsErrorLike reports whether the message finished with an error-style
-// banner (a real error or a provider safety refusal). The TUI renders
-// both through the same banner path.
+// IsErrorLike reports whether the message finished with an error
+// banner. A provider content filter is not an Atlas error: the CLI
+// leaves that turn alone and does not add its own text.
 func (m *Message) IsErrorLike() bool {
-	switch m.FinishReason() {
-	case FinishReasonError, FinishReasonContentFilter:
-		return true
-	}
-	return false
+	return m.FinishReason() == FinishReasonError
 }
 
 func (m *Message) IsThinking() bool {

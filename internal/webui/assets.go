@@ -41,6 +41,10 @@ func (g *Gateway) staticHandler() http.Handler {
 			return
 		}
 		name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if name == "dots" || strings.HasPrefix(name, "dots/") {
+			g.servePage(w, r, "dots.html")
+			return
+		}
 		if name == "" || name == "index.html" {
 			g.serveIndex(w, r)
 			return
@@ -64,7 +68,16 @@ func (g *Gateway) staticHandler() http.Handler {
 }
 
 func (g *Gateway) serveIndex(w http.ResponseWriter, r *http.Request) {
-	raw, err := fs.ReadFile(g.assets, "index.html")
+	if g.opts.DotsOnly && g.opts.Dots != nil {
+		g.servePage(w, r, "dots.html")
+		return
+	}
+	g.servePage(w, r, "index.html")
+}
+
+// servePage serves one of the client's HTML entry points.
+func (g *Gateway) servePage(w http.ResponseWriter, r *http.Request, page string) {
+	raw, err := fs.ReadFile(g.assets, page)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, ErrAssetsMissing.Error())
 		return

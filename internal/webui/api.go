@@ -68,6 +68,10 @@ func (g *Gateway) Handler() http.Handler {
 	api.HandleFunc("GET /api/workspaces/{id}/models", g.withHub(g.handleModels))
 	api.HandleFunc("POST /api/workspaces/{id}/models", g.withHub(g.handleSelectModel))
 	api.HandleFunc("GET /api/workspaces/{id}/settings", g.withHub(g.handleSettings))
+	api.HandleFunc("GET /api/workspaces/{id}/connections", g.withHub(g.relayGet("/connections")))
+	api.HandleFunc("POST /api/workspaces/{id}/connections/{connection}", g.withHub(g.relayConnection))
+	api.HandleFunc("POST /api/workspaces/{id}/connections/{connection}/test", g.withHub(g.relayPost("/connections/{connection}/test")))
+	api.HandleFunc("POST /api/workspaces/{id}/connections/{connection}/oauth", g.withHub(g.relayConnectionOAuth))
 	api.HandleFunc("POST /api/workspaces/{id}/permission-mode", g.withHub(g.handlePermissionMode))
 	api.HandleFunc("POST /api/workspaces/{id}/compaction", g.withHub(g.handleCompaction))
 	api.HandleFunc("POST /api/workspaces/{id}/session-mode", g.withHub(g.handleSessionMode))
@@ -77,6 +81,10 @@ func (g *Gateway) Handler() http.Handler {
 	api.HandleFunc("GET /api/workspaces/{id}/jobs/{jid}/output", g.withHub(g.handleJobOutput))
 	api.HandleFunc("DELETE /api/workspaces/{id}/jobs/{jid}", g.withHub(g.relayDelete("/jobs/{jid}")))
 	g.registerSessionActions(api)
+	g.registerAppActions(api)
+	g.registerDots(api)
+	g.registerDotsAutomation(api)
+	g.registerDotsExtras(api)
 	api.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "unknown API endpoint")
 	})
@@ -86,6 +94,7 @@ func (g *Gateway) Handler() http.Handler {
 	root.HandleFunc("GET /auth/launch", g.handleLaunch)
 	root.HandleFunc("POST /control/launch", g.handleControlLaunch)
 	root.HandleFunc("GET /control/ping", g.handleControlPing)
+	g.registerDotHook(root)
 	root.Handle("/", g.staticHandler())
 	return g.secure(root)
 }
@@ -114,6 +123,7 @@ func (g *Gateway) secure(next http.Handler) http.Handler {
 // neither reaches the network.
 const contentSecurityPolicy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; " +
 	"img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' blob: data:; worker-src 'self' blob:; " +
+	"media-src 'self' blob: https://storage.googleapis.com; " +
 	"object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
 // withHub resolves the {id} path value to an open workspace and rewrites
@@ -133,7 +143,7 @@ func (g *Gateway) withHub(next func(http.ResponseWriter, *http.Request, *hub)) h
 // under the workspace prefix.
 func upstreamPath(r *http.Request, h *hub, suffix string) string {
 	out := "/workspaces/" + url.PathEscape(h.workspaceID()) + suffix
-	for _, name := range []string{"sid", "jid"} {
+	for _, name := range []string{"sid", "jid", "connection"} {
 		out = strings.ReplaceAll(out, "{"+name+"}", url.PathEscape(r.PathValue(name)))
 	}
 	return out
@@ -153,6 +163,24 @@ func (g *Gateway) relayPost(suffix string) func(http.ResponseWriter, *http.Reque
 	return func(w http.ResponseWriter, r *http.Request, h *hub) {
 		g.relay(w, r, http.MethodPost, upstreamPath(r, h, suffix), nil, nil)
 	}
+}
+
+func (g *Gateway) relayConnectionOAuth(w http.ResponseWriter, r *http.Request, h *hub) {
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 32<<10))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid OAuth request")
+		return
+	}
+	g.relay(w, r, http.MethodPost, upstreamPath(r, h, "/connections/{connection}/oauth"), nil, bytes.NewReader(data))
+}
+
+func (g *Gateway) relayConnection(w http.ResponseWriter, r *http.Request, h *hub) {
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 32<<10))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid connection settings")
+		return
+	}
+	g.relay(w, r, http.MethodPost, upstreamPath(r, h, "/connections/{connection}"), nil, bytes.NewReader(data))
 }
 
 func (g *Gateway) relayDelete(suffix string) func(http.ResponseWriter, *http.Request, *hub) {

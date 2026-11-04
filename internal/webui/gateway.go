@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/dots"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/proto"
 )
 
@@ -69,6 +70,21 @@ type Options struct {
 	// the caller can bring a stopped server back.
 	Reconnect func(ctx context.Context) error
 	Logger    *slog.Logger
+	// Dots, when set, serves the Atlas Dots API and client at /dots.
+	Dots *dots.Store
+	// DotsOnly makes Atlas Dots the whole site: its client is served at
+	// the root instead of the project web client.
+	DotsOnly bool
+	// Voices gives dots their ElevenLabs voices.
+	Voices *dots.Voices
+	// Automation keeps dot triggers, run history and budgets. With it the
+	// gateway wakes dots on schedule and by webhook, 24/7.
+	Automation *dots.Automation
+	// Notify tells the owner something happened while away from the screen.
+	Notify func(ctx context.Context, n Notice) error
+	// Approvals, when set, sends permission requests to the owner's phone
+	// with buttons to answer them there.
+	Approvals ApprovalChannel
 }
 
 // Gateway serves the web client.
@@ -92,6 +108,8 @@ type Gateway struct {
 	srv     *http.Server
 
 	controlSecret string
+	runner        *runner
+	logins        accountLogins
 }
 
 type openCall struct {
@@ -126,7 +144,7 @@ func New(opts Options) (*Gateway, error) {
 		logger = slog.Default()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Gateway{
+	g := &Gateway{
 		opts:      opts,
 		auth:      newAuth(),
 		assets:    assets,
@@ -138,7 +156,12 @@ func New(opts Options) (*Gateway, error) {
 		hubs:      make(map[string]*hub),
 		aliases:   make(map[string]string),
 		opening:   make(map[string]*openCall),
-	}, nil
+	}
+	if opts.Dots != nil && opts.Automation != nil {
+		g.runner = newRunner(g)
+		g.runner.start()
+	}
+	return g, nil
 }
 
 // Listen binds a loopback address. Anything else is refused: exposing the
@@ -208,6 +231,9 @@ func (g *Gateway) LaunchURL() string {
 // workspace. Workspaces other clients still hold stay up with their runs;
 // the server itself is never asked to stop.
 func (g *Gateway) Shutdown(ctx context.Context) error {
+	if g.opts.Dots != nil {
+		g.opts.Dots.StopScreens()
+	}
 	g.mu.Lock()
 	srv := g.srv
 	g.mu.Unlock()

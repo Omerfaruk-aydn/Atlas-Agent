@@ -20,6 +20,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/copilot"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/kimi"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/speech"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/voice"
 	"github.com/invopop/jsonschema"
 )
 
@@ -299,28 +300,6 @@ func (c *ProviderConfig) SetupClaude() {
 	}
 }
 
-// SetupGrokWeb records the account id a signed-in grok.com (xAI
-// SuperGrok) session was authorized against. The actual request
-// envelope is filled in by the grokweb fantasy.Provider (see
-// internal/deps/atlas-llm/providers/grokweb for the TODO list).
-func (c *ProviderConfig) SetupGrokWeb() {
-	if c.OAuthToken == nil {
-		return
-	}
-	if c.ExtraParams == nil {
-		c.ExtraParams = map[string]string{}
-	}
-	if c.OAuthToken.AccountID != "" {
-		c.ExtraParams["account_id"] = c.OAuthToken.AccountID
-	}
-	if c.ExtraHeaders == nil {
-		c.ExtraHeaders = map[string]string{}
-	}
-	if c.OAuthToken.PlanType != "" {
-		c.ExtraHeaders["x-grok-plan"] = c.OAuthToken.PlanType
-	}
-}
-
 // SetupWindsurf records the account id a signed-in Windsurf
 // (Codeium Pro/Teams) session was authorized against. The actual
 // request envelope is filled in by the windsurf fantasy.Provider.
@@ -474,6 +453,12 @@ type MCPConfig struct {
 	// exact-match callback URL (e.g. GitHub OAuth Apps). When omitted,
 	// Atlas-Agent picks the first free port from its default range.
 	OAuthCallbackPort int `json:"oauth_callback_port,omitempty" jsonschema:"description=Fixed localhost port for the OAuth callback, required by providers that enforce exact-match redirect URIs"`
+
+	// OAuthScopes optionally restricts the scopes requested during OAuth.
+	// When empty, Atlas-Agent requests every scope advertised by the server's
+	// protected-resource metadata. Providers that advertise scopes unavailable
+	// to a pre-registered client should set the allowed subset explicitly.
+	OAuthScopes []string `json:"oauth_scopes,omitempty" jsonschema:"description=Optional OAuth scopes to request; leave empty to use all scopes advertised by the server"`
 
 	// OAuthToken is the persisted OAuth token for this server. It is
 	// managed internally and stored in the global data config.
@@ -1404,7 +1389,16 @@ type Tools struct {
 	Docs      ToolDocs      `json:"docs,omitzero"`
 
 	Captcha ToolCaptcha `json:"captcha,omitzero"`
+
+	// VoiceCalls configures the phone voice assistant served by
+	// "atlas phone serve" and the call tools that reach it.
+	VoiceCalls ToolVoiceCalls `json:"voice_calls,omitzero" jsonschema:"description=Phone voice assistant (Twilio + ElevenLabs) and the call_owner tools. Off by default."`
 }
+
+// ToolVoiceCalls is the phone voice assistant configuration. It is a
+// distinct type so the published schema names it apart from the root
+// Config; convert with voice.Config(t) to use it.
+type ToolVoiceCalls voice.Config
 
 // ToolCaptcha configures the CAPTCHA solver chain the browser tool uses
 // with captcha_solve. Image-text and math challenges are solved offline
@@ -1995,6 +1989,13 @@ func allToolNames() []string {
 		"write",
 		"list_mcp_resources",
 		"read_mcp_resource",
+		// Connected accounts configured in the web connection center.
+		"slack",
+		"discord",
+		"github",
+		"notion",
+		"google_workspace",
+		"outlook",
 
 		// The opt-in tool groups below (see the Tools struct and
 		// coordinator.buildTools) are only ever registered when their
@@ -2068,6 +2069,11 @@ func allToolNames() []string {
 		"github_pr_view",
 		// Docs
 		"doc_index",
+		"call_owner",
+		"call_status",
+		"call_history",
+		"call_transcript",
+		"site_monitor",
 	}
 }
 

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/backend"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/proto"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session/rewind"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/subagents"
 	"github.com/google/uuid"
 )
@@ -895,6 +897,32 @@ func (c *controllerV1) handlePostWorkspaceSessionRewindPreview(w http.ResponseWr
 //	@Failure		500		{object}	proto.Error
 //	@Router			/workspaces/{id}/sessions/{sid}/rewind [post]
 func (c *controllerV1) handlePostWorkspaceSessionRewind(w http.ResponseWriter, r *http.Request) {
+	c.rewindSession(w, r, c.backend.RewindSession)
+}
+
+// handlePostWorkspaceSessionRewindBefore forks a session just before a user
+// message, so an edited version can be sent in its place, and restores the
+// workspace's files to their state before it. It is its own route so that a
+// server without it answers 404 instead of forking with the message kept.
+//
+//	@Summary		Rewind session to just before a message
+//	@Tags			sessions
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Workspace ID"
+//	@Param			sid		path		string					true	"Session ID"
+//	@Param			request	body		proto.RewindRequest		true	"Rewind target"
+//	@Success		200		{object}	proto.RewindResult
+//	@Failure		400		{object}	proto.Error
+//	@Failure		404		{object}	proto.Error
+//	@Failure		500		{object}	proto.Error
+//	@Router			/workspaces/{id}/sessions/{sid}/rewind/before [post]
+func (c *controllerV1) handlePostWorkspaceSessionRewindBefore(w http.ResponseWriter, r *http.Request) {
+	c.rewindSession(w, r, c.backend.RewindSessionBefore)
+}
+
+// rewindSession decodes a rewind request, applies fork and writes the result.
+func (c *controllerV1) rewindSession(w http.ResponseWriter, r *http.Request, fork func(ctx context.Context, workspaceID, sessionID, messageID string) (rewind.Result, error)) {
 	id := r.PathValue("id")
 	sid := r.PathValue("sid")
 
@@ -909,7 +937,7 @@ func (c *controllerV1) handlePostWorkspaceSessionRewind(w http.ResponseWriter, r
 		return
 	}
 
-	result, err := c.backend.RewindSession(r.Context(), id, sid, req.UpToMessageID)
+	result, err := fork(r.Context(), id, sid, req.UpToMessageID)
 	if err != nil {
 		c.handleError(w, r, err)
 		return

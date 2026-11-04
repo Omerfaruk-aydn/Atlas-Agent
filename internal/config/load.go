@@ -421,8 +421,6 @@ func (c *Config) configureProviders(ctx context.Context, store *ConfigStore, env
 			prepared.SetupAntigravity()
 		case p.ID == catwalk.InferenceProviderClaude && config.OAuthToken != nil:
 			prepared.SetupClaude()
-		case p.ID == catwalk.InferenceProviderGrokWeb && config.OAuthToken != nil:
-			prepared.SetupGrokWeb()
 		case p.ID == catwalk.InferenceProviderWindsurf && config.OAuthToken != nil:
 			prepared.SetupWindsurf()
 		case p.ID == catwalk.InferenceProviderJetBrains && config.OAuthToken != nil:

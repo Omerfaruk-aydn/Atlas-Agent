@@ -38,6 +38,23 @@ if ($env:ATLAS_AGENT_SKIP_SPEECH_SETUP -ne '1') {
   Write-Host 'Automatic offline speech setup was skipped.'
 }
 
+# The desktop app ships with the CLI. It is optional: without it everything but
+# `atlas-agent app` still works.
+if ($env:ATLAS_AGENT_SKIP_APP -ne '1') {
+  $appArchive = Join-Path $installDir 'atlas-app-windows-x64.zip'
+  $appDir = Join-Path $installDir 'app'
+  try {
+    Write-Host 'Downloading the desktop app...'
+    Invoke-WebRequest -Uri "https://github.com/$repo/releases/latest/download/atlas-app-windows-x64.zip" -UseBasicParsing -OutFile $appArchive
+    if (Test-Path $appDir) { Remove-Item -Recurse -Force $appDir }
+    Expand-Archive -Path $appArchive -DestinationPath $appDir -Force
+  } catch {
+    Write-Warning "The desktop app was not installed: $_"
+  } finally {
+    if (Test-Path $appArchive) { Remove-Item -Force $appArchive }
+  }
+}
+
 # Best-effort: add to user PATH if not present
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 if ($userPath -notlike "*$installDir*") {

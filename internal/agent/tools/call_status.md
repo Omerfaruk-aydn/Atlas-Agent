@@ -1,0 +1,1 @@
+Show one phone call handled by the Atlas voice service: direction, state (ringing, active, ended, no_answer, failed, ...), timing, safe error code, metrics and any written fallback sent. Transcript text is not included; use call_transcript for that. Read-only.

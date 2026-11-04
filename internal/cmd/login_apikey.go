@@ -36,8 +36,8 @@ var loginAliases = map[string]string{
 	"codex":                "chatgpt",
 	"codex-ide":            "openai",
 	"claude-plan":          "claude",
-	"grok-web":             "grok",
-	"supergrok":            "grok",
+	"grok":                 "grok-web",
+	"supergrok":            "grok-web",
 	"codeium":              "windsurf",
 	"jb-ai":                "jetbrains",
 	"augmentcode":          "augment",
@@ -54,11 +54,11 @@ var loginAliases = map[string]string{
 }
 
 var accountLoginProviders = []string{
-	"copilot", "chatgpt", "antigravity", "claude", "muse", "kimi-code", "minimax-plan", "minimax-plan-cn",
+	"copilot", "chatgpt", "antigravity", "claude", "muse", "kimi-code", "minimax-plan", "minimax-plan-cn", "grok-web",
 }
 
 var unavailableAccountProviders = []string{
-	"grok", "windsurf", "jetbrains", "augment", "factory", "coderabbit", "zed",
+	"windsurf", "jetbrains", "augment", "factory", "coderabbit", "zed",
 }
 
 // miniMaxAPILoginName is the login name of the generic MiniMax API-key

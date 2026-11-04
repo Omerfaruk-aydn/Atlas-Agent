@@ -10,6 +10,7 @@ import { Select } from "@atlas/ui/select"
 import { Tabs } from "@atlas/ui/tabs"
 import { useTheme } from "@atlas/ui/theme/context"
 import { createEffect, createMemo, createResource, createSignal, ErrorBoundary, For, on, onMount, Show, type JSX } from "solid-js"
+import { useAccountSignIn } from "../lib/account-signin"
 import { SettingsSearchField } from "@/settings/search-field"
 import { SettingsList } from "@/settings/list"
 import { SettingsRow } from "@/settings/row"
@@ -21,13 +22,14 @@ import { app, currentWorkspace, goHome, openSettings, workspaces } from "../stat
 import { prefs, setPref, type LanguagePref } from "../state/prefs"
 import { findModel } from "../components/ModelPicker"
 import { useLanguage } from "./language"
+import { Connections } from "./app/settings/connections"
 import { showToast } from "./toast"
 
-type Section = "preferences" | "appearance" | "models" | "agent" | "extensions" | "server" | "about"
+type Section = "preferences" | "appearance" | "models" | "agent" | "connections" | "extensions" | "server" | "about"
 
 const nav: { group: Section[] }[] = [
   { group: ["preferences", "appearance"] },
-  { group: ["models", "agent", "extensions", "server"] },
+  { group: ["models", "agent", "connections", "extensions", "server"] },
   { group: ["about"] },
 ]
 
@@ -36,6 +38,7 @@ const icons: Record<Section, IconProps["name"]> = {
   appearance: "appearance",
   models: "models",
   agent: "outline-worktree",
+  connections: "globe",
   extensions: "extensions",
   server: "server",
   about: "info",
@@ -153,6 +156,11 @@ export function SettingsPage(props: { catalog: Catalog | undefined; onCatalog: (
             </Tabs.Content>
             <Tabs.Content value="agent" class="settings-panel">
               <Agent />
+            </Tabs.Content>
+            <Tabs.Content value="connections" class="settings-panel">
+              <Show when={currentWorkspace() ?? workspaces()[0]} fallback={<div class="settings-tab-body"><NeedsProject /></div>}>
+                {(store) => <Connections workspaceID={store().id} />}
+              </Show>
             </Tabs.Content>
             <Tabs.Content value="extensions" class="settings-panel">
               <Extensions />
@@ -348,8 +356,50 @@ function Models(props: { catalog: Catalog | undefined; onCatalog: (c: Catalog) =
             />
           </SettingsRow>
         </Section>
+        <GrokAccount wsId={store()?.id} catalog={props.catalog} onCatalog={props.onCatalog} />
       </Show>
     </Page>
+  )
+}
+
+/** Signs in to a SuperGrok or X Premium subscription instead of an API key. */
+function GrokAccount(props: { wsId: string | undefined; catalog: Catalog | undefined; onCatalog: (c: Catalog) => void }) {
+  const signIn = useAccountSignIn(
+    () => props.wsId,
+    "grok-web",
+    () => {
+      if (props.wsId) void api.models(props.wsId).then(props.onCatalog)
+    },
+  )
+  const connected = () => props.catalog?.providers?.some((p) => p.id === "grok-web") ?? false
+  const description = () => {
+    const login = signIn.login()
+    if (login?.state === "failed") return login.error ?? at("account.failed")
+    if (login?.state === "waiting") return at("account.grokWaiting", { code: login.user_code ?? "" })
+    return at(connected() ? "account.connected" : "account.grokDescription")
+  }
+  return (
+    <Section title={at("account.title")}>
+      <SettingsRow title="Grok (SuperGrok)" description={description()}>
+        <Show
+          when={signIn.login()?.state === "waiting"}
+          fallback={
+            <Button variant="outline" size="normal" disabled={signIn.starting()} onClick={() => void signIn.start()}>
+              {at(connected() ? "account.signInAgain" : "account.signIn")}
+            </Button>
+          }
+        >
+          <div class="flex items-center gap-2">
+            <Button variant="outline" size="normal" onClick={() => window.open(signIn.login()?.url, "_blank", "noopener,noreferrer")}>
+              {at("account.openPage")}
+            </Button>
+            <Button variant="ghost" size="normal" onClick={signIn.cancel}>
+              {at("account.cancel")}
+            </Button>
+          </div>
+        </Show>
+      </SettingsRow>
+    </Section>
   )
 }
 

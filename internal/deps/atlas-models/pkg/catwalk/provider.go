@@ -16,7 +16,7 @@ func UnavailableProviderReason(t Type, ids ...InferenceProvider) string {
 		}
 	}
 	switch t {
-	case TypeGrokWeb, TypeWindsurf, TypeJetBrains, TypeAugment,
+	case TypeWindsurf, TypeJetBrains, TypeAugment,
 		TypeFactory, TypeCodeRabbit, TypeZed:
 		return "model calls are not implemented for this account provider"
 	default:
@@ -37,7 +37,6 @@ const (
 	TypeVertexAI     Type = "google-vertex"
 	TypeAntigravity  Type = "antigravity"
 	TypeClaude       Type = "claude"
-	TypeGrokWeb      Type = "grok-web"
 	TypeWindsurf     Type = "windsurf"
 	TypeJetBrains    Type = "jetbrains"
 	TypeAugment      Type = "augment"
@@ -49,7 +48,7 @@ const (
 
 // Coding-plan provider types: these are the custom protocol adapters
 // Atlas-Agent ships for subscription plans whose public API is either
-// not documented (claude.ai console, grok.com, codeium-backed
+// not documented (claude.ai console, codeium-backed
 // Windsurf) or routed through a JWT exchange (JetBrains AI). Each one
 // is implemented as its own fantasy.Provider under
 // internal/deps/atlas-llm/providers/<name> and wired into the
@@ -253,7 +252,6 @@ func KnownProviderTypes() []Type {
 		TypeVertexAI,
 		TypeAntigravity,
 		TypeClaude,
-		TypeGrokWeb,
 		TypeWindsurf,
 		TypeJetBrains,
 		TypeAugment,

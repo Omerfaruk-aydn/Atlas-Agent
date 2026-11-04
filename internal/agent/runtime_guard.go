@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,10 +76,17 @@ func (t *guardedTool) Run(ctx context.Context, call fantasy.ToolCall) (response 
 		return fantasy.NewTextErrorResponse(refusal), nil
 	}
 	id, err := t.store.Begin(ctx, scope.SessionID, call.ID, call.Name, call.Input, scope.TaskID)
-	if err != nil {
+	if errors.Is(err, engineering.ErrOperationRefused) {
+		// A pause, budget or repeated-failure refusal needs the user.
 		resp := fantasy.NewTextErrorResponse(err.Error())
 		resp.StopTurn = true
 		return resp, nil
+	}
+	if err != nil {
+		// Execution state could not be read or written; the call never
+		// ran. Say so instead of ending the turn without explanation.
+		slog.Warn("Failed to record tool operation", "tool", call.Name, "error", err)
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("Tool %q was not started: execution state is unavailable: %s", call.Name, err)), nil
 	}
 	if call.Name == "verify" && scope.TaskID != "" && t.sessions != nil {
 		current, getErr := t.sessions.Get(ctx, scope.SessionID)

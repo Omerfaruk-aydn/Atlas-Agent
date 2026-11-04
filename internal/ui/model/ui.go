@@ -3086,6 +3086,8 @@ func (m *UI) openAuthenticationDialog(provider catwalk.Provider, model config.Se
 		dlg, cmd = dialog.NewOAuthMuse(m.com, isOnboarding, provider, model, modelType)
 	case catwalk.InferenceProviderKimiCode:
 		dlg, cmd = dialog.NewOAuthKimi(m.com, isOnboarding, provider, model, modelType)
+	case catwalk.InferenceProviderGrokWeb:
+		dlg, cmd = dialog.NewOAuthGrok(m.com, isOnboarding, provider, model, modelType)
 	case catwalk.InferenceProviderMiniMaxPlan, catwalk.InferenceProviderMiniMaxPlanCN:
 		dlg, cmd = dialog.NewOAuthMiniMax(m.com, isOnboarding, provider, model, modelType)
 	default:

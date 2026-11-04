@@ -184,6 +184,40 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "ElevenLabsConfig": {
+      "properties": {
+        "api_key": {
+          "type": "string",
+          "description": "Environment reference to the API key",
+          "examples": [
+            "$ELEVENLABS_API_KEY"
+          ]
+        },
+        "stt_model": {
+          "type": "string",
+          "description": "Realtime recognition model",
+          "default": "scribe_v2_realtime"
+        },
+        "tts_model": {
+          "type": "string",
+          "description": "Synthesis model",
+          "default": "eleven_flash_v2_5"
+        },
+        "voice_id": {
+          "type": "string",
+          "description": "Voice used for replies"
+        },
+        "keyterms": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Names and terms recognition should favour"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "Evaluator": {
       "properties": {
         "enabled": {
@@ -564,6 +598,22 @@
       },
       "type": "object"
     },
+    "ListenConfig": {
+      "properties": {
+        "public_addr": {
+          "type": "string",
+          "description": "Address for Twilio webhooks behind a TLS proxy",
+          "default": "127.0.0.1:8787"
+        },
+        "control_addr": {
+          "type": "string",
+          "description": "Loopback address of the internal voice API",
+          "default": "127.0.0.1:8788"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "MCPConfig": {
       "properties": {
         "command": {
@@ -668,6 +718,13 @@
         "oauth_callback_port": {
           "type": "integer",
           "description": "Fixed localhost port for the OAuth callback"
+        },
+        "oauth_scopes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Optional OAuth scopes to request; leave empty to use all scopes advertised by the server"
         }
       },
       "additionalProperties": false,
@@ -809,6 +866,24 @@
         },
         "provider_options": {
           "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "MonitorConfig": {
+      "properties": {
+        "sites": {
+          "items": {
+            "$ref": "#/$defs/SiteConfig"
+          },
+          "type": "array",
+          "description": "Sites checked on a schedule; the owner is called on state changes"
+        },
+        "max_concurrency": {
+          "type": "integer",
+          "description": "Parallel checks",
+          "default": 2
         }
       },
       "additionalProperties": false,
@@ -1218,6 +1293,62 @@
         "sandbox": {
           "$ref": "#/$defs/Sandbox",
           "description": "Contain shell-spawned processes in an OS-level container. Currently Windows only (Job Objects); a no-op elsewhere."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "OutboundConfig": {
+      "properties": {
+        "max_per_hour": {
+          "type": "integer",
+          "description": "Outbound calls per rolling hour",
+          "default": 3
+        },
+        "min_interval_seconds": {
+          "type": "integer",
+          "description": "Minimum gap between outbound calls",
+          "default": 600
+        },
+        "ring_timeout_seconds": {
+          "type": "integer",
+          "description": "How long to ring before giving up",
+          "default": 30
+        },
+        "allow_retry": {
+          "type": "boolean",
+          "description": "Allow one controlled retry of an unanswered urgent call"
+        },
+        "fallback": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Written fallback channels after an unanswered call: sms"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "OwnerConfig": {
+      "properties": {
+        "phone_number": {
+          "type": "string",
+          "description": "Owner's E.164 phone number or an environment reference like $ATLAS_OWNER_PHONE"
+        },
+        "allowed_callers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Extra E.164 numbers allowed to call in"
+        },
+        "timezone": {
+          "type": "string",
+          "description": "IANA timezone for dates and daily limits",
+          "examples": [
+            "Europe/Istanbul"
+          ]
         }
       },
       "additionalProperties": false,
@@ -1753,6 +1884,51 @@
         "prompt_version"
       ]
     },
+    "SiteConfig": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "interval_seconds": {
+          "type": "integer",
+          "default": 60
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "default": 10
+        },
+        "failure_threshold": {
+          "type": "integer",
+          "default": 2
+        },
+        "down_statuses": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "notify_on_recovery": {
+          "type": "boolean"
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "urgent"
+          ],
+          "default": "urgent"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "url"
+      ]
+    },
     "TUIOptions": {
       "properties": {
         "language": {
@@ -1821,6 +1997,20 @@
           ],
           "description": "Exit banner style after quitting Atlas-Agent",
           "default": "default"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "TelegramConfig": {
+      "properties": {
+        "bot_token": {
+          "type": "string",
+          "description": "Environment reference to the bot token"
+        },
+        "chat_id": {
+          "type": "string",
+          "description": "Chat the bot writes to"
         }
       },
       "additionalProperties": false,
@@ -2200,6 +2390,30 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "ToolPolicyConfig": {
+      "properties": {
+        "allow": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Tools a voice turn may run without spoken confirmation (glob)"
+        },
+        "block": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Tools never run from a call (glob)"
+        },
+        "allow_email_send": {
+          "type": "boolean",
+          "description": "Allow sending email from a call after spoken confirmation"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "ToolQuality": {
       "properties": {
         "enabled": {
@@ -2244,6 +2458,105 @@
           "type": "boolean",
           "description": "Show a short content hash next to every line so edit can target a line by number instead of reproducing its exact text. Off by default: it adds a few characters to every line view returns in exchange for cheaper and more reliable single-line edits.",
           "default": false
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ToolVoiceCalls": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Turn on the phone voice assistant. Off by default."
+        },
+        "provider": {
+          "type": "string",
+          "description": "Speech provider for recognition and synthesis",
+          "default": "elevenlabs"
+        },
+        "stt_provider": {
+          "type": "string",
+          "description": "Speech-to-text provider override"
+        },
+        "tts_provider": {
+          "type": "string",
+          "description": "Text-to-speech provider override"
+        },
+        "transport": {
+          "type": "string",
+          "description": "Call transport: twilio or whatsapp",
+          "default": "twilio"
+        },
+        "language": {
+          "type": "string",
+          "description": "BCP-47 conversation language",
+          "default": "tr-TR"
+        },
+        "max_call_seconds": {
+          "type": "integer",
+          "description": "Longest allowed call",
+          "default": 180
+        },
+        "max_daily_minutes": {
+          "type": "integer",
+          "description": "Call minutes allowed per day across all calls",
+          "default": 30
+        },
+        "max_concurrent_calls": {
+          "type": "integer",
+          "description": "Simultaneous calls",
+          "default": 1
+        },
+        "silence_timeout_seconds": {
+          "type": "integer",
+          "description": "Hang up after this long without speech",
+          "default": 20
+        },
+        "turn_timeout_seconds": {
+          "type": "integer",
+          "description": "Longest one agent answer may take",
+          "default": 90
+        },
+        "max_tool_calls_per_turn": {
+          "type": "integer",
+          "description": "Tool calls one spoken request may make",
+          "default": 8
+        },
+        "record_calls": {
+          "type": "boolean",
+          "description": "Keep call audio. Not supported; must stay false."
+        },
+        "store_transcripts": {
+          "type": "boolean",
+          "description": "Keep call transcripts on this machine",
+          "default": true
+        },
+        "owner": {
+          "$ref": "#/$defs/OwnerConfig"
+        },
+        "outbound": {
+          "$ref": "#/$defs/OutboundConfig"
+        },
+        "listen": {
+          "$ref": "#/$defs/ListenConfig"
+        },
+        "elevenlabs": {
+          "$ref": "#/$defs/ElevenLabsConfig"
+        },
+        "twilio": {
+          "$ref": "#/$defs/TwilioConfig"
+        },
+        "whatsapp": {
+          "$ref": "#/$defs/WhatsAppConfig"
+        },
+        "telegram": {
+          "$ref": "#/$defs/TelegramConfig"
+        },
+        "tool_policy": {
+          "$ref": "#/$defs/ToolPolicyConfig"
+        },
+        "monitor": {
+          "$ref": "#/$defs/MonitorConfig"
         }
       },
       "additionalProperties": false,
@@ -2295,6 +2608,46 @@
         },
         "captcha": {
           "$ref": "#/$defs/ToolCaptcha"
+        },
+        "voice_calls": {
+          "$ref": "#/$defs/ToolVoiceCalls",
+          "description": "Phone voice assistant (Twilio + ElevenLabs) and the call_owner tools. Off by default."
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "TwilioConfig": {
+      "properties": {
+        "account_sid": {
+          "type": "string",
+          "description": "Environment reference to the account SID",
+          "examples": [
+            "$TWILIO_ACCOUNT_SID"
+          ]
+        },
+        "auth_token": {
+          "type": "string",
+          "description": "Environment reference to the auth token",
+          "examples": [
+            "$TWILIO_AUTH_TOKEN"
+          ]
+        },
+        "phone_number": {
+          "type": "string",
+          "description": "Twilio number in E.164"
+        },
+        "whatsapp_from": {
+          "type": "string",
+          "description": "Twilio WhatsApp sender for written fallback"
+        },
+        "public_base_url": {
+          "type": "string",
+          "description": "Public https URL that reaches public_addr"
+        },
+        "machine_detection": {
+          "type": "boolean",
+          "description": "Ask Twilio to detect answering machines on outbound calls"
         }
       },
       "additionalProperties": false,
@@ -2334,6 +2687,52 @@
         "max_agents",
         "instructions"
       ]
+    },
+    "WhatsAppConfig": {
+      "properties": {
+        "access_token": {
+          "type": "string",
+          "description": "Environment reference to the Cloud API access token",
+          "examples": [
+            "$WHATSAPP_ACCESS_TOKEN"
+          ]
+        },
+        "app_secret": {
+          "type": "string",
+          "description": "Environment reference to the Meta app secret that signs webhooks",
+          "examples": [
+            "$WHATSAPP_APP_SECRET"
+          ]
+        },
+        "verify_token": {
+          "type": "string",
+          "description": "Environment reference to the token Meta sends when verifying the webhook",
+          "examples": [
+            "$WHATSAPP_VERIFY_TOKEN"
+          ]
+        },
+        "phone_number_id": {
+          "type": "string",
+          "description": "Cloud API phone number id of the business number"
+        },
+        "graph_version": {
+          "type": "string",
+          "description": "Graph API version",
+          "default": "v23.0"
+        },
+        "stun_servers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "STUN servers for the media path",
+          "default": [
+            "stun:stun.l.google.com:19302"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
     },
     "WorkPlan": {
       "properties": {

@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -11,13 +13,17 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/client"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/connections"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/dots"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/projects"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/server"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/version"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/voice"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/webui"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
@@ -26,11 +32,41 @@ import (
 // defaultWebPort is the loopback port `atlas-agent web` listens on.
 const defaultWebPort = 7788
 
+// defaultDotsPort is the loopback port `atlas-agent dots` listens on, so it
+// can run beside the web UI.
+const defaultDotsPort = 7790
+
 var (
 	webPort       int
 	webOpen       bool
 	webDevOrigins []string
+	webDots       bool
 )
+
+func init() {
+	dotsCmd.Flags().IntVar(&webPort, "port", defaultDotsPort, "Loopback port for Atlas Dots (0 picks a free one)")
+	dotsCmd.Flags().BoolVar(&webOpen, "open", true, "Open Atlas Dots in the default browser")
+	rootCmd.AddCommand(dotsCmd)
+}
+
+// dotsCmd opens the web UI straight on Atlas Dots.
+var dotsCmd = &cobra.Command{
+	Use:   "dots",
+	Short: "Open Atlas Dots, your always-on personal agents",
+	Long: `Open Atlas Dots in the browser.
+
+Each dot is a personal agent with its own name, look, voice, personality and
+permission rules, and its own workspace folder. Dots run on the shared
+ATLAS-AGENT server, so their sessions are ordinary Atlas sessions.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		webDots = true
+		if !cmd.Flags().Changed("port") {
+			webPort = defaultDotsPort
+		}
+		return runWeb(cmd, args)
+	},
+}
 
 func init() {
 	webCmd.Flags().IntVar(&webPort, "port", defaultWebPort, "Loopback port for the web UI (0 picks a free one)")
@@ -64,6 +100,21 @@ atlas-agent web --port 8080 --open=false
 	RunE: runWeb,
 }
 
+// elevenLabsAccessToken reads the account token saved by the voice
+// settings sign-in. It is used only when no ElevenLabs API key is set.
+func elevenLabsAccessToken() string {
+	dir := filepath.Dir(config.GlobalConfigData())
+	store, err := config.Load(dir, dir, false)
+	if err != nil || store == nil {
+		return ""
+	}
+	account, ok := store.Config().MCP["elevenlabs"]
+	if !ok || account.OAuthToken == nil {
+		return ""
+	}
+	return strings.TrimSpace(account.OAuthToken.AccessToken)
+}
+
 func runWeb(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	if webPort < 0 || webPort > 65535 {
@@ -74,7 +125,11 @@ func runWeb(cmd *cobra.Command, _ []string) error {
 	// A gateway already serving this port only needs a new link.
 	if webPort != 0 {
 		if link, err := webui.RequestLaunchURL(ctx, stateDir, strconv.Itoa(webPort)); err == nil {
-			fmt.Fprintf(cmd.OutOrStdout(), "The Atlas web UI is already running.\n\n  Open: %s\n\nThe link works once and expires in 10 minutes.\n", link)
+			product := "The Atlas web UI"
+			if webDots {
+				product = "Atlas Dots"
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "%s is already running.\n\n  Open: %s\n\nThe link works once and expires in 10 minutes.\n", product, link)
 			openWebBrowser(cmd, link)
 			return nil
 		}
@@ -100,7 +155,34 @@ func runWeb(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("the Atlas server at %s does not answer: %w", clientHost, err)
 	}
 
+	dataDir := filepath.Dir(config.GlobalConfigData())
+	dotStore, err := dots.Open(filepath.Join(dataDir, "dots"))
+	if err != nil {
+		slog.Warn("Atlas Dots is unavailable", "error", err)
+		dotStore = nil
+	}
+	var automation *dots.Automation
+	if dotStore != nil {
+		if automation, err = dots.OpenAutomation(filepath.Join(dataDir, "dots")); err != nil {
+			slog.Warn("Atlas Dots automation is unavailable", "error", err)
+			automation = nil
+		}
+	}
+	connEnv := connections.Env(dataDir)
+	voices := &dots.Voices{Key: func() string {
+		if key := cmp.Or(connEnv(connections.ElevenLabsAPIKey), os.Getenv("ELEVENLABS_API_KEY")); key != "" {
+			return key
+		}
+		return elevenLabsAccessToken()
+	}}
+
 	gw, err := webui.New(webui.Options{
+		Dots:           dotStore,
+		DotsOnly:       webDots,
+		Automation:     automation,
+		Notify:         dotNotifier(cwd, dataDir, connEnv),
+		Approvals:      dotApprovals(cwd, connEnv),
+		Voices:         voices,
 		Upstream:       c,
 		ServerAddress:  clientHost,
 		Version:        version.Version,
@@ -135,11 +217,14 @@ func runWeb(cmd *cobra.Command, _ []string) error {
 
 	// Open the working directory as the first project, so the browser
 	// lands somewhere useful.
+	out := cmd.OutOrStdout()
+	if webDots {
+		return runDots(cmd, gw, serveErr, out, serverInfo.Version, dotStore != nil)
+	}
 	openCtx, cancelOpen := context.WithTimeout(ctx, 2*time.Minute)
 	ws, openErr := gw.OpenWorkspace(openCtx, cwd)
 	cancelOpen()
 
-	out := cmd.OutOrStdout()
 	fmt.Fprintf(out, "ATLAS-AGENT web UI\n\n")
 	fmt.Fprintf(out, "  Server:    %s (version %s)\n", clientHost, serverInfo.Version)
 	if openErr != nil {
@@ -149,12 +234,36 @@ func runWeb(cmd *cobra.Command, _ []string) error {
 	}
 	link := gw.LaunchURL()
 	fmt.Fprintf(out, "  Address:   http://127.0.0.1:%s\n\n", gw.Port())
-	fmt.Fprintf(out, "  Open: %s\n\n", link)
+	fmt.Fprintf(out, "  Open: %s\n", link)
+	if dotStore != nil {
+		fmt.Fprintf(out, "  Dots: http://127.0.0.1:%s/dots (after signing in)\n", gw.Port())
+	}
+	fmt.Fprintln(out)
 	fmt.Fprintf(out, "The link signs this browser in once and expires in 10 minutes.\n")
 	fmt.Fprintf(out, "To share live sessions with the terminal UI, start it with\nATLAS_AGENT_CLIENT_SERVER=1; it then joins this same server.\n")
 	fmt.Fprintf(out, "Press Ctrl+C to stop the web UI. Runs in progress keep going while\nanother client uses the project; the server is never shut down by this command.\n")
 	openWebBrowser(cmd, link)
+	return waitAndShutdown(ctx, gw, serveErr)
+}
 
+// runDots is the Atlas Dots entry point: its own banner and no project
+// opened, since dots bring their own workspaces.
+func runDots(cmd *cobra.Command, gw *webui.Gateway, serveErr <-chan error, out io.Writer, serverVersion string, ok bool) error {
+	if !ok {
+		return errors.New("Atlas Dots could not open its data directory")
+	}
+	link := gw.LaunchURL()
+	fmt.Fprintf(out, "Atlas Dots\n\n")
+	fmt.Fprintf(out, "  Address:   http://127.0.0.1:%s\n", gw.Port())
+	fmt.Fprintf(out, "  Server:    ATLAS-AGENT %s\n\n", serverVersion)
+	fmt.Fprintf(out, "  Open: %s\n\n", link)
+	fmt.Fprintf(out, "The link signs this browser in once and expires in 10 minutes.\n")
+	fmt.Fprintf(out, "Dots keep their schedules and webhooks while this is running.\nPress Ctrl+C to stop; runs already started keep going on the server.\n")
+	openWebBrowser(cmd, link)
+	return waitAndShutdown(cmd.Context(), gw, serveErr)
+}
+
+func waitAndShutdown(ctx context.Context, gw *webui.Gateway, serveErr <-chan error) error {
 	sigch := make(chan os.Signal, 1)
 	signal.Notify(sigch, os.Interrupt)
 	defer signal.Stop(sigch)
@@ -199,4 +308,43 @@ func recentWebProjects() []webui.Project {
 		}
 	}
 	return out
+}
+
+// dotApprovals returns the Telegram approval channel when a bot and chat
+// are configured, and nil otherwise. Unlike notices it is read once, at
+// start, because it holds the bot's update offset.
+func dotApprovals(cwd string, env func(string) string) webui.ApprovalChannel {
+	cfg, err := config.Init(cwd, "", false)
+	if err != nil {
+		return nil
+	}
+	vc := voice.Config(cfg.Config().Tools.VoiceCalls).WithDefaults()
+	token, err := vc.Telegram.BotToken.Resolve(env)
+	if err != nil || token.Reveal() == "" || vc.Telegram.ChatID == "" {
+		return nil
+	}
+	return &webui.TelegramApprovals{Token: token.Reveal(), ChatID: vc.Telegram.ChatID}
+}
+
+// dotNotifier returns a function that sends a dot's notice to the owner's
+// Telegram chat when the Telegram connection is set up, and does nothing
+// otherwise. The configuration is read when a notice is sent, so a
+// connection added while Atlas runs takes effect at once.
+func dotNotifier(cwd, dataDir string, env func(string) string) func(context.Context, webui.Notice) error {
+	return func(ctx context.Context, n webui.Notice) error {
+		cfg, err := config.Init(cwd, "", false)
+		if err != nil {
+			return err
+		}
+		vc := voice.Config(cfg.Config().Tools.VoiceCalls).WithDefaults()
+		token, err := vc.Telegram.BotToken.Resolve(env)
+		if err != nil || vc.Telegram.ChatID == "" {
+			return nil
+		}
+		text := n.Title
+		if n.Body != "" {
+			text += "\n" + n.Body
+		}
+		return (&voice.TelegramNotifier{Token: token, ChatID: vc.Telegram.ChatID}).Notify(ctx, text)
+	}
 }

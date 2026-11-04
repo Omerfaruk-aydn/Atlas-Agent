@@ -161,6 +161,18 @@ func (b *Backend) RewindSession(ctx context.Context, workspaceID, sourceSessionI
 	return svc.ForkAt(ctx, sourceSessionID, upToMessageID)
 }
 
+// RewindSessionBefore forks sourceSessionID just before messageID and
+// restores the workspace's files to their state before it.
+func (b *Backend) RewindSessionBefore(ctx context.Context, workspaceID, sourceSessionID, messageID string) (rewind.Result, error) {
+	ws, err := b.GetWorkspace(workspaceID)
+	if err != nil {
+		return rewind.Result{}, err
+	}
+
+	svc := rewind.NewService(ws.Sessions, ws.Messages, ws.History)
+	return svc.ForkBefore(ctx, sourceSessionID, messageID)
+}
+
 // ListUserMessages returns user-role messages for a session.
 func (b *Backend) ListUserMessages(ctx context.Context, workspaceID, sessionID string) ([]message.Message, error) {
 	ws, err := b.GetWorkspace(workspaceID)

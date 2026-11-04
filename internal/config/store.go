@@ -19,6 +19,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/antigravity"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/claude"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/codex"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/grok"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/copilot"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/kimi"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/minimax"
@@ -613,8 +614,6 @@ func (s *ConfigStore) SetProviderAPIKey(scope Scope, providerID string, apiKey a
 				providerConfig.SetupAntigravity()
 			case string(catwalk.InferenceProviderClaude):
 				providerConfig.SetupClaude()
-			case string(catwalk.InferenceProviderGrokWeb):
-				providerConfig.SetupGrokWeb()
 			case string(catwalk.InferenceProviderWindsurf):
 				providerConfig.SetupWindsurf()
 			case string(catwalk.InferenceProviderJetBrains):
@@ -943,6 +942,8 @@ func (s *ConfigStore) exchange(ctx context.Context, providerID, refreshToken str
 		return muse.RefreshToken(ctx, refreshToken)
 	case string(catwalk.InferenceProviderKimiCode):
 		return kimi.RefreshToken(ctx, refreshToken)
+	case string(catwalk.InferenceProviderGrokWeb):
+		return grok.RefreshToken(ctx, refreshToken)
 	case string(catwalk.InferenceProviderMiniMaxPlan):
 		return minimax.RefreshToken(ctx, minimax.Global, refreshToken)
 	case string(catwalk.InferenceProviderMiniMaxPlanCN):
@@ -995,8 +996,6 @@ func (s *ConfigStore) applyToken(providerConfig ProviderConfig, token *oauth.Tok
 		providerConfig.SetupAntigravity()
 	case string(catwalk.InferenceProviderClaude):
 		providerConfig.SetupClaude()
-	case string(catwalk.InferenceProviderGrokWeb):
-		providerConfig.SetupGrokWeb()
 	case string(catwalk.InferenceProviderWindsurf):
 		providerConfig.SetupWindsurf()
 	case string(catwalk.InferenceProviderJetBrains):

@@ -51,6 +51,7 @@ atlas logout antigravity
 		"antigravity",
 		"kimi",
 		"kimi-code",
+		"grok-web",
 		"minimax",
 		"minimax-plan",
 		"minimax-plan-cn",
@@ -104,12 +105,14 @@ atlas logout antigravity
 			return logoutChatGPT(c, ws.ID)
 		case "antigravity":
 			return logoutAntigravity(c, ws.ID)
+		case "grok", "grok-web", "supergrok":
+			return logoutAccount(c, ws.ID, "grok-web", "Grok (SuperGrok)")
 		case "kimi", "kimi-code", "kimi-plan", "kimi-membership":
 			return logoutKimi(c, ws.ID)
 		case "minimax", "minimax-plan", "minimax-global", "minimax-subscription":
-			return logoutMiniMax(c, ws.ID, "minimax-plan", "MiniMax Token Plan")
+			return logoutAccount(c, ws.ID, "minimax-plan", "MiniMax Token Plan")
 		case "minimax-plan-cn", "minimax-cn", "minimaxi":
-			return logoutMiniMax(c, ws.ID, "minimax-plan-cn", "MiniMax Token Plan (China)")
+			return logoutAccount(c, ws.ID, "minimax-plan-cn", "MiniMax Token Plan (China)")
 		default:
 			return fmt.Errorf("unknown platform: %s", provider)
 		}
@@ -172,7 +175,7 @@ func logoutKimi(c *client.Client, wsID string) error {
 	return nil
 }
 
-func logoutMiniMax(c *client.Client, wsID, providerID, label string) error {
+func logoutAccount(c *client.Client, wsID, providerID, label string) error {
 	ctx := getLogoutContext()
 
 	if err := cmp.Or(
@@ -221,6 +224,7 @@ func pickLoggedInProvider(c *client.Client, wsID string) (string, error) {
 		"chatgpt":         "ChatGPT",
 		"antigravity":     "Antigravity",
 		"kimi-code":       "Kimi Code",
+		"grok-web":        "Grok (SuperGrok)",
 		"minimax-plan":    "MiniMax Token Plan",
 		"minimax-plan-cn": "MiniMax Token Plan (China)",
 	}

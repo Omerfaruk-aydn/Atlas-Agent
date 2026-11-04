@@ -22,9 +22,15 @@ import (
 
 // Guest paths used inside the sandbox.
 const (
-	GuestBinDir      = `C:\AtlasBin`
-	GuestExchangeDir = `C:\AtlasExchange`
-	guestPort        = 7443
+	GuestBinDir        = `C:\AtlasBin`
+	GuestExchangeDir   = `C:\AtlasExchange`
+	GuestChromeDir     = `C:\Chromium`
+	GuestChromeExe     = `C:\Chromium\chrome.exe`
+	GuestChromeProfile = `C:\ChromeProfile`
+	// GuestLaunchCmd starts the control agent and a visible browser once
+	// the desktop exists. Logon itself is too early for a window.
+	GuestLaunchCmd = GuestBinDir + `\launch.cmd`
+	guestPort      = 7443
 	// SandboxNodeName is the node name an Atlas sandbox registers under.
 	SandboxNodeName = "sandbox"
 )
@@ -81,6 +87,12 @@ type StartOptions struct {
 	// Clipboard shares the host clipboard; off by default so the guest
 	// cannot read what the user copies.
 	Clipboard bool
+	// ChromeDir is a host directory that contains chrome.exe. It is mapped
+	// read-only and started beside the control agent.
+	ChromeDir string
+	// ChromeProfile is a host directory the guest browser keeps its
+	// sign-in state in. The sandbox itself is discarded on close.
+	ChromeProfile string
 }
 
 // Status is a lease plus its persisted lifecycle state and liveness.
@@ -114,15 +126,27 @@ func WSB(binDir, exchangeDir string, opts StartOptions) (string, error) {
 	if opts.Clipboard {
 		clip = "Enable"
 	}
+	folders := []mapped{
+		{HostFolder: binDir, SandboxFolder: GuestBinDir, ReadOnly: "true"},
+		{HostFolder: exchangeDir, SandboxFolder: GuestExchangeDir, ReadOnly: "false"},
+	}
+	logon := GuestBinDir + `\atlas.exe node serve --isolated-exchange ` + GuestExchangeDir
+	if opts.ChromeDir != "" && opts.ChromeProfile != "" {
+		folders = append(folders,
+			mapped{HostFolder: opts.ChromeDir, SandboxFolder: GuestChromeDir, ReadOnly: "true"},
+			mapped{HostFolder: opts.ChromeProfile, SandboxFolder: GuestChromeProfile, ReadOnly: "false"},
+		)
+		logon = `cmd.exe /c ` + GuestLaunchCmd
+	}
 	c := config{
 		VGpu: "Default", Networking: "Enable",
-		MappedFolders: []mapped{
-			{HostFolder: binDir, SandboxFolder: GuestBinDir, ReadOnly: "true"},
-			{HostFolder: exchangeDir, SandboxFolder: GuestExchangeDir, ReadOnly: "false"},
-		},
-		LogonCommand: GuestBinDir + `\atlas.exe node serve --isolated-exchange ` + GuestExchangeDir,
-		AudioInput:   "Disable", VideoInput: "Disable", PrinterRedirection: "Disable", ClipboardRedirection: clip,
-		MemoryInMB: opts.MemoryMB,
+		MappedFolders:        folders,
+		LogonCommand:         logon,
+		AudioInput:           "Disable",
+		VideoInput:           "Disable",
+		PrinterRedirection:   "Disable",
+		ClipboardRedirection: clip,
+		MemoryInMB:           opts.MemoryMB,
 	}
 	data, err := xml.MarshalIndent(c, "", "  ")
 	return string(data), err
@@ -182,6 +206,11 @@ func (m *Manager) Start(ctx context.Context, opts StartOptions) (Status, error) 
 	binDir := filepath.Join(dir, "bin")
 	if err := copyFile(m.exe, filepath.Join(binDir, "atlas.exe")); err != nil {
 		return fail(fmt.Errorf("copy Atlas into the guest share: %w", err))
+	}
+	if opts.ChromeDir != "" && opts.ChromeProfile != "" {
+		if err := os.WriteFile(filepath.Join(binDir, "launch.cmd"), []byte(browserLaunchScript()), 0o600); err != nil {
+			return fail(fmt.Errorf("write the guest browser launcher: %w", err))
+		}
 	}
 	token := nodes.NewToken()
 	if err := taskstate.WriteJSONAtomic(filepath.Join(l.Exchange, "provision.json"), provision{Token: token, Name: "atlas-sandbox", Port: guestPort, LeaseID: id}); err != nil {

@@ -49,6 +49,9 @@ require (
 	github.com/ncruces/go-sqlite3 v0.35.3
 	github.com/nxadm/tail v1.4.11
 	github.com/openai/openai-go/v3 v3.50.0
+	github.com/pion/ice/v4 v4.4.8
+	github.com/pion/interceptor v0.1.51
+	github.com/pion/webrtc/v4 v4.2.26
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/pressly/goose/v3 v3.27.3
 	github.com/qjebbs/go-jsons v1.0.0-alpha.6
@@ -57,7 +60,7 @@ require (
 	github.com/sourcegraph/jsonrpc2 v0.2.2
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
-	github.com/stretchr/testify v1.12.0
+	github.com/stretchr/testify v1.12.1
 	github.com/swaggo/http-swagger/v2 v2.0.2
 	github.com/swaggo/swag v1.16.6
 	github.com/tidwall/gjson v1.19.0
@@ -159,6 +162,19 @@ require (
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/pierrec/lz4/v4 v4.1.27 // indirect
+	github.com/pion/datachannel v1.6.3 // indirect
+	github.com/pion/dtls/v3 v3.1.15 // indirect
+	github.com/pion/logging v0.2.4 // indirect
+	github.com/pion/mdns/v2 v2.2.2 // indirect
+	github.com/pion/randutil v0.1.0 // indirect
+	github.com/pion/rtcp v1.2.20 // indirect
+	github.com/pion/rtp v1.10.6 // indirect
+	github.com/pion/sctp v1.12.0 // indirect
+	github.com/pion/sdp/v3 v3.0.20 // indirect
+	github.com/pion/srtp/v3 v3.1.3 // indirect
+	github.com/pion/stun/v4 v4.0.1 // indirect
+	github.com/pion/transport/v5 v5.1.4 // indirect
+	github.com/pion/turn/v5 v5.1.3 // indirect
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
@@ -173,6 +189,7 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/u-root/u-root v0.14.1-0.20250807200646-5e7721023dc7 // indirect
 	github.com/u-root/uio v0.0.0-20240224005618-d2acac8f3701 // indirect
+	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.70.0 // indirect
@@ -181,6 +198,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.45.0 // indirect
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.design/x/x11 v0.2.0 // indirect
 	golang.org/x/exp/shiny v0.0.0-20250606033433-dcc06ee1d476 // indirect
 	golang.org/x/mobile v0.0.0-20250606033058-a2a15c67f36f // indirect

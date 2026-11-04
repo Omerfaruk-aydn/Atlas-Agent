@@ -16,6 +16,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/dots"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
@@ -189,12 +190,16 @@ func newComputerToolWithState(state *computerToolState, description string) fant
 				return fantasy.NewTextErrorResponse("Cannot load interaction state: " + err.Error()), nil
 			}
 
-			// Every computer action runs Safe. Enabling /computer-use is
-			// the consent gate — flipping it on means the user accepts
-			// unattended screen control — so Manual and AutoAcceptEdits
-			// grant immediately instead of prompting per click. Plan
-			// mode still denies the tool outright: its category is
-			// Execute, and Safe never overrides plan mode.
+			// On the owner's own desktop, enabling /computer-use is the
+			// consent gate, so each action is marked safe and Manual
+			// mode does not ask again. A dot's private screen is
+			// different: while full access is off, a click or keypress
+			// still has to be approved. Plan mode still denies the
+			// tool outright because its category is Execute.
+			safe := true
+			if dots.IsWorkspace(state.workingDir) && desktopMutation(action) {
+				safe = false
+			}
 			p, err := state.permissions.Request(
 				ctx,
 				permission.CreatePermissionRequest{
@@ -205,7 +210,7 @@ func newComputerToolWithState(state *computerToolState, description string) fant
 					Action:      action,
 					Description: computerActionDescription(action, params),
 					Params:      ComputerPermissionsParams(params),
-					Safe:        true,
+					Safe:        safe,
 				},
 			)
 			// A refused or interrupted permission request returns before
@@ -492,6 +497,11 @@ func computerActionDescription(action string, params ComputerParams) string {
 func (s *computerToolState) runComputerAction(ctx context.Context, action string, params ComputerParams) (fantasy.ToolResponse, error) {
 	if err := ctx.Err(); err != nil {
 		return fantasy.ToolResponse{}, err
+	}
+	if dots.IsWorkspace(s.workingDir) && desktopMutation(action) {
+		if err := dots.ErrIfHeld(s.workingDir); err != nil {
+			return fantasy.NewTextErrorResponse(err.Error()), nil
+		}
 	}
 	backend := s.backend
 	if action == "health" {

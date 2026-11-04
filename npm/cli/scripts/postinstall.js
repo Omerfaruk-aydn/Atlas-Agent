@@ -14,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { URL } = require('url');
+const { execFileSync } = require('child_process');
 const { setupWindowsSpeech } = require('./speech-setup');
 
 const PLATFORM_MAP = { win32: 'windows', darwin: 'darwin', linux: 'linux' };
@@ -37,9 +38,10 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function download(url, redirectsLeft, attempt) {
+function download(url, redirectsLeft, attempt, target) {
   if (redirectsLeft == null) redirectsLeft = 5;
   if (attempt == null) attempt = 1;
+  if (target == null) target = dest;
   return new Promise((resolve, reject) => {
     const req = https.get(url, { headers: { 'User-Agent': 'atlas-agent-installer' } }, (res) => {
       if ([301, 302, 303, 307, 308].includes(res.statusCode)) {
@@ -47,7 +49,7 @@ function download(url, redirectsLeft, attempt) {
         const next = res.headers.location;
         if (!next) return reject(new Error('Redirect with no Location header'));
         res.resume();
-        return resolve(download(new URL(next, url).toString(), redirectsLeft - 1, attempt));
+        return resolve(download(new URL(next, url).toString(), redirectsLeft - 1, attempt, target));
       }
       if (res.statusCode === 404) {
         res.resume();
@@ -65,19 +67,19 @@ function download(url, redirectsLeft, attempt) {
           `atlas-agent installer: HTTP ${res.statusCode} from ${url} ` +
             `(attempt ${attempt}/${MAX_ATTEMPTS}), retrying in ${delay}ms`
         );
-        return sleep(delay).then(() => resolve(download(url, redirectsLeft, attempt + 1)));
+        return sleep(delay).then(() => resolve(download(url, redirectsLeft, attempt + 1, target)));
       }
       if (res.statusCode !== 200) {
         res.resume();
         return reject(new Error('HTTP ' + res.statusCode + ' for ' + url));
       }
-      const tmp = dest + '.part';
+      const tmp = target + '.part';
       const out = fs.createWriteStream(tmp);
       res.pipe(out);
       out.on('finish', () =>
         out.close(() => {
           try {
-            fs.renameSync(tmp, dest);
+            fs.renameSync(tmp, target);
             resolve();
           } catch (e) {
             reject(e);
@@ -93,7 +95,7 @@ function download(url, redirectsLeft, attempt) {
             `atlas-agent installer: ${err.message} (attempt ${attempt}/${MAX_ATTEMPTS}), ` +
               `retrying in ${delay}ms`
           );
-          sleep(delay).then(() => resolve(download(url, redirectsLeft, attempt + 1)));
+          sleep(delay).then(() => resolve(download(url, redirectsLeft, attempt + 1, target)));
         } else {
           reject(err);
         }
@@ -106,7 +108,7 @@ function download(url, redirectsLeft, attempt) {
           `atlas-agent installer: ${err.message} (attempt ${attempt}/${MAX_ATTEMPTS}), ` +
             `retrying in ${delay}ms`
         );
-        sleep(delay).then(() => resolve(download(url, redirectsLeft, attempt + 1)));
+        sleep(delay).then(() => resolve(download(url, redirectsLeft, attempt + 1, target)));
       } else {
         reject(err);
       }
@@ -115,6 +117,29 @@ function download(url, redirectsLeft, attempt) {
       req.destroy(new Error('Download timeout (60s)'));
     });
   });
+}
+
+// The desktop app rides along on Windows: `atlas-agent app` looks for it in an
+// app folder next to the binary. It is optional, so a failure here only warns.
+async function installDesktopApp() {
+  if (process.platform !== 'win32' || arch !== 'x64' || process.env.ATLAS_AGENT_SKIP_APP === '1') return;
+  const archive = path.join(binDir, 'atlas-app-windows-x64.zip');
+  const appDir = path.join(binDir, 'app');
+  const url = `https://github.com/${REPO}/releases/download/${TAG}/atlas-app-windows-x64.zip`;
+  try {
+    console.log('Atlas Agent postinstall: downloading the desktop app');
+    await download(url, 5, 1, archive);
+    fs.rmSync(appDir, { recursive: true, force: true });
+    fs.mkdirSync(appDir, { recursive: true });
+    // Windows' own tar reads zip files; one from Git or MSYS would not.
+    const tar = path.join(process.env.SystemRoot || 'C:/Windows', 'System32', 'tar.exe');
+    execFileSync(tar, ['-xf', archive, '-C', appDir], { stdio: 'ignore' });
+    console.log('Atlas Agent postinstall: desktop app installed; open it with: atlas-agent app');
+  } catch (err) {
+    console.warn('Atlas Agent postinstall: the desktop app was not installed: ' + err.message);
+  } finally {
+    fs.rmSync(archive, { force: true });
+  }
 }
 
 (async () => {
@@ -137,4 +162,5 @@ function download(url, redirectsLeft, attempt) {
   const size = (fs.statSync(dest).size / 1024 / 1024).toFixed(1);
   console.log(`Atlas Agent postinstall: installed ${assetName} (${size} MB)`);
   setupWindowsSpeech(dest);
+  await installDesktopApp();
 })();

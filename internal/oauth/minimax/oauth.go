@@ -2,12 +2,16 @@
 // MiniMax CLI (mmx) uses, so Atlas-Agent can run MiniMax models against a
 // MiniMax Token Plan (coding plan) subscription instead of an API key.
 //
-// The flow is RFC 8628 with PKCE:
+// The flow is shaped like RFC 8628 with PKCE, but MiniMax's server differs
+// from the RFC, so this follows what it really sends:
 //
-//  1. Request a device code from the MiniMax account server (scope
+//  1. Request a user code from the MiniMax account server (scope
 //     "openid profile coding_plan") and have the user confirm it in a
-//     browser.
-//  2. Poll the token endpoint until the user approves.
+//     browser. There is no device_code: the user_code identifies the
+//     request, the response echoes a state, interval is in milliseconds and
+//     expired_in is an absolute Unix time in milliseconds.
+//  2. Poll the token endpoint with the user_code until the body's status
+//     turns from "pending" to "success". Pending is a 200, not an OAuth error.
 //
 // There is no key-minting step: the OAuth access token itself is the
 // credential for the Anthropic-compatible endpoint at
@@ -75,9 +79,12 @@ var (
 	errSlowDown = errors.New("slow down")
 )
 
-// minPollIntervalSecs floors the server-provided poll interval so a
-// missing interval does not turn into a hot loop. Tests lower it.
-var minPollIntervalSecs = 1
+// minPollInterval floors the server-provided poll interval so a missing
+// interval does not turn into a hot loop. Tests lower it.
+var minPollInterval = time.Second
+
+// defaultExpiry is how long a sign-in waits when the server names no deadline.
+const defaultExpiry = 15 * time.Minute
 
 // retryBackoff is the base delay between refresh retries on 429/5xx.
 // Tests lower it.
@@ -111,22 +118,19 @@ func AuthHost(r Region) string {
 // DeviceCode is the pending authorization the user must confirm in a
 // browser. It also carries the PKCE verifier for the polling step.
 type DeviceCode struct {
-	DeviceCode              string `json:"device_code"`
-	UserCode                string `json:"user_code"`
-	VerificationURI         string `json:"verification_uri"`
-	VerificationURIComplete string `json:"verification_uri_complete"`
-	ExpiresIn               int    `json:"expires_in"`
-	Interval                int    `json:"interval"`
+	UserCode        string `json:"user_code"`
+	VerificationURI string `json:"verification_uri"`
+	// ExpiredIn is the deadline as Unix milliseconds, despite its name.
+	ExpiredIn int64 `json:"expired_in"`
+	// Interval is the poll interval in milliseconds.
+	Interval int    `json:"interval"`
+	State    string `json:"state"`
 
 	verifier string
 }
 
-// VerificationURL returns the complete verification URL when the server
-// provides one, falling back to the bare verification URI.
+// VerificationURL returns the page the user confirms the code on.
 func (d *DeviceCode) VerificationURL() string {
-	if d.VerificationURIComplete != "" {
-		return d.VerificationURIComplete
-	}
 	return d.VerificationURI
 }
 
@@ -146,17 +150,30 @@ func challengeFor(verifier string) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
+func newState() (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
 // RequestDeviceCode starts the device-code flow.
 func RequestDeviceCode(ctx context.Context, region Region) (*DeviceCode, error) {
 	verifier, challenge, err := newPKCE()
 	if err != nil {
 		return nil, fmt.Errorf("generate pkce verifier: %w", err)
 	}
+	state, err := newState()
+	if err != nil {
+		return nil, fmt.Errorf("generate state: %w", err)
+	}
 	form := url.Values{}
 	form.Set("client_id", clientID)
 	form.Set("scope", scope)
 	form.Set("code_challenge", challenge)
 	form.Set("code_challenge_method", "S256")
+	form.Set("state", state)
 
 	body, status, err := postForm(ctx, AuthHost(region)+deviceAuthPath, form)
 	if err != nil {
@@ -172,11 +189,14 @@ func RequestDeviceCode(ctx context.Context, region Region) (*DeviceCode, error) 
 	if err := json.Unmarshal(body, &dc); err != nil {
 		return nil, fmt.Errorf("decode minimax device code response: %w", err)
 	}
-	if dc.DeviceCode == "" || dc.UserCode == "" {
-		return nil, errors.New("minimax device code response missing device_code or user_code")
+	if dc.UserCode == "" {
+		return nil, errors.New("minimax device code response missing user_code")
 	}
 	if dc.VerificationURL() == "" {
 		return nil, errors.New("minimax device code response missing verification_uri")
+	}
+	if dc.State != state {
+		return nil, errors.New("minimax device code response has the wrong state")
 	}
 	dc.verifier = verifier
 	return &dc, nil
@@ -185,13 +205,11 @@ func RequestDeviceCode(ctx context.Context, region Region) (*DeviceCode, error) 
 // PollForToken polls the token endpoint until the user approves the
 // device code.
 func PollForToken(ctx context.Context, region Region, dc *DeviceCode) (*oauth.Token, error) {
-	interval := max(dc.Interval, minPollIntervalSecs, 0)
-	expiresIn := dc.ExpiresIn
-	if expiresIn <= 0 {
-		expiresIn = 900
+	wait := max(time.Duration(dc.Interval)*time.Millisecond, minPollInterval)
+	deadline := time.Now().Add(defaultExpiry)
+	if dc.ExpiredIn > 0 {
+		deadline = time.UnixMilli(dc.ExpiredIn)
 	}
-	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
-	wait := time.Duration(interval) * time.Second
 
 	for {
 		token, err := tryPollToken(ctx, region, dc)
@@ -199,8 +217,7 @@ func PollForToken(ctx context.Context, region Region, dc *DeviceCode) (*oauth.To
 		case err == nil:
 			return token, nil
 		case errors.Is(err, errSlowDown):
-			interval += 5
-			wait = time.Duration(interval) * time.Second
+			wait += 5 * time.Second
 		case errors.Is(err, errPending):
 		default:
 			return nil, err
@@ -218,19 +235,20 @@ func PollForToken(ctx context.Context, region Region, dc *DeviceCode) (*oauth.To
 }
 
 type tokenResponse struct {
+	// Status is "pending" or "success"; anything else ends the sign-in.
+	Status       string `json:"status"`
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int    `json:"expires_in"`
-	Scope        string `json:"scope"`
-	TokenType    string `json:"token_type"`
-	Error        string `json:"error"`
-	ErrorDesc    string `json:"error_description"`
+	// ExpiredIn is the expiry as Unix milliseconds, despite its name.
+	ExpiredIn int64  `json:"expired_in"`
+	Error     string `json:"error"`
+	ErrorDesc string `json:"error_description"`
 }
 
 func tryPollToken(ctx context.Context, region Region, dc *DeviceCode) (*oauth.Token, error) {
 	form := url.Values{}
 	form.Set("grant_type", deviceGrantType)
-	form.Set("device_code", dc.DeviceCode)
+	form.Set("user_code", dc.UserCode)
 	form.Set("client_id", clientID)
 	form.Set("code_verifier", dc.verifier)
 
@@ -242,8 +260,8 @@ func tryPollToken(ctx context.Context, region Region, dc *DeviceCode) (*oauth.To
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("decode minimax token response (status %d): %w", status, err)
 	}
-	// Pending and slow-down arrive as an error payload on a non-2xx
-	// status, so the error field is checked before the status.
+	// An OAuth error payload may come on a non-2xx status, so the error
+	// field is checked before the HTTP status.
 	switch result.Error {
 	case "":
 	case "authorization_pending":
@@ -260,8 +278,13 @@ func tryPollToken(ctx context.Context, region Region, dc *DeviceCode) (*oauth.To
 	if status != http.StatusOK {
 		return nil, fmt.Errorf("minimax token request failed: status %d - %s", status, string(body))
 	}
-	if result.AccessToken == "" {
+	switch {
+	case result.Status == "pending":
 		return nil, errPending
+	case result.Status != "success":
+		return nil, fmt.Errorf("minimax authorization failed: status %q", result.Status)
+	case result.AccessToken == "":
+		return nil, errors.New("minimax token response missing access_token")
 	}
 	return tokenFrom(result, ""), nil
 }
@@ -321,13 +344,12 @@ func RefreshToken(ctx context.Context, region Region, refreshToken string) (*oau
 // tokenFrom packages a token response; fallbackRefresh is kept when the
 // server does not rotate the refresh token.
 func tokenFrom(r tokenResponse, fallbackRefresh string) *oauth.Token {
-	tok := &oauth.Token{
-		AccessToken:  r.AccessToken,
-		RefreshToken: r.RefreshToken,
-		ExpiresIn:    r.ExpiresIn,
-	}
+	tok := &oauth.Token{AccessToken: r.AccessToken, RefreshToken: r.RefreshToken}
 	if tok.RefreshToken == "" {
 		tok.RefreshToken = fallbackRefresh
+	}
+	if r.ExpiredIn > 0 {
+		tok.ExpiresIn = max(0, int(time.Until(time.UnixMilli(r.ExpiredIn)).Seconds()))
 	}
 	tok.SetExpiresAt()
 	return tok

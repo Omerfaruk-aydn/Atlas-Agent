@@ -115,6 +115,7 @@ func NewHandler(
 	onTokenRefresh func(*oauth.Token),
 	interactive bool,
 	callbackPort int,
+	requestedScopes ...[]string,
 ) (*Handler, error) {
 	receiver := &callbackReceiver{
 		serverName: serverName,
@@ -186,7 +187,7 @@ func NewHandler(
 		// validation. Also rewrite internal-cluster redirects back to the
 		// external hostname so the flow works outside the cluster.
 		// Based on Bruno Krugel's fix from PR #3396.
-		Client: newOAuthMetadataClient(http.DefaultTransport, serverURL),
+		Client: newOAuthMetadataClient(http.DefaultTransport, serverURL, requestedScopes...),
 		DynamicClientRegistrationConfig: &auth.DynamicClientRegistrationConfig{
 			Metadata: &oauthex.ClientRegistrationMetadata{
 				ClientName:   "Atlas-Agent",
@@ -665,17 +666,17 @@ func (r *callbackReceiver) close() {
 	}
 }
 
-// metadataFixupRoundTripper normalizes trailing-slash issuers in OAuth
-// metadata responses. Some servers return an issuer with a trailing slash
-// that doesn't match the URL the metadata was fetched from, causing the
-// SDK's strict RFC 8414 validation to reject it. Based on Bruno Krugel's
-// fix from PR #3396.
+// metadataFixupRoundTripper normalizes trailing-slash issuers and optionally
+// restricts protected-resource scopes to a configured subset. The SDK derives
+// its authorization request from scopes_supported, so filtering that metadata
+// prevents a pre-registered client from requesting scopes it cannot use.
 type metadataFixupRoundTripper struct {
-	base http.RoundTripper
+	base            http.RoundTripper
+	requestedScopes []string
 }
 
-func newMetadataFixupRoundTripper(base http.RoundTripper) *metadataFixupRoundTripper {
-	return &metadataFixupRoundTripper{base: base}
+func newMetadataFixupRoundTripper(base http.RoundTripper, requestedScopes []string) *metadataFixupRoundTripper {
+	return &metadataFixupRoundTripper{base: base, requestedScopes: requestedScopes}
 }
 
 func (rt *metadataFixupRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -699,20 +700,42 @@ func (rt *metadataFixupRoundTripper) RoundTrip(req *http.Request) (*http.Respons
 		return resp, nil
 	}
 
-	issuer, ok := raw["issuer"].(string)
-	if !ok || !strings.HasSuffix(issuer, "/") {
+	changed := false
+	if len(rt.requestedScopes) > 0 && strings.Contains(req.URL.Path, "/.well-known/oauth-protected-resource") {
+		if advertised, ok := raw["scopes_supported"].([]any); ok {
+			allowed := make(map[string]struct{}, len(rt.requestedScopes))
+			for _, scope := range rt.requestedScopes {
+				allowed[scope] = struct{}{}
+			}
+			filtered := make([]any, 0, len(rt.requestedScopes))
+			for _, value := range advertised {
+				if scope, ok := value.(string); ok {
+					if _, ok := allowed[scope]; ok {
+						filtered = append(filtered, scope)
+					}
+				}
+			}
+			raw["scopes_supported"] = filtered
+			changed = true
+		}
+	}
+
+	if issuer, ok := raw["issuer"].(string); ok && strings.HasSuffix(issuer, "/") {
+		raw["issuer"] = strings.TrimSuffix(issuer, "/")
+		changed = true
+		slog.Debug("Normalized OAuth metadata issuer trailing slash", "url", req.URL.String())
+	}
+	if !changed {
 		resp.Body = io.NopCloser(bytes.NewReader(body))
 		return resp, nil
 	}
 
-	raw["issuer"] = strings.TrimSuffix(issuer, "/")
 	fixed, err := json.Marshal(raw)
 	if err != nil {
 		resp.Body = io.NopCloser(bytes.NewReader(body))
 		return resp, nil
 	}
 
-	slog.Debug("Normalized OAuth metadata issuer trailing slash", "url", req.URL.String())
 	resp.Body = io.NopCloser(bytes.NewReader(fixed))
 	resp.ContentLength = int64(len(fixed))
 	resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(fixed)))
@@ -720,12 +743,14 @@ func (rt *metadataFixupRoundTripper) RoundTrip(req *http.Request) (*http.Respons
 }
 
 // newOAuthMetadataClient creates an HTTP client for the OAuth flow that
-// smooths over two nonstandard behaviors seen behind corporate proxies:
+// smooths over nonstandard metadata behavior and applies scope restrictions:
 //
 //  1. Trailing-slash issuers in metadata responses, normalized by
 //     metadataFixupRoundTripper so they pass the SDK's strict RFC 8414
 //     validation.
-//  2. Metadata discovery requests that get 3xx-redirected to an
+//  2. Optional scope filtering applies only to protected-resource metadata;
+//     authorization-server metadata remains untouched.
+//  3. Metadata discovery requests that get 3xx-redirected to an
 //     unreachable internal host (e.g. a cluster address behind a proxy).
 //     Well-known discovery is never supposed to hop hosts via redirects
 //     (the authorization server location comes from the metadata body,
@@ -733,14 +758,18 @@ func (rt *metadataFixupRoundTripper) RoundTrip(req *http.Request) (*http.Respons
 //     redirect back to the original MCP host. Token, registration, and
 //     authorize requests are left untouched, so a separately hosted
 //     identity provider keeps working.
-func newOAuthMetadataClient(base http.RoundTripper, serverURL string) *http.Client {
+func newOAuthMetadataClient(base http.RoundTripper, serverURL string, requestedScopes ...[]string) *http.Client {
+	var scopes []string
+	if len(requestedScopes) > 0 {
+		scopes = requestedScopes[0]
+	}
 	var originalHost, originalScheme string
 	if u, err := url.Parse(serverURL); err == nil {
 		originalHost = u.Host
 		originalScheme = u.Scheme
 	}
 	return &http.Client{
-		Transport: newMetadataFixupRoundTripper(base),
+		Transport: newMetadataFixupRoundTripper(base, scopes),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			// Supplying CheckRedirect replaces net/http's default, so
 			// re-enforce its 10-redirect cap here.

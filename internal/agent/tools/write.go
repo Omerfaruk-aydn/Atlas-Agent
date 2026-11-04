@@ -159,8 +159,9 @@ func NewWriteTool(
 				}
 				_, err = files.Create(ctx, sessionID, filePath, oldContent, baselineMessageID)
 				if err != nil {
-					// Log error but don't fail the operation
-					return fantasy.ToolResponse{}, fmt.Errorf("error creating file history: %w", err)
+					// The file is already written; a history failure must
+					// not report the write as failed.
+					slog.Error("Error creating file history", "error", err)
 				}
 			} else if file.Content != oldContent {
 				// User manually changed the content outside of chat; store an

@@ -94,6 +94,8 @@ atlas login -f copilot
 		"antigravity",
 		"claude",
 		"grok",
+		"grok-web",
+		"supergrok",
 		"windsurf",
 		"jetbrains",
 		"augment",
@@ -479,10 +481,8 @@ func loginClaude(ws workspace.Workspace, force bool) error {
 	return nil
 }
 
-// loginGrokWeb signs in to an xAI SuperGrok subscription via the
-// grok.com console OAuth flow (internal/oauth/grok). Same caveat as
-// loginClaude: the OAuth client id and the model call envelope
-// are TODOs.
+// loginGrokWeb signs in to a SuperGrok or X Premium subscription with xAI's
+// device-code flow (internal/oauth/grok).
 func loginGrokWeb(ws workspace.Workspace, force bool) error {
 	loginCtx := getLoginContext()
 
@@ -497,31 +497,30 @@ func loginGrokWeb(ws workspace.Workspace, force bool) error {
 		}
 	}
 
-	fmt.Println("Note: the Grok (SuperGrok) OAuth client and the model call envelope are not yet wired up.")
-	fmt.Println("Until the real grok.com OAuth credentials are filled in, this login will fail at the authorize step.")
-	fmt.Println("See internal/oauth/grok/oauth.go for the TODOs.")
-	fmt.Println()
-
-	session, err := grok.Start(loginCtx)
+	fmt.Println("Requesting device code from xAI...")
+	dc, err := grok.RequestDeviceCode(loginCtx)
 	if err != nil {
-		return fmt.Errorf("failed to start Grok sign-in: %w", err)
+		return err
 	}
 
-	fmt.Println("Press enter to open your browser and sign in with your xAI account:")
+	clipboard.WriteText(dc.UserCode)
 	fmt.Println()
-	lipgloss.Println(lipgloss.NewStyle().Hyperlink(session.AuthURL(), "id=grok").Render(session.AuthURL()))
+	fmt.Println("Check that the page shows this code (it should be on clipboard already):")
+	fmt.Println()
+	lipgloss.Println(lipgloss.NewStyle().Bold(true).Render(dc.UserCode))
+	fmt.Println()
+	fmt.Println("Press enter to open this URL and sign in with your xAI account:")
+	fmt.Println()
+	verifyURL := dc.VerificationURL()
+	lipgloss.Println(lipgloss.NewStyle().Hyperlink(verifyURL, "id=grok").Render(verifyURL))
 	fmt.Println()
 	waitEnter()
-	if err := browser.OpenURL(session.AuthURL()); err != nil {
+	if err := browser.OpenURL(verifyURL); err != nil {
 		fmt.Println("Could not open the URL. You'll need to manually open the URL in your browser.")
 	}
 
 	fmt.Println("Waiting for authorization...")
-	waitCtx, waitCancel := context.WithTimeout(loginCtx, 5*time.Minute)
-	defer waitCancel()
-	token, err := session.WaitWithProgress(waitCtx, func(msg string) {
-		fmt.Println(msg)
-	})
+	token, err := grok.PollForToken(loginCtx, dc)
 	if err != nil {
 		return err
 	}
@@ -532,7 +531,6 @@ func loginGrokWeb(ws workspace.Workspace, force bool) error {
 
 	fmt.Println()
 	fmt.Println("You're now authenticated with Grok (SuperGrok)!")
-	fmt.Println("(Reminder: the model call layer is still a stub; see the docs in internal/oauth/grok.)")
 	return nil
 }
 

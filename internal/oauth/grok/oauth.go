@@ -1,276 +1,215 @@
-// Package grok implements the OAuth2 + PKCE login flow grok.com's web
-// console uses to authorize a local tool, so Atlas-Agent can use a
-// xAI SuperGrok/SuperGrok Heavy subscription's flat-rate quota
-// instead of a separate pay-per-token XAI_API_KEY.
+// Package grok signs in to a SuperGrok or X Premium subscription with xAI's
+// device-code flow, so Atlas-Agent can spend that subscription instead of a
+// pay-per-token XAI_API_KEY.
 //
-// This is a SCAFFOLD, not a finished integration. xAI does not publish
-// a public OAuth flow for grok.com subscriptions the way Google does
-// for Antigravity. The client id, authorize/token endpoints, and the
-// request envelope the grok.com backend expects are not part of any
-// official documentation and have to be observed against the real
-// client. The shape of this package is the same PKCE flow Antigravity
-// ships so swapping in real values is a small change once they are
-// known.
-//
-// Risk note: xAI's terms of service restrict the service to
-// first-party clients. Using this login is at the user's own risk to
-// their xAI account standing, not Atlas-Agent's.
-//
-// To finish wiring this up:
-//  1. Capture the OAuth client id from a logged-in grok.com session
-//     (browser DevTools network tab on a fresh sign-in).
-//  2. Replace authorizeURL / tokenURL with the real endpoints.
-//  3. Implement the account-id discovery in Wait (similar to
-//     Antigravity's discoverProject).
-//  4. Implement the model call layer in
-//     internal/deps/atlas-llm/providers/grokweb.
+// xAI offers this sign-in to third-party tools through one shared public
+// client, so its consent page may say "Grok Build". The access token is a
+// plain bearer credential for api.x.ai. xAI decides which accounts get API
+// access; an account it refuses answers model calls with HTTP 403.
 package grok
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth"
-	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/oauth/callback"
 )
 
 const (
-	// clientID is a placeholder; replace with the real value captured
-	// from a logged-in grok.com session.
-	clientID     = "REPLACE_WITH_REAL_GROK_OAUTH_CLIENT_ID"
-	clientSecret = ""
-	authorizeURL = "https://grok.com/oauth/authorize"
-	tokenURL     = "https://grok.com/oauth/token"
-	redirectPort = 41538
-	redirectPath = "/oauth-callback"
-	scopes       = "openid profile email offline_access"
+	clientID = "b1a00492-073a-47ea-816f-4c329264a828"
+	scopes   = "openid profile email offline_access grok-cli:access api:access"
+	// referrer tells xAI which tool the sign-in is for.
+	referrer = "atlas-agent"
+
+	deviceGrant = "urn:ietf:params:oauth:grant-type:device_code"
+
+	defaultInterval = 5 * time.Second
+	defaultExpiry   = 30 * time.Minute
+	// slowDownStep is what RFC 8628 adds to the interval on "slow_down".
+	slowDownStep = 5 * time.Second
+	// maxResponseBytes bounds what is read from the auth server.
+	maxResponseBytes = 64 << 10
 )
 
-var redirectURL = fmt.Sprintf("http://localhost:%d%s", redirectPort, redirectPath)
+// issuer is a variable so tests can point the flow at a local server.
+var issuer = "https://auth.x.ai/oauth2"
 
-type AuthSession struct {
-	verifier string
-	state    string
-	url      string
-
-	server   *http.Server
-	resultCh chan authResult
+// DeviceCode is a sign-in waiting for the person to approve it.
+type DeviceCode struct {
+	DeviceCode              string `json:"device_code"`
+	UserCode                string `json:"user_code"`
+	VerificationURI         string `json:"verification_uri"`
+	VerificationURIComplete string `json:"verification_uri_complete"`
+	ExpiresIn               int    `json:"expires_in"`
+	Interval                int    `json:"interval"`
 }
 
-type authResult struct {
-	code string
-	err  error
-}
-
-func Start(ctx context.Context) (*AuthSession, error) {
-	verifier, err := randomURLSafe(32)
-	if err != nil {
-		return nil, fmt.Errorf("generate pkce verifier: %w", err)
+// VerificationURL is the page to open, with the code already filled in when
+// xAI offers that.
+func (d *DeviceCode) VerificationURL() string {
+	if d.VerificationURIComplete != "" {
+		return d.VerificationURIComplete
 	}
-	state, err := randomURLSafe(16)
-	if err != nil {
-		return nil, fmt.Errorf("generate oauth state: %w", err)
-	}
-
-	sum := sha256.Sum256([]byte(verifier))
-	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
-
-	lc := &net.ListenConfig{}
-	listener, err := lc.Listen(ctx, "tcp", fmt.Sprintf("localhost:%d", redirectPort))
-	if err != nil {
-		return nil, fmt.Errorf("bind localhost:%d for Grok sign-in (is another login already running?): %w", redirectPort, err)
-	}
-
-	sess := &AuthSession{
-		verifier: verifier,
-		state:    state,
-		resultCh: make(chan authResult, 1),
-	}
-
-	q := url.Values{}
-	q.Set("client_id", clientID)
-	q.Set("response_type", "code")
-	q.Set("redirect_uri", redirectURL)
-	q.Set("scope", scopes)
-	q.Set("code_challenge", challenge)
-	q.Set("code_challenge_method", "S256")
-	q.Set("state", state)
-	q.Set("access_type", "offline")
-	q.Set("prompt", "consent")
-	sess.url = authorizeURL + "?" + q.Encode()
-
-	mux := http.NewServeMux()
-	mux.HandleFunc(redirectPath, sess.handleCallback)
-	sess.server = &http.Server{Handler: mux}
-	go func() {
-		_ = sess.server.Serve(listener)
-	}()
-
-	return sess, nil
-}
-
-func (s *AuthSession) AuthURL() string { return s.url }
-
-func (s *AuthSession) handleCallback(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	result := callback.Result{
-		Subject:          "Grok",
-		ErrorCode:        q.Get("error"),
-		ErrorDescription: q.Get("error_description"),
-	}
-	if err := callback.Serve(w, result); err != nil {
-		s.send(authResult{err: fmt.Errorf("render callback page: %w", err)})
-		return
-	}
-
-	switch {
-	case result.Failed():
-		s.send(authResult{err: fmt.Errorf("authorization failed: %s: %s", result.ErrorCode, result.ErrorDescription)})
-	case q.Get("state") != s.state:
-		s.send(authResult{err: errors.New("oauth state mismatch")})
-	case q.Get("code") == "":
-		s.send(authResult{err: errors.New("no authorization code returned")})
-	default:
-		s.send(authResult{code: q.Get("code")})
-	}
-}
-
-func (s *AuthSession) send(r authResult) {
-	select {
-	case s.resultCh <- r:
-	default:
-	}
-}
-
-func (s *AuthSession) Wait(ctx context.Context) (*oauth.Token, error) {
-	return s.WaitWithProgress(ctx, nil)
-}
-
-func (s *AuthSession) WaitWithProgress(ctx context.Context, progress func(string)) (*oauth.Token, error) {
-	defer s.close()
-	report := func(msg string) {
-		if progress != nil {
-			progress(msg)
-		}
-	}
-
-	select {
-	case res := <-s.resultCh:
-		if res.err != nil {
-			return nil, res.err
-		}
-		report("Exchanging authorization code for tokens...")
-		tok, err := exchangeCode(ctx, res.code, s.verifier)
-		if err != nil {
-			return nil, err
-		}
-		// TODO(grok-oauth): discover the account id and set
-		// tok.AccountID / tok.PlanType here.
-		return tok, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-}
-
-func (s *AuthSession) Close() { s.close() }
-
-func (s *AuthSession) close() {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	_ = s.server.Shutdown(ctx)
-}
-
-func randomURLSafe(nBytes int) (string, error) {
-	buf := make([]byte, nBytes)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
+	return d.VerificationURI
 }
 
 type tokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int    `json:"expires_in"`
-	Error        string `json:"error"`
-	ErrorDesc    string `json:"error_description"`
+	AccessToken      string `json:"access_token"`
+	RefreshToken     string `json:"refresh_token"`
+	ExpiresIn        int    `json:"expires_in"`
+	Error            string `json:"error"`
+	ErrorDescription string `json:"error_description"`
 }
 
-func exchangeCode(ctx context.Context, code, verifier string) (*oauth.Token, error) {
-	form := url.Values{}
-	form.Set("grant_type", "authorization_code")
-	form.Set("code", code)
-	form.Set("redirect_uri", redirectURL)
-	form.Set("client_id", clientID)
-	if clientSecret != "" {
-		form.Set("client_secret", clientSecret)
-	}
-	form.Set("code_verifier", verifier)
-	return doTokenRequest(ctx, form)
-}
-
-func RefreshToken(ctx context.Context, refreshToken string) (*oauth.Token, error) {
-	form := url.Values{}
-	form.Set("grant_type", "refresh_token")
-	form.Set("refresh_token", refreshToken)
-	form.Set("client_id", clientID)
-	if clientSecret != "" {
-		form.Set("client_secret", clientSecret)
-	}
-	return doTokenRequest(ctx, form)
-}
-
-func doTokenRequest(ctx context.Context, form url.Values) (*oauth.Token, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
+// RequestDeviceCode starts a sign-in.
+func RequestDeviceCode(ctx context.Context) (*DeviceCode, error) {
+	body, status, err := postForm(ctx, issuer+"/device/code", url.Values{
+		"client_id": {clientID},
+		"scope":     {scopes},
+		"referrer":  {referrer},
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("request xAI device code: %w", err)
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("xAI refused the sign-in: %s", failure(body, status))
+	}
+	var dc DeviceCode
+	if err := json.Unmarshal(body, &dc); err != nil {
+		return nil, fmt.Errorf("read xAI device code: %w", err)
+	}
+	if dc.DeviceCode == "" || dc.UserCode == "" || dc.VerificationURI == "" {
+		return nil, errors.New("xAI device code response is incomplete")
+	}
+	return &dc, nil
+}
+
+// PollForToken waits until the person approves the sign-in, refuses it, or
+// the code expires.
+func PollForToken(ctx context.Context, dc *DeviceCode) (*oauth.Token, error) {
+	interval := time.Duration(dc.Interval) * time.Second
+	if interval <= 0 {
+		interval = defaultInterval
+	}
+	expiry := time.Duration(dc.ExpiresIn) * time.Second
+	if expiry <= 0 {
+		expiry = defaultExpiry
+	}
+	ctx, cancel := context.WithTimeout(ctx, expiry)
+	defer cancel()
+
+	for {
+		select {
+		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return nil, errors.New("the Grok sign-in code expired; start again")
+			}
+			return nil, ctx.Err()
+		case <-time.After(interval):
+		}
+
+		body, status, err := postForm(ctx, issuer+"/token", url.Values{
+			"grant_type":  {deviceGrant},
+			"device_code": {dc.DeviceCode},
+			"client_id":   {clientID},
+		})
+		if err != nil {
+			if ctx.Err() != nil {
+				continue
+			}
+			return nil, fmt.Errorf("poll xAI for the token: %w", err)
+		}
+		var r tokenResponse
+		if err := json.Unmarshal(body, &r); err != nil && status == http.StatusOK {
+			return nil, fmt.Errorf("read xAI token: %w", err)
+		}
+		switch r.Error {
+		case "":
+			if status != http.StatusOK || r.AccessToken == "" {
+				return nil, fmt.Errorf("xAI sent no token: %s", failure(body, status))
+			}
+			return tokenFrom(r, ""), nil
+		case "authorization_pending":
+		case "slow_down":
+			interval += slowDownStep
+		case "access_denied":
+			return nil, errors.New("the Grok sign-in was refused")
+		case "expired_token":
+			return nil, errors.New("the Grok sign-in code expired; start again")
+		default:
+			return nil, fmt.Errorf("xAI refused the sign-in: %s", failure(body, status))
+		}
+	}
+}
+
+// RefreshToken trades a refresh token for a new access token.
+func RefreshToken(ctx context.Context, refreshToken string) (*oauth.Token, error) {
+	body, status, err := postForm(ctx, issuer+"/token", url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {refreshToken},
+		"client_id":     {clientID},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("refresh the Grok token: %w", err)
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("refresh the Grok token: %s", failure(body, status))
+	}
+	var r tokenResponse
+	if err := json.Unmarshal(body, &r); err != nil {
+		return nil, fmt.Errorf("read the refreshed Grok token: %w", err)
+	}
+	if r.AccessToken == "" {
+		return nil, errors.New("xAI sent no token on refresh")
+	}
+	return tokenFrom(r, refreshToken), nil
+}
+
+// tokenFrom keeps the old refresh token when xAI does not rotate it.
+func tokenFrom(r tokenResponse, previousRefresh string) *oauth.Token {
+	token := &oauth.Token{AccessToken: r.AccessToken, RefreshToken: r.RefreshToken, ExpiresIn: r.ExpiresIn}
+	if token.RefreshToken == "" {
+		token.RefreshToken = previousRefresh
+	}
+	token.SetExpiresAt()
+	return token
+}
+
+// failure describes a refused request without repeating anything secret: the
+// server's error fields, or the status alone.
+func failure(body []byte, status int) string {
+	var r tokenResponse
+	if json.Unmarshal(body, &r) == nil && r.Error != "" {
+		if r.ErrorDescription != "" {
+			return r.Error + ": " + r.ErrorDescription
+		}
+		return r.Error
+	}
+	return fmt.Sprintf("HTTP %d", status)
+}
+
+func postForm(ctx context.Context, target string, form url.Values) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	rsp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
+	defer rsp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(rsp.Body, maxResponseBytes))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, &oauth.TokenExchangeError{StatusCode: resp.StatusCode, Body: string(body)}
-	}
-
-	var tr tokenResponse
-	if err := json.Unmarshal(body, &tr); err != nil {
-		return nil, fmt.Errorf("decode token response: %w", err)
-	}
-	if tr.Error != "" {
-		return nil, fmt.Errorf("token request failed: %s: %s", tr.Error, tr.ErrorDesc)
-	}
-	if tr.AccessToken == "" {
-		return nil, errors.New("token response missing access_token")
-	}
-
-	tok := &oauth.Token{
-		AccessToken:  tr.AccessToken,
-		RefreshToken: tr.RefreshToken,
-		ExpiresIn:    tr.ExpiresIn,
-	}
-	tok.SetExpiresAt()
-	return tok, nil
+	return body, rsp.StatusCode, nil
 }

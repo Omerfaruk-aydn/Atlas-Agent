@@ -16,6 +16,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/computer"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/dots"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
@@ -171,20 +172,27 @@ type browserSessions interface {
 }
 
 func NewBrowserTool(permissions permission.Service, workingDir string, cfg config.ToolBrowser, stores ...*vault.Store) fantasy.AgentTool {
-	manager := browser.GetManager(browser.Options{
-		IsolateProfiles:      true,
-		OverlayDisabled:      cfg.Overlay != nil && !*cfg.Overlay,
-		OverlayReducedMotion: cfg.OverlayReducedMotion,
-		ExecutablePath:       cfg.ExecutablePath,
-		Headless:             cfg.IsHeadless(),
-		UserDataDir:          cfg.GetUserDataDir(),
-		UseRealProfile:       cfg.UsesRealProfile(),
-		RealProfilePin:       cfg.GetRealProfilePin(),
-		RemoteURL:            cfg.GetRemoteURL(),
-		ActionTimeout:        cfg.GetActionTimeout(),
-		IdleTimeout:          cfg.GetIdleTimeout(),
-	})
-	return newBrowserTool(permissions, workingDir, manager, browserDescription(cfg.UsesRealProfile()), stores...)
+	desc := browserDescription(cfg.UsesRealProfile())
+	var sessions browserSessions
+	if dots.IsWorkspace(workingDir) {
+		sessions = newDotBrowser(workingDir, cfg)
+		desc += "\n\nThis workspace is an Atlas Dot. Drive its private Chrome, reached through the loopback debugging port recorded in the workspace. Do not use the owner's Chrome profile or their desktop."
+	} else {
+		sessions = browser.GetManager(browser.Options{
+			IsolateProfiles:      true,
+			OverlayDisabled:      cfg.Overlay != nil && !*cfg.Overlay,
+			OverlayReducedMotion: cfg.OverlayReducedMotion,
+			ExecutablePath:       cfg.ExecutablePath,
+			Headless:             cfg.IsHeadless(),
+			UserDataDir:          cfg.GetUserDataDir(),
+			UseRealProfile:       cfg.UsesRealProfile(),
+			RealProfilePin:       cfg.GetRealProfilePin(),
+			RemoteURL:            cfg.GetRemoteURL(),
+			ActionTimeout:        cfg.GetActionTimeout(),
+			IdleTimeout:          cfg.GetIdleTimeout(),
+		})
+	}
+	return newBrowserTool(permissions, workingDir, sessions, desc, stores...)
 }
 
 func newBrowserTool(permissions permission.Service, workingDir string, sessions browserSessions, description string, stores ...*vault.Store) fantasy.AgentTool {
@@ -202,6 +210,11 @@ func newBrowserTool(permissions permission.Service, workingDir string, sessions 
 			}
 			if err := browserArgumentPreflight(action, params, false); err != nil {
 				return errorResponse(err), nil
+			}
+			if dots.IsWorkspace(workingDir) && !browserReadOnlyActions[action] {
+				if err := dots.ErrIfHeld(workingDir); err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
 			}
 
 			sessionID := GetSessionFromContext(ctx)

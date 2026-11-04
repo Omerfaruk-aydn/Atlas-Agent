@@ -50,7 +50,8 @@ var isolationStartCmd = &cobra.Command{
 	Short: "Start an Atlas-controlled Windows Sandbox",
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		mem, _ := cmd.Flags().GetInt("memory-mb")
-		st, err := newIsolationManager().Start(cmd.Context(), isolation.StartOptions{MemoryMB: mem})
+		dir, profile := isolation.DefaultChrome()
+		st, err := newIsolationManager().Start(cmd.Context(), isolation.StartOptions{MemoryMB: mem, ChromeDir: dir, ChromeProfile: profile})
 		if err != nil {
 			return err
 		}

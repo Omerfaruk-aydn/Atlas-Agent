@@ -112,6 +112,32 @@ tasks:
     cmds:
       - npm run dev
 
+  app:install:
+    desc: Install the desktop app's dependencies
+    dir: app
+    cmds:
+      - npm ci
+
+  app:test:
+    desc: Typecheck and unit-test the desktop app
+    dir: app
+    cmds:
+      - npm run typecheck
+      - npm test
+
+  app:e2e:
+    desc: End-to-end tests of the desktop app against a fake gateway
+    dir: app
+    cmds:
+      - npm run build
+      - npm run test:e2e
+
+  app:package:
+    desc: Build app/dist/atlas-app-windows-x64.zip, the desktop app shipped with the CLI
+    dir: app
+    cmds:
+      - npm run package
+
   build:web:
     desc: Build the binary with the web client embedded
     cmds:

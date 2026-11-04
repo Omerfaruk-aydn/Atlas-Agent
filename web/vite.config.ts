@@ -53,6 +53,10 @@ export default defineConfig({
     target: "es2022",
     sourcemap: false,
     chunkSizeWarningLimit: 1200,
+    // Atlas Dots is a second entry point, served by the gateway at /dots.
+    rollupOptions: {
+      input: { main: resolve(__dirname, "index.html"), dots: resolve(__dirname, "dots.html") },
+    },
   },
   server: {
     port: 5173,

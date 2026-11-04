@@ -265,14 +265,14 @@ func (s *service) Save(ctx context.Context, session Session) (Session, error) {
 	}
 	if s.completionGate != nil {
 		if err := s.completionGate(ctx, previous, session); err != nil {
-			return Session{}, err
+			return Session{}, rejected(err)
 		}
 	}
 	if graphConflict {
-		return Session{}, fmt.Errorf("task graph revision conflict")
+		return Session{}, rejected(fmt.Errorf("task graph revision conflict"))
 	}
 	if err := ValidateTaskGraph(session.Todos); err != nil {
-		return Session{}, err
+		return Session{}, rejected(err)
 	}
 	todosJSON, err := marshalTodos(session.Todos)
 	if err != nil {

@@ -45,6 +45,9 @@ var toolCategories = map[string]ToolCategory{
 	"todos":              CategoryReadOnly,
 	"question":           CategoryReadOnly,
 	"job_output":         CategoryReadOnly,
+	"call_status":        CategoryReadOnly,
+	"call_history":       CategoryReadOnly,
+	"call_transcript":    CategoryReadOnly,
 	"view":               CategoryEdit,
 	"video":              CategoryEdit,
 	"ls":                 CategoryEdit,
@@ -74,6 +77,8 @@ var toolCategories = map[string]ToolCategory{
 	"download":           CategoryNetwork,
 	"read_mcp_resource":  CategoryNetwork,
 	"list_mcp_resources": CategoryNetwork,
+	"call_owner":         CategoryNetwork,
+	"site_monitor":       CategoryNetwork,
 }
 
 // CategoryForTool returns toolName's risk category. Unknown names

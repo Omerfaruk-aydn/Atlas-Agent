@@ -44,6 +44,12 @@ type Service interface {
 	// can be rewound in turn. sourceSessionID itself is never modified or
 	// deleted: this is non-destructive by design.
 	ForkAt(ctx context.Context, sourceSessionID, messageID string) (Result, error)
+
+	// ForkBefore is ForkAt without the message itself: the conversation
+	// ends just before it, so a changed version can be sent in its place.
+	// Files are restored the same way, and the fork keeps the source's
+	// title because it carries on the same conversation.
+	ForkBefore(ctx context.Context, sourceSessionID, messageID string) (Result, error)
 }
 
 type service struct {
@@ -115,6 +121,16 @@ func (s *service) Preview(ctx context.Context, sourceSessionID, messageID string
 }
 
 func (s *service) ForkAt(ctx context.Context, sourceSessionID, messageID string) (Result, error) {
+	return s.fork(ctx, sourceSessionID, messageID, true)
+}
+
+func (s *service) ForkBefore(ctx context.Context, sourceSessionID, messageID string) (Result, error) {
+	return s.fork(ctx, sourceSessionID, messageID, false)
+}
+
+// fork builds the new session and restores the files. keepMessage says
+// whether the conversation ends with messageID or just before it.
+func (s *service) fork(ctx context.Context, sourceSessionID, messageID string, keepMessage bool) (Result, error) {
 	source, err := s.sessions.Get(ctx, sourceSessionID)
 	if err != nil {
 		return Result{}, fmt.Errorf("rewind: loading source session: %w", err)
@@ -125,9 +141,15 @@ func (s *service) ForkAt(ctx context.Context, sourceSessionID, messageID string)
 		return Result{}, err
 	}
 
+	title := rewindTitle(source.Title)
+	if !keepMessage {
+		kept = kept[:len(kept)-1]
+		title = source.Title
+	}
+
 	// The fork is an ordinary top-level session: a child session is
 	// treated as a sub-agent's and is left out of the session list.
-	fork, err := s.sessions.Create(ctx, rewindTitle(source.Title))
+	fork, err := s.sessions.Create(ctx, title)
 	if err != nil {
 		return Result{}, fmt.Errorf("rewind: creating forked session: %w", err)
 	}

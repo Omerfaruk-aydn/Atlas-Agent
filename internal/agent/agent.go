@@ -1251,7 +1251,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			return nil, resetErr
 		}
 	}
-	var deliveryErr, stepFinishErr error
+	var stepFinishErr error
 	monitor := &strategyMonitor{}
 	monitor.noProgressLimit = 8
 	if opts := a.harnessOptions(); opts != nil && opts.NoProgressSteps > 0 {
@@ -1656,8 +1656,9 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 			a.noteRouterStep(call.SessionID, chain, largeModel, usage, estimated)
 			if a.engineering != nil {
 				scope := engineering.GetScope(ctx, call.SessionID)
+				// Budget bookkeeping must not discard a finished answer.
 				if err := a.engineering.Charge(context.WithoutCancel(ctx), scope.SessionID, scope.TaskID, engineeringTokens(usage), max(0, updatedSession.Cost-previousCost), 0); err != nil {
-					return err
+					slog.Warn("Failed to charge step usage", "session_id", call.SessionID, "error", err)
 				}
 			}
 			_, sessionErr := a.sessions.Save(ctx, updatedSession)
@@ -1669,20 +1670,22 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				return err
 			}
 			if !a.isSubAgent && finishReason == message.FinishReasonEndTurn && !stoppedForUser(stepResult.Content.ToolResults()) && strings.TrimSpace(currentAssistant.Content().Text) != "" {
-				deliveryErr = recordDelivery(a.engineering, ctx, call.SessionID, currentAssistant.ID)
-				if deliveryErr == nil {
-					deliveryErr = tools.RecordBrowserTaskDelivery(a.workingDir, call.SessionID, currentAssistant.ID, currentAssistant.Content().Text)
+				// The answer is already saved and shown. Evidence that it was
+				// delivered is best effort: a failure here would otherwise end
+				// the turn with an error after a complete answer.
+				if err := recordDelivery(a.engineering, ctx, call.SessionID, currentAssistant.ID); err != nil {
+					slog.Warn("Failed to record delivery evidence", "session_id", call.SessionID, "error", err)
 				}
-				if deliveryErr == nil {
-					deliveryErr = syncBrowserEvidence(context.WithoutCancel(ctx), a.engineering, a.workingDir, call.SessionID)
+				if err := tools.RecordBrowserTaskDelivery(a.workingDir, call.SessionID, currentAssistant.ID, currentAssistant.Content().Text); err != nil {
+					slog.Warn("Failed to record browser task delivery", "session_id", call.SessionID, "error", err)
 				}
-				if deliveryErr != nil {
-					return deliveryErr
+				if err := syncBrowserEvidence(context.WithoutCancel(ctx), a.engineering, a.workingDir, call.SessionID); err != nil {
+					slog.Warn("Failed to sync browser evidence", "session_id", call.SessionID, "error", err)
 				}
 			}
 			if !a.isSubAgent && stoppedForUser(stepResult.Content.ToolResults()) {
 				if err := markWorkWaiting(context.WithoutCancel(ctx), a.engineering, engineering.GetScope(ctx, call.SessionID).SessionID, stepResult.Content.ToolResults()); err != nil {
-					return err
+					slog.Warn("Failed to mark work as waiting", "session_id", call.SessionID, "error", err)
 				}
 			}
 			return nil

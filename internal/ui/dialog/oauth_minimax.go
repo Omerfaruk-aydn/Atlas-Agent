@@ -58,11 +58,12 @@ func (m *OAuthMiniMax) initiateAuth() tea.Msg {
 	m.deviceCode = deviceCode
 
 	return ActionInitiateOAuth{
-		DeviceCode:      deviceCode.DeviceCode,
+		// MiniMax has no device code: the user code identifies the request.
+		DeviceCode:      deviceCode.UserCode,
 		UserCode:        deviceCode.UserCode,
 		VerificationURL: deviceCode.VerificationURL(),
-		ExpiresIn:       deviceCode.ExpiresIn,
-		Interval:        deviceCode.Interval,
+		ExpiresIn:       int(time.Until(time.UnixMilli(deviceCode.ExpiredIn)).Seconds()),
+		Interval:        deviceCode.Interval / 1000,
 	}
 }
 

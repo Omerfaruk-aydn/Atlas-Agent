@@ -7,6 +7,8 @@ import type {
   Attachment,
   Bootstrap,
   Catalog,
+  ConnectionSave,
+  ConnectionView,
   DirectoryListing,
   FileContent,
   HistoryFile,
@@ -82,6 +84,16 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
 
 const ws = (id: string, rest = "") => `/api/workspaces/${encodeURIComponent(id)}${rest}`
 const sess = (id: string, sid: string, rest = "") => ws(id, `/sessions/${encodeURIComponent(sid)}${rest}`)
+
+/** A subscription sign-in the gateway is running. */
+export interface AccountLogin {
+  state: "idle" | "waiting" | "done" | "failed"
+  url?: string
+  user_code?: string
+  error?: string
+}
+
+const accountLoginPath = (id: string, provider: string) => ws(id, `/providers/${encodeURIComponent(provider)}/login`)
 
 export const api = {
   async bootstrap(): Promise<Bootstrap> {
@@ -172,6 +184,16 @@ export const api = {
     sel: { type: "large" | "small"; provider: string; model: string; reasoning_effort?: string; think?: boolean; scope: "global" | "workspace" },
   ) => request<Catalog>("POST", ws(id, "/models"), sel),
   settings: (id: string) => request<Settings>("GET", ws(id, "/settings")),
+  startAccountLogin: (id: string, provider: string) => request<AccountLogin>("POST", accountLoginPath(id, provider), {}),
+  accountLogin: (id: string, provider: string) => request<AccountLogin>("GET", accountLoginPath(id, provider)),
+  cancelAccountLogin: (id: string, provider: string) => request<void>("DELETE", accountLoginPath(id, provider)),
+  connections: (id: string) => request<ConnectionView[]>("GET", ws(id, "/connections")),
+  saveConnection: (id: string, connection: string, body: ConnectionSave) =>
+    request<ConnectionView[]>("POST", ws(id, `/connections/${encodeURIComponent(connection)}`), body),
+  testConnection: (id: string, connection: string) =>
+    request<{ ok: boolean; message: string }>("POST", ws(id, `/connections/${encodeURIComponent(connection)}/test`), {}),
+  startConnectionOAuth: (id: string, connection: string, reauth = false) =>
+    request<{ auth_url: string }>("POST", ws(id, `/connections/${encodeURIComponent(connection)}/oauth`), { return_url: window.location.origin, reauth }),
   setPermissionMode: (id: string, mode: PermissionMode) =>
     request<{ mode: PermissionMode }>("POST", ws(id, "/permission-mode"), { mode }),
   setSessionMode: (id: string, mode: string) =>

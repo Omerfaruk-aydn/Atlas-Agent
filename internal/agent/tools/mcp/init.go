@@ -504,6 +504,11 @@ func BeginAuth(cfg *config.ConfigStore, name string) (finish func(ctx context.Co
 	if !lock.TryLock() {
 		return nil, nil, fmt.Errorf("mcp '%s' already has an authentication in progress", name)
 	}
+	// Do not let a caller read the previous attempt's authorization URL while
+	// the new handler is still performing discovery and client registration.
+	if previous, ok := authURLs.Take(name); ok && previous != nil {
+		previous.Close()
+	}
 
 	flowCtx, flowCancel := context.WithCancel(context.Background())
 	flowCtx = mcpoauth.WithInteractive(flowCtx)
@@ -1192,7 +1197,7 @@ func createTransport(ctx context.Context, cfg *config.ConfigStore, name string, 
 
 			// Normalize trailing slash for PRM discovery compatibility.
 			normalizedURL := strings.TrimSuffix(url, "/")
-			oauthHandler, oauthErr := mcpoauth.NewHandler(name, normalizedURL, m.OAuthToken, preregistered, tokenSaver, mcpoauth.IsInteractive(ctx), m.OAuthCallbackPort)
+			oauthHandler, oauthErr := mcpoauth.NewHandler(name, normalizedURL, m.OAuthToken, preregistered, tokenSaver, mcpoauth.IsInteractive(ctx), m.OAuthCallbackPort, m.OAuthScopes)
 			if oauthErr != nil {
 				return nil, nil, fmt.Errorf("failed to create OAuth handler for mcp %q: %w", name, oauthErr)
 			}
@@ -1263,7 +1268,7 @@ func createTransport(ctx context.Context, cfg *config.ConfigStore, name string, 
 
 			// Normalize trailing slash for PRM discovery compatibility.
 			normalizedURL := strings.TrimSuffix(url, "/")
-			handler, oauthErr := mcpoauth.NewHandler(name, normalizedURL, m.OAuthToken, preregistered, tokenSaver, mcpoauth.IsInteractive(ctx), m.OAuthCallbackPort)
+			handler, oauthErr := mcpoauth.NewHandler(name, normalizedURL, m.OAuthToken, preregistered, tokenSaver, mcpoauth.IsInteractive(ctx), m.OAuthCallbackPort, m.OAuthScopes)
 			if oauthErr != nil {
 				return nil, nil, fmt.Errorf("failed to create OAuth handler for mcp %q: %w", name, oauthErr)
 			}

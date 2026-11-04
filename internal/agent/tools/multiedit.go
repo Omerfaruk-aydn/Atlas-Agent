@@ -227,7 +227,9 @@ func processMultiEditWithCreation(edit editContext, params MultiEditParams, call
 	// baseline, so tag it with the current message.
 	_, err = edit.files.Create(edit.ctx, sessionID, params.FilePath, "", GetMessageFromContext(edit.ctx))
 	if err != nil {
-		return fantasy.ToolResponse{}, fmt.Errorf("error creating file history: %w", err)
+		// The file is already written; a history failure must not report
+		// the edit as failed.
+		slog.Error("Error creating file history", "error", err)
 	}
 
 	_, err = edit.files.CreateVersion(edit.ctx, sessionID, params.FilePath, currentContent, GetMessageFromContext(edit.ctx))

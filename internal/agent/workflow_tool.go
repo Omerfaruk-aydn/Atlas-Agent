@@ -3,7 +3,9 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -196,8 +198,14 @@ func (c *coordinator) dispatchWave(ctx context.Context, p WorkflowParams, call f
 		}
 	}
 	// Persist required quality gates before any specialist can claim completion.
+	previousRuns := map[string]*engineering.RoleExecution{}
 	if err := c.engineering.Update(ctx, engineering.GetScope(ctx, sess.ID).SessionID, func(st *engineering.State) error {
 		for _, task := range wave {
+			if run, ok := st.RoleExecutions[task.ID]; ok {
+				previousRuns[task.ID] = &run
+			} else {
+				previousRuns[task.ID] = nil
+			}
 			sub, _ := subagents.Find(discovered, task.Agent)
 			st.RoleExecutions[task.ID] = engineering.RoleExecution{TaskID: task.ID, Agent: task.Agent, Root: c.cfg.WorkingDir(), TaskFingerprint: session.TaskFingerprint(task), RequireReview: sub.Contract != nil && sub.Contract.IndependentReview}
 		}
@@ -259,7 +267,23 @@ func (c *coordinator) dispatchWave(ctx context.Context, p WorkflowParams, call f
 			}
 		}
 	}
-	if _, err := c.sessions.Save(ctx, sess); err != nil {
+	if _, err := c.sessions.Save(ctx, sess); errors.Is(err, session.ErrTodosRejected) {
+		// No specialist has started; undo the role executions recorded for
+		// this wave so a revised plan starts from the same state.
+		if restoreErr := c.engineering.Update(context.WithoutCancel(ctx), engineering.GetScope(ctx, sess.ID).SessionID, func(st *engineering.State) error {
+			for id, run := range previousRuns {
+				if run == nil {
+					delete(st.RoleExecutions, id)
+				} else {
+					st.RoleExecutions[id] = *run
+				}
+			}
+			return nil
+		}); restoreErr != nil {
+			slog.Error("Failed to restore role executions after a rejected dispatch", "error", restoreErr)
+		}
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("Dispatch rejected; no task was started: %s", err)), nil
+	} else if err != nil {
 		return fantasy.ToolResponse{}, err
 	}
 	var wg sync.WaitGroup

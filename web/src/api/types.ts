@@ -277,6 +277,41 @@ export interface ApiErrorBody {
   message: string
 }
 
+export interface ConnectionView {
+  id: "elevenlabs" | "twilio" | "telegram" | "google" | "slack" | "discord" | "github" | "notion" | "outlook" | "mailbox"
+  name: string
+  description: string
+  kind: string
+  configured: boolean
+  available: boolean
+  fields?: Record<string, string>
+  secrets?: Record<string, boolean>
+}
+
+export interface ConnectionSave {
+  api_key?: string
+  voice_id?: string
+  stt_model?: string
+  tts_model?: string
+  account_sid?: string
+  auth_token?: string
+  phone_number?: string
+  owner_number?: string
+  whatsapp_from?: string
+  public_base_url?: string
+  bot_token?: string
+  chat_id?: string
+  client_id?: string
+  client_secret?: string
+  token?: string
+  channel_id?: string
+  repository?: string
+  tenant?: string
+  voice_enabled?: boolean
+  mail_address?: string
+  mail_secret?: string
+}
+
 export interface SlashArgument {
   id: string
   title: string

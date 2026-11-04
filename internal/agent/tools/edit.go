@@ -197,8 +197,9 @@ func createNewFile(edit editContext, filePath, content string, call fantasy.Tool
 	// with the current message rather than leaving it message-less.
 	_, err = edit.files.Create(edit.ctx, sessionID, filePath, "", GetMessageFromContext(edit.ctx))
 	if err != nil {
-		// Log error but don't fail the operation
-		return fantasy.ToolResponse{}, fmt.Errorf("error creating file history: %w", err)
+		// The file is already written; a history failure must not report
+		// the edit as failed.
+		slog.Error("Error creating file history", "error", err)
 	}
 
 	// Add the new content to the file history
@@ -289,7 +290,9 @@ func commitFileChange(edit editContext, sessionID, filePath, oldContent, newCont
 		// disk before this edit, so leave it message-less.
 		_, err = edit.files.Create(edit.ctx, sessionID, filePath, oldContent, "")
 		if err != nil {
-			return fmt.Errorf("error creating file history: %w", err)
+			// The file is already written; a history failure must not
+			// report the edit as failed.
+			slog.Error("Error creating file history", "error", err)
 		}
 	} else if file.Content != oldContent {
 		// User manually changed the content outside of chat; store an

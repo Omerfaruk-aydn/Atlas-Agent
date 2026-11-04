@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -188,6 +189,11 @@ func NewTodosTool(sessions session.Service) fantasy.AgentTool {
 			}
 			currentSession.Todos = todos
 			_, err = sessions.Save(ctx, currentSession)
+			if errors.Is(err, session.ErrTodosRejected) {
+				// A plan or quality rule refused the update. Tell the model
+				// so it can revise the plan; a Go error would abort the run.
+				return fantasy.NewTextErrorResponse(fmt.Sprintf("Task list update rejected: %s", err)), nil
+			}
 			if err != nil {
 				return fantasy.ToolResponse{}, fmt.Errorf("failed to save todos: %w", err)
 			}

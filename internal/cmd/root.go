@@ -858,7 +858,11 @@ func probeHealth(ctx context.Context, h *http.Client, reqURL string, hostURL *ur
 	if hostURL.Scheme == "unix" || hostURL.Scheme == "npipe" {
 		req.Host = client.DummyHost
 	}
-	if token := os.Getenv("ATLAS_SERVER_TOKEN"); token != "" {
+	token, err := server.LocalToken(hostURL.Scheme, hostURL.Host)
+	if err != nil {
+		return err
+	}
+	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	rsp, err := h.Do(req)

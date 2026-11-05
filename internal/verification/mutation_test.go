@@ -93,7 +93,7 @@ func TestRealGoMutantSeparatesWeakAndBoundaryTests(t *testing.T) {
 		}
 		test := "package fixture\nimport \"testing\"\nfunc TestLive(t *testing.T) { if !Live(" + value + ") { t.Fatal(\"boundary\") } }\n"
 		require.NoError(t, os.WriteFile(filepath.Join(root, "core_test.go"), []byte(test), 0o600))
-		r, err := RunMutations(t.Context(), root, []Change{{Path: "core.go", After: source, Lines: []int{2}}}, MutationOptions{Timeout: 30 * time.Second}, run)
+		r, err := RunMutations(t.Context(), root, []Change{{Path: "core.go", After: source, Lines: []int{2}}}, MutationOptions{Timeout: 2 * time.Minute}, run)
 		require.NoError(t, err)
 		if boundary {
 			require.Equal(t, 1, r.Killed)

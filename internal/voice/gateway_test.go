@@ -522,6 +522,7 @@ func TestStatusBeforeBindIsApplied(t *testing.T) {
 	require.NoError(t, err)
 	// The provider reports on the call before its create request returned.
 	h.g.HandleStatus("CA-early", voice.StatusNoAnswer)
+	h.g.HandleStatus("CA-early", voice.StatusCompleted)
 	h.g.BindProvider(callID, "CA-early")
 	select {
 	case o := <-outcome:

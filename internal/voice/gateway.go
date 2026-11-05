@@ -319,7 +319,7 @@ func (g *Gateway) HandleStatus(providerCallID string, status CallStatus) {
 	g.mu.Lock()
 	callID, ok := g.byProvider[providerCallID]
 	if !ok {
-		// Keep the latest terminal report for a call not bound yet.
+		// Preserve the first terminal report, as for an already bound call.
 		switch status {
 		case StatusNoAnswer, StatusBusy, StatusMachine, StatusFailed, StatusCanceled, StatusCompleted:
 			if len(g.early) >= maxEarlyStatuses {
@@ -329,7 +329,7 @@ func (g *Gateway) HandleStatus(providerCallID string, status CallStatus) {
 					}
 				}
 			}
-			if len(g.early) < maxEarlyStatuses {
+			if _, exists := g.early[providerCallID]; !exists && len(g.early) < maxEarlyStatuses {
 				g.early[providerCallID] = earlyStatus{status: status, at: g.opts.Now()}
 			}
 		}

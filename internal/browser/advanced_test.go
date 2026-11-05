@@ -103,6 +103,8 @@ func TestAdvancedBrowserRealFixture(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(newTab, &added))
 	run(Request{Action: "tab_close", TabID: added.Active})
+	closedTabs := run(Request{Action: "tabs"})
+	require.NotContains(t, string(closedTabs), added.Active)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	_, _, err = driver.Advanced(ctx, Request{Action: "find", Selector: "#result"})

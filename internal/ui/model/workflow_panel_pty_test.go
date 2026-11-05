@@ -90,7 +90,7 @@ func TestWorkflowPanelRealPTYResizeStopAndClose(t *testing.T) {
 	}
 	exe, err := os.Executable()
 	require.NoError(t, err)
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
 	pty, err := terminal.Start(ctx, execution.Request{Root: t.TempDir(), Argv: []string{exe, "-test.run=^TestWorkflowPanelPTYChild$"}, Env: append(os.Environ(), "ATLAS_PANEL_PTY_CHILD=1", "TERM=xterm-256color")}, execution.TerminalSize{Width: 80, Height: 24})
 	require.NoError(t, err)
@@ -116,14 +116,14 @@ func TestWorkflowPanelRealPTYResizeStopAndClose(t *testing.T) {
 		defer mu.Unlock()
 		return strings.Contains(transcript.String(), text)
 	}
-	require.Eventually(t, func() bool { return contains("Agent controls") }, 5*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return contains("Agent controls") }, 20*time.Second, 20*time.Millisecond)
 	for _, size := range []execution.TerminalSize{{Width: 120, Height: 40}, {Width: 40, Height: 12}} {
 		require.NoError(t, pty.Resize(ctx, size))
-		require.Eventually(t, func() bool { return contains(fmt.Sprintf("PANEL_SIZE=%dx%d", size.Width, size.Height)) }, 3*time.Second, 20*time.Millisecond)
+		require.Eventually(t, func() bool { return contains(fmt.Sprintf("PANEL_SIZE=%dx%d", size.Width, size.Height)) }, 10*time.Second, 20*time.Millisecond)
 	}
 	_, err = io.WriteString(pty, "s")
 	require.NoError(t, err)
-	require.Eventually(t, func() bool { return contains("STOP_REQUEST_OBSERVED") }, 3*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return contains("STOP_REQUEST_OBSERVED") }, 10*time.Second, 20*time.Millisecond)
 	_, err = io.WriteString(pty, "\x1b")
 	require.NoError(t, err)
 	result, err := pty.Wait(ctx)

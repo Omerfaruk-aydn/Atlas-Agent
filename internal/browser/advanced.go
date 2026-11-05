@@ -242,6 +242,12 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 				return nil, nil, errors.New("select another tab before closing the active tab")
 			}
 			v, err := s.command(ctx, "Target.closeTarget", map[string]any{"targetId": p.TabID}, true)
+			if err == nil && v["success"] == false {
+				err = errors.New("browser refused to close tab")
+			}
+			if err == nil {
+				err = s.waitForTabClosed(ctx, p.TabID)
+			}
 			if err == nil {
 				s.mu.Lock()
 				if rec := s.tabRecords[p.TabID]; rec != nil {
@@ -543,6 +549,38 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 		case <-ctx.Done():
 			return nil, nil, fmt.Errorf("condition_timeout: expected %s not reached; last observed %s: %w", describeWait(p), describeLastState(last), ctx.Err())
 		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
+// waitForTabClosed waits for Chrome to remove the target after accepting the
+// close request. Target.closeTarget can acknowledge before removal completes.
+func (s *chromedpSession) waitForTabClosed(ctx context.Context, id string) error {
+	for {
+		v, err := s.command(ctx, "Target.getTargets", map[string]any{}, true)
+		if err != nil {
+			return err
+		}
+		list, ok := v["targetInfos"].([]any)
+		if !ok {
+			return errors.New("browser did not report targets while closing tab")
+		}
+		found := false
+		for _, item := range list {
+			if info, ok := item.(map[string]any); ok && info["targetId"] == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil
+		}
+		timer := time.NewTimer(25 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return fmt.Errorf("waiting for tab to close: %w", ctx.Err())
+		case <-timer.C:
 		}
 	}
 }

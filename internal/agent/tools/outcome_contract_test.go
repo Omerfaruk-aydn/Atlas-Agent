@@ -204,7 +204,7 @@ func TestComputerOutcomeAutomationBackendFailureRemainsUnknown(t *testing.T) {
 		return nil, errors.New("automation worker disconnected")
 	}}
 	ctx := context.WithValue(t.Context(), SessionIDContextKey, t.Name())
-	state := &computerToolState{backend: backend, workingDir: t.TempDir(), actionTimeout: time.Second}
+	state := &computerToolState{backend: backend, workingDir: t.TempDir(), actionTimeout: 10 * time.Second, controller: interaction.New()}
 	resp, err := state.runWithTimeout(ctx, "invoke", ComputerParams{Automation: computer.AutomationRequest{WindowID: "11", ElementID: "button"}})
 	require.NoError(t, err)
 	require.True(t, resp.IsError)

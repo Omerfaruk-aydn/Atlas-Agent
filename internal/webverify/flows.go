@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -135,15 +136,16 @@ func checkRef(ref string) error {
 	if ref == "" {
 		return errors.New("empty page")
 	}
-	if strings.Contains(ref, "://") {
+	u, err := url.Parse(ref)
+	if err != nil {
+		return fmt.Errorf("invalid page %q: %w", ref, err)
+	}
+	if u.IsAbs() {
 		_, err := CheckLocal(ref)
 		return err
 	}
-	if strings.HasPrefix(ref, "//") {
+	if u.Host != "" || strings.HasPrefix(ref, "//") {
 		return fmt.Errorf("%q is a protocol-relative address", ref)
-	}
-	if strings.HasPrefix(strings.ToLower(ref), "javascript:") || strings.HasPrefix(strings.ToLower(ref), "data:") {
-		return fmt.Errorf("%q is not a page", ref)
 	}
 	return nil
 }

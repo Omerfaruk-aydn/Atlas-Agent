@@ -119,6 +119,19 @@ func TestCheckLocal(t *testing.T) {
 	}
 }
 
+func TestCheckRefRejectsNonHTTPURLSchemes(t *testing.T) {
+	t.Parallel()
+	for _, ref := range []string{"javascript:alert(1)", "DaTa:text/html,x", "vbscript:msgbox(1)", "file:/etc/passwd", "//example.com/path", "https://example.com"} {
+		t.Run(ref, func(t *testing.T) {
+			t.Parallel()
+			require.Error(t, checkRef(ref))
+		})
+	}
+	for _, ref := range []string{"/settings", "settings?tab=account", "http://localhost:3000/"} {
+		require.NoError(t, checkRef(ref))
+	}
+}
+
 func TestResolveRefusesOffSite(t *testing.T) {
 	t.Parallel()
 	got, err := Resolve("http://localhost:3000", "/about")

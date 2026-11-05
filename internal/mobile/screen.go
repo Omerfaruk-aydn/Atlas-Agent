@@ -76,6 +76,9 @@ type screenPacket struct {
 }
 
 func (p *screenPacket) encode() []byte {
+	if len(p.payload) > screenMaxFrame {
+		return nil
+	}
 	out := make([]byte, screenHeaderSize+len(p.payload))
 	copy(out, screenMagic)
 	out[4] = p.kind
@@ -501,6 +504,9 @@ func (g *Gateway) handleScreenStream(w http.ResponseWriter, r *http.Request) {
 	write := func(p *screenPacket) bool {
 		_ = rc.SetWriteDeadline(time.Now().Add(screenWriteTimeout))
 		data := p.encode()
+		if data == nil {
+			return false
+		}
 		if _, err := w.Write(data); err != nil {
 			return false
 		}

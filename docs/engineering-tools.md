@@ -144,8 +144,9 @@ This view covers recorded events, not a complete file history.
 ## Server authentication
 
 Set `ATLAS_SERVER_TOKEN` to the same secret in the server and client environments
-to require Bearer authentication on every HTTP endpoint. Empty/unset preserves
-existing local transport behavior. This adds authentication, not TLS; remote
+to require Bearer authentication on every HTTP endpoint. A token is mandatory
+for TCP listeners; an empty/unset token is allowed for Unix sockets and Windows
+named pipes. This adds authentication, not TLS; remote
 TCP deployments require a separately secured transport. Existing server session
 APIs support multiple clients; no new mobile application is included.
 

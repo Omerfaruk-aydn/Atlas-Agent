@@ -96,8 +96,9 @@ type Server struct {
 	h  *http.Server
 	ln net.Listener
 
-	backend *backend.Backend
-	logger  *slog.Logger
+	backend         *backend.Backend
+	logger          *slog.Logger
+	tokenConfigured bool
 }
 
 // SetLogger sets the logger for the server.
@@ -150,6 +151,8 @@ func NewServer(cfg *config.ConfigStore, network, address string) *Server {
 // [NewServer] so test harnesses can wire a Server around a
 // pre-constructed backend.
 func (s *Server) installHandler() {
+	token := os.Getenv("ATLAS_SERVER_TOKEN")
+	s.tokenConfigured = token != ""
 	var p http.Protocols
 	p.SetHTTP1(true)
 	p.SetUnencryptedHTTP2(true)
@@ -256,7 +259,7 @@ func (s *Server) installHandler() {
 	mux.Handle("/v1/docs/", httpswagger.WrapHandler)
 	s.h = &http.Server{
 		Protocols: &p,
-		Handler:   s.recoverHandler(s.loggingHandler(TokenAuth(mux))),
+		Handler:   s.recoverHandler(s.loggingHandler(tokenAuth(mux, token))),
 	}
 }
 
@@ -269,6 +272,10 @@ func (s *Server) Handler() http.Handler {
 
 // Serve accepts incoming connections on the listener.
 func (s *Server) Serve(ln net.Listener) error {
+	if strings.HasPrefix(ln.Addr().Network(), "tcp") && !s.tokenConfigured {
+		_ = ln.Close()
+		return fmt.Errorf("TCP server requires ATLAS_SERVER_TOKEN; set the same token for the client")
+	}
 	return s.h.Serve(ln)
 }
 

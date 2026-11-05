@@ -10,7 +10,10 @@ import (
 
 // TokenAuth adds opt-in authentication for all shared-server endpoints.
 func TokenAuth(next http.Handler) http.Handler {
-	token := os.Getenv("ATLAS_SERVER_TOKEN")
+	return tokenAuth(next, os.Getenv("ATLAS_SERVER_TOKEN"))
+}
+
+func tokenAuth(next http.Handler, token string) http.Handler {
 	if token == "" {
 		return next
 	}

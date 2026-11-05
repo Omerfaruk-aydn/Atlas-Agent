@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -69,9 +68,15 @@ func NewWriteTool(
 			if err := pathPolicy.Check(filePath); err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
+			target, err := pathPolicy.open(filePath)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			defer target.Close()
 
-			fileInfo, err := os.Stat(filePath)
+			fileInfo, err := target.Stat()
 			fileExisted := err == nil
+			oldContent := ""
 			if err == nil {
 				if fileInfo.IsDir() {
 					return fantasy.NewTextErrorResponse(fmt.Sprintf("Path is a directory, not a file: %s", filePath)), nil
@@ -84,25 +89,16 @@ func NewWriteTool(
 						filePath, modTime.Format(time.RFC3339), lastRead.Format(time.RFC3339))), nil
 				}
 
-				oldContent, readErr := os.ReadFile(filePath)
-				if readErr == nil && string(oldContent) == params.Content {
+				oldBytes, readErr := target.ReadFile()
+				if readErr != nil {
+					return fantasy.ToolResponse{}, fmt.Errorf("error reading file before writing: %w", readErr)
+				}
+				oldContent = string(oldBytes)
+				if oldContent == params.Content {
 					return fantasy.NewTextErrorResponse(fmt.Sprintf("File %s already contains the exact content. No changes made.", filePath)), nil
 				}
 			} else if !os.IsNotExist(err) {
 				return fantasy.ToolResponse{}, fmt.Errorf("error checking file: %w", err)
-			}
-
-			dir := filepath.Dir(filePath)
-			if err = os.MkdirAll(dir, 0o755); err != nil {
-				return fantasy.ToolResponse{}, fmt.Errorf("error creating directory: %w", err)
-			}
-
-			oldContent := ""
-			if fileInfo != nil && !fileInfo.IsDir() {
-				oldBytes, readErr := os.ReadFile(filePath)
-				if readErr == nil {
-					oldContent = string(oldBytes)
-				}
 			}
 
 			diff, additions, removals := diff.GenerateDiff(
@@ -140,7 +136,18 @@ func NewWriteTool(
 				return resp, nil
 			}
 
-			err = os.WriteFile(filePath, []byte(params.Content), 0o644)
+			if err = target.MkdirParents(); err != nil {
+				return fantasy.ToolResponse{}, fmt.Errorf("error creating directory: %w", err)
+			}
+			if fileExisted {
+				current, readErr := target.ReadFile()
+				if readErr != nil || string(current) != oldContent {
+					return fantasy.NewTextErrorResponse("File changed while waiting for permission; read it again before writing."), nil
+				}
+				err = target.WriteFile([]byte(params.Content), 0o644)
+			} else {
+				err = target.WriteNew([]byte(params.Content), 0o644)
+			}
 			if err != nil {
 				return fantasy.ToolResponse{}, fmt.Errorf("error writing file: %w", err)
 			}

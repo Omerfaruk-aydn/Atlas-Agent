@@ -29,7 +29,7 @@ func helper(t *testing.T) Spec {
 func TestOwnedProcessIdentityAndStop(t *testing.T) {
 	p, err := Start(helper(t))
 	require.NoError(t, err)
-	if runtime.GOOS == "windows" || runtime.GOOS == "linux" {
+	if runtime.GOOS == "windows" || runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
 		require.NotZero(t, p.Identity.CreatedAt)
 		require.True(t, Matches(p.Identity))
 	}

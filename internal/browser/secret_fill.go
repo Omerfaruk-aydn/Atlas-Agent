@@ -105,8 +105,10 @@ if(!token){token=crypto.randomUUID();if(targets.size>=64)targets.delete(targets.
 return {count:hits.length,origin:location.origin,selector:path,node_token:token}}`
 
 // secretFocusScript validates the target again and focuses it, clearing a
-// previous value. The secret is not an argument of this function.
-const secretFocusScript = `function(origin,selector,token){
+// previous value. The secret is not an argument of this function. Focus is
+// checked again after a turn of the event loop, because a page can move
+// focus from a listener that the browser runs after focus() returns.
+const secretFocusScript = `async function(origin,selector,token){
 if(location.origin!==origin)return "origin_mismatch";
 const roots=[document];const all=[];
 for(let i=0;i<roots.length&&i<100;i++){for(const e of roots[i].querySelectorAll('*'))if(e.shadowRoot)roots.push(e.shadowRoot);all.push(...roots[i].querySelectorAll(selector))}
@@ -117,6 +119,7 @@ if(hits.length>1)return "ambiguous_target";
 const e=hits[0];
 if(!token||globalThis.__atlasSecretTargets?.get(token)!==e||!e.isConnected)return "target_stale";
 e.focus();
+await new Promise(resolve=>setTimeout(resolve,50));
 if(!e.isConnected||globalThis.__atlasSecretTargets?.get(token)!==e)return "target_stale";
 const root=e.getRootNode();
 if(document.activeElement!==e&&root.activeElement!==e)return "focus_failed";

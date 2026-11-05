@@ -203,6 +203,11 @@ func TestWebhookVerification(t *testing.T) {
 	ok := get("hub.mode=subscribe&hub.verify_token=" + testVerify + "&hub.challenge=12345")
 	require.Equal(t, http.StatusOK, ok.Code)
 	require.Equal(t, "12345", ok.Body.String())
+	require.Equal(t, "text/plain; charset=utf-8", ok.Header().Get("Content-Type"))
+	require.Equal(t, "nosniff", ok.Header().Get("X-Content-Type-Options"))
+	markup := get("hub.mode=subscribe&hub.verify_token=" + testVerify + "&hub.challenge=%3Cscript%3Ealert(1)%3C%2Fscript%3E")
+	require.Equal(t, "<script>alert(1)</script>", markup.Body.String())
+	require.Equal(t, "nosniff", markup.Header().Get("X-Content-Type-Options"))
 	require.Equal(t, http.StatusForbidden, get("hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=1").Code)
 	require.Equal(t, http.StatusForbidden, get("hub.mode=subscribe&hub.challenge=1").Code)
 }

@@ -226,13 +226,21 @@ func RunJourney(ctx context.Context, spec JourneySpec, invoke ToolInvoker, id st
 				return
 			}
 			defer func() {
-				cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-				defer cancel()
-				if _, err := run(cleanup, BrowserParams{Action: "tab_select", Advanced: browser.Request{TabID: current.Active}}); err != nil {
+				// Each browser action has its own budget. One shared 5s
+				// context expired on a busy machine before the owned tab
+				// could be selected and closed.
+				parent := context.WithoutCancel(ctx)
+				step := func(p BrowserParams) error {
+					stepCtx, cancel := context.WithTimeout(parent, 20*time.Second)
+					defer cancel()
+					_, err := run(stepCtx, p)
+					return err
+				}
+				if err := step(BrowserParams{Action: "tab_select", Advanced: browser.Request{TabID: current.Active}}); err != nil {
 					report.CleanupErrors = append(report.CleanupErrors, err.Error())
 					return
 				}
-				if _, err := run(cleanup, BrowserParams{Action: "tab_close", Advanced: browser.Request{TabID: owned.Active}}); err != nil {
+				if err := step(BrowserParams{Action: "tab_close", Advanced: browser.Request{TabID: owned.Active}}); err != nil {
 					report.CleanupErrors = append(report.CleanupErrors, err.Error())
 				}
 			}()

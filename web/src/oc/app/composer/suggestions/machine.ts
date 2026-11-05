@@ -243,7 +243,12 @@ function keyDown(
   }
 
   if (event.key === "Tab" || (event.key === "Enter" && !event.composing)) {
-    if (!state.popover.activeID) return unchanged(state, true)
+    if (!state.popover.activeID) {
+      // Enter still sends the prompt. Swallowing it left the text in the
+      // composer whenever the menu was open without a highlighted row.
+      if (event.key === "Enter") return unchanged(state)
+      return unchanged(state, true)
+    }
 
     return unchanged(state, true, [{ type: "suggestion.select", id: state.popover.activeID }])
   }

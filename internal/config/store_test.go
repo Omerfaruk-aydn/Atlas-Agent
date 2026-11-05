@@ -317,8 +317,9 @@ func TestConfigStaleness_RefreshClearsDirtyState(t *testing.T) {
 }
 
 // TestReloadFromDisk_UsesNewConfigValues is a regression test ensuring that
-// ReloadFromDisk updates store state BEFORE running model/agent setup,
-// so the new config values are used rather than stale pre-reload values.
+// ReloadFromDisk builds models and agents on the config it just loaded,
+// then publishes that finished value. Readers must not observe a config
+// whose model map is still being written.
 func TestReloadFromDisk_UsesNewConfigValues(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "atlas.json")

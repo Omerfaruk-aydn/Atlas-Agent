@@ -114,6 +114,7 @@ func fileMatchScore(file, query string) int {
 // searchFiles returns the best matches for query, best first. An empty query
 // keeps the given order, which is most recently changed first.
 func searchFiles(files []string, query string, limit int) []string {
+	limit = max(0, min(limit, maxFileSearchLimit))
 	query = strings.ToLower(strings.TrimSpace(query))
 	if query == "" {
 		return files[:min(limit, len(files))]
@@ -129,7 +130,7 @@ func searchFiles(files []string, query string, limit int) []string {
 		}
 	}
 	slices.SortStableFunc(hits, func(a, b hit) int { return b.score - a.score })
-	out := make([]string, 0, min(limit, len(hits)))
+	out := make([]string, 0)
 	for _, h := range hits[:min(limit, len(hits))] {
 		out = append(out, h.file)
 	}

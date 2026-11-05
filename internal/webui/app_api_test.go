@@ -34,4 +34,6 @@ func TestSearchFiles(t *testing.T) {
 	require.Equal(t, []string{"src/app.tsx", "src/lib/apply.ts"}, searchFiles(files, "APP", 10), "matching ignores case")
 	require.Equal(t, []string{"src/app.tsx"}, searchFiles(files, "app", 1))
 	require.Empty(t, searchFiles(files, "nothing-here", 10))
+	require.Empty(t, searchFiles(files, "app", -1))
+	require.Empty(t, searchFiles(files, "", -1))
 }

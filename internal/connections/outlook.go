@@ -124,7 +124,7 @@ func (s *Service) testOutlook(ctx context.Context) error {
 	config := &oauth2.Config{ClientID: clientID, ClientSecret: clientSecret, Endpoint: s.outlookEndpoint(), Scopes: outlookScopes}
 	refreshed, err := config.TokenSource(ctx, &token).Token()
 	if err != nil {
-		return errors.New("Microsoft authorization could not be refreshed; authorize again")
+		return errors.New("could not refresh the Microsoft authorization; authorize again")
 	}
 	if refreshed.AccessToken != token.AccessToken || refreshed.RefreshToken != token.RefreshToken {
 		data, marshalErr := json.Marshal(refreshed)
@@ -147,14 +147,14 @@ func (s *Service) testOutlook(ctx context.Context) error {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return errors.New("Microsoft Graph could not be reached")
+		return errors.New("could not reach Microsoft Graph")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return errors.New("Microsoft rejected the authorization")
+		return errors.New("the Microsoft authorization was rejected")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Microsoft Graph returned HTTP %d", resp.StatusCode)
+		return fmt.Errorf("unexpected Microsoft Graph status %d", resp.StatusCode)
 	}
 	return nil
 }

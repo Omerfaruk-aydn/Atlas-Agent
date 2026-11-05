@@ -35,13 +35,16 @@ func TestAntigravityAccountCatalog(t *testing.T) {
 		require.Zero(t, model.CostPer1MIn)
 		require.Zero(t, model.CostPer1MOut)
 	}
-	oss := models["gpt-oss-120b"]
-	require.Equal(t, int64(131072), oss.ContextWindow)
-	require.Equal(t, int64(32768), oss.DefaultMaxTokens)
-	require.False(t, oss.SupportsImages)
-	require.True(t, oss.CanReason)
-	require.Equal(t, []string{"medium"}, oss.ReasoningLevels)
-	require.Equal(t, "medium", oss.DefaultReasoningEffort)
+	// The gpt-oss-120b route retired on 2026-11-02, so the selectable
+	// catalog omits it. Gemini 3.8 Flash is the documented replacement.
+	require.NotContains(t, models, "gpt-oss-120b")
+	flash := models["gemini-3.8-flash"]
+	require.Equal(t, int64(1048576), flash.ContextWindow)
+	require.Equal(t, int64(65536), flash.DefaultMaxTokens)
+	require.True(t, flash.SupportsImages)
+	require.True(t, flash.CanReason)
+	require.Equal(t, "gemini-3.8-flash", entry.DefaultLargeModelID)
+	require.Equal(t, "gemini-3.8-flash", entry.DefaultSmallModelID)
 	require.Contains(t, models, entry.DefaultLargeModelID)
 	require.Contains(t, models, entry.DefaultSmallModelID)
 	// These older routes are not exposed by the verified Pro account.

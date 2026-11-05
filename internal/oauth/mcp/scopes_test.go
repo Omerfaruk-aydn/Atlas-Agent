@@ -45,6 +45,7 @@ func TestOAuthMetadataClientFiltersOnlyProtectedResourceScopes(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+test.path, nil)
 			require.NoError(t, err)
 			resp, err := client.Do(req)

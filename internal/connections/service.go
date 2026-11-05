@@ -176,7 +176,7 @@ func (s *Service) Save(id string, req SaveRequest) error {
 		}
 	case "twilio":
 		if req.PhoneNumber != "" && !voice.ValidE164(trim(req.PhoneNumber)) || !voice.ValidE164(trim(req.OwnerNumber)) {
-			return errors.New("Twilio and owner phone numbers must use E.164 format, for example +905551112233")
+			return errors.New("phone numbers for Twilio and the owner must use E.164 format, for example +905551112233")
 		}
 		if req.WhatsAppFrom != "" && !voice.ValidE164(trim(req.WhatsAppFrom)) {
 			return errors.New("WhatsApp sender must use E.164 format without the whatsapp: prefix")
@@ -203,7 +203,7 @@ func (s *Service) Save(id string, req SaveRequest) error {
 		}
 	case "telegram":
 		if trim(req.ChatID) == "" {
-			return errors.New("Telegram chat ID is required")
+			return errors.New("a Telegram chat ID is required")
 		}
 		secretValues[TelegramBotToken] = trim(req.BotToken)
 		fields["tools.voice_calls.telegram.chat_id"] = trim(req.ChatID)
@@ -213,10 +213,10 @@ func (s *Service) Save(id string, req SaveRequest) error {
 	case "google":
 		existingID, _ := s.secrets().Get(googleClientID)
 		if trim(req.ClientID) == "" && existingID == "" {
-			return errors.New("Google OAuth client ID is required")
+			return errors.New("a Google OAuth client ID is required")
 		}
 		if req.ClientID != "" && !validGoogleClientID(req.ClientID) {
-			return errors.New("Google OAuth client ID is invalid")
+			return errors.New("the Google OAuth client ID is invalid")
 		}
 		secretValues[googleClientID] = trim(req.ClientID)
 		secretValues[googleSecret] = trim(req.ClientSecret)
@@ -253,10 +253,10 @@ func (s *Service) Save(id string, req SaveRequest) error {
 	case "outlook":
 		existingID, _ := s.secrets().Get(outlookClientID)
 		if trim(req.ClientID) == "" && existingID == "" {
-			return errors.New("Microsoft application client ID is required")
+			return errors.New("a Microsoft application client ID is required")
 		}
 		if req.ClientID != "" && !validGoogleClientID(req.ClientID) {
-			return errors.New("Microsoft application client ID is invalid")
+			return errors.New("the Microsoft application client ID is invalid")
 		}
 		secretValues[outlookClientID] = trim(req.ClientID)
 		secretValues[outlookSecret] = trim(req.ClientSecret)

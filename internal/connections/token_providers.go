@@ -70,7 +70,7 @@ func (s *Service) testTokenConnection(ctx context.Context, id string) error {
 			OK bool `json:"ok"`
 		}
 		if json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&result) != nil || !result.OK {
-			return errors.New("Slack rejected the credentials")
+			return errors.New("the Slack credentials were rejected")
 		}
 	}
 	return nil

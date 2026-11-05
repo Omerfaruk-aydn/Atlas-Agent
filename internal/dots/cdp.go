@@ -192,7 +192,10 @@ func callPage(ctx context.Context, workspace, method string, params, out any) er
 
 func cdpCall(ctx context.Context, wsURL, method string, params, out any) error {
 	dialer := websocket.Dialer{HandshakeTimeout: 5 * time.Second}
-	conn, _, err := dialer.DialContext(ctx, wsURL, nil)
+	conn, resp, err := dialer.DialContext(ctx, wsURL, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		return fmt.Errorf("connect to the dot's page: %w", err)
 	}

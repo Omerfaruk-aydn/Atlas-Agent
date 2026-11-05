@@ -196,10 +196,7 @@ func newComputerToolWithState(state *computerToolState, description string) fant
 			// different: while full access is off, a click or keypress
 			// still has to be approved. Plan mode still denies the
 			// tool outright because its category is Execute.
-			safe := true
-			if dots.IsWorkspace(state.workingDir) && desktopMutation(action) {
-				safe = false
-			}
+			safe := !dots.IsWorkspace(state.workingDir) || !desktopMutation(action)
 			p, err := state.permissions.Request(
 				ctx,
 				permission.CreatePermissionRequest{

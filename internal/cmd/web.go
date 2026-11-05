@@ -250,7 +250,7 @@ func runWeb(cmd *cobra.Command, _ []string) error {
 // opened, since dots bring their own workspaces.
 func runDots(cmd *cobra.Command, gw *webui.Gateway, serveErr <-chan error, out io.Writer, serverVersion string, ok bool) error {
 	if !ok {
-		return errors.New("Atlas Dots could not open its data directory")
+		return errors.New("could not open the Atlas Dots data directory")
 	}
 	link := gw.LaunchURL()
 	fmt.Fprintf(out, "Atlas Dots\n\n")

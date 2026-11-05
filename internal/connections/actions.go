@@ -102,7 +102,7 @@ func (s *Service) actionToken(ctx context.Context, id string) (string, error) {
 		}
 		refreshed, err := config.TokenSource(ctx, token).Token()
 		if err != nil {
-			return "", errors.New("Google authorization could not be refreshed")
+			return "", errors.New("could not refresh the Google authorization")
 		}
 		if refreshed.AccessToken != token.AccessToken || refreshed.RefreshToken != token.RefreshToken {
 			data, _ := json.Marshal(refreshed)
@@ -123,7 +123,7 @@ func (s *Service) actionToken(ctx context.Context, id string) (string, error) {
 		config := &oauth2.Config{ClientID: clientID, ClientSecret: clientSecret, Endpoint: s.outlookEndpoint(), Scopes: outlookScopes}
 		refreshed, err := config.TokenSource(ctx, &token).Token()
 		if err != nil {
-			return "", errors.New("Microsoft authorization could not be refreshed")
+			return "", errors.New("could not refresh the Microsoft authorization")
 		}
 		if refreshed.AccessToken != token.AccessToken || refreshed.RefreshToken != token.RefreshToken {
 			data, _ := json.Marshal(refreshed)
@@ -195,7 +195,7 @@ func (s *Service) providerJSON(ctx context.Context, id, token, method, path stri
 	}
 	if id == "slack" {
 		if object, ok := result.(map[string]any); ok && object["ok"] == false {
-			return nil, errors.New("Slack rejected the operation")
+			return nil, errors.New("the Slack workspace rejected the operation")
 		}
 	}
 	return result, nil
@@ -216,7 +216,7 @@ func (s *Service) slackAction(ctx context.Context, token string, a ActionRequest
 		}
 		return s.providerJSON(ctx, "slack", token, http.MethodPost, "/chat.postMessage", map[string]any{"channel": a.Channel, "text": a.Text})
 	}
-	return nil, errors.New("Slack action must be list_channels, read_messages or send_message")
+	return nil, errors.New("a Slack action must be list_channels, read_messages or send_message")
 }
 
 func (s *Service) discordAction(ctx context.Context, token string, a ActionRequest) (any, error) {
@@ -233,7 +233,7 @@ func (s *Service) discordAction(ctx context.Context, token string, a ActionReque
 		}
 		return s.providerJSON(ctx, "discord", token, http.MethodPost, path, map[string]any{"content": a.Text})
 	}
-	return nil, errors.New("Discord action must be read_messages or send_message")
+	return nil, errors.New("a Discord action must be read_messages or send_message")
 }
 
 func (s *Service) githubAction(ctx context.Context, token string, a ActionRequest) (any, error) {
@@ -387,5 +387,5 @@ func (s *Service) outlookAction(ctx context.Context, token string, a ActionReque
 			"end":   map[string]any{"dateTime": a.End, "timeZone": "UTC"},
 		})
 	}
-	return nil, errors.New("Outlook action must be list_messages, read_message, send_email, list_events or create_event")
+	return nil, errors.New("an Outlook action must be list_messages, read_message, send_email, list_events or create_event")
 }

@@ -191,7 +191,7 @@ func (s *Service) testGoogle(ctx context.Context) error {
 	}
 	refreshed, err := config.TokenSource(ctx, token).Token()
 	if err != nil {
-		return errors.New("Google authorization could not be refreshed; authorize again")
+		return errors.New("could not refresh the Google authorization; authorize again")
 	}
 	if refreshed.AccessToken != token.AccessToken || refreshed.RefreshToken != token.RefreshToken {
 		data, marshalErr := json.Marshal(refreshed)
@@ -214,14 +214,14 @@ func (s *Service) testGoogle(ctx context.Context) error {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return errors.New("Google could not be reached")
+		return errors.New("could not reach Google")
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return errors.New("Google rejected the authorization")
+		return errors.New("the Google authorization was rejected")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Google returned HTTP %d", resp.StatusCode)
+		return fmt.Errorf("unexpected Google status %d", resp.StatusCode)
 	}
 	return nil
 }

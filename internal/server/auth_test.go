@@ -25,14 +25,55 @@ func TestTokenAuthRejectsMissingAndIncorrectCredentials(t *testing.T) {
 	}
 }
 
-func TestServerRejectsTCPWithoutToken(t *testing.T) {
+func TestServerAutomaticallyAuthenticatesWildcard(t *testing.T) {
 	t.Setenv("ATLAS_SERVER_TOKEN", "")
+	t.Setenv("ATLAS_AGENT_GLOBAL_DATA", t.TempDir())
+	ln, err := net.Listen("tcp", "0.0.0.0:0") //nolint:noctx
+	require.NoError(t, err)
+	s := NewServer(nil, "tcp", ln.Addr().String())
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ln) }()
+	t.Cleanup(func() { _ = s.Close(); <-done })
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	require.NoError(t, err)
+	address := net.JoinHostPort("127.0.0.1", port)
+	token, err := LocalToken("tcp", address)
+	require.NoError(t, err)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+address+"/v1/health", nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestServerAutomaticallyAuthenticatesLoopback(t *testing.T) {
+	t.Setenv("ATLAS_SERVER_TOKEN", "")
+	t.Setenv("ATLAS_AGENT_GLOBAL_DATA", t.TempDir())
 	ln, err := net.Listen("tcp", "127.0.0.1:0") //nolint:noctx
 	require.NoError(t, err)
 	s := NewServer(nil, "tcp", ln.Addr().String())
-	require.ErrorContains(t, s.Serve(ln), "ATLAS_SERVER_TOKEN")
-	_, err = ln.Accept()
-	require.Error(t, err, "rejected listeners must be closed")
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ln) }()
+	t.Cleanup(func() { _ = s.Close(); <-done })
+	token, err := LocalToken("tcp", ln.Addr().String())
+	require.NoError(t, err)
+	require.Len(t, token, 64)
+	url := "http://" + ln.Addr().String() + "/v1/health"
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	req, err = http.NewRequestWithContext(t.Context(), http.MethodGet, url, nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err = http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestServerAcceptsTCPWithToken(t *testing.T) {

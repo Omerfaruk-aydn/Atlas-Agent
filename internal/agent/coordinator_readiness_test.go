@@ -2,8 +2,10 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -96,4 +98,33 @@ func TestBuildAgentReadinessSurvivesCallerCancellation(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("readyWg did not complete; the readiness goroutines must not block on MCP init")
 	}
+}
+
+func TestReadyGateWaitOverlapsWithoutReusePanic(t *testing.T) {
+	t.Parallel()
+	var gate readyGate
+	started := make(chan struct{})
+	gate.Go(func() error {
+		close(started)
+		time.Sleep(30 * time.Millisecond)
+		return nil
+	})
+	<-started
+	var wg sync.WaitGroup
+	errs := make(chan error, 8)
+	for range 8 {
+		wg.Go(func() {
+			errs <- gate.Wait()
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	// A later agent build adds work after the first wait has returned.
+	// That call must be accepted, and the next wait must observe it.
+	gate.Go(func() error { return errors.New("later build failed") })
+	require.EqualError(t, gate.Wait(), "later build failed")
 }

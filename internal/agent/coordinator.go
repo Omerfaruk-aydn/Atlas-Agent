@@ -64,7 +64,6 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/support"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/teams"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/vault"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/anthropic"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm/providers/antigravity"
@@ -246,7 +245,57 @@ type coordinator struct {
 	localApps    *localapps.Manager
 	support      *support.Service
 
-	readyWg errgroup.Group
+	readyWg readyGate
+}
+
+// readyGate tracks the coordinator's setup work. Several runs wait for it,
+// and a setup task may start more setup of its own. Go 1.26 panics if two
+// WaitGroup.Wait calls overlap, or if Add happens while a Wait is still
+// returning, so this gate waits on a condition instead of WaitGroup.Wait.
+type readyGate struct {
+	mu      sync.Mutex
+	cond    *sync.Cond
+	refs    int
+	waiting bool
+	err     error
+}
+
+func (g *readyGate) Go(fn func() error) {
+	g.mu.Lock()
+	if g.cond == nil {
+		g.cond = sync.NewCond(&g.mu)
+	}
+	for g.waiting && g.refs == 0 {
+		g.cond.Wait()
+	}
+	g.refs++
+	g.mu.Unlock()
+	go func() {
+		err := fn()
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		if err != nil && g.err == nil {
+			g.err = err
+		}
+		g.refs--
+		if g.refs == 0 {
+			g.cond.Broadcast()
+		}
+	}()
+}
+
+func (g *readyGate) Wait() error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.cond == nil {
+		g.cond = sync.NewCond(&g.mu)
+	}
+	for g.refs > 0 {
+		g.waiting = true
+		g.cond.Wait()
+		g.waiting = false
+	}
+	return g.err
 }
 
 // CoordinatorOptions holds the dependencies for NewCoordinator. Using a

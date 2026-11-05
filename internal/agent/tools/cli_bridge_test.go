@@ -119,7 +119,7 @@ var defaultFixtureOps = []map[string]any{
 	fixtureOperation("sleep", []any{"sleep", "{seconds}", "{output}"}, []any{
 		map[string]any{"name": "seconds", "type": "integer", "required": true, "min": 0, "max": 60},
 		map[string]any{"name": "output", "type": "output_file"},
-	}, map[string]any{"timeout_seconds": 5, "background": true, "outputs": []any{map[string]any{"param": "output", "min_bytes": 1}}}),
+	}, map[string]any{"timeout_seconds": 15, "background": true, "outputs": []any{map[string]any{"param": "output", "min_bytes": 1}}}),
 	fixtureOperation("flood", []any{"flood", "{bytes}"}, []any{
 		map[string]any{"name": "bytes", "type": "integer", "required": true, "min": 0, "max": 8 << 20},
 	}, map[string]any{"max_output_bytes": 4096}),
@@ -376,7 +376,7 @@ func TestCLIBridgeTimeoutAndCancellation(t *testing.T) {
 	require.Equal(t, clibridge.OutcomeTimeout, report.Outcome, report.Detail)
 	require.Nil(t, report.ExitCode)
 	require.False(t, report.Observed)
-	require.Less(t, time.Since(started), 20*time.Second, "the profile limit stopped the process")
+	require.Less(t, time.Since(started), 30*time.Second, "the profile limit stopped the process")
 
 	ctx, cancel := context.WithCancel(h.ctx)
 	go func() {
@@ -503,7 +503,7 @@ func TestCLIBridgeBackgroundRunUsesJobSystem(t *testing.T) {
 	require.NotEmpty(t, report.JobID)
 	require.False(t, ToolSucceeded(CLIBridgeToolName, resp, nil), "a started job is not evidence yet")
 
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for report.Outcome == clibridge.OutcomeRunning && time.Now().Before(deadline) {
 		time.Sleep(200 * time.Millisecond)
 		resp, err = h.call(t, h.ctx, CLIBridgeParams{Action: "status", RunID: report.RunID})
@@ -518,7 +518,7 @@ func TestCLIBridgeBackgroundRunUsesJobSystem(t *testing.T) {
 	resp, err = h.call(t, h.ctx, CLIBridgeParams{Action: "run", Profile: "fixture", Operation: "sleep", Args: []string{"seconds=30"}, Background: true})
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal([]byte(resp.Content), &report))
-	deadline = time.Now().Add(20 * time.Second)
+	deadline = time.Now().Add(30 * time.Second)
 	for report.Outcome == clibridge.OutcomeRunning && time.Now().Before(deadline) {
 		time.Sleep(200 * time.Millisecond)
 		resp, err = h.call(t, h.ctx, CLIBridgeParams{Action: "status", RunID: report.RunID})

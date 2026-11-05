@@ -286,9 +286,16 @@ func Stop(workspace string) error {
 	if err != nil {
 		return nil
 	}
-	if processAlive(ep.PID) {
+	if ep.PID > 0 && !screenExited(ep.PID) {
 		if err := killTree(ep.PID); err != nil {
 			slog.Warn("Failed to stop dot screen", "error", err)
+		}
+		// Helper processes keep writing the profile after the parent is
+		// signaled. The workspace directory cannot be removed until they
+		// are gone.
+		deadline := time.Now().Add(5 * time.Second)
+		for !screenExited(ep.PID) && time.Now().Before(deadline) {
+			time.Sleep(50 * time.Millisecond)
 		}
 	}
 	ep.PID = 0

@@ -318,7 +318,7 @@ func (m *Manager) launch(ctx context.Context, rec Record, man Manifest, rt Runti
 // waitHealthy polls the health endpoint until it passes, the process exits
 // or the timeout ends.
 func (m *Manager) waitHealthy(ctx context.Context, id string, proc *procown.Proc, man Manifest, port int, logPath string) error {
-	timeout := time.Duration(cmp.Or(man.Health.TimeoutSeconds, 20)) * time.Second
+	timeout := time.Duration(cmp.Or(man.Health.TimeoutSeconds, 45)) * time.Second
 	timeout = min(timeout, 2*time.Minute)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

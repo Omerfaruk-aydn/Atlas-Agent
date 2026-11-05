@@ -145,7 +145,12 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 		}
 		defer restore()
 	}
-	timeout := 10 * time.Second
+	// Tab actions use the session's action budget. Opening a tab needs
+	// the same room as the other browser actions on a busy machine.
+	timeout := s.actionTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
 	if p.TimeoutMS < 0 || p.TimeoutMS > 30000 {
 		return nil, nil, errors.New("timeout_ms must be 0-30000")
 	}

@@ -86,7 +86,7 @@ func (m *Manager) scaffoldLocked(ctx context.Context, rec Record) (ScaffoldResul
 		Test:            &Command{Argv: []string{"{python}", "-m", "unittest", "discover", "-s", "tests", "-v"}, TimeoutSeconds: 300},
 		Port:            port,
 		URLPath:         "/",
-		Health:          Health{Path: "/healthz", ExpectStatus: 200, ExpectContains: `"ok"`, TimeoutSeconds: 20},
+		Health:          Health{Path: "/healthz", ExpectStatus: 200, ExpectContains: `"ok"`, TimeoutSeconds: 45},
 		DataDirs:        []string{"data"},
 		Backup:          BackupSpec{SQLite: []string{"data/app.db"}},
 		Spec:            &spec,

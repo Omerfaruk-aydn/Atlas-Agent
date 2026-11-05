@@ -3,9 +3,11 @@
 package dots
 
 import (
+	"context"
 	"os/exec"
 	"strconv"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/windows"
 )
@@ -30,7 +32,13 @@ func killTree(pid int) error {
 	if pid <= 0 {
 		return nil
 	}
-	cmd := exec.Command("taskkill", "/F", "/T", "/PID", strconv.Itoa(pid))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "taskkill", "/F", "/T", "/PID", strconv.Itoa(pid))
 	hideWindow(cmd)
 	return cmd.Run()
+}
+
+func screenExited(pid int) bool {
+	return !processAlive(pid)
 }

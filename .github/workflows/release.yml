@@ -22,39 +22,63 @@ permissions:
   attestations: write
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  desktop:
+    runs-on: windows-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    defaults:
+      run:
+        working-directory: app
     steps:
       - name: Resolve release tag
         id: tag
+        shell: bash
+        working-directory: .
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ -n "${{ inputs.tag }}" ]; then
-            # workflow_dispatch: caller picked the tag explicitly.
-            TAG="${{ inputs.tag }}"
-          elif [ "${{ github.event_name }}" = 'push' ]; then
-            # tag push: the ref that triggered this run IS the release tag.
-            TAG="${{ github.ref_name }}"
+          if [ -n "$REQUESTED_TAG" ]; then
+            TAG="$REQUESTED_TAG"
+          elif [ "$GITHUB_EVENT_NAME" = push ]; then
+            TAG="$GITHUB_REF_NAME"
           else
-            # workflow_dispatch with no input: fall back to the latest release.
-            TAG=$(curl -fsSL \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/${{ github.repository }}/releases/latest" \
-              2>/dev/null \
-              | jq -r .tag_name || true)
-            if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
-              echo "::error::No release tag found via API; pass inputs.tag explicitly."
-              exit 1
-            fi
+            TAG=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid release tag: $TAG"
+            exit 1
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Resolved tag $TAG"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run package
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-desktop-app
+          path: app/dist/atlas-app-windows-x64.zip
+          if-no-files-found: error
 
+  release:
+    needs: desktop
+    runs-on: ubuntu-latest
+    steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ steps.tag.outputs.tag }}
+          ref: ${{ needs.desktop.outputs.tag }}
           persist-credentials: false
 
       - name: Setup Go
@@ -80,7 +104,7 @@ jobs:
           GOEXPERIMENT: greenteagc
         run: |
           mkdir -p dist
-          TAG="${{ steps.tag.outputs.tag }}"
+          TAG="${{ needs.desktop.outputs.tag }}"
           COMMIT="$(git rev-parse HEAD)"
           LDFLAGS="-s -w -X github.com/Omerfaruk-aydn/Atlas-Agent/internal/version.Version=${TAG} -X github.com/Omerfaruk-aydn/Atlas-Agent/internal/version.Commit=${COMMIT}"
           # Bundle the Linux relay that /rc installs; its SHA-256 is checked again on the server.
@@ -89,6 +113,12 @@ jobs:
           GOOS=linux   GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/atlas-agent-linux-x64 .
           GOOS=darwin  GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/atlas-agent-darwin-x64 .
           GOOS=darwin  GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/atlas-agent-darwin-arm64 .
+
+      - name: Download desktop app
+        uses: actions/download-artifact@v4
+        with:
+          name: release-desktop-app
+          path: dist
 
       - name: Generate SPDX SBOM
         uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
@@ -101,7 +131,7 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          sha256sum atlas-agent-* atlas-agent.spdx.json > SHA256SUMS
+          sha256sum atlas-agent-* atlas-app-windows-x64.zip atlas-agent.spdx.json > SHA256SUMS
           sha256sum -c SHA256SUMS
 
       - name: Attest build provenance
@@ -109,15 +139,17 @@ jobs:
         with:
           subject-path: |
             dist/atlas-agent-*
+            dist/atlas-app-windows-x64.zip
             dist/atlas-agent.spdx.json
 
       - name: Create Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
+          tag_name: ${{ needs.desktop.outputs.tag }}
           generate_release_notes: true
           prerelease: ${{ inputs.prerelease }}
           files: |
+            dist/atlas-app-windows-x64.zip
             dist/atlas-agent-windows-x64.exe
             dist/atlas-agent-linux-x64
             dist/atlas-agent-darwin-x64

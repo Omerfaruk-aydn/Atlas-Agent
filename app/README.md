@@ -53,7 +53,7 @@ Windows only for now, unsigned, and inside the CLI: there is no separate
 installer. The release adds `atlas-app-windows-x64.zip`, and `install.ps1` and
 the npm package's postinstall unpack it into an `app` folder next to the
 binary, where `atlas-agent app` finds `Atlas.exe`. Set `ATLAS_AGENT_SKIP_APP=1`
-to skip it. `.github/workflows/app.yml` builds and attaches the zip on `v*` tags.
+to skip it. `.github/workflows/release.yml` verifies the zip before publishing.
 
 Windows SmartScreen may warn about the unsigned `Atlas.exe` the first time.
 

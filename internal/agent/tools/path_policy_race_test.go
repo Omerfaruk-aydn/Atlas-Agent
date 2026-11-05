@@ -18,9 +18,10 @@ func TestRestrictedToolsConfineWritesAfterPermission(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("download"))
 	}))
-	defer server.Close()
+	t.Cleanup(server.Close)
 	for _, name := range []string{"edit", "multiedit", "download"} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			root, outside := t.TempDir(), t.TempDir()
 			if err := os.Symlink(outside, filepath.Join(root, "probe")); err != nil {
 				t.Skipf("symlink unavailable: %v", err)
@@ -64,6 +65,7 @@ func TestCreationDoesNotOverwriteFileCreatedDuringPermission(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{"write", "edit", "multiedit"} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			root := t.TempDir()
 			path := filepath.Join(root, "file.txt")
 			p := &changeWritePermission{change: func() error {

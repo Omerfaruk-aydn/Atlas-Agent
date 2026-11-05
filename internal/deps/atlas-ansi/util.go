@@ -69,24 +69,37 @@ func XParseColor(s string) color.Color {
 		if len(parts) != 3 {
 			return nil
 		}
-
-		r, _ := strconv.ParseUint(parts[0], 16, 32)
-		g, _ := strconv.ParseUint(parts[1], 16, 32)
-		b, _ := strconv.ParseUint(parts[2], 16, 32)
-
-		return color.RGBA{uint8(shift(r)), uint8(shift(g)), uint8(shift(b)), 255} //nolint:gosec
+		values, ok := parseXColorComponents(parts)
+		if !ok {
+			return nil
+		}
+		return color.RGBA{values[0], values[1], values[2], 255}
 	case strings.HasPrefix(s, "rgba:"):
 		parts := strings.Split(s[5:], "/")
 		if len(parts) != 4 {
 			return nil
 		}
 
-		r, _ := strconv.ParseUint(parts[0], 16, 32)
-		g, _ := strconv.ParseUint(parts[1], 16, 32)
-		b, _ := strconv.ParseUint(parts[2], 16, 32)
-		a, _ := strconv.ParseUint(parts[3], 16, 32)
-
-		return color.RGBA{uint8(shift(r)), uint8(shift(g)), uint8(shift(b)), uint8(shift(a))} //nolint:gosec
+		values, ok := parseXColorComponents(parts)
+		if !ok {
+			return nil
+		}
+		return color.RGBA{values[0], values[1], values[2], values[3]}
 	}
 	return nil
+}
+
+func parseXColorComponents(parts []string) ([]uint8, bool) {
+	values := make([]uint8, len(parts))
+	for i, part := range parts {
+		if len(part) == 0 || len(part) > 4 {
+			return nil, false
+		}
+		v, err := strconv.ParseUint(part, 16, 16)
+		if err != nil {
+			return nil, false
+		}
+		values[i] = uint8(shift(v) & 0xff)
+	}
+	return values, true
 }

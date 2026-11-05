@@ -273,8 +273,17 @@ func (s *Server) Handler() http.Handler {
 // Serve accepts incoming connections on the listener.
 func (s *Server) Serve(ln net.Listener) error {
 	if strings.HasPrefix(ln.Addr().Network(), "tcp") && !s.tokenConfigured {
-		_ = ln.Close()
-		return fmt.Errorf("TCP server requires ATLAS_SERVER_TOKEN; set the same token for the client")
+		token, err := listenerToken(ln.Addr().Network(), ln.Addr().String())
+		if err != nil {
+			_ = ln.Close()
+			return fmt.Errorf("create local TCP server credential: %w", err)
+		}
+		if token == "" {
+			_ = ln.Close()
+			return fmt.Errorf("remote TCP server requires ATLAS_SERVER_TOKEN")
+		}
+		s.h.Handler = tokenAuth(s.h.Handler, token)
+		s.tokenConfigured = true
 	}
 	return s.h.Serve(ln)
 }

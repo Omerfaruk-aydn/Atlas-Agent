@@ -537,10 +537,10 @@ func (m *Manager) validateBackup(ctx context.Context, archive string, rec Record
 		if _, ok := listed[name]; !ok {
 			return meta, opErr(ErrInvalidBackup, "", "the entry %s is not listed in the backup metadata", name)
 		}
-		total += f.UncompressedSize64
-		if total > maxBackupBytes {
+		if f.UncompressedSize64 > maxBackupBytes-total {
 			return meta, opErr(ErrInvalidBackup, "", "the backup expands beyond %d GiB", maxBackupBytes>>30)
 		}
+		total += f.UncompressedSize64
 		if f.CompressedSize64 > 0 && f.UncompressedSize64/f.CompressedSize64 > maxCompressionRate {
 			return meta, opErr(ErrInvalidBackup, "", "the entry %s has a suspicious compression ratio", name)
 		}
@@ -554,6 +554,11 @@ func extractBackup(ctx context.Context, archive, dest string, meta BackupMeta) e
 		return err
 	}
 	defer zr.Close()
+	root, err := os.OpenRoot(dest)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
 	want := map[string]BackupFile{}
 	for _, f := range meta.Files {
 		want[f.Path] = f
@@ -569,19 +574,18 @@ func extractBackup(ctx context.Context, archive, dest string, meta BackupMeta) e
 		if name == backupMetaName || f.FileInfo().IsDir() {
 			continue
 		}
-		target := filepath.Join(dest, filepath.FromSlash(name))
-		rel, err := filepath.Rel(dest, target)
-		if err != nil || strings.HasPrefix(rel, "..") {
+		rel := filepath.FromSlash(name)
+		if !filepath.IsLocal(rel) {
 			return opErr(ErrUnsafePath, "", "unsafe path %q in backup", name)
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		if err := root.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
 			return err
 		}
 		rc, err := f.Open()
 		if err != nil {
 			return err
 		}
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		out, err := root.OpenFile(rel, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 		if err != nil {
 			rc.Close()
 			return err

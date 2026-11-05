@@ -2,11 +2,13 @@ package rehearsal
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -39,11 +41,22 @@ func (s *Store) putFile(id, rel string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	target := filepath.Join(dir, "files", filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+	if _, err := within(dir, rel); err != nil {
 		return err
 	}
-	return os.WriteFile(target, data, 0o644)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	name := filepath.Join("files", filepath.FromSlash(rel))
+	if err := root.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+		return err
+	}
+	return root.WriteFile(name, data, 0o644)
 }
 
 func (s *Store) save(r *Report, patch string) error {
@@ -170,6 +183,16 @@ func (s *Store) Apply(ctx context.Context, id string, opts ApplyOptions) (*Repor
 		return nil, fmt.Errorf("rehearsal verdict is %s; review the report and apply with force only if that is acceptable", r.Verdict)
 	}
 	dir, _ := s.path(id)
+	projectRoot, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer projectRoot.Close()
+	storedRoot, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer storedRoot.Close()
 
 	// Verify everything before touching anything.
 	type write struct {
@@ -182,11 +205,12 @@ func (s *Store) Apply(ctx context.Context, id string, opts ApplyOptions) (*Repor
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		target, err := within(root, fc.Path)
+		_, err := within(root, fc.Path)
 		if err != nil {
 			return nil, err
 		}
-		current, hashErr := hashFile(target)
+		name := filepath.FromSlash(fc.Path)
+		current, hashErr := hashRootFile(projectRoot, name)
 		switch {
 		case fc.OriginalHash == "" && hashErr == nil:
 			return nil, fmt.Errorf("stale rehearsal: %s now exists in the project", fc.Path)
@@ -195,9 +219,9 @@ func (s *Store) Apply(ctx context.Context, id string, opts ApplyOptions) (*Repor
 		case fc.OriginalHash != "" && current != fc.OriginalHash:
 			return nil, fmt.Errorf("stale rehearsal: %s changed since it was rehearsed", fc.Path)
 		}
-		w := write{target: target, change: fc}
+		w := write{target: name, change: fc}
 		if fc.Status != "deleted" {
-			w.data, err = os.ReadFile(filepath.Join(dir, "files", filepath.FromSlash(fc.Path)))
+			w.data, err = storedRoot.ReadFile(filepath.Join("files", name))
 			if err != nil {
 				return nil, fmt.Errorf("rehearsed contents of %s are gone: %w", fc.Path, err)
 			}
@@ -214,15 +238,15 @@ func (s *Store) Apply(ctx context.Context, id string, opts ApplyOptions) (*Repor
 		for i := len(done) - 1; i >= 0; i-- {
 			w := done[i]
 			if old, ok := backups[w.target]; ok {
-				_ = os.WriteFile(w.target, old, os.FileMode(w.change.Mode))
+				_ = writeAtomicRoot(projectRoot, w.target, old, os.FileMode(w.change.Mode))
 			} else {
-				_ = os.Remove(w.target)
+				_ = projectRoot.Remove(w.target)
 			}
 		}
 	}
 	for _, w := range writes {
 		if w.change.Status != "added" {
-			old, err := os.ReadFile(w.target)
+			old, err := projectRoot.ReadFile(w.target)
 			if err != nil {
 				rollback()
 				return nil, err
@@ -231,9 +255,9 @@ func (s *Store) Apply(ctx context.Context, id string, opts ApplyOptions) (*Repor
 		}
 		var err error
 		if w.change.Status == "deleted" {
-			err = os.Remove(w.target)
+			err = projectRoot.Remove(w.target)
 		} else {
-			err = writeAtomic(w.target, w.data, os.FileMode(w.change.Mode))
+			err = writeAtomicRoot(projectRoot, w.target, w.data, os.FileMode(w.change.Mode))
 		}
 		if err != nil {
 			rollback()
@@ -250,28 +274,65 @@ func (s *Store) Apply(ctx context.Context, id string, opts ApplyOptions) (*Repor
 	return r, nil
 }
 
-func writeAtomic(target string, data []byte, mode os.FileMode) error {
+// writeAtomicRoot confines both the temporary file and the final rename to
+// the selected project, including when a directory is replaced by a link.
+func writeAtomicRoot(root *os.Root, name string, data []byte, mode os.FileMode) error {
 	if mode == 0 {
 		mode = 0o644
 	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+	f, tmp, err := createTempRoot(root, name, mode)
+	if err != nil {
 		return err
 	}
-	tmp := target + ".atlas-rehearsal.tmp"
-	if err := os.WriteFile(tmp, data, mode); err != nil {
+	defer root.Remove(tmp)
+	_, writeErr := f.Write(data)
+	closeErr := f.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, target); err != nil {
-		_ = os.Remove(tmp)
-		return err
+	return root.Rename(tmp, name)
+}
+
+func createTempRoot(root *os.Root, name string, mode os.FileMode) (*os.File, string, error) {
+	if err := root.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+		return nil, "", err
 	}
-	return nil
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return nil, "", err
+	}
+	tmp := filepath.Join(filepath.Dir(name), ".atlas-rehearsal-"+hex.EncodeToString(nonce[:])+".tmp")
+	f, err := root.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+	if err != nil {
+		return nil, "", err
+	}
+	return f, tmp, nil
+}
+
+func hashRootFile(root *os.Root, name string) (string, error) {
+	f, err := root.Open(name)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("%q is not a regular file", name)
+	}
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // within resolves a slash-relative path under root and rejects escapes.
 func within(root, rel string) (string, error) {
 	clean := filepath.Clean(filepath.FromSlash(rel))
-	if rel == "" || filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+	if rel == "" || !filepath.IsLocal(clean) {
 		return "", fmt.Errorf("rehearsal path %q escapes the project", rel)
 	}
 	return filepath.Join(root, clean), nil

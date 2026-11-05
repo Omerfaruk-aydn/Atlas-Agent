@@ -47,11 +47,21 @@ func copyTree(ctx context.Context, src, dst string, maxBytes int64) (manifest, i
 	if maxBytes <= 0 {
 		maxBytes = DefaultMaxCopyBytes
 	}
+	source, err := os.OpenRoot(src)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer source.Close()
+	dest, err := os.OpenRoot(dst)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer dest.Close()
 	files := manifest{}
 	topSizes := map[string]int64{}
 	var total int64
 	links := 0
-	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -70,7 +80,7 @@ func copyTree(ctx context.Context, src, dst string, maxBytes int64) (manifest, i
 			if skipped(slash) {
 				return filepath.SkipDir
 			}
-			return os.MkdirAll(filepath.Join(dst, rel), 0o755)
+			return dest.MkdirAll(rel, 0o755)
 		}
 		if d.Type()&fs.ModeSymlink != 0 {
 			links++
@@ -89,11 +99,11 @@ func copyTree(ctx context.Context, src, dst string, maxBytes int64) (manifest, i
 		if total > maxBytes {
 			return fmt.Errorf("project is larger than the %d MiB rehearsal copy limit (largest top-level entry: %s); raise the limit or rehearse a smaller directory", maxBytes>>20, largest(topSizes))
 		}
-		hash, err := copyFile(path, filepath.Join(dst, rel), info.Mode().Perm())
+		hash, err := copyFile(source, dest, rel, info.Mode().Perm())
 		if err != nil {
 			return err
 		}
-		copied, err := os.Stat(filepath.Join(dst, rel))
+		copied, err := dest.Stat(rel)
 		if err != nil {
 			return err
 		}
@@ -116,36 +126,31 @@ func largest(sizes map[string]int64) string {
 	return best
 }
 
-func copyFile(src, dst string, perm fs.FileMode) (string, error) {
-	in, err := os.Open(src)
+func copyFile(src, dst *os.Root, name string, perm fs.FileMode) (string, error) {
+	in, err := src.Open(name)
 	if err != nil {
 		return "", err
 	}
 	defer in.Close()
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return "", err
-	}
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm|0o200)
+	info, err := in.Stat()
 	if err != nil {
 		return "", err
 	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("source %q is not a regular file", name)
+	}
+	out, tmp, err := createTempRoot(dst, name, perm|0o200)
+	if err != nil {
+		return "", err
+	}
+	defer dst.Remove(tmp)
 	h := sha256.New()
 	_, copyErr := io.Copy(io.MultiWriter(out, h), in)
 	closeErr := out.Close()
 	if err := errors.Join(copyErr, closeErr); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-func hashFile(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
+	if err := dst.Rename(tmp, name); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
@@ -162,9 +167,14 @@ type change struct {
 // sorted by path. Files whose size and modification time match are taken
 // as unchanged without being read.
 func scan(ctx context.Context, dir string, base manifest) ([]change, error) {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
 	var changes []change
 	seen := make(map[string]bool, len(base))
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -201,7 +211,7 @@ func scan(ctx context.Context, dir string, base manifest) ([]change, error) {
 		if info.Size() == before.Size && info.ModTime().UnixNano() == before.ModTime {
 			return nil
 		}
-		hash, err := hashFile(path)
+		hash, err := hashRootFile(root, rel)
 		if err != nil {
 			return err
 		}
@@ -229,20 +239,30 @@ func restore(ctx context.Context, src, dst string, base manifest) error {
 	if err != nil {
 		return err
 	}
+	source, err := os.OpenRoot(src)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	dest, err := os.OpenRoot(dst)
+	if err != nil {
+		return err
+	}
+	defer dest.Close()
 	for _, c := range changes {
-		target := filepath.Join(dst, filepath.FromSlash(c.Path))
+		name := filepath.FromSlash(c.Path)
 		if c.Status == "added" {
-			if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if err := dest.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
 			continue
 		}
 		before := base[c.Path]
-		if _, err := copyFile(filepath.Join(src, filepath.FromSlash(c.Path)), target, before.Mode); err != nil {
+		if _, err := copyFile(source, dest, name, before.Mode); err != nil {
 			return err
 		}
 		// Re-stamp so the next scan treats the restored file as untouched.
-		info, err := os.Stat(target)
+		info, err := dest.Stat(name)
 		if err != nil {
 			return err
 		}

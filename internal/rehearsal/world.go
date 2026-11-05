@@ -196,6 +196,11 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 		return nil, err
 	}
 	defer os.RemoveAll(work)
+	workRoot, err := os.OpenRoot(work)
+	if err != nil {
+		return nil, err
+	}
+	defer workRoot.Close()
 
 	base, links, err := copyTree(ctx, root, work, opts.MaxCopyBytes)
 	if err != nil {
@@ -245,9 +250,9 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 	stepFailed := false
 	for _, f := range opts.Files {
 		res := CommandResult{Phase: "write", Command: "write " + f.Path}
-		target, err := within(work, f.Path)
+		_, err := within(work, f.Path)
 		if err == nil {
-			err = writeAtomic(target, []byte(f.Content), 0o644)
+			err = writeAtomicRoot(workRoot, filepath.FromSlash(f.Path), []byte(f.Content), 0o644)
 		}
 		if err != nil {
 			res.ExitCode, res.Output, stepFailed = 1, err.Error(), true

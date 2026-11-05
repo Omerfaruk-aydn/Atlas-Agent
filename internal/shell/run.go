@@ -251,7 +251,7 @@ func withNonInteractiveEnv(env []string) []string {
 	}
 
 	// Copy env, filtering out any keys we will override.
-	result := make([]string, 0, len(env)+len(nonInteractiveEnvVars))
+	result := make([]string, 0, len(env))
 	for _, e := range env {
 		if key, _, ok := strings.Cut(e, "="); ok && overrideKeys[key] {
 			continue

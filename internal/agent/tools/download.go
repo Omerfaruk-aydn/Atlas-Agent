@@ -9,7 +9,6 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -88,6 +87,11 @@ func NewDownloadTool(permissions permission.Service, workingDir string, client *
 			if err := pathPolicy.Check(filePath); err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
+			target, err := pathPolicy.open(filePath)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			defer target.Close()
 			relPath, _ := filepath.Rel(workingDir, filePath)
 			relPath = filepath.ToSlash(cmp.Or(relPath, filePath))
 
@@ -150,12 +154,12 @@ func NewDownloadTool(permissions permission.Service, workingDir string, client *
 			}
 
 			// Create parent directories if they don't exist
-			if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+			if err := target.MkdirParents(); err != nil {
 				return fantasy.ToolResponse{}, fmt.Errorf("failed to create parent directories: %w", err)
 			}
 
 			// Create the output file
-			outFile, err := os.Create(filePath)
+			outFile, err := target.Create()
 			if err != nil {
 				return fantasy.ToolResponse{}, fmt.Errorf("failed to create output file: %w", err)
 			}
@@ -168,7 +172,7 @@ func NewDownloadTool(permissions permission.Service, workingDir string, client *
 				// A partial file is worse than none: it looks like a
 				// completed download to everything downstream.
 				outFile.Close()
-				if removeErr := os.Remove(filePath); removeErr != nil {
+				if removeErr := target.Remove(); removeErr != nil {
 					slog.Warn("Failed to remove a partial download", "path", filePath, "error", removeErr)
 				}
 				if errors.Is(err, ErrDownloadTooLarge) {

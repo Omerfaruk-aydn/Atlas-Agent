@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 200" fill="none" font-family="Inter, sans-serif">
+  <!-- Atlas mark proposals (sketches, 24px grid scaled x4). Original geometry, not derived from any reference app. -->
+  <rect width="520" height="200" fill="#f5f4f1"/>
+
+  <!-- A. "Omuz" (shoulder): two strokes form an A, an arc rests on its apex = the sky Atlas carries. -->
+  <g transform="translate(40 30) scale(4)" stroke="#1a1917" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 21 L12 8 L19 21" pathLength="1"/>
+    <path d="M8.5 16 H15.5" pathLength="1"/>
+    <path d="M4 7.5 A8.5 8.5 0 0 1 20 7.5" stroke="#f2762e" pathLength="1"/>
+  </g>
+  <text x="88" y="150" font-size="13" text-anchor="middle" fill="#5a5650">A · Omuz (onerilen)</text>
+
+  <!-- B. "Meridyen": a globe circle with one tilted meridian and an orbit dot. -->
+  <g transform="translate(212 30) scale(4)" stroke="#1a1917" stroke-width="2" stroke-linecap="round">
+    <circle cx="12" cy="12" r="8.5" pathLength="1"/>
+    <ellipse cx="12" cy="12" rx="3.6" ry="8.5" transform="rotate(28 12 12)" pathLength="1"/>
+    <circle cx="19.6" cy="5.4" r="1.6" fill="#f2762e" stroke="none"/>
+  </g>
+  <text x="260" y="150" font-size="13" text-anchor="middle" fill="#5a5650">B · Meridyen</text>
+
+  <!-- C. "Piksel A": 5x5 pixel A that echoes the CLI ANSI banner (terminal heritage). -->
+  <g transform="translate(388 34)" fill="#1a1917">
+    <rect x="32" y="0" width="16" height="16"/>
+    <rect x="16" y="16" width="16" height="16"/><rect x="48" y="16" width="16" height="16"/>
+    <rect x="0" y="32" width="16" height="16"/><rect x="16" y="32" width="16" height="16" fill="#f2762e"/><rect x="32" y="32" width="16" height="16" fill="#f2762e"/><rect x="48" y="32" width="16" height="16" fill="#f2762e"/><rect x="64" y="32" width="16" height="16"/>
+    <rect x="0" y="48" width="16" height="16"/><rect x="64" y="48" width="16" height="16"/>
+    <rect x="0" y="64" width="16" height="16"/><rect x="64" y="64" width="16" height="16"/>
+  </g>
+  <text x="428" y="150" font-size="13" text-anchor="middle" fill="#5a5650">C · Piksel A</text>
+
+  <text x="260" y="185" font-size="11" text-anchor="middle" fill="#7a766f">Tum cizgiler pathLength=1: ilk acilista stroke-draw animasyonuna hazir.</text>
+</svg>

@@ -1,0 +1,166 @@
+/* Atlas App: design tokens (paste-ready).
+   Target location (see APP-BUILD-PLAN.md): app/renderer/src/design/tokens.css.
+   The app renderer is a separate product from web/ and shares no CSS with it.
+   Owner decision 2026-11-04: Ember orange is a BRAND colour only (first
+   launch, wordmark sweep, onboarding hero, app icon). Interaction colour is
+   neutral: focus ring = ink, links = info blue, running indicators = ink-2.
+   --atlas-ember-* must not be used for hover, focus, selection or status. */
+
+/* ── 1. Color ─────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: light;
+  /* Neutrals: warm graphite, shared family with the Dots edition. */
+  --atlas-shell: #f5f4f1;            /* window background behind the card */
+  --atlas-surface: #ffffff;          /* content card, dialogs */
+  --atlas-surface-1: #f9f8f6;        /* sidebar hover, inset panels */
+  --atlas-surface-2: #f1efeb;        /* user message, tool surface, chips */
+  --atlas-surface-3: #e8e5df;        /* pressed, disabled send button */
+  --atlas-ink: #1a1917;              /* 17.1:1 on surface */
+  --atlas-ink-2: #5a5650;            /*  7.3:1 */
+  --atlas-ink-3: #7a766f;            /*  4.5:1 (meta, placeholders) */
+  --atlas-ink-4: #a9a59d;            /*  decorative only, never text */
+  --atlas-line-1: rgb(26 25 23 / 0.07);
+  --atlas-line-2: rgb(26 25 23 / 0.11);
+  --atlas-line-3: rgb(26 25 23 / 0.20);
+  --atlas-hover: rgb(26 25 23 / 0.045);
+  --atlas-press: rgb(26 25 23 / 0.08);
+  --atlas-scrim: rgb(20 18 14 / 0.38);
+
+  /* Brand: Ember. BRAND MOMENTS ONLY (see header). 500 = fills, 600/700 =
+     darker steps for the onboarding hero button and app icon. */
+  --atlas-ember-50: #fff4ec;
+  --atlas-ember-100: #ffe6d4;
+  --atlas-ember-400: #ff9a5c;
+  --atlas-ember-500: #f2762e;
+  --atlas-ember-600: #e0621f;
+  --atlas-ember-700: #b8481a;
+  --atlas-ember-soft: color-mix(in oklab, var(--atlas-ember-500) 12%, transparent);
+  --atlas-accent-text: var(--atlas-info);   /* links, citations */
+  --atlas-focus: var(--atlas-ink);          /* 2px ring, 2px offset */
+
+  /* State (fg = AA text on surface). */
+  --atlas-success: #17804f;  --atlas-success-bg: #e8f6ee;  --atlas-success-line: #b9e3cb;
+  --atlas-warning: #9a6400;  --atlas-warning-bg: #fdf4e1;  --atlas-warning-line: #f1d89c;
+  --atlas-danger: #c9362f;   --atlas-danger-bg: #fcebea;   --atlas-danger-line: #f3c0bc;
+  --atlas-info: #2f5bd3;     --atlas-info-bg: #edf2fe;     --atlas-info-line: #c3d4fd;
+  --atlas-diff-add: #17804f; --atlas-diff-add-bg: rgb(23 128 79 / 0.10);
+  --atlas-diff-del: #c9362f; --atlas-diff-del-bg: rgb(201 54 47 / 0.10);
+
+  /* Elevation (warm-tinted, hairline included). */
+  --atlas-shadow-hairline: 0 0 0 0.5px rgb(26 25 23 / 0.12);
+  --atlas-shadow-raised: 0 1px 2px rgb(20 18 14 / 0.05), 0 2px 6px -2px rgb(20 18 14 / 0.06), var(--atlas-shadow-hairline);
+  --atlas-shadow-floating: 0 4px 10px -2px rgb(20 18 14 / 0.08), 0 12px 28px -8px rgb(20 18 14 / 0.16), var(--atlas-shadow-hairline);
+  --atlas-shadow-overlay: 0 8px 20px -4px rgb(20 18 14 / 0.10), 0 28px 64px -16px rgb(20 18 14 / 0.28), var(--atlas-shadow-hairline);
+  --atlas-shadow-composer: 0 1px 2px rgb(20 18 14 / 0.04), 0 6px 20px -10px rgb(20 18 14 / 0.14);
+}
+
+/* The port always resolves the scheme in JS and writes data-color-scheme
+   on <html> before first paint (inline boot script), so one selector is
+   enough; "system" is resolved via matchMedia there. */
+:root[data-color-scheme="dark"] {
+  color-scheme: dark;
+  --atlas-shell: #0b0b0c;
+  --atlas-surface: #141415;
+  --atlas-surface-1: #18181a;
+  --atlas-surface-2: #1f1f22;
+  --atlas-surface-3: #29292d;
+  --atlas-ink: #ececed;              /* 15.6:1 on surface */
+  --atlas-ink-2: #a6a6ad;            /*  7.6:1 */
+  --atlas-ink-3: #808088;            /*  4.7:1 */
+  --atlas-ink-4: #55555c;
+  --atlas-line-1: rgb(255 255 255 / 0.06);
+  --atlas-line-2: rgb(255 255 255 / 0.10);
+  --atlas-line-3: rgb(255 255 255 / 0.18);
+  --atlas-hover: rgb(255 255 255 / 0.05);
+  --atlas-press: rgb(255 255 255 / 0.09);
+  --atlas-scrim: rgb(0 0 0 / 0.60);
+  --atlas-accent-text: var(--atlas-info);
+  --atlas-focus: var(--atlas-ink);
+  --atlas-ember-soft: color-mix(in oklab, var(--atlas-ember-500) 18%, transparent);
+  --atlas-success: #3dd68c;  --atlas-success-bg: #0f2a1d;  --atlas-success-line: #1d5a3c;
+  --atlas-warning: #f5b83d;  --atlas-warning-bg: #2b2210;  --atlas-warning-line: #5e4719;
+  --atlas-danger: #ff6b63;   --atlas-danger-bg: #2e1312;   --atlas-danger-line: #6a2621;
+  --atlas-info: #7ea2ff;     --atlas-info-bg: #121b33;     --atlas-info-line: #2a3d73;
+  --atlas-diff-add: #3dd68c; --atlas-diff-add-bg: rgb(61 214 140 / 0.12);
+  --atlas-diff-del: #ff6b63; --atlas-diff-del-bg: rgb(255 107 99 / 0.12);
+  --atlas-shadow-hairline: 0 0 0 0.5px rgb(255 255 255 / 0.08);
+  --atlas-shadow-raised: 0 1px 2px rgb(0 0 0 / 0.40), var(--atlas-shadow-hairline);
+  --atlas-shadow-floating: 0 12px 28px -8px rgb(0 0 0 / 0.60), var(--atlas-shadow-hairline);
+  --atlas-shadow-overlay: 0 28px 64px -16px rgb(0 0 0 / 0.75), var(--atlas-shadow-hairline);
+  --atlas-shadow-composer: 0 8px 24px -12px rgb(0 0 0 / 0.6);
+}
+
+/* ── 2. Type, radius, spacing, layout ─────────────────────────────────── */
+:root {
+  --atlas-font-sans: "Inter", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --atlas-font-mono: "JetBrainsMono Nerd Font Mono", "Cascadia Code", ui-monospace, Consolas, monospace;
+  --atlas-weight-regular: 440;
+  --atlas-weight-medium: 530;
+  --atlas-weight-semibold: 620;
+
+  /* size / line-height pairs */
+  --atlas-text-caption: 11px;   --atlas-lh-caption: 14px;   /* kbd, badges */
+  --atlas-text-small: 12px;     --atlas-lh-small: 16px;     /* meta rows, chips */
+  --atlas-text-ui: 13px;        --atlas-lh-ui: 16px;        /* tool rows, sidebar, menus (compact metric) */
+  --atlas-text-ui-loose: 13px;  --atlas-lh-ui-loose: 20px;  /* reasoning text, settings descriptions */
+  --atlas-text-body: 14px;      --atlas-lh-body: 22px;      /* chat prose, composer */
+  --atlas-text-h3: 16px;        --atlas-lh-h3: 24px;
+  --atlas-text-h2: 20px;        --atlas-lh-h2: 28px;
+  --atlas-text-h1: 28px;        --atlas-lh-h1: 34px;        /* onboarding / empty state */
+  --atlas-text-display: 40px;   --atlas-lh-display: 44px;
+  --atlas-text-code: 12.5px;    --atlas-lh-code: 20px;
+  --atlas-tracking-tight: -0.04px;
+
+  --atlas-radius-xs: 4px;   /* kbd, inline code, checkbox */
+  --atlas-radius-sm: 6px;   /* buttons, icon buttons, list rows */
+  --atlas-radius-md: 8px;   /* menu items, tool surfaces, toasts */
+  --atlas-radius-lg: 12px;  /* cards, user message, popovers */
+  --atlas-radius-xl: 14px;  /* composer */
+  --atlas-radius-2xl: 16px; /* dialogs */
+  --atlas-radius-window: 10px; /* inset content card */
+  --atlas-radius-pill: 9999px;
+
+  --atlas-space-0_5: 2px; --atlas-space-1: 4px; --atlas-space-1_5: 6px; --atlas-space-2: 8px;
+  --atlas-space-3: 12px; --atlas-space-4: 16px; --atlas-space-5: 20px; --atlas-space-6: 24px;
+  --atlas-space-8: 32px; --atlas-space-10: 40px; --atlas-space-14: 56px;
+
+  --atlas-titlebar-h: 40px;
+  --atlas-window-gutter: 8px;
+  --atlas-sidebar-w: 264px;     /* min 220, max 360 */
+  --atlas-rail-w: 380px;        /* right rail, min 320, max 50% */
+  --atlas-thread-w: 720px;      /* prose measure */
+  --atlas-composer-w: 736px;
+}
+
+/* ── 3. Motion tokens ─────────────────────────────────────────────────── */
+:root {
+  --atlas-dur-micro: 90ms;     /* press scale, checkbox tick */
+  --atlas-dur-fast: 120ms;     /* hover color/bg, icon swaps, exits of small things */
+  --atlas-dur-base: 160ms;     /* tooltips, menus, popovers in */
+  --atlas-dur-moderate: 220ms; /* collapsibles <= 240px, toasts, message enter */
+  --atlas-dur-slow: 280ms;     /* sidebar/rail, large collapse, toast stack shift */
+  --atlas-dur-dialog: 240ms;
+  --atlas-dur-loop-shimmer: 1.2s;
+  --atlas-dur-loop-skeleton: 1.8s;
+  --atlas-dur-loop-spin: 0.9s;
+  --atlas-dur-brand: 1000ms;
+
+  --atlas-ease-out: cubic-bezier(0.22, 1, 0.36, 1);        /* enters */
+  --atlas-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);   /* hover/state */
+  --atlas-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);     /* layout: height, width, stack */
+  --atlas-ease-in: cubic-bezier(0.4, 0, 1, 1);             /* exits */
+  --atlas-ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);     /* loops */
+  --atlas-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);  /* pops: send, badges, scroll-to-bottom */
+  --atlas-ease-spring-soft: cubic-bezier(0.34, 1.08, 0.64, 1); /* label width swaps */
+}
+
+/* Reduced motion: JS writes data-motion="reduce" on <html> when either the
+   OS query matches (and the user did not force "full") or the user picks
+   "reduce" in Settings > Appearance > Motion. Every rule in the motion
+   catalogue keys off :root[data-motion="reduce"] (same convention as the
+   OpenCode CSS), with a plain @media fallback for pre-hydration paint. */
+
+/* ── 4. Defaults every screen needs ───────────────────────────────────── */
+:root { font-family: var(--atlas-font-sans); font-size: var(--atlas-text-ui); line-height: var(--atlas-lh-ui); color: var(--atlas-ink); background: var(--atlas-shell); }
+:focus-visible { outline: 2px solid var(--atlas-focus); outline-offset: 2px; }
+/* The old web bridge (--v2-*) is gone: the app has no vendored web tokens. */

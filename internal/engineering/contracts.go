@@ -128,13 +128,12 @@ func (s *Store) SaveContract(ctx context.Context, c ContractRevision, expected u
 	return s.PutRecordStrict(ctx, ns, c.ID, expected, data, linked...)
 }
 
-func (s *Store) contractRecords(ctx context.Context, root, taskID string) ([]ContractRevision, []Record, error) {
+// readContracts loads every published contract for a project root. Callers
+// that certify work must filter by task; an empty task id is not a match-all.
+func (s *Store) readContracts(ctx context.Context, root string) ([]ContractRevision, []Record, error) {
 	ns, err := contractNamespace(root)
 	if err != nil {
 		return nil, nil, err
-	}
-	if !validID(taskID) {
-		return nil, nil, fmt.Errorf("invalid contract task")
 	}
 	entries, err := s.ListRecords(ctx, ns)
 	if err != nil {
@@ -145,8 +144,8 @@ func (s *Store) contractRecords(ctx context.Context, root, taskID string) ([]Con
 		ids = append(ids, id)
 	}
 	slices.Sort(ids)
-	var contracts []ContractRevision
-	var refs []Record
+	contracts := make([]ContractRevision, 0, len(ids))
+	refs := make([]Record, 0, len(ids))
 	for _, id := range ids {
 		r, data, err := s.ReadRecord(ctx, ns, id)
 		if err != nil {
@@ -163,12 +162,43 @@ func (s *Store) contractRecords(ctx context.Context, root, taskID string) ([]Con
 		if err != nil || otherNS != ns || c.ID != id || c.Revision != r.Revision {
 			return nil, nil, fmt.Errorf("contract record identity mismatch")
 		}
-		if c.OwnerTaskID == taskID || slices.Contains(c.ConsumerTaskIDs, taskID) {
-			contracts = append(contracts, c)
-			refs = append(refs, r)
-		}
+		contracts = append(contracts, c)
+		refs = append(refs, r)
 	}
 	return contracts, refs, nil
+}
+
+func (s *Store) contractRecords(ctx context.Context, root, taskID string) ([]ContractRevision, []Record, error) {
+	if !validID(taskID) {
+		return nil, nil, fmt.Errorf("invalid contract task")
+	}
+	contracts, refs, err := s.readContracts(ctx, root)
+	if err != nil {
+		return nil, nil, err
+	}
+	var matched []ContractRevision
+	var matchedRefs []Record
+	for i, c := range contracts {
+		if c.OwnerTaskID == taskID || slices.Contains(c.ConsumerTaskIDs, taskID) {
+			matched = append(matched, c)
+			matchedRefs = append(matchedRefs, refs[i])
+		}
+	}
+	return matched, matchedRefs, nil
+}
+
+// ListContracts returns every contract published for the project. A query
+// that names no task uses this. Task-scoped reads stay on ContractsForTask,
+// so a missing id cannot certify the whole project.
+func (s *Store) ListContracts(ctx context.Context, root string) ([]ContractRevision, error) {
+	contracts, _, err := s.readContracts(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	if contracts == nil {
+		contracts = []ContractRevision{}
+	}
+	return contracts, nil
 }
 
 func (s *Store) ContractsForTask(ctx context.Context, root, taskID string) ([]ContractRevision, error) {

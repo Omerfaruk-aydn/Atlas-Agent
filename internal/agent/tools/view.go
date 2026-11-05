@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/documents"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/filepathext"
@@ -193,9 +194,21 @@ func NewViewTool(
 				return fantasy.ToolResponse{}, fmt.Errorf("error accessing file: %w", err)
 			}
 
-			// Check if it's a directory
+			// A directory is not a failed read. Models pass folder paths to view
+			// (for example D:/Atlas/npm); one level is enough to continue,
+			// and ls remains the tool for a deeper tree.
 			if fileInfo.IsDir() {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("Path is a directory, not a file: %s", filePath)), nil
+				output, metadata, listErr := ListDirectoryTree(filePath, LSParams{Depth: 1}, config.ToolLs{})
+				if listErr != nil {
+					return fantasy.NewTextErrorResponse(listErr.Error()), nil
+				}
+				body := fmt.Sprintf("Path is a directory. Showing one level of %s. Use ls for a deeper tree.\n\n%s", filePath, output)
+				return fantasy.WithResponseMetadata(fantasy.NewTextResponse(body), map[string]any{
+					"file_path":       filePath,
+					"directory":       true,
+					"number_of_files": metadata.NumberOfFiles,
+					"truncated":       metadata.Truncated,
+				}), nil
 			}
 
 			// Set default limit if not provided (no limit for SKILL.md files)

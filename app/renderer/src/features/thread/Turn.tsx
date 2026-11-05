@@ -110,6 +110,7 @@ export function UserBubble({ text, files = [], pendingFiles = 0, enter, message 
   const sentinel = useRef<HTMLDivElement>(null);
   const bubble = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
+  const atTopRef = useRef(false);
   const [atTop, setAtTop] = useState(false);
   const [saved, setSaved] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -129,8 +130,17 @@ export function UserBubble({ text, files = [], pendingFiles = 0, enter, message 
     if (!el || !root) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
-        const next = !entry.isIntersecting && entry.boundingClientRect.top < (entry.rootBounds?.top ?? 0);
+        if (!entry) return;
+        const rootTop = entry.rootBounds?.top ?? 0;
+        const top = entry.boundingClientRect.top;
+        const stuck = atTopRef.current;
+        // Stay collapsed until the sentinel is clearly back in view. A
+        // one-pixel anchoring nudge used to flip the bubble, change its
+        // height, and shake the thread so a scroll never landed.
+        const next = stuck ? top <= rootTop + 24 : top < rootTop - 1 && !entry.isIntersecting;
+        if (next === stuck) return;
         if (next) setSaved(Math.max(0, (bubble.current?.offsetHeight ?? 0) - STUCK_HEIGHT));
+        atTopRef.current = next;
         setAtTop(next);
       },
       { root },

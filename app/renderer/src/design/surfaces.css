@@ -390,11 +390,10 @@
 .tick-title { font-weight: var(--atlas-weight-semibold); line-height: var(--atlas-lh-ui-loose); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tick-body { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin-block-start: 2px; color: var(--atlas-ink-2); font-size: var(--atlas-text-small); line-height: var(--atlas-lh-small); }
 
-.user-sentinel { block-size: 1px; margin-block-end: -1px; }
-.user-row { gap: var(--atlas-space-1); align-items: flex-start; transition: margin-block-end var(--atlas-dur-moderate) var(--atlas-ease-emphasized); }
+.user-sentinel { block-size: 1px; margin-block-end: -1px; overflow-anchor: none; }
+.user-row { gap: var(--atlas-space-1); align-items: flex-start; }
 .user-actions { display: flex; gap: 2px; margin-block-start: var(--atlas-space-1); opacity: 0; transition: opacity var(--atlas-dur-fast) var(--atlas-ease-standard); }
 .user-row:hover .user-actions, .user-actions:focus-within { opacity: 1; }
-.user-bubble { transition: max-block-size var(--atlas-dur-moderate) var(--atlas-ease-emphasized), padding var(--atlas-dur-moderate) var(--atlas-ease-emphasized); }
 .user-row[data-stuck] .user-bubble { max-block-size: 34px; padding-block: 6px; cursor: pointer; user-select: none; }
 /* Six lines, then "Show more". The cut lands on a line, never through one. */
 .user-text { max-block-size: calc(6lh); overflow: hidden; }

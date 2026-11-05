@@ -2,9 +2,8 @@
 // until the reader scrolls up; then it holds still and offers a way back.
 //
 // Long chats mount only their newest turns; older ones join as the reader
-// scrolls up, and the browser skips the layout of whatever is off screen
-// (content-visibility on .turn). That keeps the DOM small without giving turns
-// a fixed height, which their folding and streaming would break.
+// scrolls up. Turns are not size-contained: a guessed height, or a sticky
+// bubble changing size, makes the scroller jump and shake instead of moving.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Message } from "../../api/types";
@@ -16,8 +15,13 @@ import { Modal } from "../../primitives/ui";
 import { useApp } from "../../stores/app";
 import { CompactionRunning, TurnView, UserBubble, Working } from "./Turn";
 
-const PIN_DISTANCE = 48;
+// Engage only when the reader is actually at the bottom, and release only
+// after a real gap. A single threshold oscillates: one pixel of growth snaps
+// the view back and the wheel never gets anywhere.
+const PIN_ENGAGE = 24;
+const PIN_RELEASE = 96;
 const TO_BOTTOM_DISTANCE = 120;
+const USER_SCROLL_HOLD = 320;
 const PAGE = 24;
 const LOAD_MARGIN = 600;
 const MAX_TICKS = 72;
@@ -102,6 +106,11 @@ export function Thread({ sessionId }: { sessionId: string }) {
   const content = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const [away, setAway] = useState(false);
+  // Set while a gesture moves the reader up, so a resize cannot yank them
+  // back to the bottom mid-scroll. Programmatic jumps do not arm it.
+  const holdUntil = useRef(0);
+  const adjusting = useRef(false);
+  const lastTop = useRef(0);
   // How many of the newest turns are mounted.
   const [mounted, setMounted] = useState(PAGE);
   const [activeTurn, setActiveTurn] = useState(-1);
@@ -120,9 +129,20 @@ export function Thread({ sessionId }: { sessionId: string }) {
     if (added > 0 && !pinned.current) setMounted((n) => n + added);
   }, [turns.length]);
 
+  const place = (top: number) => {
+    const el = scroller.current;
+    if (!el) return;
+    adjusting.current = true;
+    el.scrollTop = top;
+    lastTop.current = el.scrollTop;
+    requestAnimationFrame(() => {
+      adjusting.current = false;
+    });
+  };
+
   const toBottom = () => {
     const el = scroller.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el) place(el.scrollHeight);
   };
 
   useLayoutEffect(() => {
@@ -134,7 +154,7 @@ export function Thread({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!content.current) return;
     const observer = new ResizeObserver(() => {
-      if (pinned.current) toBottom();
+      if (pinned.current && performance.now() >= holdUntil.current) toBottom();
     });
     observer.observe(content.current);
     return () => observer.disconnect();
@@ -144,8 +164,9 @@ export function Thread({ sessionId }: { sessionId: string }) {
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && anchorHeight.current !== null) {
-      el.scrollTop += el.scrollHeight - anchorHeight.current;
+      const next = el.scrollTop + (el.scrollHeight - anchorHeight.current);
       anchorHeight.current = null;
+      place(next);
     }
     if (pendingJump.current !== null) {
       const target = el?.querySelector(`[data-turn="${pendingJump.current}"]`);
@@ -190,9 +211,16 @@ export function Thread({ sessionId }: { sessionId: string }) {
     const el = scroller.current;
     if (!el) return;
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-    pinned.current = distance < PIN_DISTANCE;
-    setAway(distance > TO_BOTTOM_DISTANCE);
-    if (el.scrollTop < LOAD_MARGIN && first > 0) {
+    // Scrolling up (smaller scrollTop) is the reader leaving the tail.
+    // Scrolling down must not arm the hold, or the view refuses to follow.
+    if (!adjusting.current && el.scrollTop < lastTop.current - 4) {
+      holdUntil.current = performance.now() + USER_SCROLL_HOLD;
+    }
+    lastTop.current = el.scrollTop;
+    if (distance <= PIN_ENGAGE) pinned.current = true;
+    else if (distance >= PIN_RELEASE) pinned.current = false;
+    setAway((shown) => (shown ? distance > PIN_ENGAGE : distance > TO_BOTTOM_DISTANCE));
+    if (!adjusting.current && el.scrollTop < LOAD_MARGIN && first > 0) {
       anchorHeight.current = el.scrollHeight;
       setMounted((n) => n + PAGE);
     }
@@ -237,9 +265,10 @@ export function Thread({ sessionId }: { sessionId: string }) {
           title={t("thread.toBottom")}
           onClick={() => {
             pinned.current = true;
+            holdUntil.current = 0;
             setAway(false);
             setActiveTurn(-1);
-            scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
+            toBottom();
           }}
         >
           <IconArrowDown />

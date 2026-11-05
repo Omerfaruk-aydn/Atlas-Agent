@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -20,12 +21,28 @@ func (c *coordinator) contractWorkflow(ctx context.Context, p WorkflowParams, ca
 	scope := engineering.GetScope(ctx, tools.GetSessionFromContext(ctx))
 	root := c.cfg.WorkingDir()
 	if p.ContractAction == "query" {
-		if scope.TaskID != "" && scope.TaskID != p.TaskID {
+		// Models ask "what contracts exist?" without a task id. That used to
+		// fail as "invalid contract task" and stop the turn. An empty id lists
+		// the project; a named id stays scoped to that task.
+		taskID := strings.TrimSpace(p.TaskID)
+		if taskID == "" {
+			taskID = scope.TaskID
+		}
+		if scope.TaskID != "" && taskID != scope.TaskID {
 			return fail(fmt.Errorf("query only the assigned task contracts"))
 		}
-		contracts, err := c.engineering.ContractsForTask(ctx, root, p.TaskID)
+		var contracts []engineering.ContractRevision
+		var err error
+		if taskID == "" {
+			contracts, err = c.engineering.ListContracts(ctx, root)
+		} else {
+			contracts, err = c.engineering.ContractsForTask(ctx, root, taskID)
+		}
 		if err != nil {
 			return fail(err)
+		}
+		if contracts == nil {
+			contracts = []engineering.ContractRevision{}
 		}
 		return fantasy.NewTextResponse(workflowJSON(contracts)), nil
 	}

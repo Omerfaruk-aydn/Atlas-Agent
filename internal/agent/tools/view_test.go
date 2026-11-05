@@ -346,6 +346,23 @@ func runViewTool(t *testing.T, tool fantasy.AgentTool, ctx context.Context, para
 
 var _ filetracker.Service = mockFileTracker{}
 
+func TestViewToolListsDirectoryInsteadOfError(t *testing.T) {
+	t.Parallel()
+
+	workingDir := t.TempDir()
+	dir := filepath.Join(workingDir, "npm")
+	require.NoError(t, os.Mkdir(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), []byte("{}\n"), 0o644))
+
+	tool := newViewToolForTest(workingDir)
+	ctx := context.WithValue(context.Background(), SessionIDContextKey, "test-session")
+	resp := runViewTool(t, tool, ctx, ViewParams{FilePath: dir})
+
+	require.False(t, resp.IsError, resp.Content)
+	require.Contains(t, resp.Content, "package.json")
+	require.NotContains(t, resp.Content, "not a file")
+}
+
 func TestReadBuiltinFile(t *testing.T) {
 	t.Parallel()
 	t.Run("canonical Atlas address", func(t *testing.T) {

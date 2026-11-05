@@ -47,6 +47,11 @@ func ExportCase(ctx context.Context, c harnessmetrics.Case, suite string, check 
 		_ = os.RemoveAll(taskDir)
 		return "", err
 	}
+	confined, err := os.OpenRoot(repo)
+	if err != nil {
+		return "", err
+	}
+	defer confined.Close()
 	for _, f := range c.Files {
 		if f.Unknown {
 			continue
@@ -55,14 +60,18 @@ func ExportCase(ctx context.Context, c harnessmetrics.Case, suite string, check 
 		if err != nil {
 			continue
 		}
-		if !f.Existed {
-			_ = os.Remove(target)
+		rel, err := filepath.Rel(repo, target)
+		if err != nil || !filepath.IsLocal(rel) {
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		if !f.Existed {
+			_ = confined.Remove(rel)
+			continue
+		}
+		if err := confined.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
 			return "", err
 		}
-		if err := os.WriteFile(target, []byte(f.Before), 0o644); err != nil {
+		if err := confined.WriteFile(rel, []byte(f.Before), 0o644); err != nil {
 			return "", err
 		}
 	}
@@ -80,6 +89,11 @@ func ExportCase(ctx context.Context, c harnessmetrics.Case, suite string, check 
 // extractCommit writes the tree of commit in the repository at root into
 // dir, using git archive so the user's checkout is not touched.
 func extractCommit(ctx context.Context, root, commit, dir string) error {
+	confined, err := os.OpenRoot(dir)
+	if err != nil {
+		return err
+	}
+	defer confined.Close()
 	cmd := exec.CommandContext(ctx, "git", "archive", "--format=tar", commit)
 	cmd.Dir = root
 	var out, stderr bytes.Buffer
@@ -100,16 +114,20 @@ func extractCommit(ctx context.Context, root, commit, dir string) error {
 		if err != nil {
 			continue
 		}
+		rel, err := filepath.Rel(dir, target)
+		if err != nil || !filepath.IsLocal(rel) {
+			continue
+		}
 		switch header.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0o755); err != nil {
+			if err := confined.MkdirAll(rel, 0o755); err != nil {
 				return err
 			}
 		case tar.TypeReg:
 			if header.Size > benchMaxFileSize*16 {
 				continue
 			}
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			if err := confined.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
 				return err
 			}
 			data, err := io.ReadAll(io.LimitReader(reader, header.Size))
@@ -120,7 +138,7 @@ func extractCommit(ctx context.Context, root, commit, dir string) error {
 			if header.Mode&0o111 != 0 {
 				mode = 0o755
 			}
-			if err := os.WriteFile(target, data, mode); err != nil {
+			if err := confined.WriteFile(rel, data, mode); err != nil {
 				return err
 			}
 		}
@@ -131,7 +149,7 @@ func extractCommit(ctx context.Context, root, commit, dir string) error {
 // that would leave it.
 func safeJoin(root, rel string) (string, error) {
 	clean := filepath.Clean(filepath.FromSlash(rel))
-	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+	if !filepath.IsLocal(clean) {
 		return "", fmt.Errorf("path %q leaves the workspace", rel)
 	}
 	return filepath.Join(root, clean), nil

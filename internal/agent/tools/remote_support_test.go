@@ -33,6 +33,10 @@ func TestMain(m *testing.M) {
 			os.Exit(0)
 		}
 	}
+	// Non-Windows CI seals connection secrets with ATLAS_VAULT_KEY.
+	if os.Getenv("ATLAS_VAULT_KEY") == "" {
+		_ = os.Setenv("ATLAS_VAULT_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+	}
 	os.Exit(m.Run())
 }
 

@@ -45,7 +45,9 @@ func TestOAuthMetadataClientFiltersOnlyProtectedResourceScopes(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			resp, err := client.Get(server.URL + test.path)
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+test.path, nil)
+			require.NoError(t, err)
+			resp, err := client.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()
 			var metadata struct {
@@ -66,7 +68,9 @@ func TestOAuthMetadataClientPreservesAdvertisedScopesByDefault(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client := newOAuthMetadataClient(http.DefaultTransport, server.URL)
-	resp, err := client.Get(server.URL + "/.well-known/oauth-protected-resource/mcp")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/.well-known/oauth-protected-resource/mcp", nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	var metadata struct {

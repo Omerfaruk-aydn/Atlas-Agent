@@ -1942,6 +1942,7 @@ func allToolNames() []string {
 		"glob",
 		"grep",
 		"ls",
+		"mailbox",
 		"memory",
 		"question",
 		"request_permission",

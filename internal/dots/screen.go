@@ -212,7 +212,8 @@ func launch(ctx context.Context, workspace string) (Endpoint, error) {
 	if exe == "" {
 		return Endpoint{}, errors.New("no Chrome or Chromium found for the dot's screen")
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var cfg net.ListenConfig
+	ln, err := cfg.Listen(ctx, "tcp", "127.0.0.1:0")
 	if err != nil {
 		return Endpoint{}, fmt.Errorf("choose a debugging port: %w", err)
 	}

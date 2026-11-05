@@ -64,7 +64,7 @@ func TestGoogleOAuthExchangeAndRedaction(t *testing.T) {
 	badQuery.Set("state", "wrong-state")
 	badQuery.Set("code", "test-code")
 	badCallback.RawQuery = badQuery.Encode()
-	resp, err := http.Get(badCallback.String())
+	resp, err := httpGet(t, nil, badCallback.String())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
@@ -74,7 +74,7 @@ func TestGoogleOAuthExchangeAndRedaction(t *testing.T) {
 	goodQuery.Set("code", "test-code")
 	callback.RawQuery = goodQuery.Encode()
 	client := &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
-	resp, err = client.Get(callback.String())
+	resp, err = httpGet(t, client, callback.String())
 	require.NoError(t, err)
 	require.Equal(t, http.StatusSeeOther, resp.StatusCode)
 	require.Equal(t, "http://127.0.0.1:7788/", resp.Header.Get("Location"))

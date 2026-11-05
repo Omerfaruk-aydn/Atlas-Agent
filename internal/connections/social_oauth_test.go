@@ -39,7 +39,7 @@ func TestSocialAccountOAuth(t *testing.T) {
 			query.Set("state", auth.Query().Get("state"))
 			query.Set("code", "account-code")
 			callback.RawQuery = query.Encode()
-			resp, err := http.Get(callback.String())
+			resp, err := httpGet(t, nil, callback.String())
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, resp.StatusCode)
 			require.NoError(t, resp.Body.Close())

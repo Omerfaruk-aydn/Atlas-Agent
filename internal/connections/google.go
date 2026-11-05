@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -56,7 +55,7 @@ func (s *Service) StartGoogleOAuth(ctx context.Context, returnURL string) (OAuth
 	if err != nil {
 		return OAuthStart{}, err
 	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := listenLoopback(ctx)
 	if err != nil {
 		return OAuthStart{}, errors.New("could not open the local OAuth callback listener")
 	}

@@ -3,7 +3,6 @@ package connections
 import (
 	"context"
 	"errors"
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -52,7 +51,7 @@ func (s *Service) StartAccountOAuth(ctx context.Context, id string) (OAuthStart,
 		endpoint = override
 	}
 	config := &oauth2.Config{ClientID: clientID, ClientSecret: clientSecret, Endpoint: endpoint, Scopes: provider.scopes}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := listenLoopback(ctx)
 	if err != nil {
 		return OAuthStart{}, errors.New("could not open the local OAuth callback listener")
 	}

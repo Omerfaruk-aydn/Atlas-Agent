@@ -56,7 +56,11 @@ func TestScreenNavigatesAndCaptures(t *testing.T) {
 		}
 		if time.Now().After(deadline) {
 			ep, _ := readEndpoint(dir)
-			raw, err := http.Get(ep.HTTP + "/json/list")
+			req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, ep.HTTP+"/json/list", nil)
+			if reqErr != nil {
+				t.Fatalf("title = %q url = %q list= err=%v", status.Title, status.URL, reqErr)
+			}
+			raw, err := http.DefaultClient.Do(req)
 			body := ""
 			if err == nil {
 				b, _ := io.ReadAll(raw.Body)

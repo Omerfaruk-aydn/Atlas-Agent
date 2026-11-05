@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -34,7 +33,7 @@ func (s *Service) StartOutlookOAuth(ctx context.Context) (OAuthStart, error) {
 	if clientID == "" {
 		return OAuthStart{}, errors.New("save a Microsoft application client ID first")
 	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := listenLoopback(ctx)
 	if err != nil {
 		return OAuthStart{}, errors.New("could not open the local OAuth callback listener")
 	}

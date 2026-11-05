@@ -48,7 +48,9 @@ async function send(page: Page, text: string) {
   const box = promptBox(page)
   await box.fill(text)
   await box.press("Enter")
-  await expect(box).toHaveText("")
+  // The first prompt turns the draft into a session and mounts a new
+  // composer. The locator from before Enter is detached by then.
+  await expect(promptBox(page)).toHaveText("")
 }
 
 /** The composer's send button turns into Stop while a run is in flight. */

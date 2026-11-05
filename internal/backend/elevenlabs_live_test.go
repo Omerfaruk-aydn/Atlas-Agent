@@ -45,7 +45,7 @@ func TestElevenLabsLiveOAuthDiscovery(t *testing.T) {
 
 	// A retry while the browser authorization is outstanding must return the
 	// existing URL rather than reporting "authentication in progress".
-	retry, err := b.startElevenLabsOAuth(ws.ID)
+	retry, err := b.startElevenLabsOAuth(ws.ID, false)
 	require.NoError(t, err)
 	require.Equal(t, result.AuthURL, retry.AuthURL)
 }

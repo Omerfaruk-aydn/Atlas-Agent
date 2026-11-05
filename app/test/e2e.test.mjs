@@ -8,10 +8,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright-core";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { electronExecutable } from "./electron-bin.mjs";
 import { assistantMessage, session, startFakeGateway, userMessage } from "./fake-gateway.mjs";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const electronBin = path.join(appDir, "node_modules", "electron", "dist", fs.readFileSync(path.join(appDir, "node_modules", "electron", "path.txt"), "utf8").trim());
+const electronBin = electronExecutable();
 const axeSource = fs.readFileSync(path.join(appDir, "node_modules", "axe-core", "axe.min.js"), "utf8");
 
 let gateway;

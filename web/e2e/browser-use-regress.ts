@@ -57,16 +57,14 @@ function scenarios(stack: Stack, links: string[]): { name: string; workflow: { s
     {
       name: "project-and-workspace-isolation",
       workflow: { steps: [
+        // The projects dropdown exists only below 768px. The regression
+        // browser is wider, so the sidebar add button is the control on screen.
         ...signedIn(links[2]),
-        click("project-menu", "[data-component='home-projects-dropdown']"),
-        visible("add-project-ready", "[data-action='home-add-project-row']"),
-        { id: "project-menu-stable", action: "wait_for", target: { condition: "stable", timeout_ms: 5000 } },
-        click("add-project", "[data-action='home-add-project-row']"),
+        click("add-project", "[data-action='home-add-project']"),
+        visible("add-project-dialog", "[role='dialog'] input"),
         type("project-path", "[role='dialog'] input", stack.second),
         click("open-project", "[role='dialog'] button[type='submit']"),
-        click("project-menu-verify", "[data-component='home-projects-dropdown']"),
         { id: "second-project", action: "wait_for", target: { role: "button", name: "S second", match: "exact", condition: "visible", timeout_ms: 20000 } },
-        key("close-project-menu", "escape"),
         ...newSession("isolated"), ...send("isolated-prompt", `${marker}-second`),
         text("second-response", timeline, `Echo: ${marker}-second`),
         { id: "other-session-not-visible", action: "assert", target: { selector: "[data-component='user-message']", condition: "count", expected: "1" } },

@@ -6,12 +6,13 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright-core";
+import { electronExecutable } from "./electron-bin.mjs";
 import { assistantMessage, session, startFakeGateway, userMessage } from "./fake-gateway.mjs";
 
 const out = path.resolve(process.argv[2] ?? "shots");
 fs.mkdirSync(out, { recursive: true });
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const electronBin = path.join(appDir, "node_modules", "electron", "dist", fs.readFileSync(path.join(appDir, "node_modules", "electron", "path.txt"), "utf8").trim());
+const electronBin = electronExecutable();
 
 const gateway = await startFakeGateway({ renderer: path.join(appDir, "renderer", "dist") });
 const text = (t) => [{ type: "text", data: { text: t } }];

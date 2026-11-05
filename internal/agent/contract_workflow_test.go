@@ -126,3 +126,40 @@ func TestContractStageRequiresCurrentCheck(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, data)
 }
+
+func TestContractQueryWithoutTaskListsTheProject(t *testing.T) {
+	t.Parallel()
+	env := testEnv(t)
+	root := t.TempDir()
+	_, err := engineering.Git(t.Context(), root, "init")
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(root, "api.go"), []byte("package api\n"), 0o600))
+	sess, err := env.sessions.Create(t.Context(), "contract-query")
+	require.NoError(t, err)
+	sess.Todos = []session.Todo{{ID: "api", Content: "Implement API", Status: session.TodoStatusPending, Agent: "backend", OwnedPaths: []string{"."}, AcceptanceCriteria: []string{"API works"}}}
+	_, err = env.sessions.Save(t.Context(), sess)
+	require.NoError(t, err)
+	c := &coordinator{cfg: config.NewTestStore(&config.Config{Options: &config.Options{}}).Scoped(root), sessions: env.sessions, engineering: engineering.NewStore(t.TempDir()), permissions: env.permissions}
+	env.permissions.SetMode(permission.ModeBypass)
+	ctx := context.WithValue(t.Context(), tools.SessionIDContextKey, sess.ID)
+
+	resp, err := c.contractWorkflow(ctx, WorkflowParams{ContractAction: "query"}, fantasy.ToolCall{ID: "empty"}, nil)
+	require.NoError(t, err)
+	require.False(t, resp.IsError, resp.Content)
+	require.Equal(t, "[]", resp.Content)
+
+	contract := &engineering.ContractRevision{ID: "api", OwnerTaskID: "api", Description: "Public API", Invariants: "Stable response", Revision: 1, Sources: []engineering.SourceReference{{Path: "api.go"}}, Checks: []engineering.ContractCheck{{Name: "api-check", Tool: "bash", InputJSON: `{"command":"true"}`}}}
+	resp, err = c.contractWorkflow(ctx, WorkflowParams{ContractAction: "register", Contract: contract}, fantasy.ToolCall{ID: "register"}, nil)
+	require.NoError(t, err)
+	require.False(t, resp.IsError, resp.Content)
+
+	resp, err = c.contractWorkflow(ctx, WorkflowParams{ContractAction: "query"}, fantasy.ToolCall{ID: "query"}, nil)
+	require.NoError(t, err)
+	require.False(t, resp.IsError, resp.Content)
+	require.Contains(t, resp.Content, `"id":"api"`)
+
+	resp, err = c.contractWorkflow(ctx, WorkflowParams{ContractAction: "query", TaskID: "not a task"}, fantasy.ToolCall{ID: "bad"}, nil)
+	require.NoError(t, err)
+	require.True(t, resp.IsError)
+	require.Contains(t, resp.Content, "invalid contract task")
+}

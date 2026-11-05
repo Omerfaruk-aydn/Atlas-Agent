@@ -1,12 +1,28 @@
 package tools
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPathPolicyChecksSymlinkTargets(t *testing.T) {
+	t.Parallel()
+	root, outside := t.TempDir(), t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(root, "inside"), 0o755))
+	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	require.NoError(t, os.Symlink(filepath.Join(root, "inside"), filepath.Join(root, "link")))
+	p := PathPolicy{Root: root, Restrict: true}
+	require.Error(t, p.Check(filepath.Join(root, "escape", "new", "file.txt")))
+	require.NoError(t, p.Check(filepath.Join(root, "link", "new", "file.txt")))
+	require.NoError(t, os.Symlink(filepath.Join(root, "missing"), filepath.Join(root, "dangling")))
+	require.Error(t, p.Check(filepath.Join(root, "dangling", "file.txt")))
+}
 
 // Off unless a workspace turns it on: editing a file in a sibling checkout
 // is ordinary work, not something this package gets to forbid by default.

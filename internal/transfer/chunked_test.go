@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -178,4 +179,19 @@ func TestListReportsLinksWithoutFollowing(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, truncated)
 	require.Len(t, entries, 1)
+}
+
+func TestListLimitsAndSortsLargeDirectories(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	for i := 2000; i >= 0; i-- {
+		name := fmt.Sprintf("file-%04d", i)
+		require.NoError(t, os.WriteFile(filepath.Join(root, name), nil, 0o600))
+	}
+	entries, truncated, err := List(root, "", 1<<30)
+	require.NoError(t, err)
+	require.True(t, truncated)
+	require.Len(t, entries, 2000)
+	require.Equal(t, "file-0000", entries[0].Name)
+	require.Equal(t, "file-1999", entries[len(entries)-1].Name)
 }

@@ -6,11 +6,13 @@
 package transfer
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -173,8 +175,14 @@ func Receive(root, rel string, src io.Reader, size int64, sha string, maxBytes i
 	if err != nil {
 		return "", err
 	}
-	if info, err := os.Lstat(dest); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
+	confined, err := os.OpenRoot(root)
+	if err != nil {
+		return "", fail("invalid_root", "transfer root: %v", err)
+	}
+	defer confined.Close()
+	name := filepath.FromSlash(strings.ReplaceAll(rel, `\`, "/"))
+	if info, err := confined.Lstat(name); err == nil {
+		if isLink(info) {
 			return "", fail("symlink_escape", "destination %q is a symlink", rel)
 		}
 		if info.IsDir() {
@@ -183,22 +191,28 @@ func Receive(root, rel string, src io.Reader, size int64, sha string, maxBytes i
 		if !overwrite {
 			return "", fail("exists", "destination %q exists; pass overwrite to replace it", rel)
 		}
-	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
-	// Re-resolve after creating parents: a racing symlink would be caught.
-	if again, err := Resolve(root, rel); err != nil || again != dest {
-		return "", fail("symlink_escape", "destination changed while preparing %q", rel)
+	if err := confined.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+		return "", err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(dest), ".atlas-transfer-*")
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return "", err
+	}
+	tmpName := filepath.Join(filepath.Dir(name), ".atlas-transfer-"+hex.EncodeToString(nonce[:]))
+	tmp, err := confined.OpenFile(tmpName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return "", err
 	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
+	defer confined.Remove(tmpName)
 	hasher := sha256.New()
-	n, err := io.Copy(io.MultiWriter(tmp, hasher), io.LimitReader(src, maxBytes+1))
+	readLimit := maxBytes
+	if readLimit < math.MaxInt64 {
+		readLimit++
+	}
+	n, err := io.Copy(io.MultiWriter(tmp, hasher), io.LimitReader(src, readLimit))
 	if err != nil {
 		tmp.Close()
 		return "", fail("interrupted", "transfer interrupted after %d bytes: %v", n, err)
@@ -223,7 +237,15 @@ func Receive(root, rel string, src io.Reader, size int64, sha string, maxBytes i
 	if err := tmp.Close(); err != nil {
 		return "", err
 	}
-	if err := os.Rename(tmpName, dest); err != nil {
+	if overwrite {
+		err = confined.Rename(tmpName, name)
+	} else {
+		err = confined.Link(tmpName, name)
+		if errors.Is(err, os.ErrExist) {
+			return "", fail("exists", "destination %q exists; pass overwrite to replace it", rel)
+		}
+	}
+	if err != nil {
 		return "", err
 	}
 	return dest, nil
@@ -235,32 +257,54 @@ func Open(root, rel string, maxBytes int64) (*os.File, int64, string, error) {
 	if maxBytes <= 0 {
 		maxBytes = DefaultMaxBytes
 	}
-	path, err := Resolve(root, rel)
-	if err != nil {
+	if _, err := Resolve(root, rel); err != nil {
 		return nil, 0, "", err
 	}
-	info, err := os.Lstat(path)
+	confined, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, 0, "", fail("invalid_root", "transfer root: %v", err)
+	}
+	defer confined.Close()
+	name := filepath.FromSlash(strings.ReplaceAll(rel, `\`, "/"))
+	info, err := confined.Lstat(name)
 	if err != nil {
 		return nil, 0, "", fail("not_found", "%s: %v", rel, err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
+	if isLink(info) {
 		return nil, 0, "", fail("symlink_escape", "source %q is a symlink", rel)
 	}
+	f, err := confined.Open(name)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	info, err = f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, 0, "", err
+	}
 	if !info.Mode().IsRegular() {
+		f.Close()
 		return nil, 0, "", fail("invalid_path", "source %q is not a regular file", rel)
 	}
 	if info.Size() > maxBytes {
+		f.Close()
 		return nil, 0, "", fail("too_large", "source is %d bytes; limit is %d", info.Size(), maxBytes)
 	}
-	sum, err := HashFile(path)
-	if err != nil {
+	h := sha256.New()
+	if _, err := io.CopyN(h, f, info.Size()); err != nil {
+		f.Close()
+		return nil, 0, "", fail("interrupted", "source changed while hashing: %v", err)
+	}
+	var extra [1]byte
+	if n, err := f.Read(extra[:]); n != 0 || err != io.EOF {
+		f.Close()
+		return nil, 0, "", fail("interrupted", "source changed while hashing")
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		f.Close()
 		return nil, 0, "", err
 	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, 0, "", err
-	}
-	return f, info.Size(), sum, nil
+	return f, info.Size(), hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // HashFile returns the lowercase hex SHA-256 of a file.

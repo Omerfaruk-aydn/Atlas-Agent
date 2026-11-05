@@ -2,12 +2,42 @@ package transfer
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+type readerFunc func([]byte) (int, error)
+
+func (f readerFunc) Read(p []byte) (int, error) { return f(p) }
+
+func TestReceiveDoesNotReplaceFileCreatedDuringTransfer(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	data := []byte("incoming")
+	reader := bytes.NewReader(data)
+	created := false
+	src := readerFunc(func(p []byte) (int, error) {
+		if !created {
+			created = true
+			if err := os.WriteFile(filepath.Join(root, "file.txt"), []byte("existing"), 0o600); err != nil {
+				return 0, err
+			}
+		}
+		return reader.Read(p)
+	})
+	_, err := Receive(root, "file.txt", src, int64(len(data)), HashBytes(data), 0, false)
+	require.Equal(t, "exists", Code(err))
+	f, err := os.Open(filepath.Join(root, "file.txt"))
+	require.NoError(t, err)
+	defer f.Close()
+	actual, err := io.ReadAll(f)
+	require.NoError(t, err)
+	require.Equal(t, "existing", string(actual))
+}
 
 func TestReceiveVerifiesSizeAndHashBeforePublishing(t *testing.T) {
 	t.Parallel()

@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"container/heap"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -55,7 +57,7 @@ func Destination(root, rel string, policy Conflict) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
+	if isLink(info) {
 		return "", fail("symlink_escape", "destination %q is a symlink", rel)
 	}
 	if info.IsDir() {
@@ -89,51 +91,24 @@ func Install(root, rel, src string, size int64, sha string, policy Conflict) (st
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
 		return "", err
 	}
-	// Re-resolve after creating parents: a racing symlink would be caught.
-	if _, err := Resolve(root, rel); err != nil {
-		return "", err
+	name, err := filepath.Rel(realRoot, dest)
+	if err != nil || !filepath.IsLocal(name) {
+		return "", fail("path_traversal", "destination %q leaves the transfer root", rel)
 	}
 	in, err := os.Open(src)
 	if err != nil {
 		return "", err
 	}
 	defer in.Close()
-	tmp, err := os.CreateTemp(filepath.Dir(dest), ".atlas-transfer-*")
-	if err != nil {
-		return "", err
+	installed, err := Receive(root, filepath.ToSlash(name), in, size, sha, max(size, 1), policy == ConflictOverwrite)
+	if Code(err) == "too_large" {
+		return "", fail("size_mismatch", "source exceeds the expected size of %d bytes", size)
 	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(tmp, h), in)
-	if err == nil {
-		err = tmp.Sync()
-	}
-	if cerr := tmp.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return "", fail("interrupted", "install interrupted after %d bytes: %v", n, err)
-	}
-	if n != size {
-		return "", fail("size_mismatch", "installed %d bytes, expected %d", n, size)
-	}
-	if got := hex.EncodeToString(h.Sum(nil)); got != sha {
-		return "", fail("hash_mismatch", "received sha256 %s, expected %s", got, sha)
-	}
-	if policy != ConflictOverwrite {
-		// The name was free when chosen; refuse if something appeared since.
-		if _, err := os.Lstat(dest); err == nil {
-			return "", fail("exists", "destination %q appeared during the transfer", filepath.Base(dest))
-		}
-	}
-	if err := os.Rename(tmpName, dest); err != nil {
-		return "", err
-	}
-	return dest, nil
+	return installed, err
 }
 
 // UploadSpec describes a chunked upload. Owner and Key make resumption
@@ -424,37 +399,76 @@ type Entry struct {
 	ModTime int64  `json:"mod_time"`
 }
 
+// entryHeap retains the lexically smallest names with bounded memory.
+type entryHeap []os.DirEntry
+
+func (h entryHeap) Len() int           { return len(h) }
+func (h entryHeap) Less(i, j int) bool { return h[i].Name() > h[j].Name() }
+func (h entryHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *entryHeap) Push(x any)        { *h = append(*h, x.(os.DirEntry)) }
+func (h *entryHeap) Pop() any {
+	old := *h
+	x := old[len(old)-1]
+	*h = old[:len(old)-1]
+	return x
+}
+
 // List reads up to limit entries of root/rel. Links are reported but never
 // followed, so a listing cannot reveal anything outside root.
 func List(root, rel string, limit int) ([]Entry, bool, error) {
-	dir := root
+	name := "."
 	if rel != "" && rel != "." {
-		var err error
-		if dir, err = Resolve(root, rel); err != nil {
+		if _, err := Resolve(root, rel); err != nil {
 			return nil, false, err
 		}
-	} else if real, err := filepath.EvalSymlinks(root); err == nil {
-		dir = real
+		name = filepath.FromSlash(strings.ReplaceAll(rel, `\`, "/"))
 	}
-	info, err := os.Lstat(dir)
+	confined, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, false, err
+	}
+	defer confined.Close()
+	info, err := confined.Lstat(name)
 	if err != nil {
 		return nil, false, fail("not_found", "%s: %v", rel, err)
 	}
 	if !info.IsDir() {
 		return nil, false, fail("invalid_path", "%q is not a directory", rel)
 	}
-	entries, err := os.ReadDir(dir)
+	directory, err := confined.Open(name)
 	if err != nil {
 		return nil, false, err
 	}
+	defer directory.Close()
 	if limit <= 0 {
 		limit = 500
 	}
-	out := make([]Entry, 0, min(len(entries), limit))
-	for _, e := range entries {
-		if len(out) >= limit {
-			return out, true, nil
+	limit = min(limit, 2000)
+	var entries entryHeap
+	truncated := false
+	for {
+		batch, readErr := directory.ReadDir(128)
+		for _, entry := range batch {
+			if len(entries) < limit {
+				heap.Push(&entries, entry)
+				continue
+			}
+			truncated = true
+			if entry.Name() < entries[0].Name() {
+				entries[0] = entry
+				heap.Fix(&entries, 0)
+			}
 		}
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			return nil, false, readErr
+		}
+	}
+	slices.SortFunc(entries, func(a, b os.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
+	out := make([]Entry, 0, len(entries))
+	for _, e := range entries {
 		row := Entry{Name: e.Name(), Dir: e.IsDir(), Link: e.Type()&os.ModeSymlink != 0}
 		if fi, err := e.Info(); err == nil {
 			row.ModTime = fi.ModTime().UnixMilli()
@@ -464,5 +478,5 @@ func List(root, rel string, limit int) ([]Entry, bool, error) {
 		}
 		out = append(out, row)
 	}
-	return out, false, nil
+	return out, truncated, nil
 }

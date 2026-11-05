@@ -9,9 +9,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	stdpath "path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
@@ -221,6 +221,13 @@ func (c *Client) dialer(ctx context.Context, network, address string) (net.Conn,
 	case "unix":
 		return d.DialContext(ctx, "unix", c.addr)
 	default:
+		if host, port, err := net.SplitHostPort(address); err == nil && strings.EqualFold(host, "localhost") {
+			conn, err := d.DialContext(ctx, network, net.JoinHostPort("127.0.0.1", port))
+			if err == nil {
+				return conn, nil
+			}
+			return d.DialContext(ctx, network, net.JoinHostPort("::1", port))
+		}
 		return d.DialContext(ctx, network, address)
 	}
 }
@@ -268,7 +275,11 @@ func (c *Client) buildReq(ctx context.Context, method, url string, body io.Reade
 	for k, v := range headers {
 		r.Header[http.CanonicalHeaderKey(k)] = v
 	}
-	if token := os.Getenv("ATLAS_SERVER_TOKEN"); token != "" {
+	token, err := server.LocalToken(c.network, c.addr)
+	if err != nil {
+		return nil, err
+	}
+	if token != "" {
 		r.Header.Set("Authorization", "Bearer "+token)
 	}
 

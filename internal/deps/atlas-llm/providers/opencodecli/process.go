@@ -135,7 +135,7 @@ func bridgeEnvironment(env []string, directory, configPath, config string) []str
 		"OPENCODE_DISABLE_AUTOUPDATE": "true", "OPENCODE_DISABLE_AUTO_SHARE": "true",
 		"OPENCODE_PERMISSION": `{"*":"ask"}`,
 	}
-	result := make([]string, 0, len(env)+len(overrides))
+	result := make([]string, 0, len(env))
 	for _, entry := range env {
 		key, _, _ := strings.Cut(entry, "=")
 		if _, override := overrides[strings.ToUpper(key)]; !override {

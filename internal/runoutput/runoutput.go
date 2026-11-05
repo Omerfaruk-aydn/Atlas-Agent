@@ -50,7 +50,7 @@ func (w *StreamWriter) DeltaWriter() io.Writer { return deltaWriter{events: w} }
 func (w *StreamWriter) Event(kind string, fields map[string]any) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	event := make(map[string]any, len(fields)+1)
+	event := make(map[string]any, len(fields))
 	event["type"] = kind
 	for key, value := range fields {
 		event[key] = value

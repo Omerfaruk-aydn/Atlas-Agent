@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -81,6 +80,11 @@ func NewMultiEditTool(
 			if err := pathPolicy.Check(params.FilePath); err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
+			target, err := pathPolicy.open(params.FilePath)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			defer target.Close()
 
 			// Validate all edits before applying any
 			if err := validateEdits(params.Edits); err != nil {
@@ -88,9 +92,8 @@ func NewMultiEditTool(
 			}
 
 			var response fantasy.ToolResponse
-			var err error
 
-			editCtx := editContext{ctx, permissions, files, filetracker, workingDir}
+			editCtx := editContext{ctx: ctx, permissions: permissions, files: files, filetracker: filetracker, workingDir: workingDir, target: target}
 			// Handle file creation case (first edit has empty old_string)
 			if len(params.Edits) > 0 && params.Edits[0].OldString == "" {
 				response, err = processMultiEditWithCreation(editCtx, params, call)
@@ -158,16 +161,10 @@ func processMultiEditWithCreation(edit editContext, params MultiEditParams, call
 	}
 
 	// Check if file already exists
-	if _, err := os.Stat(params.FilePath); err == nil {
+	if _, err := edit.targetFor(params.FilePath).Stat(); err == nil {
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("file already exists: %s", params.FilePath)), nil
 	} else if !os.IsNotExist(err) {
 		return fantasy.ToolResponse{}, fmt.Errorf("failed to access file: %w", err)
-	}
-
-	// Create parent directories
-	dir := filepath.Dir(params.FilePath)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fantasy.ToolResponse{}, fmt.Errorf("failed to create parent directories: %w", err)
 	}
 
 	currentContent, failedEdits, whitespaceCorrected := applyEditsToContent(firstEdit.NewString, params.Edits[1:], 1)
@@ -218,7 +215,10 @@ func processMultiEditWithCreation(edit editContext, params MultiEditParams, call
 	}
 
 	// Write the file
-	err = os.WriteFile(params.FilePath, []byte(currentContent), 0o644)
+	if err = edit.targetFor(params.FilePath).MkdirParents(); err != nil {
+		return fantasy.ToolResponse{}, fmt.Errorf("failed to create parent directories: %w", err)
+	}
+	err = edit.targetFor(params.FilePath).WriteNew([]byte(currentContent), 0o644)
 	if err != nil {
 		return fantasy.ToolResponse{}, fmt.Errorf("failed to write file: %w", err)
 	}

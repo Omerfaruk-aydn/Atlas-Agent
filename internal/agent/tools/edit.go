@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -58,6 +57,14 @@ type editContext struct {
 	files       history.Service
 	filetracker filetracker.Service
 	workingDir  string
+	target      *policyFile
+}
+
+func (e editContext) targetFor(path string) *policyFile {
+	if e.target != nil {
+		return e.target
+	}
+	return &policyFile{name: path}
 }
 
 type expectedEditHashKey struct{}
@@ -83,11 +90,15 @@ func NewEditTool(
 			if err := pathPolicy.Check(params.FilePath); err != nil {
 				return fantasy.NewTextErrorResponse(err.Error()), nil
 			}
+			target, err := pathPolicy.open(params.FilePath)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			defer target.Close()
 
 			var response fantasy.ToolResponse
-			var err error
 
-			editCtx := editContext{ctx, permissions, files, filetracker, workingDir}
+			editCtx := editContext{ctx: ctx, permissions: permissions, files: files, filetracker: filetracker, workingDir: workingDir, target: target}
 			if params.ExpectedFileHash != "" {
 				if params.OldString == "" || len(params.ExpectedFileHash) != 64 {
 					return fantasy.NewTextErrorResponse("expected_file_hash requires a 64-character SHA-256 and old_string"), nil
@@ -132,7 +143,7 @@ func NewEditTool(
 }
 
 func createNewFile(edit editContext, filePath, content string, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
-	fileInfo, err := os.Stat(filePath)
+	fileInfo, err := edit.targetFor(filePath).Stat()
 	if err == nil {
 		if fileInfo.IsDir() {
 			return fantasy.NewTextErrorResponse(fmt.Sprintf("path is a directory, not a file: %s", filePath)), nil
@@ -140,11 +151,6 @@ func createNewFile(edit editContext, filePath, content string, call fantasy.Tool
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("file already exists: %s", filePath)), nil
 	} else if !os.IsNotExist(err) {
 		return fantasy.ToolResponse{}, fmt.Errorf("failed to access file: %w", err)
-	}
-
-	dir := filepath.Dir(filePath)
-	if err = os.MkdirAll(dir, 0o755); err != nil {
-		return fantasy.ToolResponse{}, fmt.Errorf("failed to create parent directories: %w", err)
 	}
 
 	sessionID := GetSessionFromContext(edit.ctx)
@@ -187,7 +193,10 @@ func createNewFile(edit editContext, filePath, content string, call fantasy.Tool
 		return resp, nil
 	}
 
-	err = os.WriteFile(filePath, []byte(content), 0o644)
+	if err = edit.targetFor(filePath).MkdirParents(); err != nil {
+		return fantasy.ToolResponse{}, fmt.Errorf("failed to create parent directories: %w", err)
+	}
+	err = edit.targetFor(filePath).WriteNew([]byte(content), 0o644)
 	if err != nil {
 		return fantasy.ToolResponse{}, fmt.Errorf("failed to write file: %w", err)
 	}
@@ -275,12 +284,12 @@ func notFoundError(content, old string) error {
 // before calling this function.
 func commitFileChange(edit editContext, sessionID, filePath, oldContent, newContent string) error {
 	if expected, _ := edit.ctx.Value(expectedEditHashKey{}).(string); expected != "" {
-		current, err := os.ReadFile(filePath)
+		current, err := edit.targetFor(filePath).ReadFile()
 		if err != nil || engineering.Hash(string(current)) != expected {
 			return fmt.Errorf("file changed before commit; no write sent")
 		}
 	}
-	if err := os.WriteFile(filePath, []byte(newContent), 0o644); err != nil {
+	if err := edit.targetFor(filePath).WriteFile([]byte(newContent), 0o644); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 
@@ -312,7 +321,7 @@ func commitFileChange(edit editContext, sessionID, filePath, oldContent, newCont
 }
 
 func loadExistingFile(edit editContext, filePath, sessionError string) (sessionID, oldContent string, isCrlf bool, resp fantasy.ToolResponse, err error) {
-	fileInfo, err := os.Stat(filePath)
+	fileInfo, err := edit.targetFor(filePath).Stat()
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", "", false, fantasy.NewTextErrorResponse(fmt.Sprintf("file not found: %s", filePath)), nil
@@ -344,7 +353,7 @@ func loadExistingFile(edit editContext, filePath, sessionError string) (sessionI
 		), nil
 	}
 
-	content, err := os.ReadFile(filePath)
+	content, err := edit.targetFor(filePath).ReadFile()
 	if err != nil {
 		return "", "", false, fantasy.ToolResponse{}, fmt.Errorf("failed to read file: %w", err)
 	}

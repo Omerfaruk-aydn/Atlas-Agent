@@ -144,9 +144,11 @@ This view covers recorded events, not a complete file history.
 ## Server authentication
 
 Set `ATLAS_SERVER_TOKEN` to the same secret in the server and client environments
-to require Bearer authentication on every HTTP endpoint. A token is mandatory
-for TCP listeners; an empty/unset token is allowed for Unix sockets and Windows
-named pipes. This adds authentication, not TLS; remote
+to require Bearer authentication on every HTTP endpoint. Loopback TCP servers
+automatically create a per-port credential shared with local clients, including
+when listening on all interfaces. Remote clients require an explicitly shared
+token; Unix sockets and Windows named pipes do not require one. This adds
+authentication, not TLS; remote
 TCP deployments require a separately secured transport. Existing server session
 APIs support multiple clients; no new mobile application is included.
 

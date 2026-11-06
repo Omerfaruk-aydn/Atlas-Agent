@@ -79,3 +79,42 @@ func TestEstimatedUsageStateCanBeClearedByExplicitSave(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, refetched.EstimatedUsage)
 }
+
+func TestCreateWithTagsTellsNobodyAboutTheSessionBeforeItIsTagged(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Cleanup(func() {
+		require.NoError(t, db.Release(dataDir))
+		db.ResetPool()
+	})
+	conn, err := db.Connect(t.Context(), dataDir)
+	require.NoError(t, err)
+	sessions := NewService(db.New(conn), conn)
+	events := sessions.Subscribe(t.Context())
+
+	tagged, err := sessions.(TaggedCreator).CreateWithTags(t.Context(), "side", []string{SideChatTagPrefix + "abc"})
+	require.NoError(t, err)
+	require.True(t, IsSideChat(tagged))
+
+	ev := <-events
+	require.Equal(t, tagged.ID, ev.Payload.ID)
+	require.True(t, IsSideChat(ev.Payload), "the created event already carries the tag")
+
+	fetched, err := sessions.Get(t.Context(), tagged.ID)
+	require.NoError(t, err)
+	require.Equal(t, []string{SideChatTagPrefix + "abc"}, fetched.Tags)
+	require.False(t, IsSideChat(Session{Tags: []string{"other"}}))
+}
+
+func TestWithoutSideChats(t *testing.T) {
+	t.Parallel()
+	in := []Session{
+		{ID: "1"},
+		{ID: "2", Tags: []string{SideChatTagPrefix + "1"}},
+		{ID: "3", Tags: []string{"x"}},
+	}
+	out := WithoutSideChats(in)
+	require.Len(t, out, 2)
+	require.Equal(t, "1", out[0].ID)
+	require.Equal(t, "3", out[1].ID)
+	require.Len(t, in, 3, "the input is not changed")
+}

@@ -482,7 +482,7 @@ func (g *Gateway) watchBusy(ctx context.Context) {
 			continue
 		}
 		for i, s := range sessions {
-			if i >= 50 || s.ParentSessionID != "" {
+			if i >= 50 || s.ParentSessionID != "" || session.IsSideChat(s) {
 				continue
 			}
 			busy := g.opts.Backend.AgentIsSessionBusy(s.ID)

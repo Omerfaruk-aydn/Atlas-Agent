@@ -54,8 +54,20 @@ func (w *AppWorkspace) GetSession(ctx context.Context, sessionID string) (sessio
 	return w.app.Sessions.Get(ctx, sessionID)
 }
 
+// ListSessions lists the chats of the project. Side chats belong to the
+// desktop app's side panel and are left out.
 func (w *AppWorkspace) ListSessions(ctx context.Context) ([]session.Session, error) {
-	return w.app.Sessions.List(ctx)
+	all, err := w.app.Sessions.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]session.Session, 0, len(all))
+	for _, s := range all {
+		if !session.IsSideChat(s) {
+			out = append(out, s)
+		}
+	}
+	return out, nil
 }
 
 func (w *AppWorkspace) SearchSessions(ctx context.Context, query string) ([]session.Session, error) {
@@ -63,17 +75,23 @@ func (w *AppWorkspace) SearchSessions(ctx context.Context, query string) ([]sess
 	if err != nil {
 		return nil, err
 	}
+	return sessionsForIDs(ctx, ids, w.app.Sessions.Get), nil
+}
+
+// sessionsForIDs loads the sessions a search matched, in order. A session may
+// have been deleted after its message matched; it is skipped rather than
+// failing the whole search. Side chats belong to the desktop app's side panel
+// and are left out, as ListSessions leaves them out.
+func sessionsForIDs(ctx context.Context, ids []string, get func(context.Context, string) (session.Session, error)) []session.Session {
 	sessions := make([]session.Session, 0, len(ids))
 	for _, id := range ids {
-		s, err := w.app.Sessions.Get(ctx, id)
-		if err != nil {
-			// A session may have been deleted after its message matched;
-			// skip it rather than failing the whole search.
+		s, err := get(ctx, id)
+		if err != nil || session.IsSideChat(s) {
 			continue
 		}
 		sessions = append(sessions, s)
 	}
-	return sessions, nil
+	return sessions
 }
 
 func (w *AppWorkspace) SaveSession(ctx context.Context, sess session.Session) (session.Session, error) {

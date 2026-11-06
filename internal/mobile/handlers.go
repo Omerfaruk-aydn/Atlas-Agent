@@ -17,6 +17,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/question"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 )
 
 //go:embed web
@@ -271,7 +272,7 @@ func (g *Gateway) handleSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	var out []map[string]any
 	for _, s := range sessions {
-		if s.ParentSessionID != "" {
+		if s.ParentSessionID != "" || session.IsSideChat(s) {
 			continue
 		}
 		sum := sessionSummary(s, g.opts.Backend.AgentIsSessionBusy(s.ID))

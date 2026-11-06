@@ -30,6 +30,9 @@ type BranchOptions struct {
 	// of the branch point. Without it the branch only copies the
 	// conversation and leaves the disk alone.
 	RestoreFiles bool
+	// ExtraTags are added to the branch's tags. With a store that can create
+	// a tagged session, the branch is tagged before anyone sees it.
+	ExtraTags []string
 	// DryRun computes the result without creating a session or touching
 	// any file.
 	DryRun bool
@@ -112,7 +115,15 @@ func (b *Brancher) Branch(ctx context.Context, opts BranchOptions) (BranchResult
 		return result, nil
 	}
 
-	fork, err := s.sessions.Create(ctx, branchTitle(source.Title))
+	tags := append(append(append([]string{}, source.Tags...), BranchTagPrefix+session.HashID(source.ID)), opts.ExtraTags...)
+	var fork session.Session
+	tagged := false
+	if creator, ok := s.sessions.(session.TaggedCreator); ok {
+		fork, err = creator.CreateWithTags(ctx, branchTitle(source.Title), tags)
+		tagged = true
+	} else {
+		fork, err = s.sessions.Create(ctx, branchTitle(source.Title))
+	}
 	if err != nil {
 		return BranchResult{}, fmt.Errorf("branch: creating session: %w", err)
 	}
@@ -121,10 +132,11 @@ func (b *Brancher) Branch(ctx context.Context, opts BranchOptions) (BranchResult
 		_ = s.sessions.Delete(context.WithoutCancel(ctx), fork.ID)
 		return BranchResult{}, err
 	}
-	tags := append(append([]string{}, source.Tags...), BranchTagPrefix+session.HashID(source.ID))
-	if err := s.sessions.SetTags(ctx, fork.ID, tags); err != nil {
-		_ = s.sessions.Delete(context.WithoutCancel(ctx), fork.ID)
-		return BranchResult{}, fmt.Errorf("branch: tagging session: %w", err)
+	if !tagged {
+		if err := s.sessions.SetTags(ctx, fork.ID, tags); err != nil {
+			_ = s.sessions.Delete(context.WithoutCancel(ctx), fork.ID)
+			return BranchResult{}, fmt.Errorf("branch: tagging session: %w", err)
+		}
 	}
 	fork.Tags = tags
 	result.Session = fork

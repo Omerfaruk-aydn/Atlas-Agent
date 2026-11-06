@@ -141,6 +141,64 @@ func (s *service) Create(ctx context.Context, title string) (Session, error) {
 	return session, nil
 }
 
+// SideChatTagPrefix marks a session made as a side chat of another; the rest
+// of the tag is the full ID of the session it was forked from.
+const SideChatTagPrefix = "side-of:"
+
+// IsSideChat reports whether a session is a side chat. Side chats belong to
+// the desktop app's side panel; other clients do not list them.
+func IsSideChat(s Session) bool {
+	for _, tag := range s.Tags {
+		if strings.HasPrefix(tag, SideChatTagPrefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// WithoutSideChats returns the sessions that are not side chats, in order.
+func WithoutSideChats(sessions []Session) []Session {
+	out := make([]Session, 0, len(sessions))
+	for _, s := range sessions {
+		if !IsSideChat(s) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// TaggedCreator is implemented by services that can create a session that
+// already carries its tags, so no client ever sees it untagged.
+type TaggedCreator interface {
+	CreateWithTags(ctx context.Context, title string, tags []string) (Session, error)
+}
+
+// CreateWithTags creates a session with its tags set before anyone is told
+// about it.
+func (s *service) CreateWithTags(ctx context.Context, title string, tags []string) (Session, error) {
+	tagsJSON, err := marshalTags(tags)
+	if err != nil {
+		return Session{}, err
+	}
+	dbSession, err := s.q.CreateSession(ctx, db.CreateSessionParams{ID: uuid.New().String(), Title: title})
+	if err != nil {
+		return Session{}, err
+	}
+	if tagsJSON != "" {
+		if err := s.q.SetSessionTags(ctx, db.SetSessionTagsParams{ID: dbSession.ID, Tags: sql.NullString{String: tagsJSON, Valid: true}}); err != nil {
+			_ = s.q.DeleteSession(context.WithoutCancel(ctx), dbSession.ID)
+			return Session{}, err
+		}
+		if dbSession, err = s.q.GetSessionByID(ctx, dbSession.ID); err != nil {
+			return Session{}, err
+		}
+	}
+	session := s.fromDBItem(dbSession)
+	s.Publish(pubsub.CreatedEvent, session)
+	event.SessionCreated()
+	return session, nil
+}
+
 func (s *service) CreateTaskSession(ctx context.Context, toolCallID, parentSessionID, title string) (Session, error) {
 	dbSession, err := s.q.CreateSession(ctx, db.CreateSessionParams{
 		ID:              toolCallID,

@@ -75,6 +75,8 @@ func (s *permissionService) GrantScoped(sessionID, toolName, action, path string
 	}
 	key := PermissionKey{SessionID: sessionID, ToolName: toolName, Action: action, Path: absolute}
 	if scope == GrantSession {
+		// Shared with the sub-agents this session starts.
+		key.SessionID = s.lineage.Root(sessionID)
 		s.sessionPermissions.Set(key, true)
 		return nil
 	}

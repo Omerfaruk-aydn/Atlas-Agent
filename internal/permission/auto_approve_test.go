@@ -94,3 +94,24 @@ func TestAutoApproveDestructiveNeverReachesModel(t *testing.T) {
 	require.False(t, granted)
 	require.Zero(t, approver.calls)
 }
+
+// A bash allow entry the user wrote is their own authorization: it must hold
+// in auto-approve mode even for a command the classifier calls risky, while a
+// session without that entry still gets stopped.
+func TestExplicitBashAllowOverridesTheRiskClassifierInAutoApprove(t *testing.T) {
+	t.Parallel()
+	req := CreatePermissionRequest{SessionID: "s", ToolCallID: "c", ToolName: "bash", Action: "execute", Path: t.TempDir(), Params: map[string]string{"command": "go install ./cmd/tool"}}
+	require.Equal(t, ApprovalRisky, ClassifyDeterministic(req, "").Class)
+
+	allowed := NewPermissionService(t.TempDir(), false, []string{"bash"})
+	allowed.SetMode(ModeAutoApprove)
+	ok, err := allowed.Request(t.Context(), req)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	scoped := NewPermissionService(t.TempDir(), false, []string{"bash:execute"})
+	scoped.SetMode(ModeAutoApprove)
+	ok, err = scoped.Request(t.Context(), req)
+	require.NoError(t, err)
+	require.True(t, ok)
+}

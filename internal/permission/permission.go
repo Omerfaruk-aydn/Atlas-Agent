@@ -71,6 +71,10 @@ const (
 // ExitPlanModeToolName constant must stay equal to this one.
 const ExitPlanModeToolName = "exit_plan_mode"
 
+// EnterPlanModeToolName is the tool the agent calls to start planning first.
+// It only restricts the agent, so it is read-only for permission purposes.
+const EnterPlanModeToolName = "enter_plan_mode"
+
 type CreatePermissionRequest struct {
 	SessionID   string `json:"session_id"`
 	ToolCallID  string `json:"tool_call_id"`
@@ -164,6 +168,7 @@ type permissionService struct {
 	allowedTools *csync.Slice[string]
 	autoApprover AutoApprover
 	scoped       scopedGrants
+	lineage      lineage
 
 	// used to make sure we only process one request at a time
 	requestMu       sync.Mutex
@@ -223,7 +228,7 @@ func (s *permissionService) GrantPersistent(permission PermissionRequest) bool {
 	// silently flipping later denied calls to allowed.
 	return s.resolve(permission, true, false, func() {
 		s.sessionPermissions.Set(PermissionKey{
-			SessionID: permission.SessionID,
+			SessionID: s.lineage.Root(permission.SessionID),
 			ToolName:  permission.ToolName,
 			Action:    permission.Action,
 			Path:      permission.Path,
@@ -323,7 +328,7 @@ func (s *permissionService) Request(ctx context.Context, opts CreatePermissionRe
 	})
 
 	s.autoApproveSessionsMu.RLock()
-	autoApprove := s.autoApproveSessions[opts.SessionID]
+	autoApprove := s.autoApproveSessions[opts.SessionID] || s.autoApproveSessions[s.lineage.Root(opts.SessionID)]
 	s.autoApproveSessionsMu.RUnlock()
 
 	if autoApprove {
@@ -359,7 +364,7 @@ func (s *permissionService) Request(ctx context.Context, opts CreatePermissionRe
 	}
 
 	if _, ok := s.sessionPermissions.Get(PermissionKey{
-		SessionID: permission.SessionID,
+		SessionID: s.lineage.Root(permission.SessionID),
 		ToolName:  permission.ToolName,
 		Action:    permission.Action,
 		Path:      permission.Path,

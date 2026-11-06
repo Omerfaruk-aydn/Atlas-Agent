@@ -197,6 +197,31 @@ func (p *PermissionAction) UnmarshalText(text []byte) error {
 type PermissionGrant struct {
 	Permission PermissionRequest `json:"permission"`
 	Action     PermissionAction  `json:"action"`
+	// Feedback is an optional comment sent with a deny: what to change.
+	Feedback string `json:"feedback,omitempty"`
+}
+
+// MCPApp is an interactive page an MCP tool offers. The client shows HTML in
+// a sandboxed frame without script access to the host.
+type MCPApp struct {
+	Server string `json:"server"`
+	Tool   string `json:"tool"`
+	URI    string `json:"uri"`
+	HTML   string `json:"html"`
+}
+
+// MCPAppCall is a tool call made by an MCP app page: Tool is the tool that
+// offered the page, Call the tool the page wants to run on the same server.
+type MCPAppCall struct {
+	Tool      string         `json:"tool"`
+	Call      string         `json:"call"`
+	Arguments map[string]any `json:"arguments,omitempty"`
+}
+
+// MCPAppCallResult is what the page gets back.
+type MCPAppCallResult struct {
+	Content string `json:"content"`
+	IsError bool   `json:"is_error,omitempty"`
 }
 
 // PermissionGrantResponse is the server's response to a permission

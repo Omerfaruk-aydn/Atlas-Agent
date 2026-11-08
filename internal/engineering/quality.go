@@ -44,7 +44,7 @@ type RoleExecution struct {
 func SourceFingerprint(ctx context.Context, root string, excluded ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--exclude=.atlas-env/", "--exclude=.venv/", "--exclude=.atlas/interactions/")
 	for _, entry := range os.Environ() {
-		if !strings.HasPrefix(entry, "GIT_") {
+		if !strings.HasPrefix(entry, "GIT_") || strings.HasPrefix(entry, "GIT_CEILING_DIRECTORIES=") { // The ceiling only limits where git looks; it cannot point git elsewhere.
 			cmd.Env = append(cmd.Env, entry)
 		}
 	}

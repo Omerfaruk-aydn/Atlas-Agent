@@ -131,11 +131,28 @@ type Requirement struct {
 	Reason  string
 }
 
+// IsAtlasHome reports whether root is the user's home folder. Its .atlas
+// directory is Atlas's own data folder, not a project's, and a chat started
+// there has no project: a plan an earlier, unrelated request left there must
+// not become the contract of this one. Every other folder, including one
+// that holds its own .atlas/atlas.db, is an ordinary project.
+func IsAtlasHome(root string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" || root == "" {
+		return false
+	}
+	a, b := filepath.Clean(root), filepath.Clean(home)
+	if abs, err := filepath.Abs(a); err == nil {
+		a = abs
+	}
+	return strings.EqualFold(a, b)
+}
+
 // Load reads the plan and the progress notes under root. It returns a nil
 // plan and no error when there is no plan file. A progress file without a
 // plan is ignored: notes alone are not a contract.
 func Load(root string) (*Plan, string, error) {
-	if root == "" {
+	if root == "" || IsAtlasHome(root) {
 		return nil, "", nil
 	}
 	data, err := readBounded(filepath.Join(root, Dir, PlanFile), maxPlanBytes)
@@ -437,4 +454,36 @@ func clip(s string, limit int) string {
 		cut--
 	}
 	return s[:cut] + "…"
+}
+
+// Brief is the short account of the plan a delegated agent is given, so its
+// work fits the whole it is a part of. It carries the goal and what is still
+// open, and none of the instructions PromptBlock gives the agent that owns
+// the plan: a delegate does not write, verify or report on the plan.
+func Brief(root string) string {
+	plan, _, err := Load(root)
+	if err != nil || plan == nil {
+		return ""
+	}
+	goal := strings.TrimSpace(plan.Goal)
+	open := plan.Open()
+	if goal == "" && len(open) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n\n<parent_plan>\n")
+	if goal != "" {
+		b.WriteString("Overall goal: " + clip(goal, maxTextLen) + "\n")
+	}
+	if len(open) > 0 {
+		b.WriteString("Still open in the whole task:\n")
+		for _, feature := range open[:min(len(open), maxShownPending)] {
+			b.WriteString("- " + feature.ID + ": " + clip(feature.Title, maxTextLen) + "\n")
+		}
+		if hidden := len(open) - maxShownPending; hidden > 0 {
+			fmt.Fprintf(&b, "- … %d more\n", hidden)
+		}
+	}
+	b.WriteString("The calling agent owns this plan and its verification. Do only the task you were given, and do not edit the plan files.\n</parent_plan>")
+	return b.String()
 }

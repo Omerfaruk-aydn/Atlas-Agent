@@ -33,6 +33,34 @@ func TestLoadWithoutPlanIsNotAContract(t *testing.T) {
 	require.Empty(t, PromptBlock(root))
 }
 
+// The user's home folder has Atlas's own data folder as its .atlas. A plan
+// an earlier request left there belongs to no project, so a chat started in
+// that folder must not be held to it.
+func TestAPlanInAtlasHomeIsNotAContract(t *testing.T) {
+	// Not parallel: it changes the home folder.
+	const planJSON = `{"goal":"an old, unrelated job","verify":[{"name":"x","command":"py tools/check.py"}]}`
+
+	// A project, even one with its own .atlas/atlas.db, keeps its contract.
+	project := t.TempDir()
+	writePlan(t, project, planJSON, "notes")
+	require.NoError(t, os.WriteFile(filepath.Join(project, Dir, "atlas.db"), []byte("db"), 0o644))
+	kept, _, err := Load(project)
+	require.NoError(t, err)
+	require.NotNil(t, kept)
+	require.False(t, IsAtlasHome(project))
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	writePlan(t, home, planJSON, "notes")
+	require.True(t, IsAtlasHome(home))
+	plan, progress, err := Load(home)
+	require.NoError(t, err)
+	require.Nil(t, plan)
+	require.Empty(t, progress)
+	require.Empty(t, PromptBlock(home))
+}
+
 func TestRequirementsCoverContractAndFinishedFeatures(t *testing.T) {
 	t.Parallel()
 
@@ -144,4 +172,22 @@ func TestIsPlanFile(t *testing.T) {
 	require.True(t, IsPlanFile("/home/u/p/.atlas/work.json"))
 	require.False(t, IsPlanFile("src/work.json"))
 	require.False(t, IsPlanFile(".atlas/other.json"))
+}
+
+func TestBriefTellsADelegateTheGoalWithoutTheOwnersOrders(t *testing.T) {
+	root := t.TempDir()
+	require.Empty(t, Brief(root), "no plan, no brief")
+
+	dir := filepath.Join(root, Dir)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	plan := `{"goal":"Ship the importer","features":[{"id":"f1","title":"Parse files","done":true},{"id":"f2","title":"Report errors"}],"verify":[{"command":"go test ./..."}]}`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, PlanFile), []byte(plan), 0o644))
+
+	brief := Brief(root)
+	require.Contains(t, brief, "<parent_plan>")
+	require.Contains(t, brief, "Overall goal: Ship the importer")
+	require.Contains(t, brief, "f2: Report errors")
+	require.NotContains(t, brief, "f1: Parse files", "finished work is not listed")
+	require.NotContains(t, brief, "go test", "the delegate does not own the verification")
+	require.NotContains(t, brief, "previewed")
 }

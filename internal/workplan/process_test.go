@@ -2,6 +2,7 @@ package workplan
 
 import (
 	"fmt"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/testenv"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 const childEnv = "ATLAS_WORKPLAN_CHILD"
 
 func TestMain(m *testing.M) {
+	testenv.KeepGitInsideTemp()
 	if role := os.Getenv(childEnv); role != "" {
 		os.Exit(runChild(role))
 	}

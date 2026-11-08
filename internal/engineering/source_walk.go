@@ -63,7 +63,7 @@ func walkSourceFiles(ctx context.Context, root string) ([]string, error) {
 func insideGitWorkTree(ctx context.Context, root string) bool {
 	cmd := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "--is-inside-work-tree")
 	for _, entry := range os.Environ() {
-		if !strings.HasPrefix(entry, "GIT_") {
+		if !strings.HasPrefix(entry, "GIT_") || strings.HasPrefix(entry, "GIT_CEILING_DIRECTORIES=") { // The ceiling only limits where git looks; it cannot point git elsewhere.
 			cmd.Env = append(cmd.Env, entry)
 		}
 	}

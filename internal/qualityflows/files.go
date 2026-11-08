@@ -43,7 +43,7 @@ func git(ctx context.Context, root string, env []string, input []byte, args ...s
 	argv := append([]string{"-C", root, "--no-pager"}, args...)
 	c := exec.CommandContext(ctx, "git", argv...)
 	for _, entry := range os.Environ() {
-		if !strings.HasPrefix(strings.ToUpper(entry), "GIT_") {
+		if !strings.HasPrefix(strings.ToUpper(entry), "GIT_") || strings.HasPrefix(strings.ToUpper(entry), "GIT_CEILING_DIRECTORIES=") { // The ceiling only limits where git looks; it cannot point git elsewhere.
 			c.Env = append(c.Env, entry)
 		}
 	}

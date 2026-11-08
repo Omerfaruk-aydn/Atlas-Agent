@@ -235,7 +235,7 @@ func matchEntries(entries []AppEntry, query string) (exact, partial []AppEntry) 
 			switch {
 			case f == q:
 				hit = 2
-			case hit == 0 && tokenSubset(q, f):
+			case hit == 0 && queryWithinName(q, f):
 				hit = 1
 			}
 		}
@@ -251,7 +251,7 @@ func matchEntries(entries []AppEntry, query string) (exact, partial []AppEntry) 
 
 // tokenSubset reports whether every token of the shorter name occurs in
 // the longer one ("chrome" in "google chrome", "omer faruk" in "omer faruk
-// aydin").
+// aydin"). Profile names match this way in both directions.
 func tokenSubset(a, b string) bool {
 	ta, tb := strings.Fields(a), strings.Fields(b)
 	if len(ta) == 0 || len(tb) == 0 {
@@ -262,6 +262,23 @@ func tokenSubset(a, b string) bool {
 	}
 	for _, t := range ta {
 		if !slices.Contains(tb, t) {
+			return false
+		}
+	}
+	return true
+}
+
+// queryWithinName reports whether every token of the query occurs in the
+// application's name. Application matching goes one way on purpose: a query
+// with extra words ("atlas fixture 58c8") names something else, and starting
+// the app whose name it merely contains would launch the wrong program.
+func queryWithinName(query, name string) bool {
+	tq, tn := strings.Fields(query), strings.Fields(name)
+	if len(tq) == 0 || len(tn) == 0 {
+		return false
+	}
+	for _, t := range tq {
+		if !slices.Contains(tn, t) {
 			return false
 		}
 	}

@@ -301,3 +301,15 @@ func TestUsesCatalog(t *testing.T) {
 	require.True(t, UsesCatalog(AutomationRequest{Action: "launch_app", Name: "chrome", Profile: "x"}))
 	require.False(t, UsesCatalog(AutomationRequest{Action: "launch_app", Name: "Calculator"}), "name-only keeps the Start menu path first")
 }
+
+// A query with words the application's name lacks names some other program;
+// it must not start the app whose name it merely contains.
+func TestPartialMatchGoesFromTheQueryIntoTheName(t *testing.T) {
+	t.Parallel()
+	entries := []AppEntry{{ID: "start:atlas", Name: "Atlas"}, {ID: "start:chrome", Name: "Google Chrome"}}
+	_, err := pickEntry(entries, "Atlas nonexistent fixture 58c89b7c")
+	require.ErrorIs(t, err, ErrAppNotFound)
+	got, err := pickEntry(entries, "chrome")
+	require.NoError(t, err)
+	require.Equal(t, "start:chrome", got.ID)
+}

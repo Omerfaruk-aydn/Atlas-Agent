@@ -56,6 +56,21 @@ generic sub-agent. For example, with
 exploration sub-agents run on the faster model while the main session keeps its
 own. A role that fails to build is ignored with a warning.
 
+## Defaults
+
+Two things are on without configuration: the completion gate (an independent
+review of any turn that changed files, up to two rounds of fixes) and the
+`browser` tool (a browser process only starts when a call needs one, and every
+URL still goes through the permission prompt). Switch them off with
+
+```json
+{"options": {"evaluator": {"enabled": false}}, "tools": {"browser": {"enabled": false}}}
+```
+
+Setting only `max_rounds` under `evaluator` tunes the gate and leaves it on. A
+`bash` entry in `permissions.allowed_tools` is the user's own authorization and
+holds in auto-approve mode even for commands the risk classifier would stop.
+
 ## Visual review
 
 When the evaluator is enabled and its model accepts images, the latest

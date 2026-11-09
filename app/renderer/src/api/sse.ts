@@ -7,6 +7,8 @@ export interface StreamHandlers {
   onEvent(ev: HubEvent): void;
   onOpen(): void;
   onClose(): void;
+  /** The stream will try again in `ms`; `attempt` counts the tries since it last worked. */
+  onRetry?(attempt: number, ms: number): void;
 }
 
 const MAX_BACKOFF_MS = 5000;
@@ -32,16 +34,18 @@ export function openStream(workspaceId: () => string, instance: () => string, ha
 
   const run = async () => {
     let backoff = 250;
+    let attempt = 0;
     while (!stopped) {
       controller = new AbortController();
       try {
-        const q = new URLSearchParams({ after: String(after), instance: instance() });
+        const q = new URLSearchParams({ after: String(after), instance: instance(), side: "1" });
         const res = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId())}/events?${q}`, {
           signal: controller.signal,
           headers: { Accept: "text/event-stream" },
         });
         if (!res.ok || !res.body) throw new Error(`events: ${res.status}`);
         backoff = 250;
+        attempt = 0;
         handlers.onOpen();
         const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
         let buf = "";
@@ -62,6 +66,8 @@ export function openStream(workspaceId: () => string, instance: () => string, ha
       }
       if (stopped) return;
       handlers.onClose();
+      attempt++;
+      handlers.onRetry?.(attempt, backoff);
       await new Promise((r) => setTimeout(r, backoff));
       backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
     }

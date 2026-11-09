@@ -23,6 +23,36 @@ export const IconPlus = (p: Props) => (
     <path d="M8 3.5v9M3.5 8h9" />
   </Icon>
 );
+export const IconMic = (p: Props) => (
+  <Icon {...p}><rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25" fill="currentColor" stroke="none" /><path d="M3.75 7.5v.75a4.25 4.25 0 0 0 8.5 0V7.5M8 12.5v1.75M5.75 14.25h4.5" strokeWidth="1.35" /></Icon>
+);
+export const IconWave = (p: Props) => (
+  <Icon {...p}><path d="M2 6.5v3M4.4 4.25v7.5M6.8 2.5v11M9.2 5v6M11.6 3.5v9M14 6v4" strokeWidth="1.4" /></Icon>
+);
+export const IconPlug = (p: Props) => (
+  <Icon {...p}><path d="m3 10 5.5-5.5a2.1 2.1 0 0 1 3 3L7 12a2.1 2.1 0 0 1-3-3l5.5-5.5a2.1 2.1 0 0 1 3 3L9 10M9 10l2 2-1.5 1.5" strokeWidth="1.35" /></Icon>
+);
+export const IconPlan = (p: Props) => (
+  <Icon {...p}><circle cx="3.25" cy="3.25" r="1.25" /><rect x="2" y="7" width="2.5" height="2.5" rx=".55" /><rect x="2" y="12" width="2.5" height="2.5" rx=".55" /><path d="M7.25 3.25H14M7.25 8.25h4.5M7.25 13.25H14" strokeWidth="1.35" /></Icon>
+);
+export const IconDebug = (p: Props) => (
+  <Icon {...p}><path d="M5.25 5a2.75 2.75 0 0 1 5.5 0v5a2.75 2.75 0 0 1-5.5 0V5Z" /><path d="m5.5 1.75 1.25 1.5m3.75-1.5-1.25 1.5M2 5l3.25 1M14 5l-3.25 1M1.75 9h3.5m5.5 0h3.5M3 13l2.75-1.75M13 13l-2.75-1.75M5.5 6.5h5M8 7v5" strokeWidth="1.25" /></Icon>
+);
+export const IconMultitask = (p: Props) => (
+  <Icon {...p}><path d="M10.5 9.5A4 4 0 1 0 4 5.5" /><path d="M5.5 6.5A4 4 0 1 0 12 10.5" /><path d="m6 6 4 4" strokeWidth="1.35" /></Icon>
+);
+export const IconAsk = (p: Props) => (
+  <Icon {...p}><path d="M8 2.25a5.25 5.25 0 0 0-4.5 8l-.75 3.25L6 12.75A5.25 5.25 0 1 0 8 2.25Z" strokeWidth="1.35" /><path d="M6.6 6.1a1.4 1.4 0 1 1 2.8 0c0 1-1.4 1.15-1.4 2.2" strokeWidth="1.2" /><circle cx="8" cy="10.2" r=".65" fill="currentColor" stroke="none" /></Icon>
+);
+export const IconLaptop = (p: Props) => (
+  <Icon {...p}><rect x="3" y="2.75" width="10" height="7.5" rx="1" /><path d="M3 10.25 1.5 13v.25h13V13L13 10.25M6.25 11.75h3.5" strokeWidth="1.25" /></Icon>
+);
+export const IconSkill = (p: Props) => (
+  <Icon {...p}><path d="m8 1.75 5.5 3.1v6.3L8 14.25l-5.5-3.1v-6.3L8 1.75Z" strokeWidth="1.3" /><path d="M2.75 5 8 8l5.25-3M8 8v6M5.25 3.4l5.5 3.15" strokeWidth="1.2" /></Icon>
+);
+export const IconCommand = (p: Props) => (
+  <Icon {...p}><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" strokeWidth="1.3" /><path d="m4.5 6 2 2-2 2M8.5 10h3" strokeWidth="1.35" /></Icon>
+);
 export const IconSearch = (p: Props) => (
   <Icon {...p}>
     <circle cx="7" cy="7" r="4" />
@@ -212,4 +242,170 @@ export const AtlasMark = ({ draw, ...p }: Props & { draw?: boolean }) => (
     <path d="M8.5 16h7" pathLength="1" />
     <path data-slot="sky" d="M4 7.5a8.5 8.5 0 0 1 16 0" pathLength="1" stroke="var(--atlas-ember-500)" />
   </svg>
+);
+
+// Side panel and summary popover.
+export const IconArrowLeft = (p: Props) => (
+  <Icon {...p}>
+    <path d="M13 8H3.5M7.5 3.75 3.25 8l4.25 4.25" />
+  </Icon>
+);
+export const IconArrowRight = (p: Props) => (
+  <Icon {...p}>
+    <path d="M3 8h9.5M8.5 3.75 12.75 8 8.5 12.25" />
+  </Icon>
+);
+export const IconExpand = (p: Props) => (
+  <Icon {...p}>
+    <path d="M9.5 2.75h3.75v3.75M13.25 2.75 9 7M6.5 13.25H2.75V9.5M2.75 13.25 7 9" />
+  </Icon>
+);
+export const IconShrink = (p: Props) => (
+  <Icon {...p}>
+    <path d="M13 6.25H9.75V3M9.75 6.25 13.5 2.5M3 9.75h3.25V13M6.25 9.75 2.5 13.5" />
+  </Icon>
+);
+export const IconMore = (p: Props) => (
+  <Icon {...p}>
+    <circle cx="3.5" cy="8" r="1" fill="currentColor" stroke="none" />
+    <circle cx="8" cy="8" r="1" fill="currentColor" stroke="none" />
+    <circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none" />
+  </Icon>
+);
+export const IconExternal = (p: Props) => (
+  <Icon {...p}>
+    <path d="M9 2.75h4.25V7M13.25 2.75 7.5 8.5M11.25 9.5v2.25a1.5 1.5 0 0 1-1.5 1.5H4.25a1.5 1.5 0 0 1-1.5-1.5v-5.5a1.5 1.5 0 0 1 1.5-1.5H6.5" />
+  </Icon>
+);
+export const IconChat = (p: Props) => (
+  <Icon {...p}>
+    <path d="M13.25 7.5a5 4.5 0 0 1-7.4 3.95L2.75 12.5l.85-2.6A4.5 4.5 0 0 1 3 7.5a5 4.5 0 0 1 10.25 0Z" />
+  </Icon>
+);
+export const IconSummary = (p: Props) => (
+  <Icon {...p}>
+    <rect x="2.25" y="2.75" width="3" height="3" rx="0.9" />
+    <path d="M7.5 4.25h6M2.5 10.25l1.1 1.1 2-2.1M7.5 10.75h6" />
+  </Icon>
+);
+export const IconLink = (p: Props) => (
+  <Icon {...p}>
+    <path d="M6.75 9.25a2.5 2.5 0 0 0 3.5 0l2-2a2.5 2.5 0 0 0-3.5-3.5l-.6.6M9.25 6.75a2.5 2.5 0 0 0-3.5 0l-2 2a2.5 2.5 0 0 0 3.5 3.5l.6-.6" />
+  </Icon>
+);
+
+// Browser toolbar and views.
+export const IconDownload = (p: Props) => (
+  <Icon {...p}>
+    <path d="M8 2.5v7.25M5 7l3 3 3-3M3 12.75h10" />
+  </Icon>
+);
+export const IconPuzzle = (p: Props) => (
+  <Icon {...p}>
+    <path d="M6.5 3.5a1.5 1.5 0 0 1 3 0V5h2.25c.55 0 1 .45 1 1v2h-1.5a1.5 1.5 0 0 0 0 3h1.5v2c0 .55-.45 1-1 1H9v-1.5a1.5 1.5 0 0 0-3 0V14H3.75c-.55 0-1-.45-1-1V6c0-.55.45-1 1-1H6.5Z" />
+  </Icon>
+);
+export const IconKey2 = (p: Props) => (
+  <Icon {...p}>
+    <circle cx="5.25" cy="10.75" r="2.5" />
+    <path d="M7 9l5.75-5.75M10.75 5.25l1.5 1.5M9.25 6.75l1.25 1.25" />
+  </Icon>
+);
+export const IconNote = (p: Props) => (
+  <Icon {...p}>
+    <path d="M3.5 2.75h9a.75.75 0 0 1 .75.75v6.25l-3.5 3.5H3.5a.75.75 0 0 1-.75-.75v-9a.75.75 0 0 1 .75-.75Z" />
+    <path d="M9.75 13.25v-2.5a1 1 0 0 1 1-1h2.5M5.25 6h5.5M5.25 8.5h3" />
+  </Icon>
+);
+export const IconHistory = (p: Props) => (
+  <Icon {...p}>
+    <path d="M2.75 8a5.25 5.25 0 1 0 1.6-3.75M2.75 2.75v2.5h2.5M8 5v3.25l2 1.25" />
+  </Icon>
+);
+export const IconPrint = (p: Props) => (
+  <Icon {...p}>
+    <path d="M4.5 6V2.75h7V6M4.5 11.5h-1a.75.75 0 0 1-.75-.75v-3.5A.75.75 0 0 1 3.5 6.5h9a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-.75.75h-1M4.5 9.5h7v3.75h-7Z" />
+  </Icon>
+);
+export const IconDevice = (p: Props) => (
+  <Icon {...p}>
+    <rect x="4.5" y="2" width="7" height="12" rx="1.5" />
+    <path d="M7 12h2" />
+  </Icon>
+);
+export const IconCamera = (p: Props) => (
+  <Icon {...p}>
+    <path d="M2.75 5.25h2l1-1.5h4.5l1 1.5h2a.75.75 0 0 1 .75.75v6.25a.75.75 0 0 1-.75.75H2.75A.75.75 0 0 1 2 12.25V6a.75.75 0 0 1 .75-.75Z" />
+    <circle cx="8" cy="8.75" r="2.25" />
+  </Icon>
+);
+export const IconEye = (p: Props) => (
+  <Icon {...p}>
+    <path d="M1.75 8S4 3.75 8 3.75 14.25 8 14.25 8 12 12.25 8 12.25 1.75 8 1.75 8Z" />
+    <circle cx="8" cy="8" r="1.75" />
+  </Icon>
+);
+export const IconPause = (p: Props) => (
+  <Icon {...p}>
+    <path d="M5.75 3.5v9M10.25 3.5v9" />
+  </Icon>
+);
+export const IconPlay = (p: Props) => (
+  <Icon {...p}>
+    <path d="M5 3.5v9l7.25-4.5Z" />
+  </Icon>
+);
+export const IconChevronUp = (p: Props) => (
+  <Icon {...p}>
+    <path d="m4 9.75 4-4 4 4" />
+  </Icon>
+);
+export const IconSearch2 = IconSearch;
+export const IconList = (p: Props) => (
+  <Icon {...p}>
+    <path d="M3 4.5h10M3 8h10M3 11.5h10" />
+  </Icon>
+);
+export const IconDriveFile = (p: Props) => (
+  <Icon {...p}>
+    <path d="M4 2.5h5l3 3v8H4Z" />
+    <path d="M9 2.5v3h3" />
+  </Icon>
+);
+
+/** Background jobs: a short list of running rows, each with its own marker. */
+export const IconJobs = (p: Props) => (
+  <Icon {...p}>
+    <circle cx="3.75" cy="4.5" r="0.9" />
+    <path d="M6.5 4.5h6.25" />
+    <circle cx="3.75" cy="8" r="0.9" />
+    <path d="M6.5 8h6.25" />
+    <circle cx="3.75" cy="11.5" r="0.9" />
+    <path d="M6.5 11.5h3.5" />
+  </Icon>
+);
+
+/** An address: a pin over a short line. */
+export const IconMapPin = (p: Props) => (
+  <Icon {...p}>
+    <path d="M8 13.5s4-3.5 4-7a4 4 0 1 0-8 0c0 3.5 4 7 4 7Z" />
+    <circle cx="8" cy="6.5" r="1.4" />
+  </Icon>
+);
+
+/** Wrap long lines: a line that turns back on itself. */
+export const IconWrap = (p: Props) => (
+  <Icon {...p}>
+    <path d="M2.5 4h11" />
+    <path d="M2.5 8h8.5a2 2 0 0 1 0 4H8" />
+    <path d="m9.5 10.5-1.5 1.5 1.5 1.5" />
+    <path d="M2.5 12h2.5" />
+  </Icon>
+);
+export const IconPen = (p: Props) => (
+  <Icon {...p}>
+    <path d="M8 2.25l4 6.25-4 5.25-4-5.25z" />
+    <circle cx="8" cy="8.25" r="1.1" />
+    <path d="M8 2.25v4.9M5.5 13.75h5" />
+  </Icon>
 );

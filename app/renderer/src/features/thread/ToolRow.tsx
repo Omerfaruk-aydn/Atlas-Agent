@@ -2,7 +2,7 @@
 // open on click; errors open by themselves.
 
 import { structuredPatch } from "diff";
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ToolCall, ToolResult } from "../../api/types";
 import { clock, duration } from "../../lib/format";
 import { languageOfFile } from "../../lib/highlight";
@@ -17,12 +17,12 @@ type State = "running" | "waiting" | "success" | "error" | "denied" | "stopped";
 
 const MAX_PREVIEW_LINES = 40;
 
-interface DiffLine {
+export interface DiffLine {
   kind: "add" | "del" | "ctx" | "hunk";
   text: string;
 }
 
-function diffLines(meta: ToolMeta): DiffLine[] {
+export function diffLines(meta: ToolMeta): DiffLine[] {
   if (meta.old_content !== undefined || meta.new_content !== undefined) {
     const patch = structuredPatch("", "", meta.old_content ?? "", meta.new_content ?? "", "", "", { context: 2 });
     return patch.hunks.flatMap((hunk) => [
@@ -105,25 +105,39 @@ function LiveTime({ from }: { from: number }) {
   return elapsed >= 2000 ? <span className="tool-time">{clock(elapsed)}</span> : null;
 }
 
-export const ToolRow = memo(function ToolRow({ call, result, active, waiting }: { call: ToolCall; result?: ToolResult; active: boolean; waiting: boolean }) {
+export interface ToolRowProps {
+  call: ToolCall;
+  result?: ToolResult;
+  active: boolean;
+  waiting: boolean;
+  /** Replaces the call's own details, as a sub-agent's work does. */
+  detail?: ReactNode;
+  /** A dim line before the badges: what a sub-agent is doing now. */
+  hint?: string;
+  /** Open until the person says otherwise; a sub-agent is open while it works. */
+  defaultOpen?: boolean;
+}
+
+export const ToolRow = memo(function ToolRow({ call, result, active, waiting, detail, hint, defaultOpen }: ToolRowProps) {
   const state: State = waiting ? "waiting" : result ? (isDenied(result) ? "denied" : result.is_error ? "error" : "success") : active ? "running" : "stopped";
   const [open, setOpen] = useState<boolean | null>(null);
-  const expanded = open ?? state === "error";
+  const expanded = open ?? (state === "error" || !!defaultOpen);
   const meta = useMemo(() => toolMeta(result), [result]);
   const verb = toolVerb(call.name, state !== "running" && state !== "waiting");
   const arg = toolArg(call);
-  const expandable = !!result || !!toolCommand(call);
+  const expandable = !!detail || !!result || !!toolCommand(call);
   const exit = meta.exit_code;
   const started = useRef(Date.now());
 
   return (
-    <div className="tool" data-state={state}>
+    <div className="tool" data-state={state} data-fresh={active || undefined}>
       <button type="button" className="tool-row" aria-expanded={expanded} disabled={!expandable} onClick={() => setOpen(!expanded)}>
         {state === "error" && <IconAlert className="tool-ind" />}
         {state === "denied" && <IconBan className="tool-ind" />}
         <span className="tool-verb">{state === "running" ? <Shimmer text={verb} /> : verb}</span>
         {arg && <span className="tool-arg">{arg}</span>}
         <span className="tool-meta">
+          {hint && <span className="tool-hint">{hint}</span>}
           {state === "running" && <LiveTime from={started.current} />}
           {!!meta.additions && <span className="add">+{meta.additions}</span>}
           {!!meta.removals && <span className="del">−{meta.removals}</span>}
@@ -135,7 +149,7 @@ export const ToolRow = memo(function ToolRow({ call, result, active, waiting }: 
         </span>
         {expandable && <IconChevron className="chevron" />}
       </button>
-      <Collapse open={expanded}>{expanded && <div className="tool-body"><Body call={call} result={result} meta={meta} /></div>}</Collapse>
+      <Collapse open={expanded}>{expanded && (detail ? <div className="tool-body">{detail}</div> : <div className="tool-body"><Body call={call} result={result} meta={meta} /></div>)}</Collapse>
     </div>
   );
 });
@@ -157,7 +171,7 @@ export const ToolGroupRow = memo(function ToolGroupRow({ cat, calls, active, wai
   const label = groupLabel(cat, calls[0].call.name, calls.length, !running);
 
   return (
-    <div className="tool" data-state={failed ? "error" : running ? "running" : "success"}>
+    <div className="tool" data-state={failed ? "error" : running ? "running" : "success"} data-fresh={active || undefined}>
       <button type="button" className="tool-row" aria-expanded={expanded} onClick={() => setOpen(!expanded)}>
         {failed && <IconAlert className="tool-ind" />}
         <span className="tool-verb">{running ? <Shimmer text={label} /> : label}</span>
@@ -180,7 +194,7 @@ export const ToolGroupRow = memo(function ToolGroupRow({ cat, calls, active, wai
 export function ThinkingRow({ text, ms, live }: { text: string; ms: number; live: boolean }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="tool" data-state={live ? "running" : "success"}>
+    <div className="tool" data-state={live ? "running" : "success"} data-fresh={live || undefined}>
       <button type="button" className="tool-row" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span className="tool-verb">{live ? <Shimmer text={t("thread.thinking")} /> : t("thread.thought")}</span>
         {!live && ms >= 1000 && <span className="tool-arg">{duration(ms)}</span>}

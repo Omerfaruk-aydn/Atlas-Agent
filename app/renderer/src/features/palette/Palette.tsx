@@ -1,4 +1,4 @@
-// Ctrl+K: one box for chats, actions, models and project files. Ctrl+P opens
+// Ctrl+K: one box for chats, actions, models and project files. Ctrl+Shift+F opens
 // the same box limited to chats. Everything works from the keyboard.
 
 import fuzzysort from "fuzzysort";
@@ -7,7 +7,7 @@ import { http } from "../../api/http";
 import { baseName, relative } from "../../lib/format";
 import { t, type Key } from "../../lib/i18n";
 import { keysOf, SHORTCUTS } from "../../lib/shortcuts";
-import { IconChevron, IconFile, IconFolder, IconGear, IconMoon, IconPanelRight, IconPlus, IconSearch, IconSidebar, IconSparkle, IconSun } from "../../primitives/icons";
+import { IconChat, IconChevron, IconDiff, IconFile, IconFolder, IconGear, IconMoon, IconPanelRight, IconPlus, IconSearch, IconSidebar, IconSparkle, IconSun, IconTerminal } from "../../primitives/icons";
 import { Kbd, Modal, useDebounced } from "../../primitives/ui";
 import { useApp } from "../../stores/app";
 
@@ -53,6 +53,11 @@ function useItems(chatsOnly: boolean, files: string[]) {
       action("new", "shortcut.new", <IconPlus />, () => void app().selectSession(null)),
       action("sidebar", "shortcut.sidebar", <IconSidebar />, () => app().toggleSidebar()),
       action("rail", "shortcut.rail", <IconPanelRight />, () => app().toggleRail()),
+      action("rail1", "shortcut.railChanges", <IconDiff />, () => app().toggleRail("changes")),
+      action("railTerminal", "shortcut.railTerminal", <IconTerminal />, () => app().toggleRail("terminal")),
+      action("railSide", "shortcut.railSide", <IconChat />, () => app().toggleRail("side")),
+      action("rail2", "shortcut.railFiles", <IconFolder />, () => app().toggleRail("files")),
+      action("rail3", "shortcut.railJobs", <IconTerminal />, () => app().toggleRail("jobs")),
       action("models", "shortcut.models", <IconSparkle />, () => app().openDialog("models")),
       action("settings", "shortcut.settings", <IconGear />, () => app().openSettings()),
       action("shortcuts", "shortcut.help", <IconGear />, () => app().openSettings("shortcuts")),

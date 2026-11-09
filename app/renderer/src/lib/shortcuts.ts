@@ -28,13 +28,17 @@ function cyclePermissionMode() {
 
 export const SHORTCUTS: Shortcut[] = [
   { id: "palette", keys: ["Ctrl+K", "Ctrl+Shift+P"], label: "shortcut.palette", run: () => useApp.getState().openDialog("palette") },
-  { id: "sessions", keys: ["Ctrl+P"], label: "shortcut.sessions", run: () => useApp.getState().openDialog("sessions") },
+  { id: "sessions", keys: ["Ctrl+Shift+F"], label: "shortcut.sessions", run: () => useApp.getState().openDialog("sessions") },
   { id: "new", keys: ["Ctrl+N"], label: "shortcut.new", run: () => void useApp.getState().selectSession(null) },
   { id: "sidebar", keys: ["Ctrl+B"], label: "shortcut.sidebar", run: () => useApp.getState().toggleSidebar() },
   { id: "rail", keys: ["Ctrl+Alt+B"], label: "shortcut.rail", run: () => useApp.getState().toggleRail() },
-  { id: "rail1", keys: ["Ctrl+Alt+1"], label: "shortcut.railChanges", run: () => useApp.getState().toggleRail("changes") },
-  { id: "rail2", keys: ["Ctrl+Alt+2"], label: "shortcut.railFiles", run: () => useApp.getState().toggleRail("files") },
-  { id: "rail3", keys: ["Ctrl+Alt+3"], label: "shortcut.railJobs", run: () => useApp.getState().toggleRail("jobs") },
+  { id: "rail1", keys: ["Ctrl+Shift+G"], label: "shortcut.railChanges", run: () => useApp.getState().toggleRail("changes") },
+  { id: "railTerminal", keys: ["Ctrl+`"], label: "shortcut.railTerminal", run: () => useApp.getState().toggleRail("terminal") },
+  { id: "railSide", keys: ["Ctrl+Shift+Y"], label: "shortcut.railSide", run: () => useApp.getState().toggleRail("side") },
+  { id: "rail2", keys: ["Ctrl+P"], label: "shortcut.railFiles", run: () => useApp.getState().toggleRail("files") },
+  { id: "rail3", keys: ["Ctrl+Shift+J"], label: "shortcut.railJobs", run: () => useApp.getState().toggleRail("jobs") },
+  { id: "railDesign", keys: ["Ctrl+Shift+E"], label: "shortcut.railDesign", run: () => useApp.getState().toggleRail("design") },
+  { id: "summary", keys: ["Ctrl+Shift+U"], label: "shortcut.summary", run: () => document.querySelector<HTMLButtonElement>("[data-summary-trigger]")?.click() },
   { id: "focus", keys: ["Ctrl+L"], label: "shortcut.focus", run: () => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus() },
   { id: "models", keys: ["Ctrl+/"], label: "shortcut.models", run: () => useApp.getState().openDialog("models") },
   { id: "settings", keys: ["Ctrl+,"], label: "shortcut.settings", run: () => useApp.getState().openSettings() },
@@ -46,18 +50,45 @@ export const SHORTCUTS: Shortcut[] = [
   { id: "send", keys: ["Enter"], label: "shortcut.send", info: true },
   { id: "newline", keys: ["Shift+Enter"], label: "shortcut.newline", info: true },
   { id: "stop", keys: ["Esc"], label: "shortcut.stop", info: true },
+  { id: "steer", keys: ["Ctrl+Enter"], label: "shortcut.steer", info: true },
+  { id: "queueMove", keys: ["Alt+ArrowUp", "Alt+ArrowDown"], label: "shortcut.queueMove", info: true },
   { id: "allow", keys: ["Enter", "Ctrl+Enter", "Esc"], label: "shortcut.permission", info: true },
 ];
 
-/** "Ctrl+Shift+/" for a key event, in the form SHORTCUTS uses. */
+const CODE_KEYS: Record<string, string> = { Slash: "/", Comma: ",", Period: ".", Backquote: "`" };
+
+/** The key a physical key stands for, whatever the layout typed with it. */
+function keyOfCode(code: string): string {
+  const letter = /^Key([A-Z])$/.exec(code);
+  if (letter) return letter[1]!;
+  const digit = /^Digit(\d)$/.exec(code);
+  if (digit) return digit[1]!;
+  return CODE_KEYS[code] ?? "";
+}
+
+/**
+ * Whether the press is AltGr typing a character. On Windows AltGr arrives as
+ * Ctrl+Alt: when that pair typed something other than the key's own character
+ * (@, €, {, [, ], \, |, ~, # on a Turkish layout), it is text and never a
+ * shortcut. The browser also names it through the AltGraph modifier.
+ */
+export function isAltGrText(e: Pick<KeyboardEvent, "key" | "code" | "ctrlKey" | "altKey"> & { getModifierState?: (key: string) => boolean }): boolean {
+  if (e.key === "AltGraph") return true;
+  if (e.getModifierState?.("AltGraph")) return true;
+  if (!(e.ctrlKey && e.altKey) || e.key.length !== 1) return false;
+  const own = keyOfCode(e.code);
+  return own ? e.key !== own && e.key !== own.toLowerCase() : /[^\w]/.test(e.key);
+}
+
+/** "Ctrl+Shift+/" for a key event, in the form SHORTCUTS uses; "" for AltGr text. */
 export function chord(e: KeyboardEvent): string {
+  if (isAltGrText(e)) return "";
   const parts: string[] = [];
   if (e.ctrlKey || e.metaKey) parts.push("Ctrl");
   if (e.altKey) parts.push("Alt");
   if (e.shiftKey) parts.push("Shift");
   // Shift turns "/" into "?" and "1" into "!"; the physical key names them all.
-  const digit = /^Digit(\d)$/.exec(e.code)?.[1];
-  const key = digit ?? (e.code === "Slash" ? "/" : e.code === "Comma" ? "," : e.code === "Period" ? "." : e.key.length === 1 ? e.key.toUpperCase() : e.key);
+  const key = keyOfCode(e.code) || (e.key.length === 1 ? e.key.toUpperCase() : e.key);
   parts.push(key);
   return parts.join("+");
 }
@@ -79,7 +110,8 @@ export function holderOf(keys: string, overrides: Overrides, except?: string): S
 }
 
 /** A chord worth binding: plain keys belong to typing, Esc and Enter to dialogs. */
-export function canBind(e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">): boolean {
+export function canBind(e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"> & { code?: string; getModifierState?: (key: string) => boolean }): boolean {
+  if (isAltGrText({ key: e.key, code: e.code ?? "", ctrlKey: e.ctrlKey, altKey: e.altKey, getModifierState: e.getModifierState?.bind(e) })) return false;
   if (["Control", "Shift", "Alt", "Meta", "AltGraph", "CapsLock", "Escape"].includes(e.key)) return false;
   return e.ctrlKey || e.metaKey || e.altKey || /^F\d{1,2}$/.test(e.key) || (e.key === "Tab" && e.shiftKey);
 }
@@ -91,6 +123,26 @@ export function rebind(id: string, keys: string, overrides: Overrides): Override
     if (s.id !== id && !s.info && keysOf(s, next).includes(keys)) next[s.id] = keysOf(s, next).filter((k) => k !== keys);
   }
   return next;
+}
+
+/**
+ * Whether a registered chord pressed in a terminal belongs to the app. A
+ * terminal keeps the plain Ctrl chords (Ctrl+P is history, Ctrl+L clears,
+ * Ctrl+K kills a line); chords with Alt or Shift, and Ctrl+` which a shell has
+ * no use for, reach the app.
+ */
+export function terminalLeavesToApp(e: Pick<KeyboardEvent, "altKey" | "shiftKey" | "key">): boolean {
+  return e.altKey || e.shiftKey || e.key === "`";
+}
+
+/** Whether the key press in a terminal is one of the app's shortcuts that the terminal gives up. */
+export function isAppChord(e: KeyboardEvent): boolean {
+  return byChord(useApp.getState().ui.shortcuts).has(chord(e)) && terminalLeavesToApp(e);
+}
+
+/** Every chord the app answers to; the browser view lets exactly these through to the app. */
+export function allChords(overrides: Record<string, string[]>): string[] {
+  return SHORTCUTS.filter((s) => !s.info).flatMap((s) => keysOf(s, overrides));
 }
 
 /** The first key of a shortcut, for the hint beside what it drives. */

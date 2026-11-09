@@ -21,22 +21,36 @@
 .chevron { transition: transform 200ms var(--atlas-ease-emphasized), opacity var(--atlas-dur-fast) var(--atlas-ease-standard); }
 [aria-expanded="true"] > .chevron { transform: rotate(90deg); }
 
-/* A light passes through the text, one character after another. */
-.shimmer { display: inline-flex; white-space: pre; }
-.shimmer > span {
-  color: var(--atlas-ink-3);
-  animation: shimmer-char var(--atlas-dur-loop-shimmer) var(--atlas-ease-in-out) infinite;
-  animation-delay: calc(var(--i) * 45ms);
+/* A light passes through the text. One gradient on one element, so a long
+   line costs the same as a short one. */
+.shimmer {
+  color: transparent;
+  background: linear-gradient(100deg, var(--atlas-ink-3) 42%, var(--atlas-ink) 50%, var(--atlas-ink-3) 58%) 100% 0 / 260% 100% no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmer-sweep 2s linear infinite;
 }
-@keyframes shimmer-char {
-  0%, 60%, 100% { color: var(--atlas-ink-3); }
-  25% { color: var(--atlas-ink); }
+@keyframes shimmer-sweep { to { background-position: 0 0; } }
+
+/* Three dots rising in turn. */
+.think-dots { display: inline-flex; align-items: center; gap: 3px; margin-inline-end: var(--atlas-space-1_5); }
+.think-dots > i {
+  inline-size: 4px; block-size: 4px; border-radius: 50%; background: var(--atlas-ink-3);
+  animation: think-dot 1.2s var(--atlas-ease-in-out) infinite;
+  animation-delay: calc(var(--i) * 140ms);
+}
+@keyframes think-dot {
+  0%, 60%, 100% { transform: none; opacity: 0.4; }
+  30% { transform: translateY(-2px); opacity: 1; }
 }
 
 /* New words arrive grey and settle to full colour. The span only exists while
    the message streams, so each word plays this once. */
-.markdown .w { animation: word-in 180ms var(--atlas-ease-standard) both; }
-@keyframes word-in { from { opacity: 0; } to { opacity: 1; } }
+.markdown .w { animation: word-in 260ms var(--atlas-ease-standard) both; }
+@keyframes word-in { from { opacity: 0; color: var(--atlas-ink-3); } to { opacity: 1; } }
+
+/* While the window is hidden or minimized nothing decorative moves. */
+:root[data-hidden] *, :root[data-hidden] *::before, :root[data-hidden] *::after { animation-play-state: paused !important; }
 
 .user-bubble[data-enter] { animation: user-in 220ms var(--atlas-ease-out) both; transform-origin: 100% 100%; }
 @keyframes user-in {
@@ -45,9 +59,11 @@
 }
 
 .working { animation: fade-in var(--atlas-dur-base) var(--atlas-ease-out) both; }
-.tool { animation: row-in var(--atlas-dur-moderate) var(--atlas-ease-out) both; }
+/* A step that appears while the agent works drifts down into place. One that
+   was already there when the thread opened does not move. */
+.tool[data-fresh] { animation: row-in var(--atlas-dur-moderate) var(--atlas-ease-out) both; }
 @keyframes row-in {
-  from { opacity: 0; transform: translateY(3px); }
+  from { opacity: 0; transform: translateY(-6px); }
   to { opacity: 1; transform: none; }
 }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -74,10 +90,11 @@
 .loading::after { animation: fade-in 400ms 300ms both, spin var(--atlas-dur-loop-spin) linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Floating surfaces, driven by Radix's data-state. */
+/* Floating surfaces, driven by Radix's data-state. The shared tokens: small
+   things arrive in --atlas-dur-pop and leave faster. */
 .tip[data-state="delayed-open"], .tip[data-state="instant-open"],
-.menu[data-state="open"], .pop[data-state="open"] { animation: pop-in var(--atlas-dur-base) var(--atlas-ease-out) both; }
-.tip[data-state="closed"], .menu[data-state="closed"], .pop[data-state="closed"] { animation: pop-out var(--atlas-dur-fast) var(--atlas-ease-in) both; }
+.menu[data-state="open"], .pop[data-state="open"] { animation: pop-in var(--atlas-dur-pop) var(--atlas-ease-enter) backwards; }
+.tip[data-state="closed"], .menu[data-state="closed"], .pop[data-state="closed"] { animation: pop-out var(--atlas-dur-pop-out) var(--atlas-ease-exit) both; }
 @keyframes pop-in { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: none; } }
 @keyframes pop-out { from { opacity: 1; } to { opacity: 0; transform: scale(0.985); } }
 
@@ -89,7 +106,9 @@
 @keyframes dialog-in { from { opacity: 0; transform: translateY(6px) scale(0.985); } to { opacity: 1; transform: none; } }
 @keyframes dialog-out { to { opacity: 0; transform: scale(0.985); } }
 
-.toast { animation: panel-up var(--atlas-dur-moderate) var(--atlas-ease-out) both; }
+.toast { animation: panel-up var(--atlas-dur-move) var(--atlas-ease-enter) backwards; }
+.toast[data-leaving] { animation: toast-out var(--atlas-dur-move-out) var(--atlas-ease-exit) both; }
+@keyframes toast-out { to { opacity: 0; transform: translateY(6px) scale(0.985); } }
 .suggest { animation: panel-up var(--atlas-dur-base) var(--atlas-ease-out) both; }
 .suggest[data-side="bottom"] { animation-name: panel-down; }
 @keyframes panel-down {
@@ -133,11 +152,58 @@
 .onboarding-card { animation: step-in var(--atlas-dur-slow) var(--atlas-ease-emphasized) both; }
 @keyframes step-in { from { opacity: 0; transform: translateY(10px) scale(0.99); } to { opacity: 1; transform: none; } }
 
+/* View transitions (lib/motion.ts morph): tabs slide into their new places, a
+   new thing fades and settles in, a removed one fades out, a view that changes
+   dissolves. The names exist only while one runs. */
+:root[data-vt] .panel-body { view-transition-name: panel-body; }
+:root[data-vt] .thread-head { view-transition-name: thread-head; }
+:root[data-vt] .find-bar { view-transition-name: find-bar; }
+:root[data-vt] .login-bar { view-transition-name: login-bar; }
+:root[data-vt] .ptab, :root[data-vt] .tool-cell { view-transition-name: var(--vt-name); }
+:root[data-vt] .ptab-add { view-transition-name: ptab-add; }
+::view-transition { pointer-events: none; }
+::view-transition-old(root) { display: none; }
+::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-group(*) { animation-duration: var(--atlas-dur-move); animation-timing-function: var(--atlas-ease-move); }
+::view-transition-old(*):only-child { animation: vt-out var(--atlas-dur-move-out) var(--atlas-ease-exit) both; }
+::view-transition-new(*):only-child { animation: vt-in var(--atlas-dur-move) var(--atlas-ease-enter) backwards; }
+::view-transition-old(*):not(:only-child), ::view-transition-new(*):not(:only-child) { mix-blend-mode: normal; animation-duration: var(--atlas-dur-move); animation-timing-function: var(--atlas-ease-move); }
+@keyframes vt-in { from { opacity: 0; transform: translateY(4px) scale(0.985); } }
+@keyframes vt-out { to { opacity: 0; transform: scale(0.985); } }
+
+/* Things that appear inside a view settle in rather than pop. */
+.import-result, .data-banner, .note-item, .download-row, .ext-row, .address-chip, .find-count { animation: fade-in var(--atlas-dur-pop) var(--atlas-ease-enter) backwards; }
+.badge-dot { animation: pop var(--atlas-dur-pop) var(--atlas-ease-spring); }
+
+/* Reduced motion: nothing travels. Entrances end at once, and the things that
+   say "still working" breathe in opacity only, so the state is not lost. */
 :root[data-motion="reduce"] *,
 :root[data-motion="reduce"] *::before,
 :root[data-motion="reduce"] *::after {
-  animation: none !important;
+  animation-duration: 1ms !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
   transition-duration: 1ms !important;
+  scroll-behavior: auto !important;
 }
-:root[data-motion="reduce"] .shimmer > span { color: var(--atlas-ink-2); }
+:root[data-motion="reduce"] .shimmer,
+:root[data-motion="reduce"] .spinner,
+:root[data-motion="reduce"] .loading::after,
+:root[data-motion="reduce"] .think-dots,
+:root[data-motion="reduce"] .dot[data-state="busy"] {
+  animation: calm-pulse 2.4s ease-in-out infinite !important;
+}
+:root[data-motion="reduce"] .shimmer { color: var(--atlas-ink-2); background: none; }
+:root[data-motion="reduce"] .think-dots > i { animation: none !important; opacity: 0.7; }
+:root[data-motion="reduce"] .dot[data-state="busy"] { box-shadow: none; }
+@keyframes calm-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 :root[data-motion="reduce"] .atlas-mark[data-draw] path { stroke-dashoffset: 0; }
+
+/* A thread that is switched to fades in. */
+@keyframes thread-in { from { opacity: 0; } }
+.card-content > * { animation: thread-in var(--atlas-dur-move) var(--atlas-ease-enter) backwards; }
+
+/* Something that opens and closes in place: its height follows the shared tokens, nothing jumps. */
+.reveal { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows var(--atlas-dur-move-out) var(--atlas-ease-exit), opacity var(--atlas-dur-move-out) var(--atlas-ease-exit); }
+.reveal[data-open] { grid-template-rows: 1fr; opacity: 1; transition-duration: var(--atlas-dur-move); transition-timing-function: var(--atlas-ease-move); }
+.reveal-inner { min-block-size: 0; overflow: hidden; }

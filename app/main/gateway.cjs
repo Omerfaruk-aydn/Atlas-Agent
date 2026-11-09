@@ -8,7 +8,7 @@ const { spawn } = require("node:child_process");
 const os = require("node:os");
 const readline = require("node:readline");
 
-const READY_TIMEOUT_MS = 60_000;
+const READY_TIMEOUT_MS = 30_000;
 const STOP_TIMEOUT_MS = 6_000;
 
 class Gateway {
@@ -25,13 +25,17 @@ class Gateway {
   /** Starts the child and resolves once it serves. */
   start() {
     return new Promise((resolve, reject) => {
-      const child = spawn(this.opts.bin, ["app", "serve", "--renderer", this.opts.renderer, "--port", "0"], {
+      const host = this.opts.host ? ["--host", this.opts.host] : [];
+      const args = this.opts.args ?? [...host, "app", "serve", "--renderer", this.opts.renderer, "--port", "0"];
+      const child = spawn(this.opts.bin, args, {
         cwd: os.homedir(),
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
       });
       this.child = child;
+      const timeoutMs = this.opts.timeout ?? READY_TIMEOUT_MS;
       let settled = false;
+      let ready = false;
       let lastError = "";
       const settle = (fn, value) => {
         if (settled) return;
@@ -40,9 +44,13 @@ class Gateway {
         fn(value);
       };
       const timer = setTimeout(() => {
-        settle(reject, new Error("The Atlas core did not start in time."));
+        settle(reject, new Error(`The Atlas core did not start in time: it gave no answer within ${Math.round(timeoutMs / 1000)} seconds.
+
+${this.opts.bin}
+
+If this is an old build, start Atlas from a folder that holds a current atlas-agent.exe.`));
         child.kill();
-      }, READY_TIMEOUT_MS);
+      }, timeoutMs);
 
       child.on("error", (err) => settle(reject, new Error(`Could not start ${this.opts.bin}: ${err.message}`)));
       child.stdin.on("error", () => {});
@@ -61,6 +69,7 @@ class Gateway {
           this.origin = `http://127.0.0.1:${ev.port}`;
           this.version = ev.version || "";
           this.link = ev.link;
+          ready = true;
           settle(resolve, this);
         } else if (ev.type === "error") {
           lastError = ev.message || lastError;
@@ -72,7 +81,7 @@ class Gateway {
         const err = new Error(lastError || `The Atlas core exited with code ${code}.`);
         if (!settled) {
           settle(reject, err);
-        } else if (!this.stopping) {
+        } else if (ready && !this.stopping) {
           this.opts.onCrash(err);
         }
       });

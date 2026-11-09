@@ -24,8 +24,11 @@ import type {
   WorkspaceView,
 } from "../api/types";
 import { badgeImage } from "../lib/badge";
+import { newDesignTargets } from "../lib/design-follow";
+import { moveItem, newQueueItem, type QueueItem } from "../lib/chat";
 import { t } from "../lib/i18n";
-import { loadUI, type RailTab, type UIPrefs } from "../lib/prefs";
+import { loadUI, type UIPrefs } from "../lib/prefs";
+import { usePanel, type PanelTool } from "./panel";
 
 interface Envelope<T> {
   type: "created" | "updated" | "deleted";
@@ -45,6 +48,8 @@ export interface Toast {
   id: number;
   text: string;
   tone?: "danger";
+  /** Playing its exit; removed when that is over. */
+  leaving?: boolean;
 }
 
 export interface RewindAsk {
@@ -60,18 +65,35 @@ export interface EditedMessage {
   attachments: Attachment[];
 }
 
+/** Something for a composer: text to put in, or a file to attach. `target` is the session whose composer it is for. */
+export interface ComposerInsert {
+  seq: number;
+  text: string;
+  append?: boolean;
+  file?: { name: string; mime: string; content: string };
+  target?: string;
+}
+
 export interface AppState {
   phase: "loading" | "ready" | "pick" | "failed";
   error: string;
   project: string;
   workspace: WorkspaceView | null;
   online: boolean;
+  /** While the live channel is down: which try this is and when the next one starts. */
+  retry: { attempt: number; at: number } | null;
   projects: Project[];
   sessions: Session[];
+  /** Side chats, kept out of the chat list: they live in the side panel. */
+  sideChats: Session[];
   currentId: string | null;
   messages: Record<string, Message[]>;
   busy: Record<string, boolean>;
   queued: Record<string, number>;
+  /** Messages written while a turn runs, held here until it ends. */
+  queue: Record<string, QueueItem[]>;
+  /** A queue the person stopped: it waits for them instead of sending on. */
+  queuePaused: Record<string, boolean>;
   unread: Record<string, boolean>;
   compacting: Record<string, boolean>;
   optimistic: Record<string, Optimistic>;
@@ -89,16 +111,29 @@ export interface AppState {
   settingsTab: SettingsTab;
   toasts: Toast[];
   rewind: RewindAsk | null;
-  /** A file the Files tab should open. */
-  fileTarget: string;
   /** A prompt waiting to land in the composer. */
-  composerInsert: { text: string; seq: number } | null;
+  composerInsert: ComposerInsert | null;
 
   init(): Promise<void>;
   selectSession(id: string | null): Promise<void>;
-  send(text: string, attachments?: Attachment[]): Promise<void>;
-  runShell(command: string): Promise<void>;
-  cancel(): Promise<void>;
+  /** `into` is the session to send in; by default the open chat. */
+  send(text: string, attachments?: Attachment[], into?: string): Promise<void>;
+  runShell(command: string, into?: string): Promise<void>;
+  cancel(into?: string): Promise<void>;
+  /** Holds a message until the running turn ends. */
+  enqueue(sessionId: string, text: string, attachments?: Attachment[]): void;
+  updateQueued(sessionId: string, id: string, text: string): void;
+  removeQueued(sessionId: string, id: string): void;
+  moveQueued(sessionId: string, from: number, to: number): void;
+  /** Sends a queued message into the running turn as guidance. */
+  steerQueued(sessionId: string, id: string): Promise<void>;
+  /** Stops the running turn and sends a queued message in its place. */
+  sendQueuedNow(sessionId: string, id: string): Promise<void>;
+  resumeQueue(sessionId: string): void;
+  /** Copies the chat up to a message into a chat of its own. */
+  branchFrom(messageId: string): Promise<void>;
+  /** Puts a file back as it was before the agent's edit. */
+  revertFile(file: { path: string; before: string; after: string }): Promise<boolean>;
   deleteSession(id: string): Promise<void>;
   renameSession(id: string, title: string): Promise<void>;
   togglePin(id: string): void;
@@ -119,11 +154,13 @@ export interface AppState {
   closeRewind(): void;
   setUI<K extends keyof UIPrefs>(key: K, value: UIPrefs[K]): void;
   toggleSidebar(): void;
-  toggleRail(tab?: RailTab): void;
+  toggleRail(tool?: PanelTool): void;
   openFile(path: string): void;
   openDialog(dialog: DialogName | null): void;
   openSettings(tab?: SettingsTab): void;
-  insertInComposer(text: string): void;
+  insertInComposer(text: string, options?: { append?: boolean; target?: string }): void;
+  /** Attaches a file (a page screenshot, say) to a composer's message. */
+  attachToComposer(file: { name: string; mime: string; content: string }, target?: string): void;
   setTheme(theme: "system" | "light" | "dark"): void;
   toggleTheme(): void;
   setMotion(motion: "system" | "full" | "reduce"): void;
@@ -147,7 +184,9 @@ const runStarted = new Map<string, number>();
 const ws = (): string => `/api/workspaces/${encodeURIComponent(useApp.getState().workspace?.id ?? "")}`;
 const sess = (sid: string): string => `${ws()}/sessions/${encodeURIComponent(sid)}`;
 
-const isRootSession = (s: Session) => !s.parent_session_id;
+/** The session a side chat was forked from, from the server's tag. */
+export const sideOf = (s: Session): string => s.tags?.find((tag) => tag.startsWith("side-of:"))?.slice("side-of:".length) ?? "";
+const isRootSession = (s: Session) => !s.parent_session_id && !sideOf(s);
 const newestFirst = (a: Session, b: Session) => b.updated_at - a.updated_at;
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -197,16 +236,34 @@ async function loadMessages(sid: string) {
   useApp.setState((s) => ({ messages: { ...s.messages, [sid]: list ?? [] } }));
 }
 
+/** Loads a session's messages again, for one whose live updates may have been missed. */
+export async function refreshMessages(sid: string) {
+  await loadMessages(sid);
+}
+
+const loading = new Map<string, Promise<void>>();
+
+/** Loads a session's messages unless they are already here; one request serves every caller. */
+export async function ensureMessages(sid: string) {
+  if (useApp.getState().messages[sid]) return;
+  let pending = loading.get(sid);
+  if (!pending) {
+    pending = loadMessages(sid).finally(() => loading.delete(sid));
+    loading.set(sid, pending);
+  }
+  await pending;
+}
+
 async function loadPending() {
   const pending = await http.get<{ permissions: PermissionRequest[]; questions: QuestionRequest[] }>(`${ws()}/pending`);
   useApp.setState({ permissions: pending.permissions ?? [], questions: pending.questions ?? [] });
 }
 
 async function loadSessions() {
-  const list = (await http.get<Session[] | null>(`${ws()}/sessions`)) ?? [];
+  const list = (await http.get<Session[] | null>(`${ws()}/sessions?side=1`)) ?? [];
   const busy: Record<string, boolean> = {};
   for (const s of list) if (s.is_busy) busy[s.id] = true;
-  useApp.setState((state) => ({ sessions: list.filter(isRootSession).sort(newestFirst), busy: { ...state.busy, ...busy } }));
+  useApp.setState((state) => ({ sessions: list.filter(isRootSession).sort(newestFirst), sideChats: list.filter((x) => !!sideOf(x)).sort(newestFirst), busy: { ...state.busy, ...busy } }));
 }
 
 async function loadCatalog() {
@@ -282,7 +339,10 @@ function handleEvent(ev: HubEvent) {
       if (busy && !was) runStarted.set(sid, Date.now());
       set((s) => ({ busy: { ...s.busy, [sid]: busy }, queued: { ...s.queued, [sid]: waiting ?? 0 } }));
       if (!busy) set((s) => ({ compacting: { ...s.compacting, [sid]: false } }));
-      if (was && !busy) onRunEnd(sid);
+      if (was && !busy) {
+        onRunEnd(sid);
+        drainQueue(sid);
+      }
       return;
     }
     case "message": {
@@ -292,12 +352,22 @@ function handleEvent(ev: HubEvent) {
         if (!frame) frame = requestAnimationFrame(flushMessages);
       } else {
         queueMessage(env.payload);
+        // The agent started a design: show it being made.
+        if (useApp.getState().busy[env.payload.session_id]) for (const file of newDesignTargets(env.payload)) usePanel.getState().openDesign(file);
       }
       return;
     }
     case "session": {
       const env = ev.payload as Envelope<Session>;
       const s = env.payload;
+      if (sideOf(s)) {
+        // A session that gains its side tag leaves the chat list, wherever it was first heard of.
+        set((state) => {
+          const rest = state.sideChats.filter((x) => x.id !== s.id);
+          return { sideChats: env.type === "deleted" ? rest : [s, ...rest].sort(newestFirst), sessions: state.sessions.filter((x) => x.id !== s.id) };
+        });
+        return;
+      }
       if (!isRootSession(s)) return;
       set((state) => {
         const rest = state.sessions.filter((x) => x.id !== s.id);
@@ -346,7 +416,8 @@ function connect() {
     () => instance,
     {
       onEvent: handleEvent,
-      onOpen: () => useApp.setState({ online: true }),
+      onOpen: () => useApp.setState({ online: true, retry: null }),
+      onRetry: (attempt, ms) => useApp.setState({ retry: { attempt, at: Date.now() + ms } }),
       onClose: () => useApp.setState({ online: false }),
     },
   );
@@ -408,6 +479,19 @@ async function sendEdited(sessionId: string, messageId: string, edit: EditedMess
   await useApp.getState().send(edit.text, edit.attachments);
 }
 
+/** Sends the next held message once the session is idle. */
+function drainQueue(sid: string) {
+  const state = useApp.getState();
+  const list = state.queue[sid];
+  if (!list?.length || state.queuePaused[sid] || state.busy[sid]) return;
+  const [next, ...rest] = list;
+  useApp.setState((s) => ({ queue: { ...s.queue, [sid]: rest } }));
+  void state.send(next!.text, next!.attachments, sid).catch(() => {
+    // It goes back to the front and waits, so nothing the person wrote is lost.
+    useApp.setState((s) => ({ queue: { ...s.queue, [sid]: [next!, ...(s.queue[sid] ?? [])] }, queuePaused: { ...s.queuePaused, [sid]: true } }));
+  });
+}
+
 const editFailure = (err: unknown) => (err instanceof ApiError && err.status === 501 ? t("edit.oldServer") : message(err));
 
 export const useApp = create<AppState>((set, get) => ({
@@ -416,12 +500,16 @@ export const useApp = create<AppState>((set, get) => ({
   project: new URLSearchParams(location.search).get("project") ?? "",
   workspace: null,
   online: true,
+  retry: null,
   projects: [],
   sessions: [],
+  sideChats: [],
   currentId: null,
   messages: {},
   busy: {},
   queued: {},
+  queue: {},
+  queuePaused: {},
   unread: {},
   compacting: {},
   optimistic: {},
@@ -439,7 +527,6 @@ export const useApp = create<AppState>((set, get) => ({
   settingsTab: "general",
   toasts: [],
   rewind: null,
-  fileTarget: "",
   composerInsert: null,
 
   async init() {
@@ -471,6 +558,8 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   async selectSession(id) {
+    // The new thread fades in (a keyed animation, see motion.css), so a second
+    // click, as in a double click to rename, is never held up by a transition.
     set((s) => {
       const unread = { ...s.unread };
       if (id) delete unread[id];
@@ -481,13 +570,22 @@ export const useApp = create<AppState>((set, get) => ({
     if (id && !get().messages[id]) await loadMessages(id);
   },
 
-  async send(text, attachments = []) {
+  async send(text, attachments = [], into) {
     const prompt = text.trim() || (attachments.length > 0 ? t("composer.attachmentPrompt") : "");
     if (!prompt) return;
     set({ notice: "" });
-    let sid = get().currentId;
+    let sid = into ?? get().currentId;
     const running = sid ? get().busy[sid] : false;
     try {
+      if (get().ui.autoModel && !running) {
+        const targets = get().ui.autoModelTargets;
+        const target = prompt.length < 240 && attachments.length === 0 ? (targets.small ?? targets.large) : targets.large;
+        const current = get().catalog?.active;
+        if (target && (current?.provider !== target.provider || current?.model !== target.model)) {
+          const catalog = await http.post<Catalog>(`${ws()}/models`, { type: "large", ...target });
+          set({ catalog });
+        }
+      }
       if (!sid) {
         const session = await http.post<Session>(`${ws()}/sessions`, {});
         sid = session.id;
@@ -521,8 +619,8 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 
-  async runShell(command) {
-    let sid = get().currentId;
+  async runShell(command, into) {
+    let sid = into ?? get().currentId;
     if (!sid) {
       const session = await http.post<Session>(`${ws()}/sessions`, { title: command.slice(0, 80) });
       sid = session.id;
@@ -539,9 +637,95 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 
-  async cancel() {
+  async cancel(into) {
+    const sid = into ?? get().currentId;
+    if (!sid) return;
+    // Stopping is a decision: what was waiting does not start on its own.
+    if (get().queue[sid]?.length) set((s) => ({ queuePaused: { ...s.queuePaused, [sid]: true } }));
+    await http.post(`${sess(sid)}/cancel`);
+  },
+
+  enqueue(sid, text, attachments = []) {
+    if (!text.trim() && attachments.length === 0) return;
+    set((s) => {
+      const fresh = !(s.queue[sid]?.length);
+      return { queue: { ...s.queue, [sid]: [...(s.queue[sid] ?? []), newQueueItem(text, attachments)] }, queuePaused: fresh ? { ...s.queuePaused, [sid]: false } : s.queuePaused };
+    });
+    // The turn may have ended between the keypress and here.
+    if (!get().busy[sid]) drainQueue(sid);
+  },
+
+  updateQueued(sid, id, text) {
+    set((s) => ({ queue: { ...s.queue, [sid]: (s.queue[sid] ?? []).map((q) => (q.id === id ? { ...q, text } : q)) } }));
+  },
+
+  removeQueued(sid, id) {
+    set((s) => ({ queue: { ...s.queue, [sid]: (s.queue[sid] ?? []).filter((q) => q.id !== id) } }));
+  },
+
+  moveQueued(sid, from, to) {
+    set((s) => ({ queue: { ...s.queue, [sid]: moveItem(s.queue[sid] ?? [], from, to) } }));
+  },
+
+  async steerQueued(sid, id) {
+    const item = get().queue[sid]?.find((q) => q.id === id);
+    if (!item) return;
+    get().removeQueued(sid, id);
+    try {
+      await get().send(item.text, item.attachments, sid);
+    } catch {
+      set((s) => ({ queue: { ...s.queue, [sid]: [item, ...(s.queue[sid] ?? [])] } }));
+    }
+  },
+
+  async sendQueuedNow(sid, id) {
+    const list = get().queue[sid] ?? [];
+    const at = list.findIndex((q) => q.id === id);
+    if (at < 0) return;
+    if (!get().busy[sid]) {
+      get().moveQueued(sid, at, 0);
+      set((s) => ({ queuePaused: { ...s.queuePaused, [sid]: false } }));
+      drainQueue(sid);
+      return;
+    }
+    // The item goes first and the queue runs on, so the end of the stopped
+    // turn is what sends it.
+    get().moveQueued(sid, at, 0);
+    set((s) => ({ queuePaused: { ...s.queuePaused, [sid]: false } }));
+    try {
+      await http.post(`${sess(sid)}/cancel`);
+    } catch (err) {
+      get().toast(message(err), "danger");
+    }
+  },
+
+  resumeQueue(sid) {
+    set((s) => ({ queuePaused: { ...s.queuePaused, [sid]: false } }));
+    drainQueue(sid);
+  },
+
+  async branchFrom(messageId) {
     const sid = get().currentId;
-    if (sid) await http.post(`${sess(sid)}/cancel`);
+    if (!sid) return;
+    try {
+      const branch = await http.post<Session>(`${sess(sid)}/branch`, { message_id: messageId });
+      set((s) => ({ sessions: [branch, ...s.sessions.filter((x) => x.id !== branch.id)] }));
+      await get().selectSession(branch.id);
+      get().toast(t("branch.done"));
+    } catch (err) {
+      get().toast(err instanceof ApiError && err.status === 501 ? t("edit.oldServer") : message(err), "danger");
+    }
+  },
+
+  async revertFile(file) {
+    try {
+      await http.post(`${ws()}/files/revert`, { path: file.path, old_content: file.before, new_content: file.after });
+      void get().refreshGit();
+      return true;
+    } catch (err) {
+      get().toast(err instanceof ApiError && err.status === 409 ? t("edits.conflict") : message(err), "danger");
+      return false;
+    }
   },
 
   async deleteSession(id) {
@@ -580,7 +764,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   async searchSessions(query) {
-    const list = await http.get<Session[] | null>(`${ws()}/sessions?q=${encodeURIComponent(query)}`);
+    const list = await http.get<Session[] | null>(`${ws()}/sessions?side=1&q=${encodeURIComponent(query)}`);
     return (list ?? []).filter(isRootSession);
   },
 
@@ -612,6 +796,8 @@ export const useApp = create<AppState>((set, get) => ({
         think: options.think ?? false,
       });
       set({ catalog });
+      get().setUI("autoModel", false);
+      get().setUI("recentModels", [`${provider}:${model}`, ...get().ui.recentModels.filter((id) => id !== `${provider}:${model}`)].slice(0, 8));
     } catch (err) {
       get().toast(message(err), "danger");
     }
@@ -722,20 +908,12 @@ export const useApp = create<AppState>((set, get) => ({
     get().setUI("sidebarOpen", !get().ui.sidebarOpen);
   },
 
-  toggleRail(tab) {
-    const { railOpen, railTab } = get().ui;
-    if (tab && tab !== railTab) {
-      get().setUI("railTab", tab);
-      if (!railOpen) get().setUI("railOpen", true);
-      return;
-    }
-    get().setUI("railOpen", !railOpen);
+  toggleRail(tool) {
+    usePanel.getState().toggle(tool);
   },
 
   openFile(path) {
-    set({ fileTarget: path });
-    get().setUI("railTab", "files");
-    get().setUI("railOpen", true);
+    usePanel.getState().openFile(path);
   },
 
   openDialog(dialog) {
@@ -746,8 +924,12 @@ export const useApp = create<AppState>((set, get) => ({
     set({ dialog: "settings", settingsTab: tab ?? get().settingsTab });
   },
 
-  insertInComposer(text) {
-    set({ composerInsert: { text, seq: ++insertSeq } });
+  insertInComposer(text, options) {
+    set({ composerInsert: { text, seq: ++insertSeq, append: options?.append, target: options?.target } });
+  },
+
+  attachToComposer(file, target) {
+    set({ composerInsert: { text: "", seq: ++insertSeq, file, target } });
   },
 
   setTheme(theme) {
@@ -778,7 +960,10 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   dropToast(id) {
-    set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) }));
+    // A toast leaves in two steps: it is marked, plays its exit, and is then removed.
+    if (!get().toasts.some((x) => x.id === id && !x.leaving)) return;
+    set((s) => ({ toasts: s.toasts.map((x) => (x.id === id ? { ...x, leaving: true } : x)) }));
+    setTimeout(() => set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) })), 200);
   },
 
   async refreshGit() {

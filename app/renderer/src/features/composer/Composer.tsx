@@ -9,12 +9,26 @@ import { addFiles, encode, type Pending } from "../../lib/attachments";
 import { baseName } from "../../lib/format";
 import { t, type Key } from "../../lib/i18n";
 import { useKeys } from "../../lib/shortcuts";
-import { IconArrowUp, IconChevronDown, IconClose, IconFile, IconPaperclip, IconShield, IconSparkle, IconStop } from "../../primitives/icons";
+import { IconArrowUp, IconBranch, IconChevronDown, IconClose, IconFile, IconLaptop, IconShield, IconStop, IconWave } from "../../primitives/icons";
 import { Picker } from "../../primitives/Picker";
-import { Menu, Modal, Tip, useDebounced } from "../../primitives/ui";
+import { Menu, Modal, useDebounced } from "../../primitives/ui";
 import { useApp } from "../../stores/app";
 import { ProviderLogo } from "../models/ProviderLogo";
+import { ModelPicker } from "../models/ModelPicker";
+import { IconSteer } from "../thread/chatIcons";
+import { QueueList } from "../thread/QueueList";
 import { ContextMeter } from "./ContextMeter";
+import { ContextMenu, WORK_MODES, type WorkMode } from "./ContextMenu";
+import { VoiceInput } from "./VoiceInput";
+import { reducedMotion, tokenMs } from "../../lib/motion";
+
+/** Taller than this and the text has wrapped: one 22px line plus its padding. */
+const ONE_LINE = 36;
+
+interface ComposerBox {
+  height: number;
+  parts: ({ x: number; y: number } | null)[];
+}
 
 const MAX_FILE_SUGGESTIONS = 8;
 const MAX_COMMAND_SUGGESTIONS = 40;
@@ -58,7 +72,7 @@ function PermissionChip() {
   return (
     <Menu
       trigger={
-        <button type="button" className="chip-button" data-tone={mode === "bypass" ? "danger" : undefined} title={t("mode.title")}>
+        <button type="button" className="chip-button permission-chip" data-tone={mode === "bypass" ? "danger" : undefined} title={t("mode.title")}>
           <IconShield />
           <span>{t(PERMISSION_LABELS[mode] ?? "mode.manual")}</span>
         </button>
@@ -76,20 +90,20 @@ function PermissionChip() {
 
 function ModelChip() {
   const catalog = useApp((s) => s.catalog);
-  const open = useApp((s) => s.openDialog);
   const current = catalog?.active ?? catalog?.selected?.large;
+  const auto = useApp((s) => s.ui.autoModel);
   const name = catalog?.providers?.flatMap((p) => p.models).find((m) => m.id === current?.model)?.name ?? current?.model ?? t("composer.noModel");
   const effort = current?.reasoning_effort;
   const keys = useKeys("models");
   return (
-    <Tip label={t("composer.model")} keys={keys}>
-      <button type="button" className="chip-button" onClick={() => open("models")}>
+    <ModelPicker trigger={
+      <button type="button" className="chip-button model-trigger" title={`${t("composer.model")}${keys ? ` (${keys})` : ""}`}>
         {current?.provider && <ProviderLogo id={current.provider} size={14} />}
-        <span>{name}</span>
+        <span>{auto ? t("compose.auto") : name}</span>
         {effort && <span className="chip-note">{effort}</span>}
         <IconChevronDown />
       </button>
-    </Tip>
+    } />
   );
 }
 
@@ -98,6 +112,7 @@ interface Suggestion {
   label: string;
   hint: string;
   file?: boolean;
+  kind?: string;
   run(): void;
 }
 
@@ -163,23 +178,60 @@ export function Composer({ sessionId, autoFocus }: { sessionId: string | null; a
   const [selected, setSelected] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const [needsArgs, setNeedsArgs] = useState<SlashCommand | null>(null);
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [workMode, setWorkMode] = useState<WorkMode>("agent");
+  const git = useApp((s) => s.git);
+  const project = useApp((s) => s.project);
   const [place, setPlace] = useState<{ side: "top" | "bottom"; height: number }>({ side: "top", height: SUGGEST_MAX_HEIGHT });
   const root = useRef<HTMLDivElement>(null);
+  const [wrapped, setWrapped] = useState(false);
+  const wrapLength = useRef(0);
+  const drawn = useRef<ComposerBox | null>(null);
+  const glides = useRef<Animation[]>([]);
   const suggestList = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const voice = useRef<{ start(): void }>(null);
 
   useEffect(() => {
     setText(drafts.get(key) ?? "");
     if (autoFocus) input.current?.focus();
   }, [key, autoFocus]);
 
+  // The composer stays on one row until the text really wraps there, then the
+  // input takes the whole width and the controls drop below it. The wider input
+  // would fit the same text again, so it only goes back once the text is
+  // shorter than where it wrapped; otherwise the two layouts would flip.
   useLayoutEffect(() => {
     const el = input.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  }, [text]);
+    if (wrapped) {
+      if (text.length < wrapLength.current) setWrapped(false);
+    } else if (!root.current?.hasAttribute("data-expanded") && el.scrollHeight > ONE_LINE) {
+      wrapLength.current = text.length;
+      setWrapped(true);
+    }
+  }, [text, workMode, wrapped]);
+
+  useLayoutEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    let width = el.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (width === el.clientWidth) return;
+      width = el.clientWidth;
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+      if (!root.current?.hasAttribute("data-expanded") && el.scrollHeight > ONE_LINE) {
+        wrapLength.current = el.value.length;
+        setWrapped(true);
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const update = (value: string) => {
     setText(value);
@@ -191,7 +243,16 @@ export function Composer({ sessionId, autoFocus }: { sessionId: string | null; a
   useEffect(() => {
     if (!insert || insert.seq === lastInsert.current) return;
     lastInsert.current = insert.seq;
-    update(insert.text);
+    if (insert.target && insert.target !== sessionId) return;
+    if (insert.file) {
+      const bytes = Uint8Array.from(atob(insert.file.content), (c) => c.charCodeAt(0));
+      take([new File([bytes], insert.file.name, { type: insert.file.mime })]);
+    } else if (insert.append) {
+      const current = input.current?.value ?? "";
+      update(`${current}${current.trim() ? "\n\n" : ""}${insert.text}`);
+    } else {
+      update(insert.text);
+    }
     input.current?.focus();
     // `update` is stable in effect: it only touches this composer's state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -243,6 +304,7 @@ export function Composer({ sessionId, autoFocus }: { sessionId: string | null; a
       { name: "new", label: "slash.new", run: () => void app().selectSession(null) },
       { name: "compact", label: "slash.compact", run: () => void app().summarize() },
       { name: "model", label: "slash.model", run: () => app().openDialog("models") },
+      { name: "mcp", label: "settings.mcp", run: () => app().openSettings("integrations") },
       { name: "settings", label: "slash.settings", run: () => app().openSettings() },
       { name: "help", label: "slash.help", run: () => app().openSettings("shortcuts") },
     ];
@@ -258,7 +320,8 @@ export function Composer({ sessionId, autoFocus }: { sessionId: string | null; a
       .filter((b) => b.name.startsWith(q))
       .map((b) => ({
         id: `builtin:${b.name}`,
-        label: `/${b.name}`,
+        label: b.name,
+        kind: "builtin",
         hint: t(b.label),
         run: () => {
           update("");
@@ -269,7 +332,8 @@ export function Composer({ sessionId, autoFocus }: { sessionId: string | null; a
       .filter((c) => c.name.toLowerCase().includes(q))
       .map((c) => ({
         id: c.id,
-        label: `/${c.name}`,
+        label: c.name,
+        kind: c.kind,
         hint: c.description ?? t(c.kind === "skill" ? "slash.skill" : c.kind === "workflow" ? "slash.workflow" : "slash.custom"),
         run: () => {
           if (c.arguments?.length) setNeedsArgs(c);
@@ -291,7 +355,7 @@ export function Composer({ sessionId, autoFocus }: { sessionId: string | null; a
     const above = box.top - SUGGEST_TOP_LIMIT - SUGGEST_GAP;
     const below = innerHeight - box.bottom - SUGGEST_BOTTOM_LIMIT - SUGGEST_GAP;
     const side = above >= SUGGEST_MIN_HEIGHT || above >= below ? "top" : "bottom";
-    setPlace({ side, height: Math.min(SUGGEST_MAX_HEIGHT, side === "top" ? above : below) });
+    setPlace({ side, height: Math.min(token?.kind === "/" ? 292 : SUGGEST_MAX_HEIGHT, side === "top" ? above : below) });
   }, [suggesting, token?.kind]);
 
   useEffect(() => {
@@ -315,19 +379,31 @@ export function Composer({ sessionId, autoFocus }: { sessionId: string | null; a
   const hasContent = text.trim().length > 0 || pending.length > 0;
   const state = hasContent ? "ready" : busy ? "streaming" : "disabled";
 
-  const submit = async () => {
+  /** While a turn runs a message is queued, unless `steer` sends it into that turn. */
+  const submit = async (steer = false) => {
     if (!hasContent || !online) return;
     const prompt = text;
     const attached = pending;
     if (prompt.startsWith("!") && prompt.length > 1 && attached.length === 0) {
       update("");
-      await useApp.getState().runShell(prompt.slice(1).trim());
+      await useApp.getState().runShell(prompt.slice(1).trim(), sessionId ?? undefined);
       return;
     }
     update("");
     setPending([]);
     try {
-      await send(prompt, await encode(attached));
+      const instructions: Partial<Record<WorkMode, string>> = {
+        ask: "Answer the question without editing files or running commands that change the system.",
+        debug: "Investigate the root cause, reproduce the issue where possible, and validate the fix with relevant checks.",
+        multi: "Break the work into clearly scoped tasks, coordinate their dependencies, and validate the integrated result.",
+      };
+      const body = instructions[workMode] ? `${instructions[workMode]}\n\n${prompt}` : prompt;
+      const files = await encode(attached);
+      if (busy && sessionId && !steer) {
+        useApp.getState().enqueue(sessionId, body, files);
+      } else {
+        await send(body, files, sessionId ?? undefined);
+      }
       for (const p of attached) if (p.preview) URL.revokeObjectURL(p.preview);
     } catch {
       update(prompt);
@@ -352,12 +428,52 @@ export function Composer({ sessionId, autoFocus }: { sessionId: string | null; a
   const sessionModes = useApp((s) => s.settings?.modes ?? []);
   const sessionMode = useApp((s) => s.settings?.session_mode ?? "");
   const setSessionMode = useApp((s) => s.setSessionMode);
+  const selectedMode = WORK_MODES.find((mode) => mode.id === workMode);
+  const ModeIcon = selectedMode?.icon;
+  const placeholder = busy ? t("composer.followUp") : workMode === "plan" ? t("compose.planPlaceholder") : workMode === "debug" ? t("compose.debugPlaceholder") : workMode === "multi" ? t("compose.multiPlaceholder") : workMode === "ask" ? t("compose.askPlaceholder") : t("composer.placeholder");
+
+  const expanded = voiceActive || /[\r\n]/.test(text) || pending.length > 0 || wrapped;
+
+  // Height and the moved controls glide to their new place instead of jumping.
+  useLayoutEffect(() => {
+    const el = root.current;
+    const field = input.current;
+    if (!el || !field) return;
+    // Wrapped text on the single row is a state that is never painted.
+    if (!expanded && field.scrollHeight > ONE_LINE) return;
+    const parts = [el.querySelector<HTMLElement>(".composer-bar"), el.querySelector<HTMLElement>(".composer-add")];
+    for (const a of glides.current) a.cancel();
+    glides.current = [];
+    const frame = el.getBoundingClientRect();
+    const now: ComposerBox = {
+      height: el.offsetHeight,
+      parts: parts.map((part) => {
+        const box = part?.getBoundingClientRect();
+        return box ? { x: box.left - frame.left, y: box.top - frame.top } : null;
+      }),
+    };
+    const before = drawn.current;
+    drawn.current = now;
+    if (!before || reducedMotion() || Math.abs(before.height - now.height) < 1) return;
+    const timing = { duration: tokenMs("--atlas-dur-moderate", 220), easing: "cubic-bezier(0.2, 0, 0, 1)" };
+    glides.current.push(el.animate([{ height: `${before.height}px` }, { height: `${now.height}px` }], timing));
+    parts.forEach((part, i) => {
+      const from = before.parts[i];
+      const to = now.parts[i];
+      if (!part || !from || !to || (from.x === to.x && from.y === to.y)) return;
+      glides.current.push(part.animate([{ transform: `translate(${from.x - to.x}px, ${from.y - to.y}px)` }, { transform: "none" }], timing));
+    });
+  }, [text, workMode, expanded]);
 
   return (
+    <>
+    <QueueList sessionId={sessionId} />
     <div
       ref={root}
       className="composer"
       data-drag={dragging || undefined}
+      data-expanded={expanded || undefined}
+      data-voice={voiceActive || undefined}
       onDragOver={(e) => {
         if (!e.dataTransfer.types.includes("Files")) return;
         e.preventDefault();
@@ -369,7 +485,7 @@ export function Composer({ sessionId, autoFocus }: { sessionId: string | null; a
       onDrop={onDrop}
     >
       {suggestions.length > 0 && (
-        <div className="suggest" ref={suggestList} data-side={place.side} style={{ maxBlockSize: place.height }} role="listbox" aria-label={t(token?.kind === "@" ? "suggest.files" : "suggest.commands")}>
+        <div className="suggest" ref={suggestList} data-kind={token?.kind === "/" ? "commands" : "files"} data-side={place.side} style={{ maxBlockSize: place.height }} role="listbox" aria-label={t(token?.kind === "@" ? "suggest.files" : "suggest.commands")}>
           {suggestions.map((s, i) => (
             <button
               key={s.id}
@@ -378,13 +494,15 @@ export function Composer({ sessionId, autoFocus }: { sessionId: string | null; a
               aria-selected={i === selected}
               className="suggest-row"
               data-selected={i === selected || undefined}
+              data-divider={i > 0 && s.kind !== "builtin" && suggestions[i - 1]?.kind === "builtin" || undefined}
               onMouseEnter={() => setSelected(i)}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => s.run()}
             >
-              {s.file ? <IconFile /> : <IconSparkle />}
+              {s.file && <IconFile />}
               <span className="suggest-label">{s.label}</span>
               <span className="suggest-hint">{s.hint}</span>
+              {i === selected && <span className="suggest-key" aria-hidden="true">↵</span>}
             </button>
           ))}
         </div>
@@ -407,11 +525,20 @@ export function Composer({ sessionId, autoFocus }: { sessionId: string | null; a
           ))}
         </div>
       )}
+      <div className="composer-input-row">
+      <ContextMenu mode={workMode} attach={() => picker.current?.click()} commands={() => { update("/"); setCaret(1); input.current?.focus(); }} onMode={(mode) => {
+        setWorkMode(mode);
+        if (mode === "plan") void useApp.getState().setPermissionMode("plan");
+        else if (useApp.getState().settings?.permission_mode === "plan") void useApp.getState().setPermissionMode("manual");
+        input.current?.focus();
+      }} />
+      <div className="composer-editor">
+      {selectedMode && ModeIcon && <div className="compose-mode-tag" data-mode={workMode}><ModeIcon /><span>{t(selectedMode.label)}</span><button type="button" className="compose-mode-clear" aria-label={t("compose.clearMode")} onClick={() => { setWorkMode("agent"); if (workMode === "plan") void useApp.getState().setPermissionMode("manual"); input.current?.focus(); }}><IconClose /></button></div>}
       <textarea
         ref={input}
         rows={1}
         value={text}
-        placeholder={busy ? t("composer.followUp") : t("composer.placeholder")}
+        placeholder={placeholder}
         aria-label={t("composer.placeholder")}
         data-shell={text.startsWith("!") || undefined}
         onChange={(e) => {
@@ -440,12 +567,13 @@ export function Composer({ sessionId, autoFocus }: { sessionId: string | null; a
               return;
             }
           }
-          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && !voiceActive) {
             e.preventDefault();
-            void submit();
+            void submit(e.ctrlKey || e.metaKey);
           }
         }}
       />
+      </div>
       <div className="composer-bar">
         <input
           ref={picker}
@@ -457,13 +585,42 @@ export function Composer({ sessionId, autoFocus }: { sessionId: string | null; a
             e.target.value = "";
           }}
         />
-        <Tip label={t("attach.add")}>
-          <button type="button" className="icon-button" aria-label={t("attach.add")} onClick={() => picker.current?.click()}>
-            <IconPaperclip />
+        <ModelChip />
+        <VoiceInput startRef={voice} onActive={setVoiceActive} onText={(value) => { const current = input.current?.value ?? ""; update(`${current}${current.trim() ? " " : ""}${value}`); requestAnimationFrame(() => input.current?.focus()); }} />
+        {busy && hasContent && (
+          <button type="button" className="steer-button" data-action="steer" title={t("queue.steerHint")} aria-label={`${t("composer.steer")}: ${t("queue.steerHint")}`} disabled={voiceActive || !online} onClick={() => void submit(true)}>
+            <IconSteer />
+            <span>{t("composer.steer")}</span>
           </button>
-        </Tip>
-        <PermissionChip />
-        {sessionModes.length > 1 && (
+        )}
+        <button
+          type="button"
+          className="send"
+          data-state={state}
+          disabled={voiceActive || !online}
+          aria-label={state === "streaming" ? t("composer.stop") : state === "disabled" ? t("compose.record") : busy ? t("composer.queue") : t("composer.send")}
+          title={state === "streaming" ? t("composer.stop") : state === "disabled" ? t("compose.record") : busy ? `${t("composer.queue")} · ${t("composer.busyHint")}` : t("composer.send")}
+          onClick={() => (state === "streaming" ? void cancel(sessionId ?? undefined) : state === "disabled" ? voice.current?.start() : void submit(false))}
+        >
+          {state === "streaming" ? <IconStop key="stop" className="icon-in stop-icon" /> : state === "disabled" ? <IconWave /> : <IconArrowUp key="send" className="icon-in" />}
+        </button>
+      </div>
+      </div>
+      <CommandArguments
+        command={needsArgs}
+        onClose={() => setNeedsArgs(null)}
+        onDone={(values) => {
+          const command = needsArgs;
+          setNeedsArgs(null);
+          if (command) void runCommand(command, values);
+        }}
+      />
+    </div>
+    <div className="composer-meta">
+      {git && <button type="button" className="composer-meta-project" title={git.branch} onClick={() => useApp.getState().toggleRail("changes")}><IconBranch /><span>{git.branch}</span><IconChevronDown /></button>}
+      <button type="button" className="composer-meta-project" title={project} onClick={() => void window.atlas?.reveal(project)}><IconLaptop /><span>{t("compose.local")}</span><IconChevronDown /></button>
+      <PermissionChip />
+      {sessionModes.length > 1 && (
           <Picker
             label={t("mode.agent")}
             value={sessionMode}
@@ -481,30 +638,9 @@ export function Composer({ sessionId, autoFocus }: { sessionId: string | null; a
             options={[{ value: "", label: t("mode.agentDefault") }, ...sessionModes.map((m) => ({ value: m.name, label: m.name, hint: m.description }))]}
           />
         )}
-        <ModelChip />
         <span className="composer-gap" />
         <ContextMeter sessionId={sessionId} />
-        <button
-          type="button"
-          className="send"
-          data-state={state}
-          disabled={state === "disabled" || (state === "ready" && !online)}
-          aria-label={state === "streaming" ? t("composer.stop") : t("composer.send")}
-          title={state === "streaming" ? t("composer.stop") : t("composer.send")}
-          onClick={() => (state === "streaming" ? void cancel() : void submit())}
-        >
-          {state === "streaming" ? <IconStop key="stop" className="icon-in stop-icon" /> : <IconArrowUp key="send" className="icon-in" />}
-        </button>
-      </div>
-      <CommandArguments
-        command={needsArgs}
-        onClose={() => setNeedsArgs(null)}
-        onDone={(values) => {
-          const command = needsArgs;
-          setNeedsArgs(null);
-          if (command) void runCommand(command, values);
-        }}
-      />
     </div>
+    </>
   );
 }

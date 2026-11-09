@@ -10,7 +10,7 @@ import { align, type AlignKind, distribute, fitGroups, moveBy } from "../feature
 import { resolveLayout } from "../features/design/layout";
 import { mergeDocs } from "../features/design/merge";
 import { createNode, type DesignDoc, type DesignNode, emptyDoc, fileSlug, findNode, insertNodes, locate, nextName, type NodeType, pageOf, patchNodes, removeNodes, sanitizeDoc, topmost, updateNodes, walk } from "../features/design/model";
-import { pathFields, shapeToPath } from "../features/design/path";
+import { nodePath, outlineStroke, pathFields, shapeToPath } from "../features/design/path";
 import { bakeText, changedIds, copyNodes, detachInstance, duplicate, groupSelection, instantiate, makeComponent, paste, type Reorder, reorder, reparent, ungroup } from "../features/design/ops";
 import { sizeOf } from "../features/design/text";
 import { useApp } from "./app";
@@ -101,6 +101,7 @@ interface DesignState {
   boolean(op: BoolOp): void;
   /** Turns the selected shapes into editable paths. */
   flatten(): void;
+  outlineStroke(): void;
 
   addNode(type: NodeType, props: Partial<DesignNode>, parentId?: string | null): string | null;
   patch(ids: string[], patch: Partial<DesignNode> | ((n: DesignNode) => Partial<DesignNode>)): void;
@@ -375,6 +376,31 @@ export const useDesign = create<DesignState>((set, get) => {
           next = updateNodes(next, [id], (n) => {
             const { radius: _r, sides: _s, inner: _i, clip: _c, children: _k, layout: _l, src: _src, fit: _f, ...rest } = n;
             return { ...rest, type: "path", d: fields.d, view_box: fields.view_box, width: fields.width, height: fields.height, x: n.x + fields.x, y: n.y + fields.y } as DesignNode;
+          });
+          changed = true;
+        }
+        return changed ? { doc: next, selection: sel } : null;
+      });
+    },
+    outlineStroke() {
+      run((doc, pageId, sel) => {
+        const page = pageOf(doc, pageId);
+        let next = doc;
+        let changed = false;
+        for (const id of topmost(page, sel)) {
+          const at = locate(page, id);
+          const n = at?.node;
+          if (!n || n.children?.length || n.type === "text" || n.type === "group" || n.type === "instance") continue;
+          const stroke = n.strokes?.find((s) => s.visible !== false && s.width > 0);
+          if (!stroke) continue;
+          const subs = n.type === "path" ? nodePath(n) : shapeToPath(n);
+          if (!subs) continue;
+          const outline = outlineStroke(subs, stroke.width);
+          if (!outline.length) continue;
+          const f = pathFields({ x: 0, y: 0 }, outline);
+          next = updateNodes(next, [id], (m) => {
+            const { radius: _r, sides: _s, inner: _i, clip: _c, children: _k, layout: _l, src: _src, fit: _f, strokes: _st, ...rest } = m;
+            return { ...rest, type: "path", d: f.d, view_box: f.view_box, width: f.width, height: f.height, x: m.x + f.x, y: m.y + f.y, fills: [{ type: "solid", color: stroke.color, ...(stroke.variable ? { variable: stroke.variable } : {}), ...(stroke.opacity !== undefined ? { opacity: stroke.opacity } : {}) }] } as DesignNode;
           });
           changed = true;
         }

@@ -1,14 +1,17 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 
-/** Text with a light sweeping through it, one character at a time. */
+/** Text with a light sweeping through it: one element and one gradient, however long the text. */
 export function Shimmer({ text }: { text: string }) {
+  return <span className="shimmer">{text}</span>;
+}
+
+/** Three dots that rise in turn: the quiet "thinking" mark. */
+export function ThinkingDots() {
   return (
-    <span className="shimmer" aria-label={text}>
-      {[...text].map((ch, i) => (
-        <span key={i} aria-hidden="true" style={{ "--i": i } as CSSProperties}>
-          {ch === " " ? " " : ch}
-        </span>
-      ))}
+    <span className="think-dots" aria-hidden="true">
+      <i style={{ "--i": 0 } as CSSProperties} />
+      <i style={{ "--i": 1 } as CSSProperties} />
+      <i style={{ "--i": 2 } as CSSProperties} />
     </span>
   );
 }

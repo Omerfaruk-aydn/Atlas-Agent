@@ -15,6 +15,12 @@
     "start": "electron .",
     "package": "node scripts/package.mjs"
   },
+  "dependencies": {
+    "electron-chrome-extensions": "4.10.0",
+    "electron-chrome-web-store": "0.13.0",
+    "mermaid": "^11.17.2",
+    "node-pty": "1.1.0"
+  },
   "devDependencies": {
     "@fontsource-variable/inter": "5.3.0",
     "@fontsource-variable/jetbrains-mono": "5.3.0",
@@ -22,6 +28,8 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "5.2.0",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
     "axe-core": "4.14.0",
     "diff": "8.0.4",
     "electron": "45.2.2",

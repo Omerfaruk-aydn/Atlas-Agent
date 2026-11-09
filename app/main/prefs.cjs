@@ -55,10 +55,43 @@ function setMotion(motion) {
 }
 
 function setUI(key, value) {
+  // The panel and the recent sites have their own, merging, writers.
+  if (key === "panels" || key === "recentSites") return;
   if (typeof key !== "string" || key.length > 4200) return;
   if ((JSON.stringify(value)?.length ?? 0) > MAX_UI_VALUE) return;
   load().ui[key] = value;
   save();
+}
+
+const MAX_PANEL = 256 * 1024;
+
+/** Saves the panel of one project. Windows of other projects keep theirs: this key and no other changes. */
+function setPanel(key, value) {
+  if (typeof key !== "string" || key.length === 0 || key.length > 4200 || typeof value !== "object" || value === null) return false;
+  if ((JSON.stringify(value)?.length ?? 0) > MAX_PANEL) return false;
+  const ui = load().ui;
+  if (typeof ui.panels !== "object" || ui.panels === null) ui.panels = {};
+  ui.panels[key] = value;
+  save();
+  return true;
+}
+
+/** Merges the sites a window visited into the shared list, newest first, one per host. */
+function mergeRecent(list) {
+  const ui = load().ui;
+  const old = Array.isArray(ui.recentSites) ? ui.recentSites : [];
+  const incoming = Array.isArray(list) ? list.filter((x) => x && typeof x.url === "string" && typeof x.host === "string").slice(0, 12) : [];
+  const seen = new Set();
+  const merged = [];
+  for (const site of [...incoming, ...old]) {
+    if (seen.has(site.host) || typeof site.host !== "string") continue;
+    seen.add(site.host);
+    merged.push({ url: String(site.url).slice(0, 2048), host: site.host.slice(0, 253), title: String(site.title ?? site.host).slice(0, 120) });
+    if (merged.length >= 12) break;
+  }
+  ui.recentSites = merged;
+  save();
+  return merged;
 }
 
 function windowBounds(key) {
@@ -70,4 +103,4 @@ function setWindowBounds(key, bounds) {
   save();
 }
 
-module.exports = { load, setTheme, setMotion, setUI, windowBounds, setWindowBounds };
+module.exports = { load, setTheme, setMotion, setUI, setPanel, mergeRecent, windowBounds, setWindowBounds };

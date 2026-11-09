@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/testenv"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 // The tools test binary doubles as the remote program for these tests, so
 // they run the same on every platform.
 func TestMain(m *testing.M) {
+	testenv.KeepGitInsideTemp()
 	for _, arg := range os.Args[1:] {
 		if mode, ok := strings.CutPrefix(arg, "-remote-support-helper="); ok {
 			if mode == "mark" {

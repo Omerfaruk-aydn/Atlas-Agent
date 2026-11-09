@@ -20,27 +20,38 @@ kbd { font: inherit; }
 ::-webkit-scrollbar-thumb:hover { background: var(--atlas-line-3); border: 3px solid transparent; background-clip: padding-box; }
 
 /* Frame */
-.app { display: grid; grid-template-rows: var(--atlas-titlebar-h) minmax(0, 1fr); block-size: 100%; }
+.app { overflow: clip; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--atlas-titlebar-h) minmax(0, 1fr); block-size: 100%; min-inline-size: 0; }
 .titlebar {
   display: flex; align-items: center; gap: var(--atlas-space-2);
   padding-inline: var(--atlas-space-2) 146px;
   app-region: drag;
   color: var(--atlas-ink-2);
+  min-inline-size: 0;
 }
 .titlebar .icon-button { app-region: no-drag; }
-.crumbs { display: flex; align-items: center; gap: var(--atlas-space-1_5); min-inline-size: 0; padding-inline-start: var(--atlas-space-1); }
-.crumb-project { font-weight: var(--atlas-weight-medium); color: var(--atlas-ink); white-space: nowrap; }
+.crumbs { display: flex; flex: 1; align-items: center; gap: var(--atlas-space-1_5); min-inline-size: 0; overflow: hidden; padding-inline-start: var(--atlas-space-1); }
+.crumb-project { flex: 0 1 auto; min-inline-size: 0; max-inline-size: 180px; overflow: hidden; text-overflow: ellipsis; font-weight: var(--atlas-weight-medium); color: var(--atlas-ink); white-space: nowrap; }
 .crumb-sep { color: var(--atlas-ink-4); }
-.crumb-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumb-title { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .offline-dot { inline-size: 8px; block-size: 8px; border-radius: 50%; background: var(--atlas-warning); flex: none; }
 
 .body {
+  /* The sidebar and the side panel are columns of the window; the panel runs
+     to the window's edge. --sb and --pc are what they take now. */
+  --sb: var(--atlas-sidebar-w);
+  --pc: 0px;
+  /* What the panel takes when open; written by usePanelWidth, already kept within the window. */
+  --pc-open: var(--atlas-panel-eff, var(--atlas-panel-w));
+  position: relative;
   display: grid;
-  grid-template-columns: var(--atlas-sidebar-w) minmax(0, 1fr);
+  grid-template-columns: var(--sb) minmax(0, 1fr) var(--pc);
   min-block-size: 0;
-  transition: grid-template-columns var(--atlas-dur-slow) var(--atlas-ease-emphasized);
+  min-inline-size: 0;
+  transition: grid-template-columns var(--atlas-dur-move) var(--atlas-ease-move);
 }
-.body[data-sidebar="closed"] { grid-template-columns: 0 minmax(0, 1fr); }
+.body[data-panel="closed"] { transition-duration: var(--atlas-dur-move-out); }
+.body[data-sidebar="closed"] { --sb: 0px; }
+.body[data-panel="open"] { --pc: var(--pc-open); }
 .sidebar-slot { overflow: hidden; min-inline-size: 0; }
 .card {
   background: var(--atlas-surface);
@@ -52,6 +63,7 @@ kbd { font: inherit; }
   position: relative;
 }
 .body[data-sidebar="open"] .card { margin-inline-start: 0; }
+.body[data-panel="open"] .card { margin-inline-end: 0; border-start-end-radius: 0; border-end-end-radius: 0; }
 
 /* Controls */
 .icon-button {
@@ -149,13 +161,14 @@ kbd { font: inherit; }
 .recent .group-label { padding-inline: 0; }
 .recent-row { display: flex; gap: var(--atlas-space-3); inline-size: 100%; block-size: 30px; align-items: center; padding-inline: var(--atlas-space-2); margin-inline: calc(-1 * var(--atlas-space-2)); border-radius: var(--atlas-radius-sm); text-align: start; }
 .recent-row:hover { background: var(--atlas-hover); }
-.recent-path { color: var(--atlas-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-inline-size: 0; }
+.recent-path { flex: 1 1 0; color: var(--atlas-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-inline-size: 0; }
+.recent-name { flex: 0 1 auto; max-inline-size: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-inline-size: 0; }
 .card-full { margin-inline-start: var(--atlas-window-gutter); }
 .loading { block-size: 100%; display: grid; place-items: center; }
 .loading::after { content: ""; inline-size: 18px; block-size: 18px; border-radius: 50%; border: 2px solid var(--atlas-line-2); border-block-start-color: var(--atlas-ink-2); }
 
 /* Conversation */
-.conversation { block-size: 100%; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+.conversation { block-size: 100%; min-inline-size: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
 .thread { position: relative; min-block-size: 0; }
 .thread-scroll {
   block-size: 100%; overflow-y: auto;
@@ -189,10 +202,7 @@ kbd { font: inherit; }
 /* Sticky over the turn; the opaque row keeps passing text from showing beside the bubble. */
 .user-row {
   display: flex; justify-content: flex-end;
-  position: sticky; inset-block-start: 16px; z-index: 1;
-  background: var(--atlas-surface);
-  padding-block: var(--atlas-space-2);
-  margin-block: calc(-1 * var(--atlas-space-2));
+  /* Not pinned: the message scrolls away with its turn. */
   overflow-anchor: none;
 }
 .user-bubble {
@@ -223,7 +233,7 @@ kbd { font: inherit; }
   border-radius: var(--atlas-radius-sm);
   transition: background-color var(--atlas-dur-fast) var(--atlas-ease-standard);
 }
-.worked:hover { background: var(--atlas-hover); }
+.worked:hover .worked-summary { color: var(--atlas-ink-2); }
 .worked-time { color: var(--atlas-ink-2); font-weight: var(--atlas-weight-medium); white-space: nowrap; }
 .worked-summary { color: var(--atlas-ink-3); min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .worked .chevron { color: var(--atlas-ink-3); opacity: 0; flex: none; }
@@ -239,7 +249,8 @@ kbd { font: inherit; }
   border-radius: var(--atlas-radius-sm); text-align: start;
   transition: background-color var(--atlas-dur-fast) var(--atlas-ease-standard);
 }
-.tool-row:hover:not(:disabled) { background: var(--atlas-hover); }
+/* No grey fill on hover: the chevron already says the row opens. */
+.tool-row:hover:not(:disabled) .tool-verb { color: var(--atlas-ink); }
 .tool-ind { flex: none; inline-size: 14px; block-size: 14px; }
 .tool-verb { color: var(--atlas-ink-2); font-weight: var(--atlas-weight-medium); white-space: nowrap; }
 .tool-arg { flex: 0 1 auto; min-inline-size: 0; color: var(--atlas-ink-3); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -318,7 +329,7 @@ kbd { font: inherit; }
   user-select: text; cursor: text;
 }
 .composer textarea::placeholder { color: var(--atlas-ink-3); }
-.composer-bar { display: flex; align-items: center; gap: var(--atlas-space-1); margin-block-start: var(--atlas-space-2); }
+.composer-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--atlas-space-1); margin-block-start: var(--atlas-space-2); }
 .composer-gap { flex: 1; }
 .send {
   inline-size: 32px; block-size: 32px; border-radius: var(--atlas-radius-pill);

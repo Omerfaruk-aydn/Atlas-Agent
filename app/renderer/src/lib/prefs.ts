@@ -2,14 +2,15 @@
 // because the gateway's port, and with it this page's origin, changes on every
 // start.
 
-export type RailTab = "changes" | "files" | "jobs";
+type ModelTarget = { provider: string; model: string; reasoning_effort?: string; think?: boolean };
 
 export interface UIPrefs {
   sidebarOpen: boolean;
   sidebarW: number;
-  railOpen: boolean;
-  railTab: RailTab;
-  railW: number;
+  /** The side panel, by project (see lib/panel.ts). */
+  panels: Record<string, unknown>;
+  /** Sites opened in the panel browser, newest first. */
+  recentSites: unknown[];
   pinned: string[];
   archived: string[];
   foldTurns: boolean;
@@ -20,14 +21,16 @@ export interface UIPrefs {
   onboarded: boolean;
   /** Keys the person changed, by shortcut id. */
   shortcuts: Record<string, string[]>;
+  recentModels: string[];
+  autoModel: boolean;
+  autoModelTargets: { large?: ModelTarget; small?: ModelTarget };
 }
 
 export const defaultUI: UIPrefs = {
   sidebarOpen: true,
   sidebarW: 264,
-  railOpen: false,
-  railTab: "changes",
-  railW: 380,
+  panels: {},
+  recentSites: [],
   pinned: [],
   archived: [],
   foldTurns: true,
@@ -37,6 +40,9 @@ export const defaultUI: UIPrefs = {
   lang: "system",
   onboarded: false,
   shortcuts: {},
+  recentModels: [],
+  autoModel: false,
+  autoModelTargets: {},
 };
 
 export function loadUI(): UIPrefs {

@@ -105,4 +105,6 @@ it well.
 
 Phases 1-7 are implemented: vector editing, auto layout and constraints, styles/variables/variants, boolean ops and masks, prototyping and present mode, comments, version history and three-way merge, and code generation (CSS, Tailwind, SwiftUI, Compose, HTML/React export).
 
-Not yet built: live multiplayer over the network (only file-level merge), code-to-design import, outline stroke.
+Outline stroke is built (round joins, butt caps).
+
+Out of scope: live multiplayer over the network needs a sync server a local desktop app does not have, so only file-level three-way merge exists. Code-to-design is done by the agent reading the code and issuing design ops, not by a parser.

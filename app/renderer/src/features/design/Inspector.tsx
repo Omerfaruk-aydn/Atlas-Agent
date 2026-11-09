@@ -633,6 +633,11 @@ function ShapeOps({ nodes }: { nodes: DesignNode[] }) {
             {t("design.flatten")}
           </button>
         )}
+        {shapes.some((n) => n.strokes?.some((s) => s.visible !== false && s.width > 0)) && (
+          <button type="button" className="design-chip" onClick={() => store().outlineStroke()}>
+            {t("design.outlineStroke")}
+          </button>
+        )}
         {path && (
           <button type="button" className="design-chip" onClick={() => store().setEditPath(path.id)}>
             {t("design.editPoints")}

@@ -25,11 +25,14 @@ const VERBS: Record<string, Verb> = {
   ask: { tr: ["Soruyor", "Sordu"], en: ["Asking", "Asked"] },
   memory: { tr: ["Hatırlıyor", "Hatırladı"], en: ["Recalling", "Recalled"] },
   security: { tr: ["Tarıyor", "Taradı"], en: ["Scanning", "Scanned"] },
+  compare: { tr: ["Görselleri karşılaştırıyor", "Görselleri karşılaştırdı"], en: ["Comparing images", "Compared images"] },
+  design: { tr: ["Tasarlıyor", "Tasarladı"], en: ["Designing", "Designed"] },
 };
 
 const CATEGORIES: Record<string, string> = {
   view: "read",
   inspect_file: "read",
+  pdf_render: "read",
   read_mcp_resource: "read",
   grep: "search",
   glob: "search",
@@ -67,6 +70,9 @@ const CATEGORIES: Record<string, string> = {
   team_send: "agent",
   todos: "plan",
   exit_plan_mode: "plan",
+  enter_plan_mode: "plan",
+  image_compare: "compare",
+  design_canvas: "design",
   question: "ask",
   memory: "memory",
   facts: "memory",
@@ -158,6 +164,18 @@ export function toolArg(call: ToolCall): string {
     }
     case "agent":
       return str(input.description) || str(input.prompt);
+    case "design": {
+      const design = str(input.file);
+      const action = str(input.action);
+      const ops = Array.isArray(input.ops) ? input.ops.length : 0;
+      if (!design) return action;
+      return ops ? `${design} · ${ops}` : action === "read" || action === "export" ? `${design} · ${action}` : design;
+    }
+    case "compare": {
+      const a = str(input.reference_path);
+      const b = str(input.candidate_path);
+      return a && b ? `${baseName(a)} ↔ ${baseName(b)}` : a || b;
+    }
     default:
       break;
   }

@@ -16,6 +16,9 @@ extraResources:
   - from: renderer/dist
     to: renderer
 asar: true
+# The terminal loads node-pty's native files and ConPTY helper from disk.
+asarUnpack:
+  - node_modules/node-pty/**
 npmRebuild: false
 win:
   target:

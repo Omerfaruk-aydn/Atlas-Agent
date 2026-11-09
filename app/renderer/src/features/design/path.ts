@@ -395,3 +395,75 @@ export function smooth(points: Pt[]): Anchor[] {
     return a;
   });
 }
+
+/** A subpath sampled into a polyline, curves flattened into `steps` pieces each. */
+function polyline(sub: Subpath, steps = 16): Pt[] {
+  const out: Pt[] = [];
+  const n = sub.anchors.length;
+  const count = sub.closed ? n : n - 1;
+  for (let i = 0; i < count; i++) {
+    const a = sub.anchors[i]!;
+    const b = sub.anchors[(i + 1) % n]!;
+    if (i === 0) out.push({ x: a.x, y: a.y });
+    if (!a.out && !b.in) {
+      out.push({ x: b.x, y: b.y });
+      continue;
+    }
+    const c1 = a.out ?? a;
+    const c2 = b.in ?? b;
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps;
+      const u = 1 - t;
+      out.push({
+        x: u * u * u * a.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * b.x,
+        y: u * u * u * a.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * b.y,
+      });
+    }
+  }
+  if (sub.closed && out.length > 1) {
+    const f = out[0]!;
+    const l = out[out.length - 1]!;
+    if (Math.abs(f.x - l.x) < 1e-9 && Math.abs(f.y - l.y) < 1e-9) out.pop();
+  }
+  return out;
+}
+
+/**
+ * A stroke turned into a filled shape: every segment becomes a rectangle and every joint a round join, all wound the same way
+ * so a non-zero fill paints their union. Zero-length segments are skipped.
+ */
+export function outlineStroke(subs: Subpath[], width: number): Subpath[] {
+  const h = Math.max(width, 0) / 2;
+  const out: Subpath[] = [];
+  if (h <= 0) return out;
+  const wind = (pts: Pt[]): Pt[] => {
+    let area = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i]!;
+      const q = pts[(i + 1) % pts.length]!;
+      area += p.x * q.y - q.x * p.y;
+    }
+    return area < 0 ? pts.slice().reverse() : pts;
+  };
+  const poly = (pts: Pt[]) => out.push({ closed: true, anchors: wind(pts).map((p) => ({ x: p.x, y: p.y })) });
+  const disc = (c: Pt) => poly(Array.from({ length: 16 }, (_, i) => ({ x: c.x + h * Math.cos((i / 16) * Math.PI * 2), y: c.y + h * Math.sin((i / 16) * Math.PI * 2) })));
+  for (const sub of subs) {
+    const pts = polyline(sub);
+    const closed = sub.closed && pts.length > 2;
+    const count = closed ? pts.length : pts.length - 1;
+    for (let i = 0; i < count; i++) {
+      const a = pts[i]!;
+      const b = pts[(i + 1) % pts.length]!;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 1e-9) continue;
+      const nx = (-dy / len) * h;
+      const ny = (dx / len) * h;
+      poly([{ x: a.x + nx, y: a.y + ny }, { x: b.x + nx, y: b.y + ny }, { x: b.x - nx, y: b.y - ny }, { x: a.x - nx, y: a.y - ny }]);
+    }
+    const joints = closed ? pts : pts.slice(1, -1);
+    for (const j of joints) disc(j);
+  }
+  return out;
+}

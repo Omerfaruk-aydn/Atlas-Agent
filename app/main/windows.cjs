@@ -5,9 +5,12 @@
 // window of its own. A project that already has a window is focused instead.
 
 const path = require("node:path");
-const { BrowserWindow, nativeTheme, screen } = require("electron");
+const { app, BrowserWindow, dialog, nativeTheme, screen } = require("electron");
 const prefs = require("./prefs.cjs");
 const { PARTITION, hardenContents } = require("./security.cjs");
+const { installWebviewGate, webviewGate } = require("./webview-gate.cjs");
+const { watchLoading } = require("./window-loading.cjs");
+const { record } = require("./startup-log.cjs");
 
 const TITLEBAR_HEIGHT = 40;
 const COLORS = {
@@ -17,6 +20,7 @@ const COLORS = {
 
 /** @type {Map<string, BrowserWindow>} */
 const windows = new Map();
+const loaders = new WeakMap();
 
 /** Windows paths compare case-insensitively and without a trailing slash. */
 function projectKey(project) {
@@ -82,12 +86,32 @@ function open(project, ctx) {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
-      webviewTag: false,
+      // Only the app's own windows may attach a <webview>, and only through the gate (webview-gate.cjs).
+      webviewTag: true,
       spellcheck: false,
     },
   });
   windows.set(key, win);
   hardenContents(win.webContents, ctx.origin);
+  installWebviewGate(webviewGate(), win.webContents);
+  const loading = watchLoading(win, {
+    url: ctx.url,
+    record,
+    onFailure: async (reason) => {
+      const tr = prefs.load().ui.lang === "tr" || app.getLocale().startsWith("tr");
+      const result = await dialog.showMessageBox(win, {
+        type: "error",
+        title: "Atlas",
+        message: tr ? "Atlas arayüzü yüklenemedi." : "Atlas could not display this window.",
+        detail: tr ? `Yeniden deneyebilirsin. Projen ve sohbetlerin korunur.\nTanı: ${reason}` : `You can retry. Your project and chats are preserved.\nDiagnostic: ${reason}`,
+        buttons: tr ? ["Yeniden dene", "Kapat"] : ["Retry", "Close"],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      return result.response === 0;
+    },
+  });
+  loaders.set(win, loading);
   win.once("ready-to-show", () => win.show());
   win.on("close", () => {
     const current = keyOf(win);
@@ -103,7 +127,7 @@ function open(project, ctx) {
   win.on("maximize", () => send("atlas:maximized", true));
   win.on("unmaximize", () => send("atlas:maximized", false));
   if (process.env.ATLAS_APP_DEVTOOLS === "1") win.webContents.openDevTools({ mode: "detach" });
-  win.loadURL(ctx.url(project));
+  loading.load(project);
   return win;
 }
 
@@ -125,7 +149,7 @@ function moveTo(win, project, ctx) {
   const current = keyOf(win);
   if (current !== null) windows.delete(current);
   windows.set(key, win);
-  win.loadURL(ctx.url(project));
+  loaders.get(win).load(project);
   return win;
 }
 
@@ -139,26 +163,19 @@ function syncTheme() {
 }
 
 /** Reloads every window on a new gateway after a restart. */
-function reloadAll(url) {
-  for (const [key, win] of windows) {
-    if (!win.isDestroyed()) win.loadURL(url(key === "" ? "" : projectOf(win), true));
+function reloadAll() {
+  for (const win of windows.values()) {
+    if (!win.isDestroyed()) loaders.get(win).reload();
   }
 }
 
-function projectOf(win) {
-  try {
-    return new URL(win.webContents.getURL()).searchParams.get("project") || "";
-  } catch {
-    return "";
-  }
-}
+function rendererReady(win) { loaders.get(win)?.ready(); }
 
 function focusAny() {
   const [win] = windows.values();
   if (win && !win.isDestroyed()) {
-    if (win.isMinimized()) win.restore();
-    win.focus();
+    focus(win);
   }
 }
 
-module.exports = { open, moveTo, syncTheme, reloadAll, focusAny, projectKey };
+module.exports = { open, moveTo, syncTheme, reloadAll, focusAny, projectKey, rendererReady };

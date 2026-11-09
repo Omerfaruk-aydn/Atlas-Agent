@@ -110,7 +110,7 @@ export function PickProject() {
             <div className="group-label">{t("home.recent")}</div>
             {projects.slice(0, 8).map((p) => (
               <button key={p.path} type="button" className="recent-row" title={p.path} onClick={() => void window.atlas?.openProject(p.path)}>
-                <span>{p.name}</span>
+                <span className="recent-name">{p.name}</span>
                 <span className="recent-path">{p.path}</span>
               </button>
             ))}

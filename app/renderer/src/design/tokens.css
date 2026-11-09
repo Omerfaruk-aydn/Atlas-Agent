@@ -39,11 +39,12 @@
   --atlas-focus: var(--atlas-ink);          /* 2px ring, 2px offset */
 
   /* State (fg = AA text on surface). */
-  --atlas-success: #17804f;  --atlas-success-bg: #e8f6ee;  --atlas-success-line: #b9e3cb;
+  --atlas-success: #157347;  --atlas-success-bg: #e8f6ee;  --atlas-success-line: #b9e3cb;
   --atlas-warning: #9a6400;  --atlas-warning-bg: #fdf4e1;  --atlas-warning-line: #f1d89c;
   --atlas-danger: #c9362f;   --atlas-danger-bg: #fcebea;   --atlas-danger-line: #f3c0bc;
   --atlas-info: #2f5bd3;     --atlas-info-bg: #edf2fe;     --atlas-info-line: #c3d4fd;
-  --atlas-diff-add: #17804f; --atlas-diff-add-bg: rgb(23 128 79 / 0.10);
+  --atlas-mode-multi: #7154b5;
+  --atlas-diff-add: #157347; --atlas-diff-add-bg: rgb(23 128 79 / 0.10);
   --atlas-diff-del: #c9362f; --atlas-diff-del-bg: rgb(201 54 47 / 0.10);
 
   /* Elevation (warm-tinted, hairline included). */
@@ -88,6 +89,7 @@
   --atlas-warning: #f5b83d;  --atlas-warning-bg: #2b2210;  --atlas-warning-line: #5e4719;
   --atlas-danger: #ff6b63;   --atlas-danger-bg: #2e1312;   --atlas-danger-line: #6a2621;
   --atlas-info: #7ea2ff;     --atlas-info-bg: #121b33;     --atlas-info-line: #2a3d73;
+  --atlas-mode-multi: #b4a0ed;
   --atlas-diff-add: #3dd68c; --atlas-diff-add-bg: rgb(61 214 140 / 0.12);
   --atlas-diff-del: #ff6b63; --atlas-diff-del-bg: rgb(255 107 99 / 0.12);
   --atlas-shadow-hairline: 0 0 0 0.5px rgb(255 255 255 / 0.08);
@@ -139,7 +141,7 @@
   --atlas-titlebar-h: 40px;
   --atlas-window-gutter: 8px;
   --atlas-sidebar-w: 264px;     /* min 220, max 360 */
-  --atlas-rail-w: 380px;        /* right rail, min 320, max 50% */
+  --atlas-panel-w: 520px;       /* side panel; min 360, the thread keeps 360 */
   --atlas-thread-w: 720px;      /* prose measure */
   --atlas-composer-w: 736px;
 }
@@ -157,6 +159,18 @@
   --atlas-dur-loop-spin: 0.9s;
   --atlas-dur-brand: 1000ms;
 
+  /* The shared set: everything that appears, disappears or changes size uses
+     these, so the whole app moves at one pace. Small floating things (menus,
+     popovers, tips, find bar) are quick; panels and pages take a little longer;
+     leaving is always faster than arriving. */
+  --atlas-dur-pop: 150ms;       /* small floats in */
+  --atlas-dur-pop-out: 110ms;   /* small floats out */
+  --atlas-dur-move: 240ms;      /* panel, tabs, pages in */
+  --atlas-dur-move-out: 200ms;  /* panel, tabs, pages out */
+  --atlas-ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --atlas-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --atlas-ease-move: cubic-bezier(0.2, 0, 0, 1);
+
   --atlas-ease-out: cubic-bezier(0.22, 1, 0.36, 1);        /* enters */
   --atlas-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);   /* hover/state */
   --atlas-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);     /* layout: height, width, stack */
@@ -164,6 +178,7 @@
   --atlas-ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);     /* loops */
   --atlas-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);  /* pops: send, badges, scroll-to-bottom */
   --atlas-ease-spring-soft: cubic-bezier(0.34, 1.08, 0.64, 1); /* label width swaps */
+
 }
 
 /* Reduced motion: JS writes data-motion="reduce" on <html> when either the

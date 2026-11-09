@@ -1115,7 +1115,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		if err != nil {
 			return nil, err
 		}
-		allTools = append(allTools, agentTool)
+		allTools = append(allTools, agentTool, newAgentResultTool(sharedBackgroundRuns))
 	}
 
 	// The goal tool is how an autonomous run sizes and ends itself, so
@@ -1203,6 +1203,8 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		tools.NewDownloadTool(c.permissions, c.cfg.WorkingDir(), nil, urlPolicy(c.cfg), pathPolicy, c.cfg.Config().Options.MaxDownloadBytes),
 		fantasy.RejectUnknownInput(tools.NewEditTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy)),
 		tools.NewExitPlanModeTool(c.permissions, c.cfg.WorkingDir()),
+		tools.NewImageCompareTool(c.cfg.WorkingDir()),
+		tools.NewPDFRenderTool(c.cfg.WorkingDir()),
 		fantasy.RejectUnknownInput(tools.NewMultiEditTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy)),
 		tools.NewFetchTool(c.permissions, c.cfg.WorkingDir(), nil, urlPolicy(c.cfg)),
 		tools.NewGlobTool(c.cfg.WorkingDir(), c.cfg.Config().Tools.Glob),
@@ -1217,6 +1219,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		tools.NewSourcegraphTool(nil),
 		tools.NewTodosTool(c.sessions),
 		tools.NewDesignSearchTool(),
+		fantasy.RejectUnknownInput(tools.NewDesignCanvasTool(c.cfg.WorkingDir())),
 		tools.NewViewTool(c.lspManager, c.permissions, c.filetracker, c.skillTracker, c.cfg.WorkingDir(), tools.NewViewLimits(c.cfg.Config()), c.cfg.Config().Options.SkillsPaths...),
 		tools.NewVideoTool(c.cfg.WorkingDir(), c.permissions, c.cfg.Config().Options.Voice),
 		fantasy.RejectUnknownInput(tools.NewWriteTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy)),
@@ -1237,6 +1240,7 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 	// Question tool is interactive-only and not available to sub-agents.
 	if !isSubAgent && c.interactive && ctx.Value(tools.ScheduledTurnKey{}) != true {
 		allTools = append(allTools, tools.NewQuestionTool(c.questions, c.permissions))
+		allTools = append(allTools, tools.NewEnterPlanModeTool(c.permissions))
 	}
 
 	// Browser tool is opt-in: it launches an external Chrome/Chromium
@@ -1543,11 +1547,11 @@ func (c *coordinator) filterTools(allTools []fantasy.AgentTool, agent config.Age
 		return strings.Compare(a.Info().Name, b.Info().Name)
 	})
 
-	// Wrap tools with hook interception for the top-level agent only.
-	// Sub-agents (the `agent` task tool, `agentic_fetch`, etc.) run
-	// without hook interception to avoid firing the user's hook N times
-	// per delegated turn. The top-level invocation of the sub-agent tool
-	// itself is still wrapped from the coder's side.
+	// Wrap tools with hook interception. Sub-agents (the `agent` task tool,
+	// `agentic_fetch`, etc.) only run the hooks that set include_sub_agents,
+	// so an ordinary hook is not fired N times per delegated turn. The
+	// top-level invocation of the sub-agent tool itself is wrapped from the
+	// coder's side either way.
 	remoteAcks := tools.NewRemoteGuardAcks()
 	remoteTarget := func() (string, string) { return c.support.ActiveController().ActiveRemote() }
 	for i, tool := range filteredTools {
@@ -1841,7 +1845,8 @@ func (c *coordinator) buildAdvisor(ctx context.Context) (*Model, []fantasy.Agent
 // tools fail to build, and never fails buildAgent.
 func (c *coordinator) buildEvaluator(ctx context.Context, large Model, advisorModel *Model) (*Model, []fantasy.AgentTool, int) {
 	opts := c.cfg.Config().Options
-	if opts == nil || opts.Evaluator == nil || !opts.Evaluator.Enabled {
+	settings := opts.EvaluatorSettings()
+	if opts == nil || !settings.Enabled {
 		return nil, nil, 0
 	}
 	model := &large
@@ -1868,7 +1873,7 @@ func (c *coordinator) buildEvaluator(ctx context.Context, large Model, advisorMo
 		slog.Warn("Evaluator tools failed to build; running without the completion gate", "error", err)
 		return nil, nil, 0
 	}
-	return model, evaluatorTools, opts.Evaluator.Rounds()
+	return model, evaluatorTools, settings.Rounds()
 }
 
 // buildGoalJudgeModel resolves the model that checks whether a goal has
@@ -2796,6 +2801,9 @@ type subAgentParams struct {
 	ToolCallID          string
 	Prompt              string
 	SessionTitle        string
+	// TimeoutSeconds is the definition's own limit for the run; zero uses
+	// the configured or default one.
+	TimeoutSeconds int
 	// SessionSetup is an optional callback invoked after session creation
 	// but before agent execution, for custom session configuration.
 	SessionSetup func(sessionID string)
@@ -2805,6 +2813,29 @@ type subAgentParams struct {
 // It creates a sub-session, runs the agent with the given prompt, and propagates
 // the cost to the parent session.
 func (c *coordinator) runSubAgent(ctx context.Context, params subAgentParams) (fantasy.ToolResponse, error) {
+	if subAgentDepth(ctx) >= MaxSubAgentDepth {
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("Sub-agents may be nested %d deep at most; do this part yourself.", MaxSubAgentDepth)), nil
+	}
+	ctx = withDeeperSubAgent(ctx)
+	// A run that owns paths is checked against the checkout itself as well as
+	// against the files its edit tools named, so a shell command that wrote
+	// elsewhere is noticed too.
+	ownership := engineering.GetScope(ctx, "")
+	ownershipRoot := ownership.WriteRoot
+	if ownershipRoot == "" {
+		ownershipRoot = c.cfg.WorkingDir()
+	}
+	var treeBefore map[string]string
+	if len(ownership.OwnedPaths) > 0 {
+		treeBefore = treeStamps(ctx, ownershipRoot)
+	}
+	started := time.Now()
+	limit := subAgentTimeout(c.cfg.Config().Options.SubAgentTimeout, params.TimeoutSeconds)
+	if limit > 0 {
+		var cancelLimit context.CancelFunc
+		ctx, cancelLimit = context.WithTimeout(ctx, limit)
+		defer cancelLimit()
+	}
 	if params.PersistentSessionID != "" {
 		if c.engineering == nil {
 			return fantasy.NewTextErrorResponse("persistent specialists require durable storage"), nil
@@ -2831,6 +2862,12 @@ func (c *coordinator) runSubAgent(ctx context.Context, params subAgentParams) (f
 		return fantasy.NewTextErrorResponse("specialist session belongs to another parent"), nil
 	}
 	session := child
+	// Approvals the user gave "for this session" reach the sub-agent, and
+	// the ones given while it works reach the session that started it.
+	if linker, ok := c.permissions.(permission.SessionLinker); ok {
+		linker.LinkSession(session.ID, params.SessionID)
+		defer linker.UnlinkSession(session.ID)
+	}
 	previousCost := session.Cost
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -2921,6 +2958,9 @@ func (c *coordinator) runSubAgent(ctx context.Context, params subAgentParams) (f
 			ProviderID: model.ModelCfg.Provider,
 		})
 	}
+	if err != nil && limit > 0 && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fantasy.NewTextErrorResponse(fmt.Sprintf("The sub-agent was stopped after %s without finishing. Split the work into smaller parts, or raise subagent_timeout.", limit.Round(time.Second))), nil
+	}
 	if err != nil {
 		return fantasy.NewTextErrorResponse(fmt.Sprintf("Failed to generate response: %s", err)), nil
 	}
@@ -2929,7 +2969,32 @@ func (c *coordinator) runSubAgent(ctx context.Context, params subAgentParams) (f
 	if output == "" {
 		return fantasy.NewTextErrorResponse("Sub-agent completed but produced no text output."), nil
 	}
-	return fantasy.NewTextResponse(output), nil
+	report := c.reportRun(ctx, session.ID, time.Since(started))
+	if len(ownership.OwnedPaths) > 0 {
+		touched := slices.Concat(report.FilesChanged, changedBetween(treeBefore, treeStamps(ctx, ownershipRoot)))
+		report.OutsideOwned = outsideOwned(touched, ownershipRoot, ownership.OwnedPaths)
+		report.OutsideOwned = slices.Compact(slices.Sorted(slices.Values(report.OutsideOwned)))
+	}
+	response := fantasy.NewTextResponse(output + report.note())
+	return fantasy.WithResponseMetadata(response, AgentResponseMetadata{Run: &report}), nil
+}
+
+// reportRun describes a finished sub-agent run from its session. What cannot
+// be read is left out: the answer is the product, the report only helps judge it.
+func (c *coordinator) reportRun(ctx context.Context, sessionID string, took time.Duration) SubAgentRun {
+	read, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	var run SubAgentRun
+	if c.messages != nil {
+		if messages, err := c.messages.List(read, sessionID); err == nil {
+			run = summarizeRun(messages)
+		}
+	}
+	if finished, err := c.sessions.Get(read, sessionID); err == nil {
+		run.PromptTokens, run.CompletionTokens, run.CostUSD = finished.PromptTokens, finished.CompletionTokens, finished.Cost
+	}
+	run.DurationMs = took.Milliseconds()
+	return run
 }
 
 func subAgentOutput(result *fantasy.AgentResult) string {

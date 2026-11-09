@@ -1,11 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Composer } from "./features/composer/Composer";
 import { PermissionDock, QuestionDock } from "./features/composer/Docks";
 import { Failed, Home, PickProject } from "./features/home/Screens";
-import { ModelPicker } from "./features/models/ModelPicker";
 import { Onboarding } from "./features/onboarding/Onboarding";
 import { Palette } from "./features/palette/Palette";
-import { Rail } from "./features/rail/Rail";
+import { PanelEvents, SidePanel, usePanelWidth } from "./features/panel/SidePanel";
+import { WebLayer } from "./features/panel/WebLayer";
+import { ThreadHeader } from "./features/thread/ThreadHeader";
 import { SettingsDialog } from "./features/settings/Settings";
 import { Sidebar } from "./features/sidebar/Sidebar";
 import { RewindDialog, Thread } from "./features/thread/Thread";
@@ -14,15 +15,17 @@ import { useKeys, useShortcuts } from "./lib/shortcuts";
 import { AtlasMark, IconBranch, IconPanelRight, IconSearch, IconSidebar } from "./primitives/icons";
 import { Collapse } from "./primitives/motion";
 import { Kbd, Tip, TipProvider, Toasts } from "./primitives/ui";
+import { tokenMs, usePresence } from "./lib/motion";
 import { useApp } from "./stores/app";
+import { useBrowserUI } from "./stores/browserui";
+import { usePanelState } from "./stores/panel";
 
 function TitleBar() {
   const workspace = useApp((s) => s.workspace);
-  const title = useApp((s) => s.sessions.find((x) => x.id === s.currentId)?.title);
   const git = useApp((s) => s.git);
   const toggleSidebar = useApp((s) => s.toggleSidebar);
   const toggleRail = useApp((s) => s.toggleRail);
-  const railOpen = useApp((s) => s.ui.railOpen);
+  const railOpen = usePanelState().open;
   const openDialog = useApp((s) => s.openDialog);
   const sidebarKeys = useKeys("sidebar");
   const railKeys = useKeys("rail");
@@ -40,7 +43,7 @@ function TitleBar() {
         </Tip>
       )}
       <div className="crumbs">
-        <span className="crumb-project">{workspace?.name ?? "Atlas"}</span>
+        <span className="crumb-project" title={workspace?.name ?? "Atlas"}>{workspace?.name ?? "Atlas"}</span>
         {git && (
           <span className="branch-chip" title={`${git.branch}${git.dirty ? ` · ${git.dirty} ${t("git.changed")}` : ""}`}>
             <IconBranch />
@@ -48,14 +51,12 @@ function TitleBar() {
             {git.dirty > 0 && <span className="branch-dirty" aria-hidden="true" />}
           </span>
         )}
-        {title && <span className="crumb-sep">/</span>}
-        {title && <span className="crumb-title">{title}</span>}
       </div>
       {workspace && (
         <div className="titlebar-end">
           <button type="button" className="palette-button" onClick={() => openDialog("palette")}>
             <IconSearch />
-            <span>{t("palette.open")}</span>
+            <span className="palette-label">{t("palette.open")}</span>
             {paletteKeys && <Kbd keys={paletteKeys} />}
           </button>
           <Tip label={t("rail.toggle")} keys={railKeys}>
@@ -73,10 +74,18 @@ function TitleBar() {
 function ConnectionBanner() {
   const online = useApp((s) => s.online);
   const reconnect = useApp((s) => s.reconnect);
+  const retry = useApp((s) => s.retry);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (online || !retry) return;
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [online, retry]);
+  const seconds = retry ? Math.max(0, Math.ceil((retry.at - now) / 1000)) : 0;
   return (
     <Collapse open={!online}>
       <div className="conn-banner" role="status">
-        <span>{t("conn.offline")}</span>
+        <span>{retry && retry.attempt > 1 && seconds > 0 ? t("conn.retrying").replace("{0}", String(seconds)).replace("{1}", String(retry.attempt)) : t("conn.offline")}</span>
         <button type="button" className="link-button" onClick={reconnect}>
           {t("conn.retry")}
         </button>
@@ -110,40 +119,61 @@ function Conversation({ sessionId }: { sessionId: string }) {
 
 function useLayoutVars() {
   const sidebarW = useApp((s) => s.ui.sidebarW);
-  const railW = useApp((s) => s.ui.railW);
   useEffect(() => {
-    const root = document.documentElement.style;
-    root.setProperty("--atlas-sidebar-w", `${sidebarW}px`);
-    root.setProperty("--atlas-rail-w", `${railW}px`);
-  }, [sidebarW, railW]);
+    document.documentElement.style.setProperty("--atlas-sidebar-w", `${sidebarW}px`);
+  }, [sidebarW]);
+  usePanelWidth();
 }
 
 export function App() {
   const phase = useApp((s) => s.phase);
   const currentId = useApp((s) => s.currentId);
   const sidebarOpen = useApp((s) => s.ui.sidebarOpen);
-  const railOpen = useApp((s) => s.ui.railOpen);
+  const panel = usePanelState();
+  const want = panel.open && phase === "ready";
+  // The panel stays mounted until it has finished leaving. While anything moves,
+  // the terminals wait to refit until it has settled (markMoving).
+  const presence = usePresence(want, Math.round(tokenMs("--atlas-dur-move-out", 200)) + 40);
+  const railOpen = presence.mounted;
+  const drawnOpen = presence.on && want;
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    useBrowserUI.getState().markMoving(Math.round(tokenMs("--atlas-dur-move", 240)) + 80);
+    if (!want) document.querySelector<HTMLElement>(".panel-slot")?.getAnimations().forEach((a) => a.cancel());
+  }, [want]);
+  const sidebarFirst = useRef(true);
+  useEffect(() => {
+    if (sidebarFirst.current) {
+      sidebarFirst.current = false;
+      return;
+    }
+    useBrowserUI.getState().markMoving(Math.round(tokenMs("--atlas-dur-move", 240)) + 80);
+  }, [sidebarOpen]);
   useShortcuts();
   useLayoutVars();
+  useEffect(() => { window.atlas?.rendererReady?.(); }, []);
 
   return (
     <TipProvider delayDuration={500} skipDelayDuration={200}>
       <div className="app">
         <TitleBar />
         {phase === "ready" ? (
-          <div className="body" data-sidebar={sidebarOpen ? "open" : "closed"}>
-            <div className="sidebar-slot" inert={!sidebarOpen}>
+          <div className="body" data-sidebar={sidebarOpen ? "open" : "closed"} data-panel={drawnOpen ? "open" : "closed"} data-expanded={(drawnOpen && panel.expanded) || undefined}>
+            <div className="sidebar-slot" inert={!sidebarOpen || (drawnOpen && panel.expanded)}>
               <Sidebar />
             </div>
-            <main className="card" data-rail={railOpen ? "open" : "closed"}>
+            <main className="card" inert={drawnOpen && panel.expanded}>
               <ConnectionBanner />
-              <div className="card-main">
-                <div className="card-content">{currentId ? <Conversation key={currentId} sessionId={currentId} /> : <Home />}</div>
-                <div className="rail-slot" inert={!railOpen}>
-                  {railOpen && <Rail />}
-                </div>
-              </div>
+              {currentId && <ThreadHeader />}
+              <div className="card-content">{currentId ? <Conversation key={currentId} sessionId={currentId} /> : <Home />}</div>
             </main>
+            <div className="panel-slot" inert={!drawnOpen}>
+              {railOpen && <SidePanel />}
+            </div>
           </div>
         ) : (
           <main className="card card-full">
@@ -152,8 +182,9 @@ export function App() {
             {phase === "loading" && <div className="loading" role="status" aria-label={t("app.loading")} />}
           </main>
         )}
+        <PanelEvents />
+        <WebLayer />
         <Palette />
-        <ModelPicker />
         <SettingsDialog />
         <RewindDialog />
         <Onboarding />

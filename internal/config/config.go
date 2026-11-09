@@ -3,6 +3,7 @@ package config
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -611,6 +612,10 @@ type Options struct {
 	// MaxConcurrentSubAgents caps how many agent-tool sub-agents run at
 	// once. Zero or unset means no limit.
 	MaxConcurrentSubAgents int `json:"max_concurrent_subagents,omitempty" jsonschema:"description=Cap how many agent-tool sub-agents run at the same time. Zero or unset means no limit.,example=3"`
+	// SubAgentTimeout is the longest, in seconds, one sub-agent run may last.
+	// Unset means 30 minutes; a negative value removes the limit. A subagent
+	// definition can set its own with timeout_seconds.
+	SubAgentTimeout int `json:"subagent_timeout,omitempty" jsonschema:"description=Longest time in seconds one sub-agent run may last. Unset means 1800; negative means no limit.,example=900"`
 	// RestrictWritesToWorkingDir refuses writes outside the working
 	// directory outright, before any permission is requested. Off by
 	// default: editing a file in a sibling checkout is ordinary work.
@@ -879,6 +884,26 @@ type WorkPlan struct {
 	// notes once a feature is finished and checked, instead of carrying the
 	// whole conversation that built it.
 	FeatureHandoff *bool `json:"feature_handoff,omitempty" jsonschema:"description=When a feature is finished\\, its checks pass and the progress notes are updated\\, continue the next feature in a fresh context built from the plan\\, the progress notes and the user's messages instead of carrying the whole conversation.,default=true"`
+	// AutoPlan asks for a work plan when a request changes many files without
+	// one. Zero means the default threshold; a negative value turns it off.
+	AutoPlanFiles int `json:"auto_plan_files,omitempty" jsonschema:"description=Ask for a work plan once a request has changed this many files without one. Zero means 6; a negative value turns the request off.,example=6"`
+}
+
+// DefaultAutoPlanFiles is how many changed files make a request big enough to
+// need a plan.
+const DefaultAutoPlanFiles = 6
+
+// AutoPlanThreshold returns how many changed files ask for a plan, or zero
+// when the request is off.
+func (w *WorkPlan) AutoPlanThreshold() int {
+	switch {
+	case w == nil || w.AutoPlanFiles == 0:
+		return DefaultAutoPlanFiles
+	case w.AutoPlanFiles < 0:
+		return 0
+	default:
+		return w.AutoPlanFiles
+	}
 }
 
 func defaultOn(b *bool) bool { return b == nil || *b }
@@ -1019,7 +1044,7 @@ func (h *Harness) StrategyHintsEnabled() bool { return h == nil || defaultOn(h.S
 
 // Evaluator holds settings for the completion gate. See Options.Evaluator.
 type Evaluator struct {
-	Enabled bool `json:"enabled,omitempty" jsonschema:"description=Turn the completion gate on.,default=false"`
+	Enabled bool `json:"enabled,omitempty" jsonschema:"description=Turn the completion gate on. It is on unless this is set to false or the harness switches it off.,default=true"`
 	// MaxRounds bounds how many times one request can be sent back to the
 	// agent. The gate is a quality aid, not a proof of correctness: a
 	// reviewer and an agent that keep disagreeing must not loop on the
@@ -1058,6 +1083,29 @@ func (r *Router) FastRoleName() string {
 
 // IsEnabled reports whether the router is on.
 func (r *Router) IsEnabled() bool { return r != nil && r.Enabled }
+
+// UnmarshalJSON makes a configured evaluator block enabled unless it says
+// otherwise, so setting only max_rounds tunes the gate instead of turning it
+// off.
+func (e *Evaluator) UnmarshalJSON(data []byte) error {
+	type plain Evaluator
+	decoded := plain{Enabled: true}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*e = Evaluator(decoded)
+	return nil
+}
+
+// EvaluatorSettings returns the completion gate's settings. With no evaluator
+// block the gate is on with its defaults; the block can turn it off with
+// enabled=false.
+func (o *Options) EvaluatorSettings() Evaluator {
+	if o == nil || o.Evaluator == nil {
+		return Evaluator{Enabled: true}
+	}
+	return *o.Evaluator
+}
 
 // defaultEvaluatorRounds and maxEvaluatorRounds bound Evaluator.MaxRounds.
 const (
@@ -1560,13 +1608,14 @@ func (t ToolDebugger) GetActionTimeout() time.Duration {
 
 // ToolBrowser configures the browser tool, which drives a real
 // Chrome/Chromium instance over the Chrome DevTools Protocol. Off by
-// default: unlike the other tools, it launches an external browser process
-// and reaches whatever URL the permission prompt allows, so turning it on
-// is an explicit opt-in.
+// default since the user chose it: the tool is offered to the model, but a
+// browser process is only launched when a call needs one, and every URL it
+// reaches still goes through the permission prompt. Set enabled=false to
+// remove it.
 type ToolBrowser struct {
 	Overlay              *bool          `json:"overlay,omitempty" jsonschema:"description=Show a noninteractive Atlas activity overlay during tool execution.,default=true"`
 	OverlayReducedMotion bool           `json:"overlay_reduced_motion,omitempty" jsonschema:"description=Disable animated activity effects.,default=false"`
-	Enabled              *bool          `json:"enabled,omitempty" jsonschema:"description=Turn on the browser tool so the agent can navigate / click / type / screenshot / run JavaScript in a real Chrome or Chromium instance. Requires a Chrome or Chromium install on PATH (or executable_path below).,default=false"`
+	Enabled              *bool          `json:"enabled,omitempty" jsonschema:"description=Turn on the browser tool so the agent can navigate / click / type / screenshot / run JavaScript in a real Chrome or Chromium instance. Requires a Chrome or Chromium install on PATH (or executable_path below). On unless set to false.,default=true"`
 	ExecutablePath       string         `json:"executable_path,omitempty" jsonschema:"description=Path to a Chrome or Chromium binary. Empty auto-detects an installed browser."`
 	Headless             *bool          `json:"headless,omitempty" jsonschema:"description=Run the browser without a visible window,default=true"`
 	UseRealProfile       *bool          `json:"use_real_profile,omitempty" jsonschema:"description=Browse as you: copies your own Chrome profile - cookies, saved logins, extensions - into the directory Atlas launches from, so the agent starts already signed in wherever you are. Chrome cannot open the profile it is running on and refuses remote debugging on it, so this is a copy rather than a live view: signing in on one side does not reach the other. Delete the snapshot directory to take the copy again.,default=false"`
@@ -1579,7 +1628,7 @@ type ToolBrowser struct {
 
 // IsEnabled reports whether the browser tool should be registered.
 func (t ToolBrowser) IsEnabled() bool {
-	return ptrValOr(t.Enabled, false)
+	return ptrValOr(t.Enabled, true)
 }
 
 // UsesRealProfile reports whether new sessions launch from a copy of the
@@ -1703,6 +1752,10 @@ type HookConfig struct {
 	// closed. PreToolUse blocks dispatch; PostToolUse stops the turn because the
 	// already-completed tool effect cannot be rolled back.
 	Required bool `json:"required,omitempty" jsonschema:"description=Fail closed when this hook cannot execute successfully. PreToolUse blocks the call and PostToolUse stops the turn.,default=false"`
+	// IncludeSubAgents also runs this hook for the tool calls of delegated
+	// agents. Off by default: an ordinary hook fires for the top-level agent
+	// only, so one delegated turn does not trigger it once per inner call.
+	IncludeSubAgents bool `json:"include_sub_agents,omitempty" jsonschema:"description=Also run this hook for the tool calls of sub-agents; the payload then carries is_sub_agent,default=false"`
 }
 
 // DisplayName returns the hook name for display purposes. It returns Name
@@ -1910,6 +1963,7 @@ const maxRecentModelsPerType = 5
 func allToolNames() []string {
 	return []string{
 		"agent",
+		"agent_result",
 		"bash",
 		"goal",
 		"atlas_info",
@@ -1920,6 +1974,9 @@ func allToolNames() []string {
 		"download",
 		"edit",
 		"exit_plan_mode",
+		"enter_plan_mode",
+		"image_compare",
+		"pdf_render",
 		"multiedit",
 		"lsp_diagnostics",
 		"lsp_references",
@@ -1952,6 +2009,7 @@ func allToolNames() []string {
 		"todos",
 		"design_search",
 		"design_system",
+		"design_canvas",
 		"workflow",
 		"verify",
 		"project_map",

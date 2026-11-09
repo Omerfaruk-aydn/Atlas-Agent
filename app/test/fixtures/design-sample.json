@@ -1,0 +1,85 @@
+{
+ "format": "atlas-design",
+ "version": 1,
+ "name": "Sample",
+ "pages": [
+  {
+   "id": "p1",
+   "name": "Page 1",
+   "background": "#F5F5F5",
+   "children": [
+    {
+     "id": "desk",
+     "type": "frame",
+     "name": "Desktop",
+     "x": 0,
+     "y": 0,
+     "width": 1440,
+     "height": 900,
+     "fills": [{ "type": "solid", "color": "#FFFFFF" }],
+     "clip": true,
+     "children": [
+      {
+       "id": "title",
+       "type": "text",
+       "name": "Title",
+       "x": 120,
+       "y": 160,
+       "width": 400,
+       "height": 77,
+       "text": "Build faster",
+       "font": { "family": "Inter", "size": 64, "weight": 700 },
+       "line_height": 76.8,
+       "letter_spacing": -1,
+       "auto_resize": "width",
+       "fills": [{ "type": "solid", "color": "#111111" }]
+      },
+      {
+       "id": "cta",
+       "type": "rect",
+       "name": "Button",
+       "x": 120,
+       "y": 300,
+       "width": 160,
+       "height": 48,
+       "radius": [12, 12, 12, 12],
+       "rotation": 0,
+       "fills": [{ "type": "linear", "angle": 90, "stops": [{ "offset": 0, "color": "#5B5BF7" }, { "offset": 1, "color": "#8A4DFF" }] }],
+       "strokes": [{ "color": "#00000033", "width": 1, "align": "inside" }],
+       "effects": [{ "type": "drop-shadow", "x": 0, "y": 4, "blur": 12, "spread": 0, "color": "#5B5BF740" }]
+      },
+      {
+       "id": "logo",
+       "type": "path",
+       "name": "Mark",
+       "x": 1200,
+       "y": 40,
+       "width": 48,
+       "height": 48,
+       "d": "M0 0L24 0L24 24Z",
+       "view_box": [24, 24],
+       "fills": [{ "type": "solid", "color": "#5B5BF7" }]
+      }
+     ]
+    },
+    {
+     "id": "card",
+     "type": "component",
+     "name": "Card",
+     "x": 1600,
+     "y": 0,
+     "width": 320,
+     "height": 200,
+     "radius": 16,
+     "fills": [{ "type": "solid", "color": "#FFFFFF" }],
+     "clip": true,
+     "children": [
+      { "id": "card-star", "type": "star", "name": "Star", "x": 20, "y": 20, "width": 40, "height": 40, "sides": 5, "inner": 0.4, "fills": [{ "type": "solid", "color": "#FFC700" }] }
+     ]
+    },
+    { "id": "card-1", "type": "instance", "name": "Card", "x": 1600, "y": 260, "width": 320, "height": 200, "component_id": "card" },
+    { "id": "unknown", "type": "sparkle", "name": "Dropped" }
+   ]
+  }
+ ]
+}

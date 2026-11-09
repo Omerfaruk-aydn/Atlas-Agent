@@ -9,6 +9,7 @@ import { Kbd, Modal, Segmented, Switch, Tip } from "../../primitives/ui";
 import { reloadKeepingChat, useApp, type SettingsTab } from "../../stores/app";
 import { ProviderLogo } from "../models/ProviderLogo";
 import { Providers } from "../models/Providers";
+import { MCPPanel } from "../composer/ContextMenu";
 
 const TABS: { id: SettingsTab; label: Key }[] = [
   { id: "general", label: "settings.general" },
@@ -230,7 +231,8 @@ function Integrations() {
   );
   return (
     <>
-      {section("settings.mcp", (settings?.mcp ?? []).map((m) => ({ ...m, note: m.tools ? `${m.tools} ${t("settings.tools")}` : undefined })))}
+      <h3 className="settings-heading">{t("settings.mcp")}</h3>
+      <MCPPanel manage={false} />
       {section("settings.lsp", (settings?.lsp ?? []).map((l) => ({ ...l, note: l.diagnostics ? `${l.diagnostics} ${t("settings.diagnostics")}` : undefined })))}
       {section("settings.skills", settings?.skills ?? [])}
     </>

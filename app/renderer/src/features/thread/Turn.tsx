@@ -2,23 +2,29 @@
 // steps flow in the open; once done, long turns fold under "Worked for 2m 34s"
 // and only the closing answer and the changed files stay visible.
 
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Message } from "../../api/types";
-import { baseName, clock, duration } from "../../lib/format";
+import { clock, duration } from "../../lib/format";
 import { lang, t } from "../../lib/i18n";
+import { SideScope } from "../../lib/scope";
 import { category } from "../../lib/tools";
 import { finalTextStart, toolCalls, userAttachments, userFiles, userText, type Step, type Turn, type UserFile } from "../../lib/turns";
-import { IconAlert, IconChevron, IconFile, IconPencil, IconRetry, IconRewind } from "../../primitives/icons";
-import { Collapse, Shimmer, useElapsed } from "../../primitives/motion";
+import { IconAlert, IconChevron, IconFile, IconPencil, IconRewind } from "../../primitives/icons";
+import { Collapse, Shimmer, ThinkingDots, useElapsed } from "../../primitives/motion";
 import { Pop, Tip } from "../../primitives/ui";
 import { useApp } from "../../stores/app";
+import { EditCard } from "./EditCard";
 import { CopyButton, Markdown } from "./Markdown";
+import { MessageActions } from "./MessageActions";
 import { SiteIcon } from "./SiteIcon";
-import { ThinkingRow, ToolGroupRow, ToolRow } from "./ToolRow";
+import { StepView } from "./Steps";
 
 const FOLD_MIN_TOOLS = 3;
 const FOLD_MIN_MS = 15_000;
 const STUCK_HEIGHT = 34;
+// The sent message used to stay pinned at the top while its answer scrolled.
+// It now scrolls away with its turn; flip this to bring the pinning back.
+const PIN_USER_MESSAGE = false;
 const EDITOR_MAX_HEIGHT = 320;
 
 interface BubbleProps {
@@ -119,7 +125,8 @@ export function UserBubble({ text, files = [], pendingFiles = 0, enter, message 
   const askRewind = useApp((s) => s.askRewind);
   const editMessage = useApp((s) => s.editMessage);
   const busy = useApp((s) => !!s.currentId && !!s.busy[s.currentId]);
-  const stuck = atTop && !editing;
+  // An opened message stays open: the reader asked to see all of it.
+  const stuck = atTop && !editing && !expanded;
 
   // The bubble shrinks to one line once it sticks to the top of the thread.
   // The height it gives up moves into its margin, so the thread below stays
@@ -127,7 +134,7 @@ export function UserBubble({ text, files = [], pendingFiles = 0, enter, message 
   useEffect(() => {
     const el = sentinel.current;
     const root = el?.closest(".thread-scroll");
-    if (!el || !root) return;
+    if (!PIN_USER_MESSAGE || !el || !root) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry) return;
@@ -228,30 +235,11 @@ export function Working({ from }: { from: number }) {
   const elapsed = useElapsed(from);
   return (
     <div className="working" role="status">
+      <ThinkingDots />
       <Shimmer text={t("thread.working")} />
       {elapsed >= 2000 && <span className="working-time">{clock(elapsed)}</span>}
     </div>
   );
-}
-
-function StepView({ step, active, last, waiting, showThinking }: { step: Step; active: boolean; last: boolean; waiting: Set<string>; showThinking: boolean }) {
-  switch (step.kind) {
-    case "text":
-      return <Markdown text={step.text} streaming={active && last} />;
-    case "thinking":
-      return showThinking ? <ThinkingRow text={step.text} ms={step.ms} live={active && step.open} /> : null;
-    case "tool":
-      return <ToolRow call={step.call} result={step.result} active={active} waiting={waiting.has(step.call.id)} />;
-    case "group":
-      return <ToolGroupRow cat={step.category} calls={step.calls} active={active} waiting={waiting} />;
-    case "shell":
-      return (
-        <div className="tool-body">
-          <pre className="tool-command">$ {step.command}</pre>
-          {step.output && <pre className="tool-output">{step.output}</pre>}
-        </div>
-      );
-  }
 }
 
 /** "3 edits, 9 files read, 1 command". */
@@ -277,29 +265,6 @@ function summarize(turn: Turn): string {
   add("fetch", "sayfa", "pages");
   add("agent", "alt ajan", "subagents");
   return parts.join(", ");
-}
-
-function FilesChanged({ turn }: { turn: Turn }) {
-  const toggleRail = useApp((s) => s.toggleRail);
-  const railOpen = useApp((s) => s.ui.railOpen && s.ui.railTab === "changes");
-  const n = turn.changes.length;
-  return (
-    <div className="files-card">
-      <button type="button" className="files-head" onClick={() => !railOpen && toggleRail("changes")}>
-        <span>
-          {n} {n === 1 ? t("thread.fileChanged") : t("thread.filesChanged")}
-        </span>
-        <IconChevron className="chevron" />
-      </button>
-      {turn.changes.map((f) => (
-        <div className="files-row" key={f.path} title={f.path}>
-          <span className="files-name">{baseName(f.path)}</span>
-          {!!f.additions && <span className="add">+{f.additions}</span>}
-          {!!f.removals && <span className="del">−{f.removals}</span>}
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function Sources({ turn }: { turn: Turn }) {
@@ -346,17 +311,21 @@ function modelName(id: string): string {
 
 function TurnMeta({ turn, worked, last }: { turn: Turn; worked: number; last: boolean }) {
   const send = useApp((s) => s.send);
+  const branchFrom = useApp((s) => s.branchFrom);
+  const busy = useApp((s) => !!s.currentId && !!s.busy[s.currentId]);
+  const side = useContext(SideScope);
   const answer = answerText(turn);
   const prompt = turn.user ? userText(turn.user) : "";
+  const closing = [...turn.messages].reverse().find((m) => m.role === "assistant");
   return (
     <div className="turn-meta">
-      {answer && <CopyButton text={answer} />}
-      {last && prompt && (
-        <Tip label={t("thread.retry")}>
-          <button type="button" className="icon-button" data-size="sm" aria-label={t("thread.retry")} onClick={() => void send(prompt)}>
-            <IconRetry />
-          </button>
-        </Tip>
+      {answer && closing && (
+        <MessageActions
+          messageId={closing.id}
+          markdown={answer}
+          onRegenerate={last && prompt && !busy ? () => void send(prompt) : undefined}
+          onBranch={!busy && !side ? () => void branchFrom(closing.id) : undefined}
+        />
       )}
       {turn.sources.length > 0 && <Sources turn={turn} />}
       <span className="turn-meta-text">
@@ -411,6 +380,7 @@ interface TurnProps {
 function TurnBase({ turn, index, active, last, waiting, unfoldAll }: TurnProps) {
   const foldTurns = useApp((s) => s.ui.foldTurns);
   const showThinking = useApp((s) => s.ui.showThinking);
+  const side = useContext(SideScope);
   const [unfolded, setUnfolded] = useState<boolean | null>(null);
   const worked = turn.endedAt - turn.startedAt;
   const foldable = foldTurns && !active && (turn.tools >= FOLD_MIN_TOOLS || (turn.tools > 0 && worked >= FOLD_MIN_MS));
@@ -428,7 +398,7 @@ function TurnBase({ turn, index, active, last, waiting, unfoldAll }: TurnProps) 
 
   return (
     <section className="turn" data-turn={index}>
-      {turn.user && userText(turn.user) && <UserBubble text={userText(turn.user)} files={userFiles(turn.user)} message={active ? undefined : turn.user} />}
+      {turn.user && userText(turn.user) && <UserBubble text={userText(turn.user)} files={userFiles(turn.user)} message={active || side ? undefined : turn.user} />}
       <div className="turn-body">
         {foldable ? (
           <>
@@ -454,7 +424,7 @@ function TurnBase({ turn, index, active, last, waiting, unfoldAll }: TurnProps) 
             </div>
           </div>
         )}
-        {!active && turn.changes.length > 0 && <FilesChanged turn={turn} />}
+        {!active && turn.changes.length > 0 && <EditCard turn={turn} />}
         {!active && turn.model && <TurnMeta turn={turn} worked={worked} last={last} />}
       </div>
     </section>

@@ -2,11 +2,11 @@
 // the reasoning effort. A model with effort levels offers them right on its row.
 
 import fuzzysort from "fuzzysort";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Popover, Switch } from "radix-ui";
+import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import type { ModelView, ProviderView } from "../../api/types";
 import { t } from "../../lib/i18n";
 import { IconCheck, IconSearch } from "../../primitives/icons";
-import { Modal } from "../../primitives/ui";
 import { useApp } from "../../stores/app";
 import { ProviderLogo } from "./ProviderLogo";
 
@@ -49,7 +49,7 @@ function Effort({ model, value, onPick }: { model: ModelView; value: string; onP
   );
 }
 
-export function ModelPicker() {
+export function ModelPicker({ trigger }: { trigger: ReactElement }) {
   const open = useApp((s) => s.dialog === "models");
   const close = useApp((s) => s.openDialog);
   const catalog = useApp((s) => s.catalog);
@@ -59,6 +59,21 @@ export function ModelPicker() {
   const [selected, setSelected] = useState(0);
   const list = useRef<HTMLDivElement>(null);
   const current = catalog?.active ?? catalog?.selected?.large;
+  const auto = useApp((s) => s.ui.autoModel);
+  const recent = useApp((s) => s.ui.recentModels);
+  const setUI = useApp((s) => s.setUI);
+
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      close(null);
+    };
+    window.addEventListener("keydown", dismiss, true);
+    return () => window.removeEventListener("keydown", dismiss, true);
+  }, [open, close]);
 
   useEffect(() => {
     if (open) {
@@ -73,10 +88,15 @@ export function ModelPicker() {
     const q = query.trim();
     if (!q) {
       // The current model and its provider come first.
-      return [...rows].sort((a, b) => Number(b.provider.id === current?.provider) - Number(a.provider.id === current?.provider));
+      const rank = (row: Row) => {
+        if (row.provider.id === current?.provider && row.model.id === current?.model) return -2;
+        const at = recent.indexOf(`${row.provider.id}:${row.model.id}`);
+        return at < 0 ? 100 : at;
+      };
+      return [...rows].sort((a, b) => rank(a) - rank(b));
     }
     return fuzzysort.go(q, rows, { key: "search", limit: 60, threshold: 0.2 }).map((hit) => hit.obj);
-  }, [rows, query, current?.provider]);
+  }, [rows, query, current?.provider, current?.model, recent]);
 
   // Start on the current model; typing starts over at the best match.
   useEffect(() => {
@@ -99,7 +119,9 @@ export function ModelPicker() {
   let lastProvider = "";
 
   return (
-    <Modal open={open} onClose={() => close(null)} title={t("composer.model")} hideTitle className="palette">
+    <Popover.Root open={open} onOpenChange={(value) => close(value ? "models" : null)}>
+    <Popover.Trigger asChild>{trigger}</Popover.Trigger>
+    <Popover.Portal><Popover.Content className="palette model-menu composer-menu" side="top" align="end" sideOffset={12} collisionPadding={{ top: 48, bottom: 12, left: 12, right: 12 }} aria-label={t("composer.model")}>
       <label className="palette-input">
         <IconSearch />
         <input
@@ -120,9 +142,13 @@ export function ModelPicker() {
           }}
         />
       </label>
+      {!query && <div className="model-auto" title={t("compose.autoHint")}><span>{t("compose.auto")}</span><Switch.Root className="mcp-switch" checked={auto} aria-label={t("compose.auto")} onCheckedChange={(value) => {
+        if (value) setUI("autoModelTargets", { large: catalog?.selected?.large, small: catalog?.selected?.small });
+        setUI("autoModel", value);
+      }}><Switch.Thumb /></Switch.Root></div>}
       <div className="palette-list" role="listbox" ref={list}>
         {shown.map((row, i) => {
-          const heading = row.provider.id !== lastProvider ? row.provider.name : "";
+          const heading = query && row.provider.id !== lastProvider ? row.provider.name : "";
           lastProvider = row.provider.id;
           const isCurrent = row.provider.id === current?.provider && row.model.id === current?.model;
           return (
@@ -138,12 +164,14 @@ export function ModelPicker() {
                 aria-selected={i === selected}
                 data-selected={i === selected}
                 className="palette-row model-row"
+                title={[row.provider.name, contextLabel(row.model.context_window), priceLabel(row.model)].filter(Boolean).join(" · ")}
                 onMouseMove={() => setSelected(i)}
                 onClick={() => pick(row)}
               >
+                <ProviderLogo id={row.provider.id} size={14} />
                 <span className="palette-title">{row.model.name}</span>
                 {isCurrent && <Effort model={row.model} value={current?.reasoning_effort || row.model.default_reasoning_effort || ""} onPick={(e) => pick(row, e)} />}
-                <span className="palette-hint model-facts">
+                <span className="palette-hint model-facts" title={[contextLabel(row.model.context_window), priceLabel(row.model)].filter(Boolean).join(" · ")}>
                   {row.model.supports_images && <span>{t("models.images")}</span>}
                   {contextLabel(row.model.context_window) && <span>{contextLabel(row.model.context_window)}</span>}
                   {priceLabel(row.model) && <span>{priceLabel(row.model)}</span>}
@@ -157,9 +185,10 @@ export function ModelPicker() {
       </div>
       <div className="palette-foot">
         <button type="button" className="link-button" onClick={() => openSettings("models")}>
-          {t("models.connect")}
+          {t("compose.addModels")}
         </button>
       </div>
-    </Modal>
+    </Popover.Content></Popover.Portal>
+    </Popover.Root>
   );
 }

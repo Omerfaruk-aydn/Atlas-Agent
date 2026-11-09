@@ -2,7 +2,7 @@
 // reader behaviour. Styles live in design/surfaces.css.
 
 import { Dialog, DropdownMenu, ContextMenu, HoverCard, Popover, Switch as RadixSwitch, Tooltip as RadixTooltip } from "radix-ui";
-import { useCallback, useEffect, useLayoutEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactElement, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement, type ReactNode } from "react";
 import { displayKeys } from "../lib/shortcuts";
 import { useApp } from "../stores/app";
 
@@ -18,9 +18,10 @@ export function Kbd({ keys }: { keys: string }) {
   );
 }
 
-export function Tip({ label, keys, children }: { label: string; keys?: string; children: ReactElement }) {
+/** `hidden` keeps the tip shut, for a control whose own popover is open: a tip above it would take the first Esc. */
+export function Tip({ label, keys, children, hidden }: { label: string; keys?: string; children: ReactElement; hidden?: boolean }) {
   return (
-    <RadixTooltip.Root>
+    <RadixTooltip.Root open={hidden ? false : undefined}>
       <RadixTooltip.Trigger asChild>{children}</RadixTooltip.Trigger>
       <RadixTooltip.Portal>
         <RadixTooltip.Content className="tip" sideOffset={6} collisionPadding={8}>
@@ -94,9 +95,10 @@ function row(entry: MenuEntry) {
   );
 }
 
-export function Menu({ trigger, items, side = "top", align = "start" }: { trigger: ReactElement; items: MenuEntry[]; side?: "top" | "bottom"; align?: "start" | "end" }) {
+/** `modal={false}` for a menu inside a popover: a modal one leaves the popover deaf to Esc after it closes. */
+export function Menu({ trigger, items, side = "top", align = "start", modal = true }: { trigger: ReactElement; items: MenuEntry[]; side?: "top" | "bottom" | "left" | "right"; align?: "start" | "end"; modal?: boolean }) {
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root modal={modal}>
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu" side={side} align={align} sideOffset={6} collisionPadding={{ top: 48, bottom: 12, left: 8, right: 8 }}>
@@ -128,14 +130,43 @@ export function RightClick({ items, children }: { items: MenuEntry[]; children: 
   );
 }
 
+/**
+ * True from two frames after a floating thing first appears. Until then it is
+ * being placed for the first time and must jump there; after, a move of its
+ * trigger glides (see `[data-placed]` in design/chat.css).
+ */
+function usePlaced(): boolean {
+  const [placed, setPlaced] = useState(false);
+  useEffect(() => {
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => setPlaced(true));
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
+    };
+  }, []);
+  return placed;
+}
+
+function PopContent({ className, side, align, children }: { className?: string; side: "top" | "bottom"; align: "start" | "end"; children: ReactNode }) {
+  const placed = usePlaced();
+  return (
+    <Popover.Content className={`pop ${className ?? ""}`} data-placed={placed || undefined} side={side} align={align} sideOffset={6} collisionPadding={8}>
+      {children}
+    </Popover.Content>
+  );
+}
+
 export function Pop({ trigger, children, side = "top", align = "start", className }: { trigger: ReactElement; children: ReactNode; side?: "top" | "bottom"; align?: "start" | "end"; className?: string }) {
   return (
     <Popover.Root>
       <Popover.Trigger asChild>{trigger}</Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content className={`pop ${className ?? ""}`} side={side} align={align} sideOffset={6} collisionPadding={8}>
+        <PopContent className={className} side={side} align={align}>
           {children}
-        </Popover.Content>
+        </PopContent>
       </Popover.Portal>
     </Popover.Root>
   );
@@ -182,7 +213,7 @@ export function Toasts() {
   return (
     <div className="toasts" role="status" aria-live="polite">
       {toasts.map((toast) => (
-        <button key={toast.id} type="button" className="toast" data-tone={toast.tone} onClick={() => drop(toast.id)}>
+        <button key={toast.id} type="button" className="toast" data-tone={toast.tone} data-leaving={toast.leaving || undefined} onClick={() => drop(toast.id)}>
           {toast.text}
         </button>
       ))}

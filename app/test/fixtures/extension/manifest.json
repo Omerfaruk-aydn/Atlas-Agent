@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Atlas Test Extension",
+  "version": "1.0.0",
+  "description": "Marks pages for the end-to-end test. Fixture data only.",
+  "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "content_scripts": [{ "matches": ["http://127.0.0.1/*"], "js": ["content.js"] }],
+  "action": { "default_title": "Atlas test action", "default_popup": "popup.html" },
+  "background": { "service_worker": "background.js" }
+}

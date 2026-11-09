@@ -1,23 +1,19 @@
 // When the agent needs an answer, the question takes the composer's place, so
 // nothing can be typed past it. The draft is kept and comes back afterwards.
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import type { PermissionRequest, QuestionItem, QuestionRequest, QuestionResponse } from "../../api/types";
 import { t } from "../../lib/i18n";
+import { permissionSentence } from "../../lib/chat";
 import { toolVerb } from "../../lib/tools";
 import { IconShield } from "../../primitives/icons";
 import { Kbd } from "../../primitives/ui";
 import { useApp } from "../../stores/app";
 
-function paramLine(req: PermissionRequest): string {
-  const params = req.params as Record<string, unknown> | null;
-  const pick = params?.command ?? params?.file_path ?? params?.url ?? params?.path;
-  return typeof pick === "string" ? pick : req.path;
-}
-
 export function PermissionDock({ request }: { request: PermissionRequest }) {
   const answer = useApp((s) => s.answerPermission);
-  const line = paramLine(request);
+  const waiting = useApp((s) => s.permissions.filter((p) => p.session_id === request.session_id).length);
+  const sentence = permissionSentence(request);
   const primary = useRef<HTMLButtonElement>(null);
 
   // Keyboard first: the dock takes focus and answers Enter, Ctrl+Enter and Esc.
@@ -35,38 +31,44 @@ export function PermissionDock({ request }: { request: PermissionRequest }) {
   };
 
   return (
-    <div className="dock" role="alertdialog" aria-label={t("perm.title")} onKeyDown={onKey}>
+    <div className="dock permission-dock" role="alertdialog" aria-label={sentence.title} aria-describedby={`${request.id}-scope`} onKeyDown={onKey}>
       <div className="dock-head">
         <IconShield />
-        <span>{t("perm.title")}</span>
+        <span className="permission-title">{sentence.title}</span>
         <span className="dock-tool">{toolVerb(request.tool_name, false)}</span>
+        {waiting > 1 && <span className="permission-more">+{waiting - 1}</span>}
       </div>
-      {request.description && <div className="dock-text">{request.description}</div>}
-      {line && !request.description.includes(line) && <pre className="dock-code">{line}</pre>}
+      {sentence.detail && <pre className="dock-code">{sentence.detail}</pre>}
+      {request.description && !sentence.detail.includes(request.description) && request.description !== sentence.title && <div className="dock-hint">{request.description}</div>}
       <div className="dock-actions">
-        <button type="button" className="button" onClick={() => void answer(request.id, "deny")}>
-          {t("perm.deny")}
+        <button type="button" className="button" data-action="deny" onClick={() => void answer(request.id, "deny")}>
+          {t("approve.deny")}
           <Kbd keys="Esc" />
         </button>
         <span className="composer-gap" />
-        <button type="button" className="button" onClick={() => void answer(request.id, "allow_session")}>
-          {t("perm.allowSession")}
+        <button type="button" className="button" data-action="always" onClick={() => void answer(request.id, "allow_session")}>
+          {t("approve.always")}
           <Kbd keys="Ctrl+Enter" />
         </button>
-        <button ref={primary} type="button" className="button" data-variant="primary" onClick={() => void answer(request.id, "allow")}>
-          {t("perm.allow")}
+        <button ref={primary} type="button" className="button" data-variant="primary" data-action="once" onClick={() => void answer(request.id, "allow")}>
+          {t("approve.once")}
           <Kbd keys="Enter" />
         </button>
+      </div>
+      <div className="dock-scope" id={`${request.id}-scope`}>
+        {sentence.scope}
+        {request.path && <span className="dock-path">{request.path}</span>}
       </div>
     </div>
   );
 }
 
-function Question({ item, value, onChange }: { item: QuestionItem; value: QuestionResponse; onChange(next: QuestionResponse): void }) {
+function Question({ item, value, onChange, index, total }: { item: QuestionItem; value: QuestionResponse; onChange(next: QuestionResponse): void; index: number; total: number }) {
   const selected = value.selected_ids ?? [];
   const multi = item.type === "multi_choice";
   return (
-    <div className="question">
+    <div className="question" style={{ "--i": index } as CSSProperties}>
+      {total > 1 && <div className="question-step">{t("question.step").replace("{0}", String(index + 1)).replace("{1}", String(total))}</div>}
       <div className="dock-text">{item.question}</div>
       {item.description && <div className="dock-hint">{item.description}</div>}
       {item.type === "yes_no" && (
@@ -126,8 +128,8 @@ export function QuestionDock({ request }: { request: QuestionRequest }) {
   return (
     <div className="dock" role="dialog" aria-label={request.confirm_title ?? t("question.submit")}>
       {request.confirm_title && <div className="dock-head">{request.confirm_title}</div>}
-      {request.questions.map((item) => (
-        <Question key={item.id} item={item} value={valueOf(item)} onChange={(next) => setResponses({ ...responses, [item.id]: next })} />
+      {request.questions.map((item, i) => (
+        <Question key={item.id} item={item} index={i} total={request.questions.length} value={valueOf(item)} onChange={(next) => setResponses({ ...responses, [item.id]: next })} />
       ))}
       <div className="dock-actions">
         <button type="button" className="button" onClick={() => void skip(request.id)}>

@@ -7,8 +7,12 @@ import "./design/tokens.css";
 import "./design/motion.css";
 import "./design/app.css";
 import "./design/surfaces.css";
+import "./design/panel.css";
+import "./design/chat.css";
+import { installVisibilityGate } from "./lib/motion";
 import { useApp } from "./stores/app";
 
+installVisibilityGate();
 window.atlas?.onTheme((scheme) => useApp.getState().setScheme(scheme));
 window.atlas?.onOpenSession((session) => void useApp.getState().selectSession(session));
 void useApp.getState().init();

@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Atlas Click Extension",
+  "version": "1.0.0",
+  "description": "Has a toolbar button and no popup. Fixture data only.",
+  "permissions": [],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "content_scripts": [{ "matches": ["http://127.0.0.1/*"], "js": ["content.js"] }],
+  "action": { "default_title": "Atlas click action" },
+  "background": { "service_worker": "background.js" }
+}

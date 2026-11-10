@@ -241,3 +241,18 @@ func TestScalePath(t *testing.T) {
 	require.Equal(t, "M 0 0 h 20 v 30 A 2 3 0 0 1 4 6 z", ScalePath("M0 0h10v10A1 1 0 0 1 2 2z", 2, 3))
 	require.Equal(t, "M1 1", ScalePath("M1 1", 1, 1))
 }
+
+func TestPageNamesStayUnique(t *testing.T) {
+	t.Parallel()
+	doc := New("Pages")
+	doc, _, err := Apply(doc, "", []Op{{Op: "add_page", Name: "Variant A"}, {Op: "add_page", Name: "Variant B"}})
+	require.NoError(t, err)
+	_, _, err = Apply(doc, "", []Op{{Op: "add_page", Name: " variant a "}})
+	require.ErrorContains(t, err, "already exists")
+	b := doc.PageByRef("Variant B")
+	_, _, err = Apply(doc, "", []Op{{Op: "update_page", Page: b.ID, Name: "VARIANT A"}})
+	require.ErrorContains(t, err, "already exists")
+	next, _, err := Apply(doc, "", []Op{{Op: "update_page", Page: b.ID, Name: "Variant B"}})
+	require.NoError(t, err, "a page may keep its own name")
+	require.Len(t, next.Pages, 3)
+}

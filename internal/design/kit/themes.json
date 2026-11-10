@@ -1,0 +1,2723 @@
+{
+ "themes": [
+  {
+   "id": "zinc",
+   "name": "Zinc",
+   "source": "shadcn/ui zinc palette (MIT)",
+   "platform": "web",
+   "note": "The shadcn/ui look: white, zinc greys, near-black accent, Geist. SaaS and dashboards.",
+   "fonts": {
+    "heading": "Geist",
+    "body": "Geist",
+    "mono": "JetBrains Mono"
+   },
+   "colors": {
+    "bg": [
+     "#FFFFFF",
+     "#09090B"
+    ],
+    "surface": [
+     "#FFFFFF",
+     "#09090B"
+    ],
+    "card": [
+     "#FFFFFF",
+     "#18181B"
+    ],
+    "muted": [
+     "#F4F4F5",
+     "#27272A"
+    ],
+    "border": [
+     "#E4E4E7",
+     "#27272A"
+    ],
+    "border-strong": [
+     "#D4D4D8",
+     "#3F3F46"
+    ],
+    "text": [
+     "#09090B",
+     "#FAFAFA"
+    ],
+    "text-muted": [
+     "#71717A",
+     "#A1A1AA"
+    ],
+    "text-subtle": [
+     "#A1A1AA",
+     "#52525B"
+    ],
+    "accent": [
+     "#18181B",
+     "#FAFAFA"
+    ],
+    "on-accent": [
+     "#FAFAFA",
+     "#18181B"
+    ],
+    "accent-soft": [
+     "#F4F4F5",
+     "#27272A"
+    ],
+    "on-accent-soft": [
+     "#18181B",
+     "#FAFAFA"
+    ],
+    "success": [
+     "#15803D",
+     "#4ADE80"
+    ],
+    "warning": [
+     "#B45309",
+     "#FBBF24"
+    ],
+    "error": [
+     "#DC2626",
+     "#F87171"
+    ],
+    "info": [
+     "#2563EB",
+     "#60A5FA"
+    ],
+    "overlay": [
+     "#00000080",
+     "#000000B3"
+    ],
+    "shadow": [
+     "#0000001A",
+     "#00000066"
+    ]
+   },
+   "radius": {
+    "sm": 6,
+    "md": 8,
+    "lg": 12,
+    "xl": 16
+   },
+   "type": {
+    "display": {
+     "family": "Geist",
+     "size": 68,
+     "weight": 700,
+     "line_height": 78,
+     "letter_spacing": -1.7
+    },
+    "h1": {
+     "family": "Geist",
+     "size": 48,
+     "weight": 600,
+     "line_height": 56,
+     "letter_spacing": -1
+    },
+    "h2": {
+     "family": "Geist",
+     "size": 40,
+     "weight": 600,
+     "line_height": 46,
+     "letter_spacing": -0.6
+    },
+    "h3": {
+     "family": "Geist",
+     "size": 32,
+     "weight": 600,
+     "line_height": 36
+    },
+    "h4": {
+     "family": "Geist",
+     "size": 24,
+     "weight": 600,
+     "line_height": 28
+    },
+    "lead": {
+     "family": "Geist",
+     "size": 20,
+     "weight": 400,
+     "line_height": 30
+    },
+    "body": {
+     "family": "Geist",
+     "size": 16,
+     "weight": 400,
+     "line_height": 24
+    },
+    "small": {
+     "family": "Geist",
+     "size": 14,
+     "weight": 400,
+     "line_height": 22
+    },
+    "caption": {
+     "family": "Geist",
+     "size": 12,
+     "weight": 400,
+     "line_height": 18
+    },
+    "label": {
+     "family": "Geist",
+     "size": 14,
+     "weight": 500,
+     "line_height": 22
+    }
+   }
+  },
+  {
+   "id": "radix",
+   "name": "Radix",
+   "source": "Radix Colors (WorkOS, MIT)",
+   "platform": "web",
+   "note": "Slate neutrals with an indigo accent, Inter. Pass accent to use any Radix hue.",
+   "fonts": {
+    "heading": "Inter",
+    "body": "Inter",
+    "mono": "JetBrains Mono"
+   },
+   "colors": {
+    "bg": [
+     "#FCFCFD",
+     "#111113"
+    ],
+    "surface": [
+     "#FFFFFF",
+     "#18191B"
+    ],
+    "card": [
+     "#FFFFFF",
+     "#18191B"
+    ],
+    "muted": [
+     "#F0F0F3",
+     "#212225"
+    ],
+    "border": [
+     "#D9D9E0",
+     "#363A3F"
+    ],
+    "border-strong": [
+     "#B9BBC6",
+     "#5A6169"
+    ],
+    "text": [
+     "#1C2024",
+     "#EDEEF0"
+    ],
+    "text-muted": [
+     "#60646C",
+     "#B0B4BA"
+    ],
+    "text-subtle": [
+     "#8B8D98",
+     "#696E77"
+    ],
+    "accent": [
+     "#3E63DD",
+     "#3E63DD"
+    ],
+    "on-accent": [
+     "#FFFFFF",
+     "#FFFFFF"
+    ],
+    "accent-soft": [
+     "#EDF2FE",
+     "#182449"
+    ],
+    "on-accent-soft": [
+     "#3A5BC7",
+     "#9EB1FF"
+    ],
+    "success": [
+     "#218358",
+     "#3DD68C"
+    ],
+    "warning": [
+     "#AB6400",
+     "#FFCA16"
+    ],
+    "error": [
+     "#CE2C31",
+     "#FF9592"
+    ],
+    "info": [
+     "#0D74CE",
+     "#70B8FF"
+    ],
+    "overlay": [
+     "#0000004D",
+     "#00000099"
+    ],
+    "shadow": [
+     "#0000001A",
+     "#00000066"
+    ]
+   },
+   "radius": {
+    "sm": 4,
+    "md": 6,
+    "lg": 12,
+    "xl": 16
+   },
+   "type": {
+    "display": {
+     "family": "Inter",
+     "size": 68,
+     "weight": 700,
+     "line_height": 78,
+     "letter_spacing": -1.7
+    },
+    "h1": {
+     "family": "Inter",
+     "size": 48,
+     "weight": 600,
+     "line_height": 56,
+     "letter_spacing": -1
+    },
+    "h2": {
+     "family": "Inter",
+     "size": 40,
+     "weight": 600,
+     "line_height": 46,
+     "letter_spacing": -0.6
+    },
+    "h3": {
+     "family": "Inter",
+     "size": 32,
+     "weight": 600,
+     "line_height": 36
+    },
+    "h4": {
+     "family": "Inter",
+     "size": 24,
+     "weight": 600,
+     "line_height": 28
+    },
+    "lead": {
+     "family": "Inter",
+     "size": 20,
+     "weight": 400,
+     "line_height": 30
+    },
+    "body": {
+     "family": "Inter",
+     "size": 16,
+     "weight": 400,
+     "line_height": 24
+    },
+    "small": {
+     "family": "Inter",
+     "size": 14,
+     "weight": 400,
+     "line_height": 22
+    },
+    "caption": {
+     "family": "Inter",
+     "size": 12,
+     "weight": 400,
+     "line_height": 18
+    },
+    "label": {
+     "family": "Inter",
+     "size": 14,
+     "weight": 500,
+     "line_height": 22
+    }
+   }
+  },
+  {
+   "id": "neutral",
+   "name": "Astryx Neutral",
+   "source": "Astryx (Meta, MIT)",
+   "platform": "web",
+   "note": "Quiet greys and black, Figtree. A safe default for products and dashboards.",
+   "dark_only": false,
+   "fonts": {
+    "heading": "Figtree",
+    "body": "Figtree",
+    "mono": "JetBrains Mono"
+   },
+   "colors": {
+    "bg": [
+     "#F1F1F1",
+     "#1B1B1B"
+    ],
+    "surface": [
+     "#FFFFFF",
+     "#262626"
+    ],
+    "card": [
+     "#FFFFFF",
+     "#1B1B1B"
+    ],
+    "muted": [
+     "#F1F1F1",
+     "#1B1B1B"
+    ],
+    "border": [
+     "#00000014",
+     "#FFFFFF1A"
+    ],
+    "border-strong": [
+     "#D4D4D4",
+     "#525252"
+    ],
+    "text": [
+     "#000000",
+     "#FFFFFF"
+    ],
+    "text-muted": [
+     "#474747",
+     "#9E9E9E"
+    ],
+    "text-subtle": [
+     "#919191",
+     "#525252"
+    ],
+    "accent": [
+     "#1B1B1B",
+     "#F1F1F1"
+    ],
+    "on-accent": [
+     "#FFFFFF",
+     "#111111"
+    ],
+    "accent-soft": [
+     "#D4D4D4",
+     "#474747"
+    ],
+    "on-accent-soft": [
+     "#1B1B1B",
+     "#F1F1F1"
+    ],
+    "success": [
+     "#2F7D33",
+     "#90CA90"
+    ],
+    "warning": [
+     "#836700",
+     "#EEC448"
+    ],
+    "error": [
+     "#C0262C",
+     "#FFAEA7"
+    ],
+    "info": [
+     "#0067CE",
+     "#A1CAFF"
+    ],
+    "overlay": [
+     "#00000080",
+     "#000000CC"
+    ],
+    "shadow": [
+     "#0000001A",
+     "#0000004D"
+    ]
+   },
+   "radius": {
+    "sm": 6,
+    "md": 10,
+    "lg": 12,
+    "xl": 28
+   },
+   "type": {
+    "display": {
+     "family": "Figtree",
+     "size": 56,
+     "weight": 700,
+     "line_height": 64,
+     "letter_spacing": -1.4
+    },
+    "h1": {
+     "family": "Figtree",
+     "size": 36,
+     "weight": 600,
+     "line_height": 42,
+     "letter_spacing": -0.7
+    },
+    "h2": {
+     "family": "Figtree",
+     "size": 32,
+     "weight": 600,
+     "line_height": 36,
+     "letter_spacing": -0.5
+    },
+    "h3": {
+     "family": "Figtree",
+     "size": 24,
+     "weight": 600,
+     "line_height": 28
+    },
+    "h4": {
+     "family": "Figtree",
+     "size": 22,
+     "weight": 600,
+     "line_height": 26
+    },
+    "lead": {
+     "family": "Figtree",
+     "size": 18,
+     "weight": 400,
+     "line_height": 28
+    },
+    "body": {
+     "family": "Figtree",
+     "size": 16,
+     "weight": 400,
+     "line_height": 24
+    },
+    "small": {
+     "family": "Figtree",
+     "size": 14,
+     "weight": 400,
+     "line_height": 22
+    },
+    "caption": {
+     "family": "Figtree",
+     "size": 12,
+     "weight": 400,
+     "line_height": 18
+    },
+    "label": {
+     "family": "Figtree",
+     "size": 14,
+     "weight": 500,
+     "line_height": 22
+    }
+   }
+  },
+  {
+   "id": "butter",
+   "name": "Astryx Butter",
+   "source": "Astryx (Meta, MIT)",
+   "platform": "web",
+   "note": "Cream surfaces with an electric blue accent, Outfit. Friendly consumer products.",
+   "dark_only": false,
+   "fonts": {
+    "heading": "Outfit",
+    "body": "Outfit",
+    "mono": "JetBrains Mono"
+   },
+   "colors": {
+    "bg": [
+     "#FDFBE4",
+     "#261A13"
+    ],
+    "surface": [
+     "#FFFFFF",
+     "#2E2117"
+    ],
+    "card": [
+     "#FFFFFF",
+     "#3A2A1F"
+    ],
+    "muted": [
+     "#F3F2E2",
+     "#3A2A1F"
+    ],
+    "border": [
+     "#E5E3D4",
+     "#F3F2E21A"
+    ],
+    "border-strong": [
+     "#C7C4B2",
+     "#939184"
+    ],
+    "text": [
+     "#1D1C11",
+     "#F3F2E2"
+    ],
+    "text-muted": [
+     "#605F52",
+     "#ADAC9E"
+    ],
+    "text-subtle": [
+     "#ADAC9E",
+     "#605F52"
+    ],
+    "accent": [
+     "#225BFF",
+     "#FDEE8C"
+    ],
+    "on-accent": [
+     "#FFFFFF",
+     "#1D1C11"
+    ],
+    "accent-soft": [
+     "#225BFF33",
+     "#FDEE8C40"
+    ],
+    "on-accent-soft": [
+     "#225BFF",
+     "#FDEE8C"
+    ],
+    "success": [
+     "#004A05",
+     "#A8D4A6"
+    ],
+    "warning": [
+     "#443C00",
+     "#EEDF75"
+    ],
+    "error": [
+     "#6F1400",
+     "#FFB09B"
+    ],
+    "info": [
+     "#225BFF",
+     "#81A9FF"
+    ],
+    "overlay": [
+     "#1D1C1180",
+     "#261A13CC"
+    ],
+    "shadow": [
+     "#1D1C111A",
+     "#0000004D"
+    ]
+   },
+   "radius": {
+    "sm": 6,
+    "md": 8,
+    "lg": 12,
+    "xl": 24
+   },
+   "type": {
+    "display": {
+     "family": "Outfit",
+     "size": 60,
+     "weight": 700,
+     "line_height": 70,
+     "letter_spacing": -1.5
+    },
+    "h1": {
+     "family": "Outfit",
+     "size": 44,
+     "weight": 600,
+     "line_height": 50,
+     "letter_spacing": -0.9
+    },
+    "h2": {
+     "family": "Outfit",
+     "size": 36,
+     "weight": 600,
+     "line_height": 42,
+     "letter_spacing": -0.5
+    },
+    "h3": {
+     "family": "Outfit",
+     "size": 28,
+     "weight": 600,
+     "line_height": 32
+    },
+    "h4": {
+     "family": "Outfit",
+     "size": 24,
+     "weight": 600,
+     "line_height": 28
+    },
+    "lead": {
+     "family": "Outfit",
+     "size": 20,
+     "weight": 400,
+     "line_height": 30
+    },
+    "body": {
+     "family": "Outfit",
+     "size": 16,
+     "weight": 400,
+     "line_height": 24
+    },
+    "small": {
+     "family": "Outfit",
+     "size": 14,
+     "weight": 400,
+     "line_height": 22
+    },
+    "caption": {
+     "family": "Outfit",
+     "size": 12,
+     "weight": 400,
+     "line_height": 18
+    },
+    "label": {
+     "family": "Outfit",
+     "size": 14,
+     "weight": 500,
+     "line_height": 22
+    }
+   }
+  },
+  {
+   "id": "chocolate",
+   "name": "Astryx Chocolate",
+   "source": "Astryx (Meta, MIT)",
+   "platform": "web",
+   "note": "Warm browns, Albert Sans with Fraunces serif headings. Food, craft, editorial.",
+   "dark_only": false,
+   "fonts": {
+    "heading": "Fraunces",
+    "body": "Albert Sans",
+    "mono": "JetBrains Mono"
+   },
+   "colors": {
+    "bg": [
+     "#FFFCF7",
+     "#141010"
+    ],
+    "surface": [
+     "#FFFCF7",
+     "#1C1610"
+    ],
+    "card": [
+     "#EDE4D4",
+     "#2A2018"
+    ],
+    "muted": [
+     "#EDE4D4",
+     "#2A2018"
+    ],
+    "border": [
+     "#C4AC95",
+     "#EDE4D41A"
+    ],
+    "border-strong": [
+     "#B88859",
+     "#6B5540"
+    ],
+    "text": [
+     "#4A3520",
+     "#EDE4D4"
+    ],
+    "text-muted": [
+     "#B88859",
+     "#C4A882"
+    ],
+    "text-subtle": [
+     "#C4AC95",
+     "#6B5540"
+    ],
+    "accent": [
+     "#8C5927",
+     "#D4A06A"
+    ],
+    "on-accent": [
+     "#FFFFFF",
+     "#4A3520"
+    ],
+    "accent-soft": [
+     "#8C592714",
+     "#D4A06A20"
+    ],
+    "on-accent-soft": [
+     "#8C5927",
+     "#D4A06A"
+    ],
+    "success": [
+     "#526F00",
+     "#A8D43A"
+    ],
+    "warning": [
+     "#7A5500",
+     "#FFD960"
+    ],
+    "error": [
+     "#CC0000",
+     "#FF7A7A"
+    ],
+    "info": [
+     "#2E4A6E",
+     "#8DBCE0"
+    ],
+    "overlay": [
+     "#4A352080",
+     "#140E0ACC"
+    ],
+    "shadow": [
+     "#4A35201A",
+     "#0000004D"
+    ]
+   },
+   "radius": {
+    "sm": 6,
+    "md": 10,
+    "lg": 12,
+    "xl": 24
+   },
+   "type": {
+    "display": {
+     "family": "Fraunces",
+     "size": 56,
+     "weight": 700,
+     "line_height": 64,
+     "letter_spacing": -1.4
+    },
+    "h1": {
+     "family": "Fraunces",
+     "size": 36,
+     "weight": 600,
+     "line_height": 42,
+     "letter_spacing": -0.7
+    },
+    "h2": {
+     "family": "Fraunces",
+     "size": 32,
+     "weight": 600,
+     "line_height": 36,
+     "letter_spacing": -0.5
+    },
+    "h3": {
+     "family": "Fraunces",
+     "size": 24,
+     "weight": 600,
+     "line_height": 28
+    },
+    "h4": {
+     "family": "Fraunces",
+     "size": 22,
+     "weight": 600,
+     "line_height": 26
+    },
+    "lead": {
+     "family": "Albert Sans",
+     "size": 18,
+     "weight": 400,
+     "line_height": 28
+    },
+    "body": {
+     "family": "Albert Sans",
+     "size": 16,
+     "weight": 400,
+     "line_height": 24
+    },
+    "small": {
+     "family": "Albert Sans",
+     "size": 14,
+     "weight": 400,
+     "line_height": 22
+    },
+    "caption": {
+     "family": "Albert Sans",
+     "size": 12,
+     "weight": 400,
+     "line_height": 18
+    },
+    "label": {
+     "family": "Albert Sans",
+     "size": 14,
+     "weight": 500,
+     "line_height": 22
+    }
+   }
+  },
+  {
+   "id": "gothic",
+   "name": "Astryx Gothic",
+   "source": "Astryx (Meta, MIT)",
+   "platform": "web",
+   "note": "Dark only, cool steel tones, Fustat. Developer tools, night-first apps.",
+   "dark_only": true,
+   "fonts": {
+    "heading": "Fustat",
+    "body": "Fustat",
+    "mono": "JetBrains Mono"
+   },
+   "colors": {
+    "bg": [
+     "#101314",
+     "#101314"
+    ],
+    "surface": [
+     "#101314",
+     "#101314"
+    ],
+    "card": [
+     "#191D20",
+     "#191D20"
+    ],
+    "muted": [
+     "#24292D",
+     "#24292D"
+    ],
+    "border": [
+     "#E8F1F61A",
+     "#E8F1F61A"
+    ],
+    "border-strong": [
+     "#495056",
+     "#495056"
+    ],
+    "text": [
+     "#E8F1F6",
+     "#E8F1F6"
+    ],
+    "text-muted": [
+     "#96A0AB",
+     "#96A0AB"
+    ],
+    "text-subtle": [
+     "#495056",
+     "#495056"
+    ],
+    "accent": [
+     "#E8F1F6",
+     "#E8F1F6"
+    ],
+    "on-accent": [
+     "#101314",
+     "#101314"
+    ],
+    "accent-soft": [
+     "#E8F1F620",
+     "#E8F1F620"
+    ],
+    "on-accent-soft": [
+     "#E8F1F6",
+     "#E8F1F6"
+    ],
+    "success": [
+     "#B3C79A",
+     "#B3C79A"
+    ],
+    "warning": [
+     "#D3C490",
+     "#D3C490"
+    ],
+    "error": [
+     "#C6A6A2",
+     "#C6A6A2"
+    ],
+    "info": [
+     "#A3B5D6",
+     "#A3B5D6"
+    ],
+    "overlay": [
+     "#101314CC",
+     "#101314CC"
+    ],
+    "shadow": [
+     "#0000004D",
+     "#0000004D"
+    ]
+   },
+   "radius": {
+    "sm": 4,
+    "md": 8,
+    "lg": 12,
+    "xl": 24
+   },
+   "type": {
+    "display": {
+     "family": "Fustat",
+     "size": 68,
+     "weight": 700,
+     "line_height": 78,
+     "letter_spacing": -1.7
+    },
+    "h1": {
+     "family": "Fustat",
+     "size": 48,
+     "weight": 600,
+     "line_height": 56,
+     "letter_spacing": -1
+    },
+    "h2": {
+     "family": "Fustat",
+     "size": 40,
+     "weight": 600,
+     "line_height": 46,
+     "letter_spacing": -0.6
+    },
+    "h3": {
+     "family": "Fustat",
+     "size": 32,
+     "weight": 600,
+     "line_height": 36
+    },
+    "h4": {
+     "family": "Fustat",
+     "size": 24,
+     "weight": 600,
+     "line_height": 28
+    },
+    "lead": {
+     "family": "Fustat",
+     "size": 20,
+     "weight": 400,
+     "line_height": 30
+    },
+    "body": {
+     "family": "Fustat",
+     "size": 16,
+     "weight": 400,
+     "line_height": 24
+    },
+    "small": {
+     "family": "Fustat",
+     "size": 14,
+     "weight": 400,
+     "line_height": 22
+    },
+    "caption": {
+     "family": "Fustat",
+     "size": 12,
+     "weight": 400,
+     "line_height": 18
+    },
+    "label": {
+     "family": "Fustat",
+     "size": 14,
+     "weight": 500,
+     "line_height": 22
+    }
+   }
+  },
+  {
+   "id": "matcha",
+   "name": "Astryx Matcha",
+   "source": "Astryx (Meta, MIT)",
+   "platform": "web",
+   "note": "Earthy greens with handwritten Playwrite headings, DM Sans. Wellness, lifestyle.",
+   "dark_only": false,
+   "fonts": {
+    "heading": "Playwrite US Trad",
+    "body": "DM Sans",
+    "mono": "JetBrains Mono"
+   },
+   "colors": {
+    "bg": [
+     "#F0F0E0",
+     "#12140E"
+    ],
+    "surface": [
+     "#FFFFFF",
+     "#1A1C14"
+    ],
+    "card": [
+     "#FFFFFF",
+     "#1E2016"
+    ],
+    "muted": [
+     "#F0F0E0",
+     "#3E481D"
+    ],
+    "border": [
+     "#DCE3CE",
+     "#C0CBA91A"
+    ],
+    "border-strong": [
+     "#B7C29E",
+     "#5A6440"
+    ],
+    "text": [
+     "#3E481D",
+     "#C0CBA9"
+    ],
+    "text-muted": [
+     "#5A6B2A",
+     "#94A468"
+    ],
+    "text-subtle": [
+     "#C0CBA9",
+     "#5A6440"
+    ],
+    "accent": [
+     "#3E481D",
+     "#C0CBA9"
+    ],
+    "on-accent": [
+     "#FFFFFF",
+     "#3E481D"
+    ],
+    "accent-soft": [
+     "#3E481D14",
+     "#C0CBA920"
+    ],
+    "on-accent-soft": [
+     "#3E481D",
+     "#C0CBA9"
+    ],
+    "success": [
+     "#3D7A00",
+     "#80D43A"
+    ],
+    "warning": [
+     "#836700",
+     "#FFE08B"
+    ],
+    "error": [
+     "#CC0000",
+     "#FF7A7A"
+    ],
+    "info": [
+     "#2E4A6E",
+     "#8DBCE0"
+    ],
+    "overlay": [
+     "#3E481D80",
+     "#3E481DCC"
+    ],
+    "shadow": [
+     "#3E481D1A",
+     "#0000004D"
+    ]
+   },
+   "radius": {
+    "sm": 6,
+    "md": 12,
+    "lg": 18,
+    "xl": 42
+   },
+   "type": {
+    "display": {
+     "family": "Playwrite US Trad",
+     "size": 68,
+     "weight": 400,
+     "line_height": 78,
+     "letter_spacing": -1.7
+    },
+    "h1": {
+     "family": "Playwrite US Trad",
+     "size": 48,
+     "weight": 400,
+     "line_height": 56,
+     "letter_spacing": -1
+    },
+    "h2": {
+     "family": "Playwrite US Trad",
+     "size": 40,
+     "weight": 400,
+     "line_height": 46,
+     "letter_spacing": -0.6
+    },
+    "h3": {
+     "family": "Playwrite US Trad",
+     "size": 32,
+     "weight": 400,
+     "line_height": 36
+    },
+    "h4": {
+     "family": "Playwrite US Trad",
+     "size": 24,
+     "weight": 400,
+     "line_height": 28
+    },
+    "lead": {
+     "family": "DM Sans",
+     "size": 20,
+     "weight": 400,
+     "line_height": 30
+    },
+    "body": {
+     "family": "DM Sans",
+     "size": 16,
+     "weight": 400,
+     "line_height": 24
+    },
+    "small": {
+     "family": "DM Sans",
+     "size": 14,
+     "weight": 400,
+     "line_height": 22
+    },
+    "caption": {
+     "family": "DM Sans",
+     "size": 12,
+     "weight": 400,
+     "line_height": 18
+    },
+    "label": {
+     "family": "DM Sans",
+     "size": 14,
+     "weight": 500,
+     "line_height": 22
+    }
+   }
+  },
+  {
+   "id": "stone",
+   "name": "Astryx Stone",
+   "source": "Astryx (Meta, MIT)",
+   "platform": "web",
+   "note": "Cool stone greys, Montserrat headings over Figtree. Calm, professional.",
+   "dark_only": false,
+   "fonts": {
+    "heading": "Montserrat",
+    "body": "Figtree",
+    "mono": "JetBrains Mono"
+   },
+   "colors": {
+    "bg": [
+     "#F0F0F7",
+     "#101018"
+    ],
+    "surface": [
+     "#FFFFFF",
+     "#1B1B21"
+    ],
+    "card": [
+     "#FFFFFF",
+     "#25252A"
+    ],
+    "muted": [
+     "#E2E2E8",
+     "#3A3A42"
+    ],
+    "border": [
+     "#E2E2E8",
+     "#F0F0F91A"
+    ],
+    "border-strong": [
+     "#848489",
+     "#5E5E64"
+    ],
+    "text": [
+     "#25252A",
+     "#F0F0F9"
+    ],
+    "text-muted": [
+     "#5F5F64",
+     "#ABABB3"
+    ],
+    "text-subtle": [
+     "#D4D3DD",
+     "#5E5E64"
+    ],
+    "accent": [
+     "#25252A",
+     "#F0F0F9"
+    ],
+    "on-accent": [
+     "#FFFFFF",
+     "#25252A"
+    ],
+    "accent-soft": [
+     "#25252A14",
+     "#F0F0F920"
+    ],
+    "on-accent-soft": [
+     "#25252A",
+     "#F0F0F9"
+    ],
+    "success": [
+     "#354F31",
+     "#D5E9D2"
+    ],
+    "warning": [
+     "#524818",
+     "#F1E1B9"
+    ],
+    "error": [
+     "#603C37",
+     "#F7DBD7"
+    ],
+    "info": [
+     "#344861",
+     "#D5E4F8"
+    ],
+    "overlay": [
+     "#25252A80",
+     "#25252ACC"
+    ],
+    "shadow": [
+     "#25252A1A",
+     "#0000004D"
+    ]
+   },
+   "radius": {
+    "sm": 4,
+    "md": 8,
+    "lg": 12,
+    "xl": 24
+   },
+   "type": {
+    "display": {
+     "family": "Montserrat",
+     "size": 60,
+     "weight": 700,
+     "line_height": 70,
+     "letter_spacing": -1.5
+    },
+    "h1": {
+     "family": "Montserrat",
+     "size": 44,
+     "weight": 600,
+     "line_height": 50,
+     "letter_spacing": -0.9
+    },
+    "h2": {
+     "family": "Montserrat",
+     "size": 36,
+     "weight": 600,
+     "line_height": 42,
+     "letter_spacing": -0.5
+    },
+    "h3": {
+     "family": "Montserrat",
+     "size": 28,
+     "weight": 600,
+     "line_height": 32
+    },
+    "h4": {
+     "family": "Montserrat",
+     "size": 24,
+     "weight": 600,
+     "line_height": 28
+    },
+    "lead": {
+     "family": "Figtree",
+     "size": 20,
+     "weight": 400,
+     "line_height": 30
+    },
+    "body": {
+     "family": "Figtree",
+     "size": 16,
+     "weight": 400,
+     "line_height": 24
+    },
+    "small": {
+     "family": "Figtree",
+     "size": 14,
+     "weight": 400,
+     "line_height": 22
+    },
+    "caption": {
+     "family": "Figtree",
+     "size": 12,
+     "weight": 400,
+     "line_height": 18
+    },
+    "label": {
+     "family": "Figtree",
+     "size": 14,
+     "weight": 500,
+     "line_height": 22
+    }
+   }
+  },
+  {
+   "id": "y2k",
+   "name": "Astryx Y2k",
+   "source": "Astryx (Meta, MIT)",
+   "platform": "web",
+   "note": "Lavender page, hard black borders and square corners, Poppins. Bold, playful brands.",
+   "dark_only": false,
+   "fonts": {
+    "heading": "Poppins",
+    "body": "Poppins",
+    "mono": "JetBrains Mono"
+   },
+   "colors": {
+    "bg": [
+     "#CCCFFA",
+     "#0E0F1A"
+    ],
+    "surface": [
+     "#FFFFFF",
+     "#16182B"
+    ],
+    "card": [
+     "#FFFFFF",
+     "#16182B"
+    ],
+    "muted": [
+     "#F1E6DB",
+     "#1F2238"
+    ],
+    "border": [
+     "#382E24",
+     "#EDEFFC1A"
+    ],
+    "border-strong": [
+     "#382E24",
+     "#636889"
+    ],
+    "text": [
+     "#2D241B",
+     "#EDEFFC"
+    ],
+    "text-muted": [
+     "#5A5146",
+     "#A6ACD6"
+    ],
+    "text-subtle": [
+     "#D1C5B8",
+     "#4A4F6B"
+    ],
+    "accent": [
+     "#2D241B",
+     "#EDEFFC"
+    ],
+    "on-accent": [
+     "#FFFFFF",
+     "#16182B"
+    ],
+    "accent-soft": [
+     "#2D241B14",
+     "#EDEFFC20"
+    ],
+    "on-accent-soft": [
+     "#2D241B",
+     "#EDEFFC"
+    ],
+    "success": [
+     "#3F4E00",
+     "#B5D263"
+    ],
+    "warning": [
+     "#584400",
+     "#F3D172"
+    ],
+    "error": [
+     "#880023",
+     "#FF969A"
+    ],
+    "info": [
+     "#003454",
+     "#70C1FF"
+    ],
+    "overlay": [
+     "#2D241B80",
+     "#0E0F1ACC"
+    ],
+    "shadow": [
+     "#2D241B1A",
+     "#0000004D"
+    ]
+   },
+   "radius": {
+    "sm": 0,
+    "md": 0,
+    "lg": 0,
+    "xl": 0
+   },
+   "type": {
+    "display": {
+     "family": "Poppins",
+     "size": 68,
+     "weight": 700,
+     "line_height": 78,
+     "letter_spacing": -1.7
+    },
+    "h1": {
+     "family": "Poppins",
+     "size": 48,
+     "weight": 600,
+     "line_height": 56,
+     "letter_spacing": -1
+    },
+    "h2": {
+     "family": "Poppins",
+     "size": 40,
+     "weight": 600,
+     "line_height": 46,
+     "letter_spacing": -0.6
+    },
+    "h3": {
+     "family": "Poppins",
+     "size": 32,
+     "weight": 600,
+     "line_height": 36
+    },
+    "h4": {
+     "family": "Poppins",
+     "size": 24,
+     "weight": 600,
+     "line_height": 28
+    },
+    "lead": {
+     "family": "Poppins",
+     "size": 20,
+     "weight": 400,
+     "line_height": 30
+    },
+    "body": {
+     "family": "Poppins",
+     "size": 16,
+     "weight": 400,
+     "line_height": 24
+    },
+    "small": {
+     "family": "Poppins",
+     "size": 14,
+     "weight": 400,
+     "line_height": 22
+    },
+    "caption": {
+     "family": "Poppins",
+     "size": 12,
+     "weight": 400,
+     "line_height": 18
+    },
+    "label": {
+     "family": "Poppins",
+     "size": 14,
+     "weight": 500,
+     "line_height": 22
+    }
+   },
+   "border_width": 2
+  },
+  {
+   "id": "ios",
+   "name": "iOS",
+   "source": "Apple Human Interface Guidelines system colours",
+   "platform": "ios",
+   "note": "iOS system colours, grouped backgrounds and the HIG type ramp. Inter stands in for SF Pro, which may not be bundled.",
+   "fonts": {
+    "heading": "Inter",
+    "body": "Inter",
+    "mono": "JetBrains Mono"
+   },
+   "colors": {
+    "bg": [
+     "#F2F2F7",
+     "#000000"
+    ],
+    "surface": [
+     "#FFFFFF",
+     "#1C1C1E"
+    ],
+    "card": [
+     "#FFFFFF",
+     "#1C1C1E"
+    ],
+    "muted": [
+     "#E5E5EA",
+     "#2C2C2E"
+    ],
+    "border": [
+     "#C6C6C8",
+     "#38383A"
+    ],
+    "border-strong": [
+     "#8E8E93",
+     "#636366"
+    ],
+    "text": [
+     "#000000",
+     "#FFFFFF"
+    ],
+    "text-muted": [
+     "#3C3C4399",
+     "#EBEBF599"
+    ],
+    "text-subtle": [
+     "#3C3C434D",
+     "#EBEBF54D"
+    ],
+    "accent": [
+     "#007AFF",
+     "#0A84FF"
+    ],
+    "on-accent": [
+     "#FFFFFF",
+     "#FFFFFF"
+    ],
+    "accent-soft": [
+     "#007AFF1F",
+     "#0A84FF33"
+    ],
+    "on-accent-soft": [
+     "#007AFF",
+     "#0A84FF"
+    ],
+    "success": [
+     "#248A3D",
+     "#30D158"
+    ],
+    "warning": [
+     "#C93400",
+     "#FF9F0A"
+    ],
+    "error": [
+     "#D70015",
+     "#FF453A"
+    ],
+    "info": [
+     "#0071A4",
+     "#64D2FF"
+    ],
+    "overlay": [
+     "#00000066",
+     "#00000099"
+    ],
+    "shadow": [
+     "#0000001F",
+     "#00000066"
+    ]
+   },
+   "radius": {
+    "sm": 8,
+    "md": 10,
+    "lg": 12,
+    "xl": 20
+   },
+   "type": {
+    "display": {
+     "family": "Inter",
+     "size": 34,
+     "weight": 700,
+     "line_height": 41,
+     "letter_spacing": 0.4
+    },
+    "h1": {
+     "family": "Inter",
+     "size": 28,
+     "weight": 700,
+     "line_height": 34,
+     "letter_spacing": 0.4
+    },
+    "h2": {
+     "family": "Inter",
+     "size": 22,
+     "weight": 700,
+     "line_height": 28,
+     "letter_spacing": -0.3
+    },
+    "h3": {
+     "family": "Inter",
+     "size": 20,
+     "weight": 600,
+     "line_height": 25,
+     "letter_spacing": -0.4
+    },
+    "h4": {
+     "family": "Inter",
+     "size": 17,
+     "weight": 600,
+     "line_height": 22,
+     "letter_spacing": -0.4
+    },
+    "lead": {
+     "family": "Inter",
+     "size": 17,
+     "weight": 400,
+     "line_height": 22,
+     "letter_spacing": -0.4
+    },
+    "body": {
+     "family": "Inter",
+     "size": 17,
+     "weight": 400,
+     "line_height": 22,
+     "letter_spacing": -0.4
+    },
+    "small": {
+     "family": "Inter",
+     "size": 15,
+     "weight": 400,
+     "line_height": 20,
+     "letter_spacing": -0.2
+    },
+    "caption": {
+     "family": "Inter",
+     "size": 12,
+     "weight": 400,
+     "line_height": 16
+    },
+    "label": {
+     "family": "Inter",
+     "size": 13,
+     "weight": 400,
+     "line_height": 18,
+     "letter_spacing": -0.1
+    }
+   }
+  },
+  {
+   "id": "material",
+   "name": "Material 3",
+   "source": "Material Design 3 baseline scheme (Google, Apache 2.0)",
+   "platform": "android",
+   "note": "The Material 3 baseline purple scheme, tonal surfaces and the M3 type scale in Roboto.",
+   "fonts": {
+    "heading": "Roboto",
+    "body": "Roboto",
+    "mono": "JetBrains Mono"
+   },
+   "colors": {
+    "bg": [
+     "#FEF7FF",
+     "#141218"
+    ],
+    "surface": [
+     "#F7F2FA",
+     "#1D1B20"
+    ],
+    "card": [
+     "#F3EDF7",
+     "#211F26"
+    ],
+    "muted": [
+     "#ECE6F0",
+     "#2B2930"
+    ],
+    "border": [
+     "#CAC4D0",
+     "#49454F"
+    ],
+    "border-strong": [
+     "#79747E",
+     "#938F99"
+    ],
+    "text": [
+     "#1D1B20",
+     "#E6E0E9"
+    ],
+    "text-muted": [
+     "#49454F",
+     "#CAC4D0"
+    ],
+    "text-subtle": [
+     "#1D1B2061",
+     "#E6E0E961"
+    ],
+    "accent": [
+     "#6750A4",
+     "#D0BCFF"
+    ],
+    "on-accent": [
+     "#FFFFFF",
+     "#381E72"
+    ],
+    "accent-soft": [
+     "#EADDFF",
+     "#4F378B"
+    ],
+    "on-accent-soft": [
+     "#21005D",
+     "#EADDFF"
+    ],
+    "success": [
+     "#146C2E",
+     "#6DD58C"
+    ],
+    "warning": [
+     "#7D5700",
+     "#F8BD49"
+    ],
+    "error": [
+     "#B3261E",
+     "#F2B8B5"
+    ],
+    "info": [
+     "#00639B",
+     "#94CCFF"
+    ],
+    "overlay": [
+     "#00000052",
+     "#00000080"
+    ],
+    "shadow": [
+     "#00000026",
+     "#00000066"
+    ]
+   },
+   "radius": {
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 28
+   },
+   "type": {
+    "display": {
+     "family": "Roboto",
+     "size": 45,
+     "weight": 400,
+     "line_height": 52
+    },
+    "h1": {
+     "family": "Roboto",
+     "size": 32,
+     "weight": 400,
+     "line_height": 40
+    },
+    "h2": {
+     "family": "Roboto",
+     "size": 28,
+     "weight": 400,
+     "line_height": 36
+    },
+    "h3": {
+     "family": "Roboto",
+     "size": 24,
+     "weight": 400,
+     "line_height": 32
+    },
+    "h4": {
+     "family": "Roboto",
+     "size": 22,
+     "weight": 400,
+     "line_height": 28
+    },
+    "lead": {
+     "family": "Roboto",
+     "size": 16,
+     "weight": 400,
+     "line_height": 24,
+     "letter_spacing": 0.5
+    },
+    "body": {
+     "family": "Roboto",
+     "size": 14,
+     "weight": 400,
+     "line_height": 20,
+     "letter_spacing": 0.25
+    },
+    "small": {
+     "family": "Roboto",
+     "size": 14,
+     "weight": 400,
+     "line_height": 20,
+     "letter_spacing": 0.25
+    },
+    "caption": {
+     "family": "Roboto",
+     "size": 12,
+     "weight": 400,
+     "line_height": 16,
+     "letter_spacing": 0.4
+    },
+    "label": {
+     "family": "Roboto",
+     "size": 14,
+     "weight": 500,
+     "line_height": 20,
+     "letter_spacing": 0.1
+    }
+   }
+  }
+ ],
+ "radix": {
+  "amber": {
+   "dark": [
+    "#16120C",
+    "#1D180F",
+    "#302008",
+    "#3F2700",
+    "#4D3000",
+    "#5C3D05",
+    "#714F19",
+    "#8F6424",
+    "#FFC53D",
+    "#FFD60A",
+    "#FFCA16",
+    "#FFE7B3"
+   ],
+   "light": [
+    "#FEFDFB",
+    "#FEFBE9",
+    "#FFF7C2",
+    "#FFEE9C",
+    "#FBE577",
+    "#F3D673",
+    "#E9C162",
+    "#E2A336",
+    "#FFC53D",
+    "#FFBA18",
+    "#AB6400",
+    "#4F3422"
+   ]
+  },
+  "blue": {
+   "dark": [
+    "#0D1520",
+    "#111927",
+    "#0D2847",
+    "#003362",
+    "#004074",
+    "#104D87",
+    "#205D9E",
+    "#2870BD",
+    "#0090FF",
+    "#3B9EFF",
+    "#70B8FF",
+    "#C2E6FF"
+   ],
+   "light": [
+    "#FBFDFF",
+    "#F4FAFF",
+    "#E6F4FE",
+    "#D5EFFF",
+    "#C2E5FF",
+    "#ACD8FC",
+    "#8EC8F6",
+    "#5EB1EF",
+    "#0090FF",
+    "#0588F0",
+    "#0D74CE",
+    "#113264"
+   ]
+  },
+  "bronze": {
+   "dark": [
+    "#141110",
+    "#1C1917",
+    "#262220",
+    "#302A27",
+    "#3B3330",
+    "#493E3A",
+    "#5A4C47",
+    "#6F5F58",
+    "#A18072",
+    "#AE8C7E",
+    "#D4B3A5",
+    "#EDE0D9"
+   ],
+   "light": [
+    "#FDFCFC",
+    "#FDF7F5",
+    "#F6EDEA",
+    "#EFE4DF",
+    "#E7D9D3",
+    "#DFCDC5",
+    "#D3BCB3",
+    "#C2A499",
+    "#A18072",
+    "#957468",
+    "#7D5E54",
+    "#43302B"
+   ]
+  },
+  "brown": {
+   "dark": [
+    "#12110F",
+    "#1C1816",
+    "#28211D",
+    "#322922",
+    "#3E3128",
+    "#4D3C2F",
+    "#614A39",
+    "#7C5F46",
+    "#AD7F58",
+    "#B88C67",
+    "#DBB594",
+    "#F2E1CA"
+   ],
+   "light": [
+    "#FEFDFC",
+    "#FCF9F6",
+    "#F6EEE7",
+    "#F0E4D9",
+    "#EBDACA",
+    "#E4CDB7",
+    "#DCBC9F",
+    "#CEA37E",
+    "#AD7F58",
+    "#A07553",
+    "#815E46",
+    "#3E332E"
+   ]
+  },
+  "crimson": {
+   "dark": [
+    "#191114",
+    "#201318",
+    "#381525",
+    "#4D122F",
+    "#5C1839",
+    "#6D2545",
+    "#873356",
+    "#B0436E",
+    "#E93D82",
+    "#EE518A",
+    "#FF92AD",
+    "#FDD3E8"
+   ],
+   "light": [
+    "#FFFCFD",
+    "#FEF7F9",
+    "#FFE9F0",
+    "#FEDCE7",
+    "#FACEDD",
+    "#F3BED1",
+    "#EAACC3",
+    "#E093B2",
+    "#E93D82",
+    "#DF3478",
+    "#CB1D63",
+    "#621639"
+   ]
+  },
+  "cyan": {
+   "dark": [
+    "#0B161A",
+    "#101B20",
+    "#082C36",
+    "#003848",
+    "#004558",
+    "#045468",
+    "#12677E",
+    "#11809C",
+    "#00A2C7",
+    "#23AFD0",
+    "#4CCCE6",
+    "#B6ECF7"
+   ],
+   "light": [
+    "#FAFDFE",
+    "#F2FAFB",
+    "#DEF7F9",
+    "#CAF1F6",
+    "#B5E9F0",
+    "#9DDDE7",
+    "#7DCEDC",
+    "#3DB9CF",
+    "#00A2C7",
+    "#0797B9",
+    "#107D98",
+    "#0D3C48"
+   ]
+  },
+  "gold": {
+   "dark": [
+    "#121211",
+    "#1B1A17",
+    "#24231F",
+    "#2D2B26",
+    "#38352E",
+    "#444039",
+    "#544F46",
+    "#696256",
+    "#978365",
+    "#A39073",
+    "#CBB99F",
+    "#E8E2D9"
+   ],
+   "light": [
+    "#FDFDFC",
+    "#FAF9F2",
+    "#F2F0E7",
+    "#EAE6DB",
+    "#E1DCCF",
+    "#D8D0BF",
+    "#CBC0AA",
+    "#B9A88D",
+    "#978365",
+    "#8C7A5E",
+    "#71624B",
+    "#3B352B"
+   ]
+  },
+  "grass": {
+   "dark": [
+    "#0E1511",
+    "#141A15",
+    "#1B2A1E",
+    "#1D3A24",
+    "#25482D",
+    "#2D5736",
+    "#366740",
+    "#3E7949",
+    "#46A758",
+    "#53B365",
+    "#71D083",
+    "#C2F0C2"
+   ],
+   "light": [
+    "#FBFEFB",
+    "#F5FBF5",
+    "#E9F6E9",
+    "#DAF1DB",
+    "#C9E8CA",
+    "#B2DDB5",
+    "#94CE9A",
+    "#65BA74",
+    "#46A758",
+    "#3E9B4F",
+    "#2A7E3B",
+    "#203C25"
+   ]
+  },
+  "gray": {
+   "dark": [
+    "#111111",
+    "#191919",
+    "#222222",
+    "#2A2A2A",
+    "#313131",
+    "#3A3A3A",
+    "#484848",
+    "#606060",
+    "#6E6E6E",
+    "#7B7B7B",
+    "#B4B4B4",
+    "#EEEEEE"
+   ],
+   "light": [
+    "#FCFCFC",
+    "#F9F9F9",
+    "#F0F0F0",
+    "#E8E8E8",
+    "#E0E0E0",
+    "#D9D9D9",
+    "#CECECE",
+    "#BBBBBB",
+    "#8D8D8D",
+    "#838383",
+    "#646464",
+    "#202020"
+   ]
+  },
+  "green": {
+   "dark": [
+    "#0E1512",
+    "#121B17",
+    "#132D21",
+    "#113B29",
+    "#174933",
+    "#20573E",
+    "#28684A",
+    "#2F7C57",
+    "#30A46C",
+    "#33B074",
+    "#3DD68C",
+    "#B1F1CB"
+   ],
+   "light": [
+    "#FBFEFC",
+    "#F4FBF6",
+    "#E6F6EB",
+    "#D6F1DF",
+    "#C4E8D1",
+    "#ADDDC0",
+    "#8ECEAA",
+    "#5BB98B",
+    "#30A46C",
+    "#2B9A66",
+    "#218358",
+    "#193B2D"
+   ]
+  },
+  "indigo": {
+   "dark": [
+    "#11131F",
+    "#141726",
+    "#182449",
+    "#1D2E62",
+    "#253974",
+    "#304384",
+    "#3A4F97",
+    "#435DB1",
+    "#3E63DD",
+    "#5472E4",
+    "#9EB1FF",
+    "#D6E1FF"
+   ],
+   "light": [
+    "#FDFDFE",
+    "#F7F9FF",
+    "#EDF2FE",
+    "#E1E9FF",
+    "#D2DEFF",
+    "#C1D0FF",
+    "#ABBDF9",
+    "#8DA4EF",
+    "#3E63DD",
+    "#3358D4",
+    "#3A5BC7",
+    "#1F2D5C"
+   ]
+  },
+  "iris": {
+   "dark": [
+    "#13131E",
+    "#171625",
+    "#202248",
+    "#262A65",
+    "#303374",
+    "#3D3E82",
+    "#4A4A95",
+    "#5958B1",
+    "#5B5BD6",
+    "#6E6ADE",
+    "#B1A9FF",
+    "#E0DFFE"
+   ],
+   "light": [
+    "#FDFDFF",
+    "#F8F8FF",
+    "#F0F1FE",
+    "#E6E7FF",
+    "#DADCFF",
+    "#CBCDFF",
+    "#B8BAF8",
+    "#9B9EF0",
+    "#5B5BD6",
+    "#5151CD",
+    "#5753C6",
+    "#272962"
+   ]
+  },
+  "jade": {
+   "dark": [
+    "#0D1512",
+    "#121C18",
+    "#0F2E22",
+    "#0B3B2C",
+    "#114837",
+    "#1B5745",
+    "#246854",
+    "#2A7E68",
+    "#29A383",
+    "#27B08B",
+    "#1FD8A4",
+    "#ADF0D4"
+   ],
+   "light": [
+    "#FBFEFD",
+    "#F4FBF7",
+    "#E6F7ED",
+    "#D6F1E3",
+    "#C3E9D7",
+    "#ACDEC8",
+    "#8BCEB6",
+    "#56BA9F",
+    "#29A383",
+    "#26997B",
+    "#208368",
+    "#1D3B31"
+   ]
+  },
+  "lime": {
+   "dark": [
+    "#11130C",
+    "#151A10",
+    "#1F2917",
+    "#29371D",
+    "#334423",
+    "#3D522A",
+    "#496231",
+    "#577538",
+    "#BDEE63",
+    "#D4FF70",
+    "#BDE56C",
+    "#E3F7BA"
+   ],
+   "light": [
+    "#FCFDFA",
+    "#F8FAF3",
+    "#EEF6D6",
+    "#E2F0BD",
+    "#D3E7A6",
+    "#C2DA91",
+    "#ABC978",
+    "#8DB654",
+    "#BDEE63",
+    "#B0E64C",
+    "#5C7C2F",
+    "#37401C"
+   ]
+  },
+  "mauve": {
+   "dark": [
+    "#121113",
+    "#1A191B",
+    "#232225",
+    "#2B292D",
+    "#323035",
+    "#3C393F",
+    "#49474E",
+    "#625F69",
+    "#6F6D78",
+    "#7C7A85",
+    "#B5B2BC",
+    "#EEEEF0"
+   ],
+   "light": [
+    "#FDFCFD",
+    "#FAF9FB",
+    "#F2EFF3",
+    "#EAE7EC",
+    "#E3DFE6",
+    "#DBD8E0",
+    "#D0CDD7",
+    "#BCBAC7",
+    "#8E8C99",
+    "#84828E",
+    "#65636D",
+    "#211F26"
+   ]
+  },
+  "mint": {
+   "dark": [
+    "#0E1515",
+    "#0F1B1B",
+    "#092C2B",
+    "#003A38",
+    "#004744",
+    "#105650",
+    "#1E685F",
+    "#277F70",
+    "#86EAD4",
+    "#A8F5E5",
+    "#58D5BA",
+    "#C4F5E1"
+   ],
+   "light": [
+    "#F9FEFD",
+    "#F2FBF9",
+    "#DDF9F2",
+    "#C8F4E9",
+    "#B3ECDE",
+    "#9CE0D0",
+    "#7ECFBD",
+    "#4CBBA5",
+    "#86EAD4",
+    "#7DE0CB",
+    "#027864",
+    "#16433C"
+   ]
+  },
+  "olive": {
+   "dark": [
+    "#111210",
+    "#181917",
+    "#212220",
+    "#282A27",
+    "#2F312E",
+    "#383A36",
+    "#454843",
+    "#5C625B",
+    "#687066",
+    "#767D74",
+    "#AFB5AD",
+    "#ECEEEC"
+   ],
+   "light": [
+    "#FCFDFC",
+    "#F8FAF8",
+    "#EFF1EF",
+    "#E7E9E7",
+    "#DFE2DF",
+    "#D7DAD7",
+    "#CCCFCC",
+    "#B9BCB8",
+    "#898E87",
+    "#7F847D",
+    "#60655F",
+    "#1D211C"
+   ]
+  },
+  "orange": {
+   "dark": [
+    "#17120E",
+    "#1E160F",
+    "#331E0B",
+    "#462100",
+    "#562800",
+    "#66350C",
+    "#7E451D",
+    "#A35829",
+    "#F76B15",
+    "#FF801F",
+    "#FFA057",
+    "#FFE0C2"
+   ],
+   "light": [
+    "#FEFCFB",
+    "#FFF7ED",
+    "#FFEFD6",
+    "#FFDFB5",
+    "#FFD19A",
+    "#FFC182",
+    "#F5AE73",
+    "#EC9455",
+    "#F76B15",
+    "#EF5F00",
+    "#CC4E00",
+    "#582D1D"
+   ]
+  },
+  "pink": {
+   "dark": [
+    "#191117",
+    "#21121D",
+    "#37172F",
+    "#4B143D",
+    "#591C47",
+    "#692955",
+    "#833869",
+    "#A84885",
+    "#D6409F",
+    "#DE51A8",
+    "#FF8DCC",
+    "#FDD1EA"
+   ],
+   "light": [
+    "#FFFCFE",
+    "#FEF7FB",
+    "#FEE9F5",
+    "#FBDCEF",
+    "#F6CEE7",
+    "#EFBFDD",
+    "#E7ACD0",
+    "#DD93C2",
+    "#D6409F",
+    "#CF3897",
+    "#C2298A",
+    "#651249"
+   ]
+  },
+  "plum": {
+   "dark": [
+    "#181118",
+    "#201320",
+    "#351A35",
+    "#451D47",
+    "#512454",
+    "#5E3061",
+    "#734079",
+    "#92549C",
+    "#AB4ABA",
+    "#B658C4",
+    "#E796F3",
+    "#F4D4F4"
+   ],
+   "light": [
+    "#FEFCFF",
+    "#FDF7FD",
+    "#FBEBFB",
+    "#F7DEF8",
+    "#F2D1F3",
+    "#E9C2EC",
+    "#DEADE3",
+    "#CF91D8",
+    "#AB4ABA",
+    "#A144AF",
+    "#953EA3",
+    "#53195D"
+   ]
+  },
+  "purple": {
+   "dark": [
+    "#18111B",
+    "#1E1523",
+    "#301C3B",
+    "#3D224E",
+    "#48295C",
+    "#54346B",
+    "#664282",
+    "#8457AA",
+    "#8E4EC6",
+    "#9A5CD0",
+    "#D19DFF",
+    "#ECD9FA"
+   ],
+   "light": [
+    "#FEFCFE",
+    "#FBF7FE",
+    "#F7EDFE",
+    "#F2E2FC",
+    "#EAD5F9",
+    "#E0C4F4",
+    "#D1AFEC",
+    "#BE93E4",
+    "#8E4EC6",
+    "#8347B9",
+    "#8145B5",
+    "#402060"
+   ]
+  },
+  "red": {
+   "dark": [
+    "#191111",
+    "#201314",
+    "#3B1219",
+    "#500F1C",
+    "#611623",
+    "#72232D",
+    "#8C333A",
+    "#B54548",
+    "#E5484D",
+    "#EC5D5E",
+    "#FF9592",
+    "#FFD1D9"
+   ],
+   "light": [
+    "#FFFCFC",
+    "#FFF7F7",
+    "#FEEBEC",
+    "#FFDBDC",
+    "#FFCDCE",
+    "#FDBDBE",
+    "#F4A9AA",
+    "#EB8E90",
+    "#E5484D",
+    "#DC3E42",
+    "#CE2C31",
+    "#641723"
+   ]
+  },
+  "ruby": {
+   "dark": [
+    "#191113",
+    "#1E1517",
+    "#3A141E",
+    "#4E1325",
+    "#5E1A2E",
+    "#6F2539",
+    "#883447",
+    "#B3445A",
+    "#E54666",
+    "#EC5A72",
+    "#FF949D",
+    "#FED2E1"
+   ],
+   "light": [
+    "#FFFCFD",
+    "#FFF7F8",
+    "#FEEAED",
+    "#FFDCE1",
+    "#FFCED6",
+    "#F8BFC8",
+    "#EFACB8",
+    "#E592A3",
+    "#E54666",
+    "#DC3B5D",
+    "#CA244D",
+    "#64172B"
+   ]
+  },
+  "sage": {
+   "dark": [
+    "#101211",
+    "#171918",
+    "#202221",
+    "#272A29",
+    "#2E3130",
+    "#373B39",
+    "#444947",
+    "#5B625F",
+    "#63706B",
+    "#717D79",
+    "#ADB5B2",
+    "#ECEEED"
+   ],
+   "light": [
+    "#FBFDFC",
+    "#F7F9F8",
+    "#EEF1F0",
+    "#E6E9E8",
+    "#DFE2E0",
+    "#D7DAD9",
+    "#CBCFCD",
+    "#B8BCBA",
+    "#868E8B",
+    "#7C8481",
+    "#5F6563",
+    "#1A211E"
+   ]
+  },
+  "sand": {
+   "dark": [
+    "#111110",
+    "#191918",
+    "#222221",
+    "#2A2A28",
+    "#31312E",
+    "#3B3A37",
+    "#494844",
+    "#62605B",
+    "#6F6D66",
+    "#7C7B74",
+    "#B5B3AD",
+    "#EEEEEC"
+   ],
+   "light": [
+    "#FDFDFC",
+    "#F9F9F8",
+    "#F1F0EF",
+    "#E9E8E6",
+    "#E2E1DE",
+    "#DAD9D6",
+    "#CFCECA",
+    "#BCBBB5",
+    "#8D8D86",
+    "#82827C",
+    "#63635E",
+    "#21201C"
+   ]
+  },
+  "sky": {
+   "dark": [
+    "#0D141F",
+    "#111A27",
+    "#112840",
+    "#113555",
+    "#154467",
+    "#1B537B",
+    "#1F6692",
+    "#197CAE",
+    "#7CE2FE",
+    "#A8EEFF",
+    "#75C7F0",
+    "#C2F3FF"
+   ],
+   "light": [
+    "#F9FEFF",
+    "#F1FAFD",
+    "#E1F6FD",
+    "#D1F0FA",
+    "#BEE7F5",
+    "#A9DAED",
+    "#8DCAE3",
+    "#60B3D7",
+    "#7CE2FE",
+    "#74DAF8",
+    "#00749E",
+    "#1D3E56"
+   ]
+  },
+  "slate": {
+   "dark": [
+    "#111113",
+    "#18191B",
+    "#212225",
+    "#272A2D",
+    "#2E3135",
+    "#363A3F",
+    "#43484E",
+    "#5A6169",
+    "#696E77",
+    "#777B84",
+    "#B0B4BA",
+    "#EDEEF0"
+   ],
+   "light": [
+    "#FCFCFD",
+    "#F9F9FB",
+    "#F0F0F3",
+    "#E8E8EC",
+    "#E0E1E6",
+    "#D9D9E0",
+    "#CDCED6",
+    "#B9BBC6",
+    "#8B8D98",
+    "#80838D",
+    "#60646C",
+    "#1C2024"
+   ]
+  },
+  "teal": {
+   "dark": [
+    "#0D1514",
+    "#111C1B",
+    "#0D2D2A",
+    "#023B37",
+    "#084843",
+    "#145750",
+    "#1C6961",
+    "#207E73",
+    "#12A594",
+    "#0EB39E",
+    "#0BD8B6",
+    "#ADF0DD"
+   ],
+   "light": [
+    "#FAFEFD",
+    "#F3FBF9",
+    "#E0F8F3",
+    "#CCF3EA",
+    "#B8EAE0",
+    "#A1DED2",
+    "#83CDC1",
+    "#53B9AB",
+    "#12A594",
+    "#0D9B8A",
+    "#008573",
+    "#0D3D38"
+   ]
+  },
+  "tomato": {
+   "dark": [
+    "#181111",
+    "#1F1513",
+    "#391714",
+    "#4E1511",
+    "#5E1C16",
+    "#6E2920",
+    "#853A2D",
+    "#AC4D39",
+    "#E54D2E",
+    "#EC6142",
+    "#FF977D",
+    "#FBD3CB"
+   ],
+   "light": [
+    "#FFFCFC",
+    "#FFF8F7",
+    "#FEEBE7",
+    "#FFDCD3",
+    "#FFCDC2",
+    "#FDBDAF",
+    "#F5A898",
+    "#EC8E7B",
+    "#E54D2E",
+    "#DD4425",
+    "#D13415",
+    "#5C271F"
+   ]
+  },
+  "violet": {
+   "dark": [
+    "#14121F",
+    "#1B1525",
+    "#291F43",
+    "#33255B",
+    "#3C2E69",
+    "#473876",
+    "#56468B",
+    "#6958AD",
+    "#6E56CF",
+    "#7D66D9",
+    "#BAA7FF",
+    "#E2DDFE"
+   ],
+   "light": [
+    "#FDFCFE",
+    "#FAF8FF",
+    "#F4F0FE",
+    "#EBE4FF",
+    "#E1D9FF",
+    "#D4CAFE",
+    "#C2B5F5",
+    "#AA99EC",
+    "#6E56CF",
+    "#654DC4",
+    "#6550B9",
+    "#2F265F"
+   ]
+  },
+  "yellow": {
+   "dark": [
+    "#14120B",
+    "#1B180F",
+    "#2D2305",
+    "#362B00",
+    "#433500",
+    "#524202",
+    "#665417",
+    "#836A21",
+    "#FFE629",
+    "#FFFF57",
+    "#F5E147",
+    "#F6EEB4"
+   ],
+   "light": [
+    "#FDFDF9",
+    "#FEFCE9",
+    "#FFFAB8",
+    "#FFF394",
+    "#FFE770",
+    "#F3D768",
+    "#E4C767",
+    "#D5AE39",
+    "#FFE629",
+    "#FFDC00",
+    "#9E6C00",
+    "#473B1F"
+   ]
+  }
+ }
+}

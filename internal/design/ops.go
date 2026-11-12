@@ -46,6 +46,15 @@ type Op struct {
 	X        *float64 `json:"x,omitempty"`
 	Y        *float64 `json:"y,omitempty"`
 	Resolved *bool    `json:"resolved,omitempty"`
+	// Block is the kit block an insert places; Props fill its slots, ID
+	// names its root (and prefixes its layers' ids), Parent, Index, X and Y
+	// say where it goes.
+	Block string `json:"block,omitempty"`
+	// Accent is set_theme's accent hue (a Radix colour name); Name is the
+	// theme id and Mode the mode to show. Color, when set, derives a custom
+	// theme from that brand colour instead of a built-in theme.
+	Accent string `json:"accent,omitempty"`
+	Color  string `json:"color,omitempty"`
 }
 
 // Result says what a batch did.
@@ -130,10 +139,18 @@ func newNode(raw json.RawMessage, seen map[string]bool, depth int) (*Node, error
 		}
 	}
 	seen[n.ID] = true
+	if raw, ok := keys["icon"]; ok {
+		if err := iconNode(&n, raw, keys); err != nil {
+			return nil, err
+		}
+	}
 	_, hasFills := keys["fills"]
 	_, hasStrokes := keys["strokes"]
 	_, hasW := keys["width"]
 	_, hasH := keys["height"]
+	if _, icon := keys["icon"]; icon {
+		hasW, hasH, hasFills, hasStrokes = true, true, true, true
+	}
 	switch n.Type {
 	case TypeFrame, TypeComponent:
 		if !hasFills {
@@ -176,6 +193,44 @@ func newNode(raw json.RawMessage, seen map[string]bool, depth int) (*Node, error
 		n.Children = []*Node{}
 	}
 	return &n, nil
+}
+
+// iconNode makes a node an icon of the kit's set: {"icon":"heart"} becomes a
+// stroked path in the theme's text colour, 24px unless a size is given.
+func iconNode(n *Node, raw json.RawMessage, keys map[string]json.RawMessage) error {
+	var name string
+	if err := json.Unmarshal(raw, &name); err != nil {
+		return fmt.Errorf("icon must be an icon name")
+	}
+	ic, err := LookupIcon(name)
+	if err != nil {
+		return err
+	}
+	n.Type = TypePath
+	n.D = ic.D
+	n.ViewBox = &[2]float64{24, 24}
+	if n.Name == "" {
+		n.Name = "Icon/" + ic.Name
+	}
+	size := 24.0
+	if _, ok := keys["width"]; ok && n.Width > 0 {
+		size = n.Width
+	} else if _, ok := keys["height"]; ok && n.Height > 0 {
+		size = n.Height
+	}
+	n.Width, n.Height = size, size
+	if _, ok := keys["fills"]; !ok {
+		n.Fills = []Paint{}
+	}
+	if _, ok := keys["strokes"]; !ok {
+		n.Strokes = []Stroke{{Color: "#000000", Variable: colorVar("text"), Width: iconStroke(size), Cap: "round", Join: "round"}}
+	}
+	for i := range n.Strokes {
+		if n.Strokes[i].Cap == "" {
+			n.Strokes[i].Cap, n.Strokes[i].Join = "round", "round"
+		}
+	}
+	return nil
 }
 
 // Apply runs a batch of ops on the document's page `page` (id or name;
@@ -312,6 +367,11 @@ func (d *Doc) apply(i int, op Op, batch string, seen map[string]bool, res *Resul
 			}
 			Measure(next)
 		}
+		if _, width := op.Props["width"]; width || op.Props["height"] != nil {
+			if owner := kitOwner(at.Path); owner != nil && owner.ID != at.Node.ID {
+				res.Notes = append(res.Notes, fmt.Sprintf("update of %q changes the size of a layer inside block %q; prefer set_block_props, a fixed child taller than its row is what clips text", at.Node.ID, owner.Kit.ID))
+			}
+		}
 		*at.Node = *next
 		touched[op.ID] = true
 	case "delete":
@@ -387,6 +447,9 @@ func (d *Doc) apply(i int, op Op, batch string, seen map[string]bool, res *Resul
 		if name == "" {
 			name = fmt.Sprintf("Page %d", len(d.Pages)+1)
 		}
+		if other := d.pageNamed(name, nil); other != nil {
+			return fmt.Errorf("a page named %q already exists (%s): pass page %q to work on it, or pick another name", other.Name, other.ID, other.ID)
+		}
 		id := NewID()
 		for seen[id] {
 			id = NewID()
@@ -400,6 +463,9 @@ func (d *Doc) apply(i int, op Op, batch string, seen map[string]bool, res *Resul
 			return err
 		}
 		if op.Name != "" {
+			if other := d.pageNamed(op.Name, p); other != nil {
+				return fmt.Errorf("a page named %q already exists (%s): pick another name", other.Name, other.ID)
+			}
 			p.Name = op.Name
 		}
 		if op.Background != "" {
@@ -423,6 +489,29 @@ func (d *Doc) apply(i int, op Op, batch string, seen map[string]bool, res *Resul
 			}
 		}
 		d.Pages = pages
+	case "set_theme":
+		if op.Name == "" && op.Color == "" {
+			return fmt.Errorf("set_theme needs name: a theme id from the themes action, or color: a brand #RRGGBB")
+		}
+		return d.setTheme(op)
+	case "insert":
+		if op.Block == "" {
+			return fmt.Errorf("insert needs block: a block id from the blocks action")
+		}
+		return d.insertBlock(i, op, batch, seen, res, touched)
+	case "set_block_props":
+		return d.setBlockProps(i, op, seen, res, touched)
+	case "link_screens":
+		p, err := d.pageFor(op, batch)
+		if err != nil {
+			return err
+		}
+		return d.linkScreens(p)
+	case "recipe":
+		if op.Name == "" {
+			return fmt.Errorf("recipe needs name: landing, pricing, dashboard, onboarding, signin, settings, product or desktop")
+		}
+		return d.applyRecipe(i, op, batch, seen, res, touched)
 	default:
 		if ok, err := d.tokenOp(i, op, seen, res); ok {
 			return err
@@ -430,7 +519,7 @@ func (d *Doc) apply(i int, op Op, batch string, seen map[string]bool, res *Resul
 		if ok, err := d.commentOp(i, op, seen, res, batch); ok {
 			return err
 		}
-		return fmt.Errorf("unknown op %q: use add, update, delete, move, make_component, add_page, update_page, delete_page, set_style, delete_style, set_variable, delete_variable, set_modes, add_comment, reply_comment, resolve_comment or delete_comment", op.Op)
+		return fmt.Errorf("unknown op %q: use add, insert, set_block_props, update, delete, move, make_component, set_theme, recipe, link_screens, add_page, update_page, delete_page, set_style, delete_style, set_variable, delete_variable, set_modes, add_comment, reply_comment, resolve_comment or delete_comment", op.Op)
 	}
 	return nil
 }
@@ -566,8 +655,9 @@ func FitGroups(nodes []*Node) {
 	}
 }
 
-// Glyph width of a sans font as a share of its size; the app measures the
-// real font, this estimate only keeps boxes near the truth until it does.
+// Glyph width of an unknown font as a share of its size. Kit faces use the
+// advance tables in metrics.go; this remains for families those tables
+// do not cover.
 const glyphWidth = 0.55
 
 // LineHeight is a text node's line height in pixels.
@@ -582,74 +672,36 @@ func LineHeight(n *Node) float64 {
 	return math.Round(size*1.2*100) / 100
 }
 
-func charWidth(n *Node) float64 {
-	size := 16.0
-	if n.Font != nil {
-		size = n.Font.Size
-	}
-	w := size * glyphWidth
-	if n.LetterSpacing != nil {
-		w += *n.LetterSpacing
-	}
-	return w
-}
-
-// Lines breaks a text node's text the way the app does, by estimate:
-// paragraphs for auto-width text, words wrapped at the width otherwise.
+// Lines breaks a text node's text the way the app does: one line per
+// paragraph when the box follows the text, otherwise words wrapped at the
+// node's width using the font's real advances.
 func Lines(n *Node) []string {
-	paragraphs := strings.Split(n.TextValue(), "\n")
+	paragraphs := strings.Split(displayText(n), "\n")
 	if n.AutoResize == "width" || n.AutoResize == "" {
 		return paragraphs
 	}
-	cw := charWidth(n)
-	perLine := max(1, int(math.Floor(math.Max(1, n.Width)/math.Max(cw, 0.01)+0.01)))
+	maxW := math.Max(1, n.Width)
 	var out []string
 	for _, p := range paragraphs {
-		words := strings.Fields(p)
-		if len(words) == 0 {
-			out = append(out, "")
-			continue
-		}
-		line := ""
-		for _, w := range words {
-			for len([]rune(w)) > perLine {
-				if line != "" {
-					out = append(out, line)
-					line = ""
-				}
-				r := []rune(w)
-				out = append(out, string(r[:perLine]))
-				w = string(r[perLine:])
-			}
-			switch {
-			case line == "":
-				line = w
-			case len([]rune(line))+1+len([]rune(w)) <= perLine:
-				line += " " + w
-			default:
-				out = append(out, line)
-				line = w
-			}
-		}
-		out = append(out, line)
+		out = append(out, wrapParagraph(n, p, maxW)...)
 	}
 	return out
 }
 
-// Measure sets an auto-sized text node's box from its text, by estimate.
+// Measure sets an auto-sized text node's box from its text.
 func Measure(n *Node) {
 	if n.Type != TypeText || n.AutoResize == "none" {
 		return
 	}
 	lines := Lines(n)
 	if n.AutoResize == "width" || n.AutoResize == "" {
-		widest := 0
+		widest := 0.0
 		for _, l := range lines {
-			widest = max(widest, len([]rune(l)))
+			widest = math.Max(widest, textWidthOf(n, l))
 		}
-		n.Width = math.Ceil(float64(widest) * charWidth(n))
+		n.Width = ceilPx(widest)
 	}
-	n.Height = math.Ceil(float64(len(lines)) * LineHeight(n))
+	n.Height = ceilPx(float64(len(lines)) * LineHeight(n))
 }
 
 func overflowNote(n *Node) string {
@@ -661,4 +713,15 @@ func overflowNote(n *Node) string {
 		return fmt.Sprintf("text %q (%s) needs about %.0fpx of height but its box is %.0fpx; use auto_resize \"height\" or make it taller", n.Name, n.ID, need, n.Height)
 	}
 	return ""
+}
+
+// pageNamed finds a page by name, ignoring case and surrounding space, other than `except`: page names must be unique, since exports and refs go by name.
+func (d *Doc) pageNamed(name string, except *Page) *Page {
+	name = strings.TrimSpace(name)
+	for _, p := range d.Pages {
+		if p != except && strings.EqualFold(strings.TrimSpace(p.Name), name) {
+			return p
+		}
+	}
+	return nil
 }

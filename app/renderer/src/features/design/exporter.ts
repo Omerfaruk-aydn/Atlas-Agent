@@ -10,6 +10,7 @@ import { t } from "../../lib/i18n";
 import { useApp } from "../../stores/app";
 import { useDesign } from "../../stores/design";
 import { imageUrl } from "./Canvas";
+import { KIT_FONTS } from "./fonts";
 import { blobToBase64, buildSvg, type ExportFormat, exportName, exportPlan, familiesOf, svgToPng } from "./export";
 import { pageOf, walk } from "./model";
 
@@ -35,12 +36,14 @@ async function fontStyle(families: Set<string>): Promise<string> {
   const rules: string[] = [];
   const done = new Set<string>();
   for (const name of families) {
-    const font = FONT_FILES[name];
+    const kit = KIT_FONTS[name];
+    const own = FONT_FILES[name];
+    const font: { family: string; files: { url: string; weight?: number }[] } | undefined = own ? { family: own.family, files: own.files.map((url) => ({ url })) } : kit;
     if (!font || done.has(font.family)) continue;
     done.add(font.family);
     for (const file of font.files) {
       try {
-        rules.push(`@font-face{font-family:"${font.family}";font-weight:100 900;src:url(${await dataUrl(file)}) format("woff2");}`);
+        rules.push(`@font-face{font-family:"${font.family}";font-weight:${file.weight ?? "100 900"};src:url(${await dataUrl(file.url)}) format("woff2");}`);
       } catch {
         // The export falls back to an installed font.
       }

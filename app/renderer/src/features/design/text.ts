@@ -3,6 +3,7 @@
 // engine when there is one, and an estimate otherwise (tests, the agent's
 // own SVG export uses the same estimate in Go).
 
+import { KIT_FONT_NAMES } from "./kit-fonts";
 import type { DesignNode } from "./model";
 
 export interface TextLine {
@@ -67,7 +68,11 @@ export function quoteFamily(family: string): string {
   const generic = new Set(["serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui"]);
   const name = family.replace(/["\\]/g, "");
   const first = generic.has(name) ? name : `"${name}"`;
-  return name === "Inter" || name === "Inter Variable" ? `"Inter Variable", "Inter", sans-serif` : `${first}, sans-serif`;
+  if (name === "Inter" || name === "Inter Variable") return `"Inter Variable", "Inter", sans-serif`;
+  // A kit font is bundled under its own name (often "<name> Variable").
+  const kit = KIT_FONT_NAMES[name];
+  if (kit) return kit.family === name ? `"${name}", ${kit.generic}` : `"${kit.family}", "${name}", ${kit.generic}`;
+  return `${first}, sans-serif`;
 }
 
 export function displayText(n: DesignNode): string {

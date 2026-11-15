@@ -5,6 +5,7 @@ import (
 	"html"
 	"math"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -244,7 +245,7 @@ func ScalePath(d string, sx, sy float64) string {
 func shape(b *strings.Builder, n *Node, by float64, attrs string) bool {
 	w, h := n.Width, n.Height
 	switch n.Type {
-	case TypeRect, TypeFrame, TypeComponent, TypeInstance, TypeImage:
+	case TypeRect, TypeFrame, TypeSection, TypeComponent, TypeInstance, TypeImage:
 		r := radii(n)
 		for i := range r {
 			if r[i] > 0 {
@@ -318,6 +319,9 @@ func (r *svgWriter) paint(defs *strings.Builder, p Paint) string {
 			op = fmt.Sprintf(` stop-opacity="%s"`, num(a))
 		}
 		fmt.Fprintf(&stops, `<stop offset="%s" stop-color="%s"%s/>`, num(s.Offset), rgb, op)
+	}
+	if p.Type == "angular" {
+		return angularPaint(defs, id, p, r.w, r.h, opacity)
 	}
 	if p.Type == "radial" {
 		fmt.Fprintf(defs, `<radialGradient id="%s" cx="0.5" cy="0.5" r="0.5">%s</radialGradient>`, id, stops.String())
@@ -408,12 +412,7 @@ func (r *svgWriter) text(b *strings.Builder, n *Node, fill string) {
 		top = n.Height - total
 	}
 	ascent := (lh-f.Size)/2 + f.Size*0.8
-	family := esc(f.Family)
-	if f.Family == "Inter" {
-		family = "Inter Variable, Inter, sans-serif"
-	} else {
-		family += ", sans-serif"
-	}
+	family := esc(FontStack(f.Family))
 	extra := ""
 	if f.Style == "italic" {
 		extra += ` font-style="italic"`
@@ -504,7 +503,14 @@ func (r *svgWriter) content(defs, b *strings.Builder, n *Node) {
 			case "stretch":
 				ratio = "none"
 			}
-			fmt.Fprintf(b, `<image href="%s" width="%s" height="%s" preserveAspectRatio="%s" clip-path="url(#%s)"/>`, esc(n.Src), num(n.Width), num(n.Height), ratio, clip)
+			// A crop enlarges the picture about the centre of its box and shifts it.
+			ix, iy, iw, ih := 0.0, 0.0, n.Width, n.Height
+			if c := n.Crop; c != nil {
+				iw, ih = n.Width*c.Zoom, n.Height*c.Zoom
+				ix = (n.Width-iw)/2 + c.X*n.Width
+				iy = (n.Height-ih)/2 + c.Y*n.Height
+			}
+			fmt.Fprintf(b, `<g clip-path="url(#%s)"><image href="%s" x="%s" y="%s" width="%s" height="%s" preserveAspectRatio="%s"/></g>`, clip, esc(n.Src), num(ix), num(iy), num(iw), num(ih), ratio)
 		}
 	case TypeGroup:
 		if n.BoolOp != "" && len(n.Children) > 0 {
@@ -526,10 +532,12 @@ func (r *svgWriter) content(defs, b *strings.Builder, n *Node) {
 			if len(n.Children) == 0 {
 				kids = m.Children
 			}
-			if m.Width > 0 {
+			// A main with auto layout has its layers laid out again at the
+			// instance's size (Resolved); one without is scaled to fit.
+			if m.Width > 0 && (m.Layout == nil || len(n.Children) == 0) {
 				sx = n.Width / m.Width
 			}
-			if m.Height > 0 {
+			if m.Height > 0 && (m.Layout == nil || len(n.Children) == 0) {
 				sy = n.Height / m.Height
 			}
 			clipKids = m.Clip == nil || *m.Clip
@@ -568,6 +576,12 @@ func (r *svgWriter) content(defs, b *strings.Builder, n *Node) {
 		}
 		if len(s.Dash) > 0 {
 			attrs += fmt.Sprintf(` stroke-dasharray="%s"`, joinNums(s.Dash))
+		}
+		if s.Cap != "" {
+			attrs += fmt.Sprintf(` stroke-linecap="%s"`, s.Cap)
+		}
+		if s.Join != "" {
+			attrs += fmt.Sprintf(` stroke-linejoin="%s"`, s.Join)
 		}
 		by := 0.0
 		closed := n.Type != TypeLine && n.Type != TypePath && n.Type != TypePolygon && n.Type != TypeStar
@@ -685,4 +699,71 @@ func (r *svgWriter) maskedKids(defs, b *strings.Builder, kids []*Node) {
 	fmt.Fprintf(b, `<g clip-path="url(#%s)">`, clip)
 	r.maskedKids(defs, b, kids[at+1:])
 	b.WriteString("</g>")
+}
+
+// angularWedges is how many thin wedges an angular gradient is drawn with:
+// SVG has no conic gradient.
+const angularWedges = 180
+
+// angularPaint draws an angular gradient as a pattern of wedges around the
+// centre of the box, and returns the fill attributes that use it.
+func angularPaint(defs *strings.Builder, id string, p Paint, w, h, opacity float64) string {
+	cx, cy := w/2, h/2
+	reach := math.Hypot(w, h)/2 + 2
+	start := 0.0
+	if p.Angle != nil {
+		start = *p.Angle * math.Pi / 180
+	}
+	var wedges strings.Builder
+	for i := 0; i < angularWedges; i++ {
+		a0 := start + float64(i)/angularWedges*2*math.Pi
+		a1 := start + (float64(i)+1.15)/angularWedges*2*math.Pi
+		rgb, alpha := stopColorAt(p.Stops, (float64(i)+0.5)/angularWedges)
+		op := ""
+		if alpha < 1 {
+			op = fmt.Sprintf(` fill-opacity="%s"`, num(alpha))
+		}
+		fmt.Fprintf(&wedges, `<path d="M%s %sL%s %sL%s %sZ" fill="%s"%s/>`, num(cx), num(cy), num(cx+math.Cos(a0)*reach), num(cy+math.Sin(a0)*reach), num(cx+math.Cos(a1)*reach), num(cy+math.Sin(a1)*reach), rgb, op)
+	}
+	fmt.Fprintf(defs, `<pattern id="%s" patternUnits="userSpaceOnUse" x="0" y="0" width="%s" height="%s"><svg width="%s" height="%s" viewBox="0 0 %s %s" overflow="hidden">%s</svg></pattern>`, id, num(w), num(h), num(w), num(h), num(w), num(h), wedges.String())
+	out := fmt.Sprintf(` fill="url(#%s)"`, id)
+	if opacity < 1 {
+		out += fmt.Sprintf(` fill-opacity="%s"`, num(opacity))
+	}
+	return out
+}
+
+// stopColorAt is the colour at t along a gradient's stops, as #RRGGBB and alpha.
+func stopColorAt(stops []Stop, t float64) (string, float64) {
+	sorted := append([]Stop(nil), stops...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Offset < sorted[j].Offset })
+	lo, hi := sorted[0], sorted[len(sorted)-1]
+	switch {
+	case t <= sorted[0].Offset:
+		hi = sorted[0]
+	case t >= sorted[len(sorted)-1].Offset:
+		lo = sorted[len(sorted)-1]
+	default:
+		for i := 0; i < len(sorted)-1; i++ {
+			if t >= sorted[i].Offset && t <= sorted[i+1].Offset {
+				lo, hi = sorted[i], sorted[i+1]
+				break
+			}
+		}
+	}
+	k := 0.0
+	if span := hi.Offset - lo.Offset; span > 0 {
+		k = math.Min(1, math.Max(0, (t-lo.Offset)/span))
+	}
+	rgbA, aA := splitColor(lo.Color)
+	rgbB, aB := splitColor(hi.Color)
+	ch := func(a, b string, at int) int {
+		x, _ := strconv.ParseInt(a[at:at+2], 16, 32)
+		y, _ := strconv.ParseInt(b[at:at+2], 16, 32)
+		return int(math.Round(float64(x) + (float64(y)-float64(x))*k))
+	}
+	if len(rgbA) != 7 || len(rgbB) != 7 {
+		return "#000000", 1
+	}
+	return fmt.Sprintf("#%02X%02X%02X", ch(rgbA, rgbB, 1), ch(rgbA, rgbB, 3), ch(rgbA, rgbB, 5)), aA + (aB-aA)*k
 }

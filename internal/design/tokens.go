@@ -73,6 +73,9 @@ type Override struct {
 	FillStyle   string        `json:"fill_style,omitempty"`
 	TextStyle   string        `json:"text_style,omitempty"`
 	EffectStyle string        `json:"effect_style,omitempty"`
+	// D swaps a path's geometry, as an icon swap: the instance shows another
+	// icon in the same place, size and colour.
+	D string `json:"d,omitempty"`
 }
 
 func sanitizeVariant(v map[string]string) map[string]string {
@@ -112,6 +115,7 @@ func sanitizeOverrides(in map[string]*Override) map[string]*Override {
 			t := cut(*o.Text, 100_000)
 			o.Text = &t
 		}
+		o.D = cut(o.D, 1<<16)
 		if o.Font != nil {
 			o.Font.Family = cut(o.Font.Family, 120)
 			if o.Font.Size != 0 {
@@ -355,6 +359,9 @@ func (r *resolver) node(n *Node, over map[string]*Override, depth int) *Node {
 				for i, c := range kids {
 					kids[i] = r.node(c, n.Overrides, depth+1)
 				}
+				if m.Layout != nil {
+					kids = layoutInstance(m, kids, n.Width, n.Height)
+				}
 				n.Children = kids
 			}
 		}
@@ -413,5 +420,8 @@ func applyOverride(n *Node, o *Override) {
 	}
 	if o.EffectStyle != "" {
 		n.EffectStyle = o.EffectStyle
+	}
+	if o.D != "" && n.Type == TypePath {
+		n.D = o.D
 	}
 }

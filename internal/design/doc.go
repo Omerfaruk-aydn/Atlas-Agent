@@ -44,16 +44,21 @@ const (
 	TypeImage     NodeType = "image"
 	TypeComponent NodeType = "component"
 	TypeInstance  NodeType = "instance"
+	// TypeSection holds frames on the canvas, labelled and not clipped.
+	TypeSection NodeType = "section"
+	// TypeSlice marks a region of the page to export; it draws nothing.
+	TypeSlice NodeType = "slice"
 )
 
 var nodeTypes = map[NodeType]bool{
 	TypeFrame: true, TypeGroup: true, TypeRect: true, TypeEllipse: true, TypeLine: true, TypePolygon: true,
 	TypeStar: true, TypePath: true, TypeText: true, TypeImage: true, TypeComponent: true, TypeInstance: true,
+	TypeSection: true, TypeSlice: true,
 }
 
 // IsContainer reports whether nodes of this type hold children.
 func (t NodeType) IsContainer() bool {
-	return t == TypeFrame || t == TypeGroup || t == TypeComponent
+	return t == TypeFrame || t == TypeGroup || t == TypeComponent || t == TypeSection
 }
 
 // Stop is one colour of a gradient.
@@ -62,7 +67,7 @@ type Stop struct {
 	Color  string  `json:"color"`
 }
 
-// Paint fills a shape: a solid colour or a linear or radial gradient.
+// Paint fills a shape: a solid colour, a linear, radial or angular gradient, or an image.
 type Paint struct {
 	Type    string   `json:"type"`
 	Color   string   `json:"color,omitempty"`
@@ -77,6 +82,13 @@ type Paint struct {
 	Fit string `json:"fit,omitempty"`
 }
 
+// Crop is an image's zoom and offset inside its box.
+type Crop struct {
+	Zoom float64 `json:"zoom"`
+	X    float64 `json:"x"`
+	Y    float64 `json:"y"`
+}
+
 // Stroke outlines a shape.
 type Stroke struct {
 	Color   string    `json:"color"`
@@ -87,6 +99,11 @@ type Stroke struct {
 	Visible *bool     `json:"visible,omitempty"`
 	// Variable names a colour variable that sets Color in the active mode.
 	Variable string `json:"variable,omitempty"`
+	// Cap and Join shape the ends and corners of open paths, as in SVG:
+	// cap butt (default), round or square; join miter (default), round or
+	// bevel. Icons use round.
+	Cap  string `json:"cap,omitempty"`
+	Join string `json:"join,omitempty"`
 }
 
 // Effect is a shadow or a blur.
@@ -165,6 +182,7 @@ type Node struct {
 	SizingY     string       `json:"sizing_y,omitempty"`
 	Absolute    bool         `json:"absolute,omitempty"`
 	Constraints *Constraints `json:"constraints,omitempty"`
+	Grids       []LayoutGrid `json:"grids,omitempty"`
 
 	Text          *string  `json:"text,omitempty"`
 	Font          *Font    `json:"font,omitempty"`
@@ -178,6 +196,9 @@ type Node struct {
 
 	Src string `json:"src,omitempty"`
 	Fit string `json:"fit,omitempty"`
+	// Crop enlarges an image about the centre of its box (Zoom ≥ 1) and shifts
+	// it by shares of the box (X, Y).
+	Crop *Crop `json:"crop,omitempty"`
 
 	D       string      `json:"d,omitempty"`
 	ViewBox *[2]float64 `json:"view_box,omitempty"`
@@ -185,7 +206,11 @@ type Node struct {
 	Sides *int     `json:"sides,omitempty"`
 	Inner *float64 `json:"inner,omitempty"`
 
+	Alt string `json:"alt,omitempty"`
+
 	ComponentID string `json:"component_id,omitempty"`
+	// Kit is set on the root of a block placed with insert.
+	Kit *BlockRef `json:"kit,omitempty"`
 
 	FillStyle    string               `json:"fill_style,omitempty"`
 	TextStyle    string               `json:"text_style,omitempty"`
@@ -206,6 +231,14 @@ type Page struct {
 	Name       string  `json:"name"`
 	Background string  `json:"background"`
 	Children   []*Node `json:"children"`
+	// Guides are the ruler guides pulled across the page.
+	Guides []Guide `json:"guides,omitempty"`
+}
+
+// Guide is a ruler guide: a vertical line at x or a horizontal line at y.
+type Guide struct {
+	Axis string  `json:"axis"`
+	At   float64 `json:"at"`
 }
 
 // Doc is a design file.
@@ -218,6 +251,13 @@ type Doc struct {
 	Comments  []Comment  `json:"comments,omitempty"`
 	Styles    *Styles    `json:"styles,omitempty"`
 	Variables *Variables `json:"variables,omitempty"`
+	// Theme is the kit theme the styles and variables came from.
+	Theme *ThemeRef `json:"theme,omitempty"`
+	// Custom is the full theme when Theme.ID is "custom" (derived from a
+	// brand colour). It is not one of the built-in themes.
+	Custom *Theme `json:"custom,omitempty"`
+	// Renders records the hash of each page last rasterised by the agent.
+	Renders []RenderStamp `json:"renders,omitempty"`
 }
 
 // IsVisible reports whether the node is drawn.
@@ -340,7 +380,7 @@ func sanitizePaints(in []Paint) []Paint {
 			p.Visible = nil
 		}
 		switch p.Type {
-		case "linear", "radial":
+		case "linear", "radial", "angular":
 			var stops []Stop
 			for _, s := range p.Stops {
 				if len(stops) == 16 {
@@ -401,6 +441,8 @@ func sanitizeStrokes(in []Stroke) []Stroke {
 			}
 		}
 		s.Dash = dash
+		s.Cap = oneOf(s.Cap, "", "round", "square")
+		s.Join = oneOf(s.Join, "", "round", "bevel")
 		s.Opacity = clampPtr(s.Opacity, 0, 1)
 		if s.Visible != nil && *s.Visible {
 			s.Visible = nil
@@ -493,6 +535,7 @@ func (s *sanitizer) node(n *Node, depth int) *Node {
 	n.SizingX = oneOf(n.SizingX, "", "hug", "fill")
 	n.SizingY = oneOf(n.SizingY, "", "hug", "fill")
 	n.Constraints = sanitizeConstraints(n.Constraints)
+	n.Grids = sanitizeGrids(n.Type, n.Grids)
 	if !validRef(n.FillStyle) {
 		n.FillStyle = ""
 	}
@@ -538,7 +581,11 @@ func (s *sanitizer) node(n *Node, depth int) *Node {
 			}
 		}
 		n.Children = kids
-		if n.Type != TypeGroup {
+		if n.Type == TypeSection {
+			// A section only clips when asked to.
+			clip := n.Clip != nil && *n.Clip
+			n.Clip = &clip
+		} else if n.Type != TypeGroup {
 			clip := n.Clip == nil || *n.Clip
 			n.Clip = &clip
 		} else {
@@ -600,8 +647,9 @@ func (s *sanitizer) node(n *Node, depth int) *Node {
 		if n.Fit != "contain" && n.Fit != "stretch" {
 			n.Fit = "cover"
 		}
+		n.Crop = sanitizeCrop(n.Crop)
 	} else {
-		n.Src, n.Fit = "", ""
+		n.Src, n.Fit, n.Crop = "", "", nil
 	}
 	if n.Type == TypePath {
 		n.D = cut(n.D, 1<<20)
@@ -641,7 +689,34 @@ func (s *sanitizer) node(n *Node, depth int) *Node {
 	} else {
 		n.ComponentID = ""
 	}
+	n.Kit = sanitizeBlockRef(n.Kit, n.Type)
+	if n.Type == TypeImage || n.Type == TypeFrame {
+		n.Alt = cut(n.Alt, 200)
+	} else {
+		n.Alt = ""
+	}
 	return n
+}
+
+// BlockRef is the kit block that produced a node, and the slot values last
+// applied to it. set_block_props rebuilds the block from this.
+type BlockRef struct {
+	ID    string                     `json:"id"`
+	Props map[string]json.RawMessage `json:"props,omitempty"`
+}
+
+func sanitizeBlockRef(k *BlockRef, t NodeType) *BlockRef {
+	if k == nil || (t != TypeFrame && t != TypeComponent) {
+		return nil
+	}
+	k.ID = cut(k.ID, 40)
+	if k.ID == "" {
+		return nil
+	}
+	if len(k.Props) > 40 {
+		k.Props = nil
+	}
+	return k
 }
 
 // Sanitize repairs a document in place: unknown node types are dropped,
@@ -669,6 +744,7 @@ func Sanitize(d *Doc) *Doc {
 			p.Name = fmt.Sprintf("Page %d", i+1)
 		}
 		p.Background = color(p.Background, "#F5F5F5")
+		p.Guides = sanitizeGuides(p.Guides)
 		kids := make([]*Node, 0, len(p.Children))
 		for _, c := range p.Children {
 			if c = s.node(c, 0); c != nil {
@@ -685,6 +761,17 @@ func Sanitize(d *Doc) *Doc {
 	sanitizeComments(d)
 	d.Styles = sanitizeStyles(d.Styles)
 	d.Variables = sanitizeVariables(d.Variables)
+	if d.Theme != nil {
+		d.Theme.ID = cut(d.Theme.ID, 40)
+		d.Theme.Accent = cut(d.Theme.Accent, 40)
+		if d.Theme.ID == "" {
+			d.Theme = nil
+		}
+	}
+	sanitizeRenders(d)
+	if d.Theme == nil || d.Theme.ID != "custom" || d.Custom == nil || d.Custom.Colors["text"][0] == "" {
+		d.Custom = nil
+	}
 	return d
 }
 
@@ -783,4 +870,31 @@ func (d *Doc) Count() int {
 		Walk(p.Children, func(*Node, *Node, int) bool { total++; return true })
 	}
 	return total
+}
+
+func sanitizeCrop(c *Crop) *Crop {
+	if c == nil {
+		return nil
+	}
+	zoom := clamp(c.Zoom, 1, 20)
+	x := clamp(c.X, -20, 20)
+	y := clamp(c.Y, -20, 20)
+	if zoom == 1 && x == 0 && y == 0 {
+		return nil
+	}
+	return &Crop{Zoom: zoom, X: x, Y: y}
+}
+
+func sanitizeGuides(guides []Guide) []Guide {
+	var out []Guide
+	for _, g := range guides {
+		if (g.Axis != "x" && g.Axis != "y") || math.IsNaN(g.At) || math.IsInf(g.At, 0) {
+			continue
+		}
+		if len(out) == 200 {
+			break
+		}
+		out = append(out, Guide{Axis: g.Axis, At: clamp(g.At, -1e6, 1e6)})
+	}
+	return out
 }

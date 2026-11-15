@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -31,7 +32,7 @@ func cssColor(hex string) string {
 func cssPaint(p Paint) string {
 	switch p.Type {
 	case "solid":
-		return cssColor(p.Color)
+		return tokenRef(p.Variable, p.Color)
 	case "image":
 		size := "cover"
 		switch p.Fit {
@@ -45,6 +46,13 @@ func cssPaint(p Paint) string {
 	stops := make([]string, len(p.Stops))
 	for i, s := range p.Stops {
 		stops[i] = fmt.Sprintf("%s %s%%", cssColor(s.Color), num(s.Offset*100))
+	}
+	if p.Type == "angular" {
+		from := 0.0
+		if p.Angle != nil {
+			from = *p.Angle
+		}
+		return fmt.Sprintf("conic-gradient(from %sdeg, %s)", num(from+90), strings.Join(stops, ", "))
 	}
 	if p.Type == "radial" {
 		return "radial-gradient(circle, " + strings.Join(stops, ", ") + ")"
@@ -248,6 +256,9 @@ func GenerateCode(d *Doc, id string, react bool) (Code, error) {
 	}
 	var emit func(n, parent *Node, depth int)
 	emit = func(n, parent *Node, depth int) {
+		if n.Type == TypeSlice {
+			return
+		}
 		if !n.IsVisible() {
 			return
 		}
@@ -277,7 +288,10 @@ func GenerateCode(d *Doc, id string, react bool) (Code, error) {
 					src = f.Src
 				}
 			}
-			alt := n.Name
+			alt := n.Alt
+			if alt == "" {
+				alt = n.Name
+			}
 			fit := "cover"
 			if n.Fit == "contain" || n.Fit == "stretch" {
 				fit = map[string]string{"contain": "contain", "stretch": "fill"}[n.Fit]
@@ -289,14 +303,31 @@ func GenerateCode(d *Doc, id string, react bool) (Code, error) {
 				vb = *n.ViewBox
 			}
 			fill, stroke := "none", "none"
-			sw := 0.0
 			if len(n.Fills) > 0 && n.Fills[0].Type == "solid" {
 				fill = cssColor(n.Fills[0].Color)
 			}
+			extra := ""
 			if len(n.Strokes) > 0 {
-				stroke, sw = cssColor(n.Strokes[0].Color), n.Strokes[0].Width
+				s := n.Strokes[0]
+				stroke = cssColor(s.Color)
+				// The stroke is drawn in view box units.
+				sw := s.Width
+				if n.Width > 0 {
+					sw *= vb[0] / n.Width
+				}
+				names := [3]string{"stroke-width", "stroke-linecap", "stroke-linejoin"}
+				if react {
+					names = [3]string{"strokeWidth", "strokeLinecap", "strokeLinejoin"}
+				}
+				extra = fmt.Sprintf(" %s=%s", names[0], q(num(sw)))
+				if s.Cap != "" {
+					extra += fmt.Sprintf(" %s=%s", names[1], q(s.Cap))
+				}
+				if s.Join != "" {
+					extra += fmt.Sprintf(" %s=%s", names[2], q(s.Join))
+				}
 			}
-			fmt.Fprintf(&body, "%s<svg %s=%s viewBox=\"0 0 %s %s\" preserveAspectRatio=\"none\"><path d=%s fill=%s stroke=%s stroke-width=%s/></svg>\n", pad, attr, q(cls), num(vb[0]), num(vb[1]), q(n.D), q(fill), q(stroke), q(num(sw)))
+			fmt.Fprintf(&body, "%s<svg %s=%s viewBox=\"0 0 %s %s\" preserveAspectRatio=\"none\"><path d=%s fill=%s stroke=%s%s/></svg>\n", pad, attr, q(cls), num(vb[0]), num(vb[1]), q(n.D), q(fill), q(stroke), extra)
 		default:
 			if len(n.Children) == 0 {
 				fmt.Fprintf(&body, "%s<div %s=%s></div>\n", pad, attr, q(cls))
@@ -315,7 +346,52 @@ func GenerateCode(d *Doc, id string, react bool) (Code, error) {
 		name := reactName(at.Node.Name)
 		markup = fmt.Sprintf("import \"./%s.css\";\n\nexport default function %s() {\n  return (\n%s\n  );\n}", name, name, indent(markup, 2))
 	}
-	return Code{Markup: markup, CSS: css.String()}, nil
+	return Code{Markup: markup, CSS: tokenCSS(d) + css.String()}, nil
+}
+
+// tokenCSS writes the file's colour variables so exported CSS can use
+// var(--c-text) instead of a baked-in hex.
+func tokenCSS(d *Doc) string {
+	if d == nil || d.Variables == nil || len(d.Variables.Items) == 0 {
+		return ""
+	}
+	ids := make([]string, 0, len(d.Variables.Items))
+	for id := range d.Variables.Items {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	var light, dark strings.Builder
+	for _, id := range ids {
+		item := d.Variables.Items[id]
+		if item == nil {
+			continue
+		}
+		if c := item.Values["Light"]; c != "" {
+			fmt.Fprintf(&light, "  --%s: %s;\n", id, cssColor(c))
+		}
+		if c := item.Values["Dark"]; c != "" {
+			fmt.Fprintf(&dark, "  --%s: %s;\n", id, cssColor(c))
+		}
+	}
+	var b strings.Builder
+	if light.Len() > 0 {
+		b.WriteString(":root {\n")
+		b.WriteString(light.String())
+		b.WriteString("}\n")
+	}
+	if dark.Len() > 0 {
+		b.WriteString(".dark {\n")
+		b.WriteString(dark.String())
+		b.WriteString("}\n")
+	}
+	return b.String()
+}
+
+func tokenRef(variable, color string) string {
+	if variable != "" {
+		return "var(--" + variable + ")"
+	}
+	return cssColor(color)
 }
 
 func filterRules(rules []cssRule, drop ...string) []cssRule {

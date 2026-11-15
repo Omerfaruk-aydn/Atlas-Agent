@@ -202,17 +202,38 @@ func force(n *Node, g given) {
 
 func layoutNode(n *Node, g given) {
 	force(n, g)
-	for _, c := range n.Children {
-		layoutNode(c, given{})
-	}
 	l := n.Layout
 	if l == nil || len(n.Children) == 0 {
+		for _, c := range n.Children {
+			layoutNode(c, given{})
+		}
 		return
 	}
 	row := l.Dir == "row"
 	padMain, padCross := l.Pad[0]+l.Pad[2], l.Pad[1]+l.Pad[3]
 	if row {
 		padMain, padCross = l.Pad[3]+l.Pad[1], l.Pad[0]+l.Pad[2]
+	}
+	// When the cross size is already known, children that fill it get it in
+	// the first pass: text that wraps at the frame's width is as tall as it
+	// will be before the frame hugs it. layout.ts does the same.
+	// A fill frame's own size is not known until its parent gives it.
+	crossKnown := g.hasW || n.SizingX == ""
+	knownCross := math.Max(0, n.Width-padCross)
+	if row {
+		crossKnown = g.hasH || n.SizingY == ""
+		knownCross = math.Max(0, n.Height-padCross)
+	}
+	for _, c := range n.Children {
+		stretch := l.Cross == "stretch" || (row && c.SizingY == "fill") || (!row && c.SizingX == "fill")
+		switch {
+		case crossKnown && inFlow(c) && stretch && row:
+			layoutNode(c, given{h: knownCross, hasH: true})
+		case crossKnown && inFlow(c) && stretch:
+			layoutNode(c, given{w: knownCross, hasW: true})
+		default:
+			layoutNode(c, given{})
+		}
 	}
 	mainOf := func(c *Node) float64 {
 		w, h := sizeOf(c)
@@ -374,6 +395,56 @@ func ResolveLayout(d, prev *Doc) {
 		}
 		bakeText(p.Children)
 	}
+}
+
+// layoutInstance places an instance's layers again at the instance's size,
+// the way its main's auto layout would: a longer label widens nothing it
+// should not and a wider instance spreads its content, with no scaling. The
+// layers are the instance's own copies and are changed in place.
+func layoutInstance(m *Node, kids []*Node, w, h float64) []*Node {
+	bakeText(kids)
+	tmp := *m
+	tmp.Children = kids
+	layoutNode(&tmp, given{w: w, h: h, hasW: true, hasH: true})
+	return tmp.Children
+}
+
+// InstanceSize is the size an instance takes when it hugs its content the
+// way its main does: the main laid out again with the instance's overrides
+// (a longer label makes a wider button). Mains without auto layout keep
+// their size.
+func InstanceSize(d *Doc, inst *Node) (float64, float64, bool) {
+	r := &resolver{doc: d, masters: map[string]*Node{}}
+	for _, p := range d.Pages {
+		Walk(p.Children, func(n *Node, _ *Node, _ int) bool {
+			if n.Type == TypeComponent {
+				r.masters[n.ID] = n
+				r.list = append(r.list, n)
+			}
+			return true
+		})
+	}
+	m := r.master(inst)
+	if m == nil {
+		return 0, 0, false
+	}
+	if m.Layout == nil {
+		return m.Width, m.Height, true
+	}
+	copyOf, err := clone(&Doc{Pages: []*Page{{Children: []*Node{m}}}})
+	if err != nil {
+		return 0, 0, false
+	}
+	tmp := copyOf.Pages[0].Children[0]
+	Walk(tmp.Children, func(n *Node, _ *Node, _ int) bool {
+		if o := inst.Overrides[n.ID]; o != nil {
+			applyOverride(n, o)
+		}
+		return true
+	})
+	bakeText(tmp.Children)
+	layoutNode(tmp, given{})
+	return tmp.Width, tmp.Height, true
 }
 
 // bakeText stores the measured box of every auto-sized text node.

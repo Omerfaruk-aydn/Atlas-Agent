@@ -20,6 +20,7 @@ function cssPaint(p: Paint): string {
   if (p.type === "solid") return rgba(p.color);
   if (p.type === "image") return `url(${p.src.startsWith("data:") ? "…" : p.src}) center / ${p.fit === "contain" ? "contain" : p.fit === "stretch" ? "100% 100%" : "cover"} no-repeat`;
   const stops = p.stops.map((s) => `${rgba(s.color)} ${r(s.offset * 100)}%`).join(", ");
+  if (p.type === "angular") return `conic-gradient(from ${r((p.angle ?? 0) + 90)}deg, ${stops})`;
   return p.type === "radial" ? `radial-gradient(circle, ${stops})` : `linear-gradient(${r((p.angle ?? 90) + 90)}deg, ${stops})`;
 }
 

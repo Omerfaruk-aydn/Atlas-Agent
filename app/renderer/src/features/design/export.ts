@@ -24,6 +24,13 @@ const PAD = 0;
 
 /** What an export covers: the selection, or the whole page with its background. */
 export function exportPlan(page: Page, ids: string[]): ExportPlan | null {
+  const slices = ids.map((id) => locate(page, id)?.node).filter((n): n is DesignNode => !!n && n.type === "slice");
+  if (slices.length && slices.length === ids.length) {
+    // A slice exports the page as it looks inside the slice's box.
+    const bounds = selectionBounds(page, ids, sizeOf);
+    const all = page.children.filter((n) => n.visible !== false).map((n) => n.id);
+    return bounds ? { ids: all, bounds } : null;
+  }
   if (ids.length) {
     const bounds = selectionBounds(page, ids, sizeOf);
     return bounds ? { ids, bounds } : null;

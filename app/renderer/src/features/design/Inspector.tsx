@@ -6,10 +6,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { t } from "../../lib/i18n";
 import { useDesign } from "../../stores/design";
 import { type AlignKind } from "./geometry";
-import { components, type DesignDoc, type DesignNode, type Effect, type Interaction, isColor, locate, newId, type Paint, pageOf, splitColor, type Stroke } from "./model";
+import { KIT_FAMILIES } from "./kit-fonts";
+import { components, type DesignDoc, type DesignNode, type Effect, type Interaction, isColor, type LayoutGrid, locate, newId, type Paint, pageOf, splitColor, type Stroke } from "./model";
 import { masterFor } from "./tokens";
 import { type CodeKind, codeFor } from "./inspect";
-import { IconAlign, IconDistH, IconDistV } from "./icons";
+import { IconAlign, IconDistH, IconDistV, IconEyedropper } from "./icons";
+import { colorAt } from "./render";
 import { arithmetic } from "./arith";
 import { sizeOf } from "./text";
 import { runExport } from "./exporter";
@@ -135,7 +137,47 @@ export function ColorField({ label, value, onChange }: { label: string; value: s
         }}
       />
       <NumberField label="%" title={`${label} ${t("design.opacity")}`} value={Math.round(alpha * 100)} min={0} max={100} onChange={(v) => onChange(withAlpha(rgb.slice(1), v / 100))} />
+      {typeof window !== "undefined" && "EyeDropper" in window && (
+        <button
+          type="button"
+          className="design-row-tool design-eyedropper"
+          aria-label={t("design.pickScreen")}
+          title={t("design.pickScreen")}
+          onClick={() => {
+            // The system eyedropper reads any pixel on the screen, the canvas included.
+            const Picker = (window as unknown as { EyeDropper: new () => { open: () => Promise<{ sRGBHex: string }> } }).EyeDropper;
+            new Picker()
+              .open()
+              .then((r) => onChange(withAlpha(r.sRGBHex.slice(1), alpha)))
+              .catch(() => undefined);
+          }}
+        >
+          <IconEyedropper />
+        </button>
+      )}
     </div>
+  );
+}
+
+/** An image's crop with some fields changed; a plain 100% crop at the centre is no crop. The picture never leaves a gap in its box. */
+function setCrop(n: DesignNode, change: Partial<{ zoom: number; x: number; y: number }>): Partial<DesignNode> {
+  const next = { zoom: 1, x: 0, y: 0, ...n.crop, ...change };
+  next.zoom = Math.max(1, Math.min(20, next.zoom));
+  const limit = (next.zoom - 1) / 2;
+  next.x = Math.max(-limit, Math.min(limit, next.x));
+  next.y = Math.max(-limit, Math.min(limit, next.y));
+  return { crop: next.zoom === 1 && next.x === 0 && next.y === 0 ? undefined : next };
+}
+
+/** Starts or ends adjusting the picture on the canvas (drag to move it, Alt + wheel to zoom). */
+function CropToggle({ id }: { id: string | null }) {
+  const cropping = useDesign((s) => s.cropping);
+  if (!id) return null;
+  const on = cropping === id;
+  return (
+    <button type="button" className="design-chip" aria-pressed={on} data-on={on || undefined} onClick={() => useDesign.getState().setCropping(on ? null : id)}>
+      {on ? t("design.cropDone") : t("design.crop")}
+    </button>
   );
 }
 
@@ -270,7 +312,10 @@ function Fills({ nodes, patch: rawPatch }: { nodes: DesignNode[]; patch: Patcher
                   fills: (n.fills ?? []).map((x, k): Paint => {
                     if (k !== i) return x;
                     const c = paintColor(x);
-                    return type === "solid" ? { type, color: c } : { type: type as "linear" | "radial", stops: [{ offset: 0, color: c }, { offset: 1, color: "#FFFFFF" }], angle: 90 };
+                    if (type === "solid") return { type, color: c };
+                    // Turning one gradient into another keeps its colours.
+                    const stops = x.type === "linear" || x.type === "radial" || x.type === "angular" ? x.stops : [{ offset: 0, color: c }, { offset: 1, color: "#FFFFFF" }];
+                    return { type: type as "linear" | "radial" | "angular", stops, angle: type === "angular" ? 0 : 90 };
                   }),
                 }));
               }}
@@ -278,6 +323,7 @@ function Fills({ nodes, patch: rawPatch }: { nodes: DesignNode[]; patch: Patcher
               <option value="solid">{t("design.solid")}</option>
               <option value="linear">{t("design.linear")}</option>
               <option value="radial">{t("design.radial")}</option>
+              <option value="angular">{t("design.angular")}</option>
               <option value="image">{t("design.imageFill")}</option>
             </select>
             {f.type === "solid" ? (
@@ -303,10 +349,38 @@ function Fills({ nodes, patch: rawPatch }: { nodes: DesignNode[]; patch: Patcher
                     key={k}
                     label={`${t("design.stop")} ${k + 1}`}
                     value={s.color}
-                    onChange={(c) => patch((n) => ({ fills: (n.fills ?? []).map((x, j) => (j === i && (x.type === "linear" || x.type === "radial") ? { ...x, stops: x.stops.map((st, q) => (q === k ? { ...st, color: c } : st)) } : x)) }))}
+                    onChange={(c) => patch((n) => ({ fills: (n.fills ?? []).map((x, j) => (j === i && (x.type === "linear" || x.type === "radial" || x.type === "angular") ? { ...x, stops: x.stops.map((st, q) => (q === k ? { ...st, color: c } : st)) } : x)) }))}
                   />
                 ))}
-                {f.type === "linear" && <NumberField label="∠" title={t("design.angle")} value={f.angle ?? 90} onChange={(v) => patch((n) => ({ fills: (n.fills ?? []).map((x, j) => (j === i && x.type === "linear" ? { ...x, angle: v } : x)) }))} />}
+                {(f.type === "linear" || f.type === "angular") && <NumberField label="∠" title={t("design.angle")} value={f.angle ?? (f.type === "angular" ? 0 : 90)} onChange={(v) => patch((n) => ({ fills: (n.fills ?? []).map((x, j) => (j === i && (x.type === "linear" || x.type === "angular") ? { ...x, angle: v } : x)) }))} />}
+                {f.stops.length < 16 && (
+                  <button
+                    type="button"
+                    className="design-row-tool"
+                    aria-label={t("design.addStop")}
+                    title={t("design.addStop")}
+                    onClick={() =>
+                      patch((n) => ({
+                        fills: (n.fills ?? []).map((x, j) => {
+                          if (j !== i || !(x.type === "linear" || x.type === "radial" || x.type === "angular")) return x;
+                          // A new stop sits halfway between the last two, with the colour there.
+                          const sorted = [...x.stops].sort((a, b) => a.offset - b.offset);
+                          const a = sorted[sorted.length - 2] ?? sorted[0]!;
+                          const b = sorted[sorted.length - 1]!;
+                          const offset = (a.offset + b.offset) / 2;
+                          return { ...x, stops: [...x.stops, { offset, color: colorAt(x.stops, offset).rgb }] };
+                        }),
+                      }))
+                    }
+                  >
+                    +
+                  </button>
+                )}
+                {f.stops.length > 2 && (
+                  <button type="button" className="design-row-tool" aria-label={t("design.removeStop")} title={t("design.removeStop")} onClick={() => patch((n) => ({ fills: (n.fills ?? []).map((x, j) => (j === i && (x.type === "linear" || x.type === "radial" || x.type === "angular") ? { ...x, stops: x.stops.slice(0, -1) } : x)) }))}>
+                    ⌫
+                  </button>
+                )}
               </div>
             )}
             <button type="button" className="design-row-tool" aria-label={`${t("design.remove")} ${t("design.fill")}`} onClick={() => patch((n) => ({ fills: (n.fills ?? []).filter((_, k) => k !== i) }))}>
@@ -389,7 +463,50 @@ function Effects({ nodes, patch }: { nodes: DesignNode[]; patch: (fn: (n: Design
   );
 }
 
-const FONTS = ["Inter", "JetBrains Mono", "system-ui", "Arial", "Helvetica", "Segoe UI", "Roboto", "Georgia", "Times New Roman", "Courier New", "Verdana", "Trebuchet MS"];
+/** A frame's layout grids: columns, rows or a square grid, as in Figma. */
+function GridProps({ node, patch }: { node: DesignNode; patch: (fn: (n: DesignNode) => Partial<DesignNode>) => void }) {
+  const grids = node.grids ?? [];
+  const edit = (i: number, change: Partial<LayoutGrid>) => patch((n) => ({ grids: (n.grids ?? []).map((g, k) => (k === i ? { ...g, ...change } : g)) }));
+  const add = () => patch((n) => ({ grids: [...(n.grids ?? []), n.grids?.length ? { pattern: "grid" as const, size: 8 } : { pattern: "columns" as const, count: n.width >= 1000 ? 12 : 4, gutter: n.width >= 1000 ? 24 : 16, margin: n.width >= 1000 ? 80 : 16, align: "stretch" as const }] }));
+  return (
+    <Section title={t("design.layoutGrid")} action={<AddButton label={t("design.addGrid")} onClick={add} />}>
+      {grids.map((g, i) => (
+        <div className="design-row design-wrap" key={i}>
+          <label className="design-check" title={t("design.gridShown")}>
+            <input type="checkbox" aria-label={t("design.gridShown")} checked={!g.hidden} onChange={(e) => edit(i, { hidden: !e.target.checked || undefined })} />
+          </label>
+          <select aria-label={t("design.gridPattern")} value={g.pattern} onChange={(e) => edit(i, e.target.value === "grid" ? { pattern: "grid", size: g.size ?? 8, count: undefined, gutter: undefined, margin: undefined, align: undefined } : { pattern: e.target.value as LayoutGrid["pattern"], count: g.count ?? 5, align: g.align ?? "stretch", size: g.pattern === "grid" ? undefined : g.size })}>
+            <option value="columns">{t("design.columns")}</option>
+            <option value="rows">{t("design.rows")}</option>
+            <option value="grid">{t("design.gridSquare")}</option>
+          </select>
+          {g.pattern === "grid" ? (
+            <NumberField label="#" title={t("design.gridSize")} value={g.size ?? 8} min={1} onChange={(v) => edit(i, { size: Math.max(1, v) })} />
+          ) : (
+            <>
+              <NumberField label="N" title={t("design.gridCount")} value={g.count ?? 5} min={1} max={100} onChange={(v) => edit(i, { count: Math.min(100, Math.max(1, Math.round(v))) })} />
+              <select aria-label={t("design.gridAlign")} value={g.align ?? "stretch"} onChange={(e) => edit(i, { align: e.target.value as LayoutGrid["align"], size: e.target.value === "stretch" ? undefined : g.size ?? 64 })}>
+                <option value="stretch">{t("design.stretch")}</option>
+                <option value="start">{t("design.start")}</option>
+                <option value="center">{t("design.center")}</option>
+                <option value="end">{t("design.end")}</option>
+              </select>
+              {g.align && g.align !== "stretch" && <NumberField label="W" title={t("design.gridSize")} value={g.size ?? 64} min={1} onChange={(v) => edit(i, { size: Math.max(1, v) })} />}
+              <NumberField label="G" title={t("design.gutter")} value={g.gutter ?? 0} min={0} onChange={(v) => edit(i, { gutter: Math.max(0, v) })} />
+              <NumberField label="M" title={t("design.margin")} value={g.margin ?? 0} min={0} onChange={(v) => edit(i, { margin: Math.max(0, v) })} />
+            </>
+          )}
+          <ColorField label={t("design.gridColor")} value={g.color ?? (g.pattern === "grid" ? "#FF000033" : "#FF00001A")} onChange={(c) => edit(i, { color: c })} />
+          <button type="button" className="design-row-tool" aria-label={t("design.removeGrid")} onClick={() => patch((n) => ({ grids: (n.grids ?? []).filter((_, k) => k !== i) }))}>
+            −
+          </button>
+        </div>
+      ))}
+    </Section>
+  );
+}
+
+const FONTS = [...new Set(["Inter", ...KIT_FAMILIES, "JetBrains Mono", "system-ui", "Arial", "Helvetica", "Segoe UI", "Georgia", "Times New Roman", "Courier New", "Verdana", "Trebuchet MS"])];
 const WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
 
 function TextProps({ nodes, patch }: { nodes: DesignNode[]; patch: (fn: (n: DesignNode) => Partial<DesignNode>) => void }) {
@@ -883,9 +1000,9 @@ export function Inspector() {
         </div>
         <div className="design-row">
           <NumberField label="◐" title={t("design.opacity")} value={num("opacity")} min={0} max={100} suffix="%" onChange={(v) => patch(() => ({ opacity: v / 100 }))} />
-          {has("frame", "component") && (
+          {has("frame", "component", "section") && (
             <label className="design-check">
-              <input type="checkbox" checked={shared(nodes, (n) => n.clip !== false) === true} onChange={(e) => patch(() => ({ clip: e.target.checked }))} />
+              <input type="checkbox" checked={shared(nodes, (n) => (n.type === "section" ? n.clip === true : n.clip !== false)) === true} onChange={(e) => patch(() => ({ clip: e.target.checked }))} />
               {t("design.clip")}
             </label>
           )}
@@ -903,6 +1020,19 @@ export function Inspector() {
               <option value="contain">{t("design.fitContain")}</option>
               <option value="stretch">{t("design.fitStretch")}</option>
             </select>
+            <CropToggle id={one?.id ?? null} />
+          </div>
+        )}
+        {one?.type === "image" && (
+          <div className="design-row design-wrap">
+            <NumberField label="⤢" title={t("design.cropZoom")} value={Math.round((one.crop?.zoom ?? 1) * 100)} min={100} max={2000} suffix="%" onChange={(v) => patch((n) => setCrop(n, { zoom: v / 100 }))} />
+            <NumberField label="x" title={t("design.cropX")} value={Math.round((one.crop?.x ?? 0) * 100)} suffix="%" onChange={(v) => patch((n) => setCrop(n, { x: v / 100 }))} />
+            <NumberField label="y" title={t("design.cropY")} value={Math.round((one.crop?.y ?? 0) * 100)} suffix="%" onChange={(v) => patch((n) => setCrop(n, { y: v / 100 }))} />
+            {one.crop && (
+              <button type="button" className="design-chip" onClick={() => patch(() => ({ crop: undefined }))}>
+                {t("design.cropReset")}
+              </button>
+            )}
           </div>
         )}
         {one?.type === "instance" && (
@@ -927,6 +1057,7 @@ export function Inspector() {
         )}
       </Section>
       {has("frame", "component") && <LayoutProps nodes={nodes} patch={patch} />}
+      {one && (one.type === "frame" || one.type === "component") && <GridProps node={one} patch={patch} />}
       <ShapeOps nodes={nodes} />
       {one && one.type !== "group" && <PrototypeProps node={one} doc={doc} patch={patch} />}
       <ChildProps nodes={nodes} parents={nodes.map((n) => locate(page, n.id)?.parent ?? null)} patch={patch} />

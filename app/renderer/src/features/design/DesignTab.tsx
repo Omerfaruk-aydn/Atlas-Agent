@@ -7,17 +7,23 @@ import { t } from "../../lib/i18n";
 import { useApp } from "../../stores/app";
 import { lastDesign, readClipboardText, setClipboard, type Tool, useDesign, watchDesign } from "../../stores/design";
 import { Canvas, zoomAbout, zoomToFit } from "./Canvas";
-import { IconEllipse, IconFrame, IconHand, IconImage, IconLine, IconMove, IconComment, IconPenTool, IconPencil, IconPolygon, IconRect, IconRedo, IconStar, IconText, IconUndo } from "./icons";
+import { IconEllipse, IconFrame, IconHand, IconImage, IconLine, IconMove, IconSection, IconSlice, IconEyedropper, IconComment, IconPenTool, IconPencil, IconPolygon, IconRect, IconRedo, IconStar, IconText, IconUndo } from "./icons";
 import { Inspector } from "./Inspector";
 import { LeftPanel } from "./Layers";
 import { pageOf } from "./model";
 import { Present } from "./Present";
+import { loadKitFonts } from "./fonts";
+import { Library } from "./Library";
+import { Swarm } from "./Swarm";
+import { setMeasure } from "./text";
 import "./design.css";
 
 const TOOLS: { tool: Tool; key: string; icon: (p: object) => React.ReactNode; label: string }[] = [
   { tool: "select", key: "V", icon: IconMove, label: "design.tool.select" },
   { tool: "hand", key: "H", icon: IconHand, label: "design.tool.hand" },
   { tool: "frame", key: "F", icon: IconFrame, label: "design.tool.frame" },
+  { tool: "section", key: "⇧S", icon: IconSection, label: "design.tool.section" },
+  { tool: "slice", key: "S", icon: IconSlice, label: "design.tool.slice" },
   { tool: "rect", key: "R", icon: IconRect, label: "design.tool.rect" },
   { tool: "ellipse", key: "O", icon: IconEllipse, label: "design.tool.ellipse" },
   { tool: "line", key: "L", icon: IconLine, label: "design.tool.line" },
@@ -26,9 +32,10 @@ const TOOLS: { tool: Tool; key: string; icon: (p: object) => React.ReactNode; la
   { tool: "pen", key: "P", icon: IconPenTool, label: "design.tool.pen" },
   { tool: "pencil", key: "⇧P", icon: IconPencil, label: "design.tool.pencil" },
   { tool: "text", key: "T", icon: IconText, label: "design.tool.text" },
+  { tool: "eyedropper", key: "I", icon: IconEyedropper, label: "design.tool.eyedropper" },
   { tool: "comment", key: "C", icon: IconComment, label: "design.tool.comment" },
 ];
-const KEY_TOOL: Record<string, Tool> = { v: "select", h: "hand", f: "frame", a: "frame", r: "rect", o: "ellipse", l: "line", t: "text", p: "pen", c: "comment" };
+const KEY_TOOL: Record<string, Tool> = { v: "select", h: "hand", f: "frame", a: "frame", s: "slice", i: "eyedropper", r: "rect", o: "ellipse", l: "line", t: "text", p: "pen", c: "comment" };
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 
@@ -107,6 +114,8 @@ function Toolbar() {
   const camera = useDesign((s) => s.camera);
   const past = useDesign((s) => s.past.length);
   const future = useDesign((s) => s.future.length);
+  const swarmOpen = useDesign((s) => s.swarming);
+  const libraryOpen = useDesign((s) => s.library);
   const saving = useDesign((s) => s.saving);
   const dirty = useDesign((s) => s.dirty);
   const imageInput = useRef<HTMLInputElement>(null);
@@ -137,6 +146,12 @@ function Toolbar() {
         />
       </div>
       <div className="design-toolgroup">
+        <button type="button" className="design-chip" aria-label={t("design.library")} aria-expanded={libraryOpen} title={`${t("design.libraryHint")} (Shift+I)`} onClick={() => useDesign.getState().setLibrary(!useDesign.getState().library)}>
+          ◇ {t("design.library")}
+        </button>
+        <button type="button" className="design-chip" aria-label={t("design.swarm")} aria-expanded={swarmOpen} title={t("design.swarmHint")} onClick={() => useDesign.getState().setSwarming(!useDesign.getState().swarming)}>
+          ✦ {t("design.swarm")}
+        </button>
         <button type="button" className="design-chip" aria-label={t("design.present")} title={`${t("design.present")} (Ctrl+Alt+Enter)`} onClick={() => useDesign.getState().setPresenting(true)}>
           ▶ {t("design.present")}
         </button>
@@ -232,6 +247,7 @@ function onKey(e: ReactKeyboardEvent<HTMLDivElement>) {
   else if (mod && e.altKey && key === "g") s.frameSelection();
   else if (mod && e.shiftKey && key === "g") s.ungroup();
   else if (mod && key === "g") s.group();
+  else if (mod && e.shiftKey && (e.code === "Digit4" || e.key === "$")) s.toggleGrids();
   else if (mod && e.key === "]") s.reorder(e.shiftKey || e.altKey ? "front" : "forward");
   else if (mod && e.key === "[") s.reorder(e.shiftKey || e.altKey ? "back" : "backward");
   else if (mod && (e.key === "=" || e.key === "+")) zoomAbout({ x: canvasSize().width / 2, y: canvasSize().height / 2 }, s.camera.zoom * 1.25);
@@ -242,6 +258,7 @@ function onKey(e: ReactKeyboardEvent<HTMLDivElement>) {
   else if (e.key === "Delete" || e.key === "Backspace") s.remove();
   else if (e.key === "Escape") {
     if (s.gesture) s.cancelGesture();
+    else if (s.cropping) s.setCropping(null);
     else if (s.tool !== "select") s.setTool("select");
     else if (s.selection.length) {
       // Up one level: the selection's parent, then nothing.
@@ -266,6 +283,7 @@ function onKey(e: ReactKeyboardEvent<HTMLDivElement>) {
       if (n.id === s.selection[0]) {
         if (n.type === "text") s.setEditing(n.id);
         else if (n.type === "path") s.setEditPath(n.id);
+        else if (n.type === "image") s.setCropping(s.cropping === n.id ? null : n.id);
         else if (n.children?.length) s.select(n.children.map((c) => c.id));
         break;
       }
@@ -278,6 +296,11 @@ function onKey(e: ReactKeyboardEvent<HTMLDivElement>) {
     if (s.selection.length) s.nudge(dx, dy);
   } else if (mod && e.altKey && e.key === "Enter") s.setPresenting(true);
   else if (!mod && !e.altKey && e.shiftKey && key === "p") s.setTool("pencil");
+  else if (!mod && !e.altKey && e.shiftKey && key === "i") s.setLibrary(!s.library);
+  else if (!mod && !e.altKey && e.shiftKey && key === "s") s.setTool("section");
+  else if (!mod && !e.altKey && e.shiftKey && key === "r") s.toggleRulers();
+  else if (mod && e.shiftKey && key === "r") s.toggleRulers();
+  else if (!mod && !e.altKey && e.shiftKey && key === "a" && s.selection.length) s.addAutoLayout();
   else if (mod && key === "e" && !e.shiftKey && !e.altKey && s.selection.length === 1) s.flatten();
   else if (!mod && !e.altKey && KEY_TOOL[key] && !e.shiftKey) s.setTool(KEY_TOOL[key]!);
   else if (e.shiftKey && key === "h" && s.selection.length) s.patch(s.selection, (n) => ({ visible: n.visible === false }));
@@ -295,6 +318,8 @@ let shownFor = "";
 export function DesignTab() {
   const file = useDesign((s) => s.file);
   const presenting = useDesign((s) => s.presenting);
+  const swarming = useDesign((s) => s.swarming);
+  const library = useDesign((s) => s.library);
   const doc = useDesign((s) => s.doc);
   const loading = useDesign((s) => s.loading);
   const workspace = useApp((s) => s.workspace?.id);
@@ -304,6 +329,18 @@ export function DesignTab() {
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => watchDesign(), []);
+  useEffect(() => {
+    // Text measured before the theme fonts arrived used a fallback face: measure again, then redraw.
+    let live = true;
+    void loadKitFonts().then(() => {
+      if (!live) return;
+      setMeasure(null);
+      useDesign.setState((s) => ({ camera: { ...s.camera } }));
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
   useEffect(() => {
     if (!workspace) return;
     // Another project: its own designs, nothing of the last one's.
@@ -383,6 +420,8 @@ export function DesignTab() {
             <Canvas />
             <Inspector />
           </div>
+          {swarming && <Swarm onClose={() => useDesign.getState().setSwarming(false)} />}
+          {library && <Library onClose={() => useDesign.getState().setLibrary(false)} />}
           {presenting && <Present onClose={() => useDesign.getState().setPresenting(false)} />}
         </>
       ) : loading ? (

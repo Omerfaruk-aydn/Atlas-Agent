@@ -163,7 +163,27 @@ export const IconDistV = (p: Props) => (
   </Icon>
 );
 
+export const IconSection = (p: Props) => (
+  <Icon {...p}>
+    <path d="M2 4.5h5M2 4.5v8.5h12V6.5H9.5" />
+    <path d="M4.5 9.5h7" />
+  </Icon>
+);
+export const IconSlice = (p: Props) => (
+  <Icon {...p}>
+    <path d="M3 5.5V2.5h3M13 5.5V2.5h-3M3 10.5v3h3M13 10.5v3h-3" />
+    <path d="M6 8h4" />
+  </Icon>
+);
+export const IconEyedropper = (p: Props) => (
+  <Icon {...p}>
+    <path d="M10.5 2.5l3 3-2 2-3-3zM9 5l-6 6v2.5h2.5L11.5 7.5" />
+  </Icon>
+);
+
 const BY_TYPE: Record<NodeType, (p: Props) => ReactNode> = {
+  section: IconSection,
+  slice: IconSlice,
   frame: IconFrame,
   group: IconGroup,
   rect: IconRect,

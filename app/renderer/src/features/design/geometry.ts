@@ -2,7 +2,7 @@
 // what is under the pointer, snapping and guides, alignment, and how a
 // resize or rotate drag turns into new node boxes. Pure functions.
 
-import { type DesignNode, type DesignDoc, type Page, isContainer, locate, updateNodes } from "./model";
+import { type DesignNode, type DesignDoc, type LayoutGrid, type Page, isContainer, locate, updateNodes } from "./model";
 
 /** [a, b, c, d, e, f]: x' = a·x + c·y + e, y' = b·x + d·y + f, as in SVG. */
 export type Matrix = [number, number, number, number, number, number];
@@ -128,7 +128,13 @@ function pointInNode(n: DesignNode, local: Point, size: { width: number; height:
     const dy = local.y - h / 2;
     return (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1;
   }
-  return local.x >= -slop && local.y >= -slop && local.x <= w + slop && local.y <= h + slop;
+  const inBox = local.x >= -slop && local.y >= -slop && local.x <= w + slop && local.y <= h + slop;
+  if (n.type === "slice" && inBox) {
+    // A slice lies over what it exports: only its edge takes a click, so the layers beneath stay reachable.
+    const band = Math.max(slop * 3, 4);
+    return !(local.x > band && local.y > band && local.x < w - band && local.y < h - band);
+  }
+  return inBox;
 }
 
 /** The path (page child first) of the topmost visible, unlocked node under a page point. */
@@ -171,7 +177,7 @@ export function pickTarget(path: DesignNode[], selection: string[], deep: boolea
     if (holder && selection.some((id) => id === level.id || isSiblingIn(holder, id))) return level;
   }
   const top = path[0]!;
-  if (path.length > 1 && (top.type === "frame" || top.type === "component") && top.children?.length) return path[1]!;
+  if (path.length > 1 && (top.type === "frame" || top.type === "component" || top.type === "section") && top.children?.length) return path[1]!;
   return top;
 }
 
@@ -183,7 +189,7 @@ export function marquee(page: Page, rect: Rect, sizeOf: SizeOf = storedSize): st
   for (const n of page.children) {
     if (n.visible === false || n.locked) continue;
     const box = worldBounds([n], sizeOf);
-    const artboard = (n.type === "frame" || n.type === "component") && n.children?.length;
+    const artboard = (n.type === "frame" || n.type === "component" || n.type === "section") && n.children?.length;
     if (artboard && !contains(rect, box)) {
       // Dragging inside a frame selects what is in the frame.
       for (const c of n.children!) {
@@ -244,12 +250,12 @@ export function snapRect(moving: Rect, targets: Rect[], threshold: number): Snap
   const near = (a: number, b: number) => Math.abs(a - b) < 0.5;
   if (bestX.d <= threshold) {
     const hits = targets.filter((t) => edges(t).x.some((v) => near(v, bestX.at)));
-    const ys = [moved.y, moved.y + moved.height, ...hits.flatMap((t) => [t.y, t.y + t.height])];
+    const ys = [moved.y, moved.y + moved.height, ...hits.flatMap((t) => [t.y, t.y + t.height])].filter(Number.isFinite);
     guides.push({ axis: "x", at: bestX.at, from: Math.min(...ys), to: Math.max(...ys) });
   }
   if (bestY.d <= threshold) {
     const hits = targets.filter((t) => edges(t).y.some((v) => near(v, bestY.at)));
-    const xs = [moved.x, moved.x + moved.width, ...hits.flatMap((t) => [t.x, t.x + t.width])];
+    const xs = [moved.x, moved.x + moved.width, ...hits.flatMap((t) => [t.x, t.x + t.width])].filter(Number.isFinite);
     guides.push({ axis: "y", at: bestY.at, from: Math.min(...xs), to: Math.max(...xs) });
   }
   return { dx, dy, guides };
@@ -275,6 +281,8 @@ export function snapTargets(page: Page, ids: string[], sizeOf: SizeOf = storedSi
   }
   // Top-level frames are useful targets from anywhere.
   if (holderPath.length) for (const s of page.children) if (!skip.has(s.id) && s.id !== holderPath[0]!.id && s.visible !== false) out.push(worldBounds([s], sizeOf));
+  // Ruler guides are lines, not boxes: NaN on the other axis keeps them out of that axis's comparisons.
+  for (const g of page.guides ?? []) out.push(g.axis === "x" ? { x: g.at, y: NaN, width: 0, height: NaN } : { x: NaN, y: g.at, width: NaN, height: 0 });
   return out;
 }
 
@@ -551,4 +559,17 @@ export function frameAt(page: Page, p: Point, exclude: Set<string>, sizeOf: Size
   };
   visit(page.children, []);
   return best;
+}
+
+/** Where a layout grid's tracks fall along one side of a frame: [start, size] pairs. */
+export function gridTracks(g: LayoutGrid, length: number): [number, number][] {
+  const n = Math.max(1, g.count ?? 5);
+  const gutter = g.gutter ?? 0;
+  const margin = g.margin ?? 0;
+  const align = g.align ?? "stretch";
+  let size = g.size && align !== "stretch" ? g.size : (length - 2 * margin - (n - 1) * gutter) / n;
+  if (!(size > 0)) size = 0;
+  const total = n * size + (n - 1) * gutter;
+  const start = align === "center" ? (length - total) / 2 : align === "end" ? length - margin - total : margin;
+  return Array.from({ length: n }, (_, i) => [start + i * (size + gutter), size]);
 }

@@ -106,6 +106,68 @@ function paintAttr(paint: Paint, id: string): { fill: string; fillOpacity?: numb
   return paint.opacity !== undefined && paint.opacity < 1 ? { fill: `url(#${id})`, fillOpacity: paint.opacity } : { fill: `url(#${id})` };
 }
 
+/** The colour at `t` (0..1) along a gradient's stops, as #RRGGBB and alpha. */
+export function colorAt(stops: { offset: number; color: string }[], t: number): { rgb: string; alpha: number } {
+  const sorted = [...stops].sort((a, b) => a.offset - b.offset);
+  const parse = (c: string) => {
+    const { rgb, alpha } = splitColor(c);
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(rgb);
+    return { c: m ? [parseInt(m[1]!, 16), parseInt(m[2]!, 16), parseInt(m[3]!, 16)] : [0, 0, 0], a: alpha };
+  };
+  const first = sorted[0]!;
+  const last = sorted[sorted.length - 1]!;
+  let lo = first;
+  let hi = last;
+  if (t <= first.offset) hi = first;
+  else if (t >= last.offset) lo = last;
+  else
+    for (let i = 0; i < sorted.length - 1; i++)
+      if (t >= sorted[i]!.offset && t <= sorted[i + 1]!.offset) {
+        lo = sorted[i]!;
+        hi = sorted[i + 1]!;
+        break;
+      }
+  const span = hi.offset - lo.offset;
+  const k = span > 0 ? Math.min(1, Math.max(0, (t - lo.offset) / span)) : 0;
+  const a = parse(lo.color);
+  const b = parse(hi.color);
+  const ch = (i: number) => Math.round(a.c[i]! + (b.c[i]! - a.c[i]!) * k);
+  const hex = (v: number) => v.toString(16).padStart(2, "0");
+  return { rgb: `#${hex(ch(0))}${hex(ch(1))}${hex(ch(2))}`.toUpperCase(), alpha: a.a + (b.a - a.a) * k };
+}
+
+const WEDGES = 180;
+
+/** An angular (conic) gradient. SVG has none, so it is a pattern of thin wedges that reaches past the box's corners. */
+function AngularPattern({ paint, id, w, h }: { paint: Exclude<Paint, { type: "solid" } | { type: "image" }>; id: string; w: number; h: number }) {
+  const cx = w / 2;
+  const cy = h / 2;
+  const reach = Math.hypot(w, h) / 2 + 2;
+  const start = ((paint.angle ?? 0) * Math.PI) / 180;
+  const wedges: ReactNode[] = [];
+  for (let i = 0; i < WEDGES; i++) {
+    // A hair of overlap hides the seams between wedges.
+    const a0 = start + (i / WEDGES) * 2 * Math.PI;
+    const a1 = start + ((i + 1.15) / WEDGES) * 2 * Math.PI;
+    const { rgb, alpha } = colorAt(paint.stops, (i + 0.5) / WEDGES);
+    wedges.push(
+      <path
+        key={i}
+        d={`M${r3(cx)} ${r3(cy)}L${r3(cx + Math.cos(a0) * reach)} ${r3(cy + Math.sin(a0) * reach)}L${r3(cx + Math.cos(a1) * reach)} ${r3(cy + Math.sin(a1) * reach)}Z`}
+        fill={rgb}
+        fillOpacity={alpha < 1 ? r3(alpha) : undefined}
+      />,
+    );
+  }
+  return (
+    <pattern id={id} patternUnits="userSpaceOnUse" x={0} y={0} width={r3(w)} height={r3(h)}>
+      <svg width={r3(w)} height={r3(h)} viewBox={`0 0 ${r3(w)} ${r3(h)}`} overflow="hidden">
+        {wedges}
+      </svg>
+    </pattern>
+  );
+}
+
 function Gradient({ paint, id, w, h }: { paint: Paint; id: string; w: number; h: number }) {
   const env = useContext(RenderContext);
   if (paint.type === "solid") return null;
@@ -122,6 +184,7 @@ function Gradient({ paint, id, w, h }: { paint: Paint; id: string; w: number; h:
     return <stop key={i} offset={r3(s.offset)} stopColor={rgb} stopOpacity={alpha < 1 ? r3(alpha) : undefined} />;
   });
   if (paint.type === "radial") return <radialGradient id={id} cx="0.5" cy="0.5" r="0.5">{stops}</radialGradient>;
+  if (paint.type === "angular") return <AngularPattern paint={paint} id={id} w={w} h={h} />;
   // Angle 0 runs left to right, 90 top to bottom, in the box's own space.
   const a = ((paint.angle ?? 90) * Math.PI) / 180;
   const dx = Math.cos(a) / 2;
@@ -191,6 +254,7 @@ function shapeOf(n: DesignNode, w: number, h: number, by = 0): ((props: Record<s
   switch (n.type) {
     case "rect":
     case "frame":
+    case "section":
     case "component":
     case "instance":
     case "image": {
@@ -229,12 +293,14 @@ function strokeProps(s: Stroke) {
     strokeWidth: r3(s.width),
     ...(o < 1 ? { strokeOpacity: r3(o) } : {}),
     ...(s.dash?.length ? { strokeDasharray: s.dash.join(" ") } : {}),
+    ...(s.cap ? { strokeLinecap: s.cap } : {}),
+    ...(s.join ? { strokeLinejoin: s.join } : {}),
   };
 }
 
 /** Where a stroke sits: inside and outside strokes move the outline by half the width. */
 const strokeOffset = (n: DesignNode, s: Stroke) => {
-  const closed = n.type === "rect" || n.type === "frame" || n.type === "component" || n.type === "instance" || n.type === "image" || n.type === "ellipse";
+  const closed = n.type === "rect" || n.type === "frame" || n.type === "section" || n.type === "component" || n.type === "instance" || n.type === "image" || n.type === "ellipse";
   if (!closed) return 0;
   return s.align === "inside" ? -s.width / 2 : s.align === "outside" ? s.width / 2 : 0;
 };
@@ -295,7 +361,19 @@ function NodeBody({ node: n, hidden }: ViewProps) {
     defs.push(<clipPath key="ic" id={clip}>{shape?.({}) ?? null}</clipPath>);
     body.push(<g key="ibg">{fills.map((f, i) => shape?.({ key: i, ...paintAttr(f, `${id}-f${i}`) }))}</g>);
     const ratio = n.fit === "stretch" ? "none" : n.fit === "contain" ? "xMidYMid meet" : "xMidYMid slice";
-    if (n.src) body.push(<image key="img" href={env.image(n.src)} width={r3(w)} height={r3(h)} preserveAspectRatio={ratio} clipPath={`url(#${clip})`} />);
+    if (n.src) {
+      // The crop enlarges the picture's box about the centre and shifts it; the clip keeps the node's outline.
+      const z = n.crop?.zoom ?? 1;
+      const iw = w * z;
+      const ih = h * z;
+      const ix = (w - iw) / 2 + (n.crop?.x ?? 0) * w;
+      const iy = (h - ih) / 2 + (n.crop?.y ?? 0) * h;
+      body.push(
+        <g key="img" clipPath={`url(#${clip})`}>
+          <image href={env.image(n.src)} x={r3(ix)} y={r3(iy)} width={r3(iw)} height={r3(ih)} preserveAspectRatio={ratio} />
+        </g>,
+      );
+    }
   } else if (shape && n.type !== "group" && n.mask !== true) {
     fills.forEach((f, i) => body.push(shape({ key: `f${i}`, ...paintAttr(f, `${id}-f${i}`) })));
   }
@@ -341,8 +419,11 @@ function NodeBody({ node: n, hidden }: ViewProps) {
     const master = masterIn(n, env.components);
     const shown = n.children ?? master?.children;
     if (master && shown) {
-      const sx = master.width > 0 ? w / master.width : 1;
-      const sy = master.height > 0 ? h / master.height : 1;
+      // Resolved instances of a main with auto layout are already laid out
+      // at their own size; others are scaled to fit.
+      const reflowed = !!master.layout && !!n.children;
+      const sx = master.width > 0 && !reflowed ? w / master.width : 1;
+      const sy = master.height > 0 && !reflowed ? h / master.height : 1;
       const inner = (
         <g transform={sx !== 1 || sy !== 1 ? `scale(${r3(sx)} ${r3(sy)})` : undefined}>
           {shown.map((c) => (

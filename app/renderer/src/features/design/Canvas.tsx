@@ -3,7 +3,7 @@
 // preview against the document as it was when they began, so a drag never
 // accumulates rounding, and Escape puts everything back.
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useApp } from "../../stores/app";
 import { type Tool, useDesign } from "../../stores/design";
 import {
@@ -16,8 +16,10 @@ import {
   type Handle,
   handleDir,
   hitPath,
+  gridTracks,
   localMatrix,
   marquee,
+  type Matrix,
   moveBy,
   multiply,
   type Point,
@@ -32,12 +34,15 @@ import {
   snapRect,
   snapTargets,
   toLocal,
+  nodeBounds,
   worldBounds,
   worldMatrix,
 } from "./geometry";
-import { components, createNode, defaultName, type DesignDoc, type DesignNode, insertNodes, locate, nextName, type NodeType, type Page, pageOf, topmost } from "./model";
+import { components, createNode, defaultName, type DesignDoc, type DesignNode, insertNodes, type LayoutGrid, locate, nextName, type NodeType, type Page, pageOf, topmost } from "./model";
 import { reparent } from "./ops";
 import { NodeView, RenderContext, type RenderEnv } from "./render";
+import { type MenuEntry, RightClick } from "../../primitives/ui";
+import { t } from "../../lib/i18n";
 import { resolveTokens } from "./tokens";
 import { PathTools } from "./PathTools";
 import { CommentPins, newCommentAt } from "./Review";
@@ -47,7 +52,7 @@ const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 const DRAG_START = 3;
 const SNAP_PX = 6;
 
-const DRAW_TYPES: Partial<Record<Tool, NodeType>> = { frame: "frame", rect: "rect", ellipse: "ellipse", line: "line", polygon: "polygon", star: "star" };
+const DRAW_TYPES: Partial<Record<Tool, NodeType>> = { frame: "frame", section: "section", slice: "slice", rect: "rect", ellipse: "ellipse", line: "line", polygon: "polygon", star: "star" };
 
 export function imageUrl(src: string): string {
   if (/^(data|blob):/i.test(src)) return src;
@@ -61,7 +66,59 @@ type Gesture =
   | { kind: "move"; start: Point; world: Point; ids: string[]; base: DesignDoc }
   | { kind: "resize"; handle: Handle; ids: string[]; base: DesignDoc; from: Rect }
   | { kind: "rotate"; ids: string[]; base: DesignDoc; center: Point; startAngle: number }
-  | { kind: "draw"; type: NodeType; start: Point; id: string | null; base: DesignDoc; parent: DesignNode[] };
+  | { kind: "draw"; type: NodeType; start: Point; id: string | null; base: DesignDoc; parent: DesignNode[] }
+  | { kind: "crop"; id: string; start: Point; from: { zoom: number; x: number; y: number } };
+
+/** Width of the rulers, in screen pixels. */
+const RULER = 20;
+
+/** The colour a layer shows: its first visible solid fill, else its first stroke. */
+function sampleColor(n: DesignNode, stroke: boolean): string | null {
+  const fill = n.fills?.find((f) => f.visible !== false && f.type === "solid");
+  const line = n.strokes?.find((s) => s.visible !== false && s.width > 0);
+  if (stroke) return line?.color ?? null;
+  return (fill && fill.type === "solid" ? fill.color : null) ?? line?.color ?? null;
+}
+
+/**
+ * Pulls a guide out of a ruler (index -1) or moves one that exists. Dropped
+ * back on a ruler, it is removed. The whole drag is one undo step.
+ */
+function dragGuide(host: HTMLElement, axis: "x" | "y", index: number) {
+  const s0 = useDesign.getState();
+  const page = s0.doc ? pageOf(s0.doc, s0.pageId) : null;
+  if (!page) return;
+  const at = index < 0 ? (page.guides?.length ?? 0) : index;
+  s0.beginGesture();
+  const place = (ev: PointerEvent) => {
+    const rect = host.getBoundingClientRect();
+    const cam = useDesign.getState().camera;
+    const sx = ev.clientX - rect.left;
+    const sy = ev.clientY - rect.top;
+    const over = axis === "x" ? sx < RULER : sy < RULER;
+    const pos = axis === "x" ? (sx - cam.x) / cam.zoom : (sy - cam.y) / cam.zoom;
+    return { over, pos: Math.round(pos) };
+  };
+  const move = (ev: PointerEvent) => {
+    const { over, pos } = place(ev);
+    // Over the ruler a guide is on its way out: it is not drawn there.
+    useDesign.getState().setGuide(at, over ? null : { axis, at: pos }, true);
+    if (over) return;
+  };
+  const up = (ev: PointerEvent) => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    const { over, pos } = place(ev);
+    const st = useDesign.getState();
+    const now = st.doc ? pageOf(st.doc, st.pageId).guides?.length ?? 0 : 0;
+    if (over) {
+      if (now > at) st.setGuide(at, null, true);
+    } else st.setGuide(at, { axis, at: pos }, true);
+    st.endGesture();
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+}
 
 function cursorFor(handle: Handle, rotation: number): string {
   const order = ["n", "ne", "e", "se", "s", "sw", "w", "nw"];
@@ -94,6 +151,23 @@ export function Canvas() {
   const tool = useDesign((s) => s.tool);
   const camera = useDesign((s) => s.camera);
   const editing = useDesign((s) => s.editing);
+  const showGrids = useDesign((s) => s.showGrids);
+  const showRulers = useDesign((s) => s.showRulers);
+  const cropping = useDesign((s) => s.cropping);
+  // Alt held: distances from the selection to the layer under the pointer.
+  const [alt, setAlt] = useState(false);
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => setAlt(e.altKey && !e.ctrlKey && !e.metaKey);
+    const off = () => setAlt(false);
+    window.addEventListener("keydown", on);
+    window.addEventListener("keyup", on);
+    window.addEventListener("blur", off);
+    return () => {
+      window.removeEventListener("keydown", on);
+      window.removeEventListener("keyup", on);
+      window.removeEventListener("blur", off);
+    };
+  }, []);
   const flash = useDesign((s) => s.flash);
   const host = useRef<HTMLDivElement>(null);
   const gesture = useRef<Gesture | null>(null);
@@ -168,8 +242,21 @@ export function Canvas() {
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const cam = useDesign.getState().camera;
+      const st = useDesign.getState();
+      const cam = st.camera;
       const box = el.getBoundingClientRect();
+      if (e.altKey && st.cropping && st.doc) {
+        // Alt + wheel in crop mode zooms the picture inside its box.
+        const at = locate(pageOf(st.doc, st.pageId), st.cropping);
+        if (at) {
+          const from = { zoom: 1, x: 0, y: 0, ...at.node.crop };
+          const zoom = Math.max(1, Math.min(20, from.zoom * Math.exp(-e.deltaY * 0.002)));
+          const limit = (zoom - 1) / 2;
+          const crop = { zoom, x: Math.max(-limit, Math.min(limit, from.x)), y: Math.max(-limit, Math.min(limit, from.y)) };
+          st.patch([st.cropping], () => ({ crop: zoom === 1 ? undefined : crop }));
+        }
+        return;
+      }
       if (e.ctrlKey || e.metaKey) {
         const p = { x: e.clientX - box.left, y: e.clientY - box.top };
         const factor = Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0025));
@@ -243,6 +330,42 @@ export function Canvas() {
       if (id) s.setActiveComment(id);
       return;
     }
+    if (s.tool === "eyedropper") {
+      // Takes the colour of the layer under the pointer: onto the selection's fill (Alt: its stroke), or onto the clipboard.
+      const hit = hitPath(p, world, sizeOf, 2 / s.camera.zoom);
+      const picked = hit ? sampleColor(hit[hit.length - 1]!, e.altKey) : pageOf(s.doc, s.pageId).background;
+      s.setTool("select");
+      if (!picked) return;
+      if (s.selection.length) {
+        s.patch(s.selection, (n) =>
+          e.altKey || n.type === "line"
+            ? { strokes: [{ ...(n.strokes?.[0] ?? { width: 1 }), color: picked }, ...(n.strokes?.slice(1) ?? [])] as DesignNode["strokes"] }
+            : { fills: [{ type: "solid", color: picked }] },
+        );
+      } else void navigator.clipboard?.writeText(picked).catch(() => undefined);
+      useApp.getState().toast(picked);
+      return;
+    }
+    if (s.cropping) {
+      const at = locate(p, s.cropping);
+      if (at && at.node.type === "image") {
+        const hitCrop = hitPath(p, world, sizeOf, 2 / s.camera.zoom);
+        if (hitCrop?.some((n) => n.id === s.cropping)) {
+          gesture.current = { kind: "crop", id: s.cropping, start: world, from: { zoom: 1, x: 0, y: 0, ...at.node.crop } };
+          s.beginGesture();
+          return;
+        }
+      }
+      s.setCropping(null);
+    }
+    if (s.showRulers && s.tool === "select") {
+      const near = (p.guides ?? []).findIndex((g) => Math.abs((g.axis === "x" ? sp.x - s.camera.x : sp.y - s.camera.y) - g.at * s.camera.zoom) <= 4);
+      if (near >= 0) {
+        e.preventDefault();
+        dragGuide(host.current!, p.guides![near]!.axis, near);
+        return;
+      }
+    }
     const drawType = DRAW_TYPES[s.tool];
     if (drawType || s.tool === "text") {
       if (s.tool === "text") {
@@ -251,11 +374,16 @@ export function Canvas() {
         const id = s.addNode("text", { x: Math.round(local.x), y: Math.round(local.y), text: "" }, holder.length ? holder[holder.length - 1]!.id : null);
         if (id) {
           s.setTool("select");
-          s.setEditing(id);
+          // The press still moves focus to the canvas after this handler;
+          // an editor opened now would lose it at once and drop the empty
+          // text. Open it once the press has settled.
+          e.preventDefault();
+          requestAnimationFrame(() => useDesign.getState().setEditing(id));
         }
         return;
       }
-      const holder = frameAt(p, world, new Set(), sizeOf) ?? [];
+      // Sections and slices lie on the page itself, not inside a frame.
+      const holder = drawType === "section" || drawType === "slice" ? [] : frameAt(p, world, new Set(), sizeOf) ?? [];
       gesture.current = { kind: "draw", type: drawType!, start: world, id: null, base: s.doc, parent: holder };
       s.beginGesture();
       return;
@@ -301,7 +429,9 @@ export function Canvas() {
       if (s.tool === "select" && !space) {
         const near = handleAt(sp);
         const el = host.current!;
-        if (near && "handle" in near) el.style.cursor = cursorFor(near.handle, selectionFrame(p, s.selection)?.rotation ?? 0);
+        const onGuide = s.showRulers ? (p.guides ?? []).find((q) => Math.abs((q.axis === "x" ? sp.x - s.camera.x : sp.y - s.camera.y) - q.at * s.camera.zoom) <= 4) : undefined;
+        if (onGuide) el.style.cursor = onGuide.axis === "x" ? "col-resize" : "row-resize";
+        else if (near && "handle" in near) el.style.cursor = cursorFor(near.handle, selectionFrame(p, s.selection)?.rotation ?? 0);
         else if (near) el.style.cursor = "alias";
         else el.style.cursor = "";
         const hit = hitPath(p, world, sizeOf, 2 / s.camera.zoom);
@@ -310,6 +440,18 @@ export function Canvas() {
       return;
     }
     switch (g.kind) {
+      case "crop": {
+        // Dragging moves the picture inside its box; it never leaves a gap.
+        const at = locate(pageOf(useDesign.getState().doc!, s.pageId), g.id);
+        if (!at) return;
+        const size = sizeOf(at.node);
+        const limit = Math.max(0, (g.from.zoom - 1) / 2);
+        const x = Math.max(-limit, Math.min(limit, g.from.x + (world.x - g.start.x) / Math.max(1, size.width)));
+        const y = Math.max(-limit, Math.min(limit, g.from.y + (world.y - g.start.y) / Math.max(1, size.height)));
+        const doc = useDesign.getState().doc!;
+        s.preview(patchOne(doc, g.id, { crop: g.from.zoom === 1 && x === 0 && y === 0 ? undefined : { zoom: g.from.zoom, x, y } }));
+        return;
+      }
       case "pan":
         s.setCamera({ ...s.camera, x: g.cam.x + sp.x - g.start.x, y: g.cam.y + sp.y - g.start.y });
         return;
@@ -509,7 +651,9 @@ export function Canvas() {
         const at = locate(p, id);
         return at && !at.parent && (at.node.type === "frame" || at.node.type === "component");
       });
-      if (!allTopLevelFrames && (parents.size !== 1 || !parents.has(targetId))) {
+      // Frames on the page stay there unless they are dropped into a section (and leave it the same way).
+      const intoSection = !!target && target[target.length - 1]!.type === "section" && g.ids.every((id) => locate(p, id)?.node.type !== "section");
+      if ((!allTopLevelFrames || intoSection) && (parents.size !== 1 || !parents.has(targetId))) {
         const fromGroup = [...parents].some((id) => id && locate(p, id)?.node.type === "group");
         if (!fromGroup) {
           const moved = reparent(after.doc, after.pageId, g.ids, targetId);
@@ -519,7 +663,7 @@ export function Canvas() {
       s.endGesture();
       return;
     }
-    if (g.kind === "resize" || g.kind === "rotate") {
+    if (g.kind === "resize" || g.kind === "rotate" || g.kind === "crop") {
       s.endGesture();
       return;
     }
@@ -527,12 +671,31 @@ export function Canvas() {
       if (!g.id) {
         s.cancelGesture();
         // A click with a shape tool: a default-sized shape at the point.
-        const sizes: Partial<Record<NodeType, [number, number]>> = { frame: [100, 100], line: [100, 0] };
+        const sizes: Partial<Record<NodeType, [number, number]>> = { frame: [100, 100], section: [480, 320], slice: [200, 200], line: [100, 0] };
         const [w, h] = sizes[g.type] ?? [100, 100];
         const local = g.parent.length ? toLocal(g.parent, g.start) : g.start;
         const id = s.addNode(g.type, { x: Math.round(local.x - w / 2), y: Math.round(local.y - h / 2), width: w, height: h }, g.parent.length ? g.parent[g.parent.length - 1]!.id : null);
         if (id) s.select([id]);
       } else {
+        // A section drawn around top-level frames takes them in, as in Figma.
+        if (g.type === "section") {
+          const after = useDesign.getState();
+          const p = currentPage();
+          const box = p ? nodeBounds(p, g.id, sizeOf) : null;
+          if (p && after.doc && box) {
+            const inside = p.children
+              .filter((n) => n.id !== g.id && n.visible !== false && (n.type === "frame" || n.type === "component"))
+              .filter((n) => {
+                const b = worldBounds([n], sizeOf);
+                return b.x >= box.x && b.y >= box.y && b.x + b.width <= box.x + box.width && b.y + b.height <= box.y + box.height;
+              })
+              .map((n) => n.id);
+            if (inside.length) {
+              const moved = reparent(after.doc, after.pageId, inside, g.id);
+              if (moved !== after.doc) s.preview(moved);
+            }
+          }
+        }
         s.endGesture();
         s.select([g.id]);
       }
@@ -556,6 +719,7 @@ export function Canvas() {
       return;
     }
     s.select([target.id]);
+    if (target.type === "image" && !target.locked) s.setCropping(target.id);
   };
 
   const onPointerLeave = () => useDesign.getState().setHover(null);
@@ -567,7 +731,9 @@ export function Canvas() {
   const editingAt = editing ? locate(page, editing) : null;
   const cursor = panning ? "grabbing" : space || tool === "hand" ? "grab" : tool === "text" ? "text" : tool !== "select" && tool !== "pen" && tool !== "pencil" ? "crosshair" : undefined;
 
+  const menu = contextItems(selection.length);
   return (
+    <RightClick items={menu}>
     <div
       ref={host}
       className="design-canvas"
@@ -586,7 +752,17 @@ export function Canvas() {
       }}
       onPointerLeave={onPointerLeave}
       onDoubleClick={onDoubleClick}
-      onContextMenu={(e) => e.preventDefault()}
+      onContextMenu={(e) => {
+        // Like Figma, a right-click on a layer outside the selection selects it first.
+        const s = useDesign.getState();
+        const p = currentPage();
+        if (!p || s.editing) return;
+        const hit = hitPath(p, toWorld(screenPoint(e)), sizeOf, 2 / s.camera.zoom);
+        if (hit) {
+          const target = pickTarget(hit, s.selection, e.ctrlKey || e.metaKey);
+          if (!s.selection.includes(target.id)) s.select([target.id]);
+        }
+      }}
     >
       <svg className="design-page" width={size.width} height={size.height} aria-label={page.name} role="img">
         <RenderContext.Provider value={env}>
@@ -598,13 +774,21 @@ export function Canvas() {
         </RenderContext.Provider>
       </svg>
       <svg className="design-overlay" width={size.width} height={size.height} aria-hidden="true">
+        {showGrids && <LayoutGrids page={drawnPage ?? page} camera={camera} />}
         <FrameLabels page={page} toScreen={toScreen} selection={selection} />
+        <Slices page={page} toScreen={toScreen} zoom={camera.zoom} selection={selection} />
+        {showRulers &&
+          (page.guides ?? []).map((g, i) => (
+            <line key={`g${i}`} className="design-ruler-guide" x1={g.axis === "x" ? camera.x + g.at * camera.zoom : 0} x2={g.axis === "x" ? camera.x + g.at * camera.zoom : size.width} y1={g.axis === "x" ? 0 : camera.y + g.at * camera.zoom} y2={g.axis === "x" ? size.height : camera.y + g.at * camera.zoom} />
+          ))}
+        {cropping && locate(page, cropping) && <Outline path={locate(page, cropping)!.path} toScreen={toScreen} className="design-crop" />}
         {flash.map((id) => {
           const at = locate(page, id);
           if (!at || at.node.visible === false) return null;
           return <Outline key={`f${id}`} path={at.path} toScreen={toScreen} className="design-flash" />;
         })}
         {hoverAt && <Outline path={hoverAt.path} toScreen={toScreen} className="design-hover" />}
+        {alt && selection.length > 0 && !gesture.current && <Measure page={page} selection={selection} target={hoverAt?.path ?? null} toScreen={toScreen} />}
         {selection.length > 1 &&
           selection.map((id) => {
             const at = locate(page, id);
@@ -619,10 +803,51 @@ export function Canvas() {
         })}
       </svg>
       {editingAt && editingAt.node.type === "text" && <TextEditor node={editingAt.node} path={editingAt.path} camera={camera} />}
+      {showRulers && <Rulers host={host} size={size} camera={camera} selection={selection} page={page} />}
       <PathTools />
       <CommentPins />
     </div>
+    </RightClick>
   );
+}
+
+/** The canvas's right-click menu: Figma's common commands, with their keys. */
+function contextItems(selected: number): MenuEntry[] {
+  const s = () => useDesign.getState();
+  const view = () => document.querySelector<HTMLElement>(".design-canvas")?.getBoundingClientRect() ?? { width: 0, height: 0 };
+  const page = () => pageOf(s().doc!, s().pageId);
+  const items: MenuEntry[] = [];
+  if (selected) {
+    items.push(
+      { label: t("design.menu.copy"), keys: "Ctrl+C", onSelect: () => s().copy() },
+      { label: t("design.menu.cut"), keys: "Ctrl+X", onSelect: () => s().cut() },
+    );
+  }
+  items.push({ label: t("design.menu.paste"), keys: "Ctrl+V", onSelect: () => s().paste() });
+  if (selected) {
+    items.push(
+      { label: t("design.menu.duplicate"), keys: "Ctrl+D", onSelect: () => s().duplicate() },
+      { label: t("design.menu.delete"), keys: "Del", danger: true, onSelect: () => s().remove() },
+      { label: t("design.menu.group"), keys: "Ctrl+G", onSelect: () => s().group() },
+      { label: t("design.menu.ungroup"), keys: "Ctrl+Shift+G", onSelect: () => s().ungroup() },
+      { label: t("design.menu.frame"), keys: "Ctrl+Alt+G", onSelect: () => s().frameSelection() },
+      { label: t("design.menu.autoLayout"), keys: "Shift+A", onSelect: () => s().addAutoLayout() },
+      { label: t("design.menu.component"), keys: "Ctrl+Alt+K", onSelect: () => s().makeComponent() },
+      { label: t("design.menu.detach"), keys: "Ctrl+Alt+B", onSelect: () => s().detach() },
+      { label: t("design.menu.front"), keys: "Ctrl+Shift+]", onSelect: () => s().reorder("front") },
+      { label: t("design.menu.back"), keys: "Ctrl+Shift+[", onSelect: () => s().reorder("back") },
+      { label: t("design.menu.flatten"), keys: "Ctrl+E", onSelect: () => s().flatten() },
+      { label: t("design.menu.hide"), keys: "Shift+H", onSelect: () => s().patch(s().selection, (n) => ({ visible: n.visible === false })) },
+      { label: t("design.menu.lock"), keys: "Ctrl+Shift+L", onSelect: () => s().patch(s().selection, (n) => ({ locked: !n.locked })) },
+      { label: t("design.menu.zoomSelection"), keys: "Shift+2", onSelect: () => zoomToFit(page(), view(), true) },
+    );
+  }
+  items.push(
+    { label: t("design.menu.selectAll"), keys: "Ctrl+A", onSelect: () => s().selectAll() },
+    { label: t("design.menu.grids"), keys: "Ctrl+Shift+4", checked: s().showGrids, onSelect: () => s().toggleGrids() },
+    { label: t("design.menu.rulers"), keys: "Shift+R", checked: s().showRulers, onSelect: () => s().toggleRulers() },
+  );
+  return items;
 }
 
 function patchOne(doc: DesignDoc, id: string, props: Partial<DesignNode>): DesignDoc {
@@ -681,20 +906,223 @@ function SelectionBox({ pts, box, line }: { pts: Point[]; box: Rect; line: boole
   );
 }
 
+/** The red distance lines Figma shows with Alt held: from the selection to
+ * the hovered layer, or to the inside of the selection's parent frame. */
+function Measure({ page, selection, target, toScreen }: { page: Page; selection: string[]; target: DesignNode[] | null; toScreen: (p: Point) => Point }) {
+  const a = selectionBounds(page, selection, sizeOf);
+  if (!a) return null;
+  let path = target;
+  if (!path) {
+    const at = locate(page, selection[0]!);
+    if (!at || at.path.length < 2) return null;
+    path = at.path.slice(0, -1);
+  }
+  const b = worldBounds(path, sizeOf);
+  const lines: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  const ax2 = a.x + a.width;
+  const ay2 = a.y + a.height;
+  const bx2 = b.x + b.width;
+  const by2 = b.y + b.height;
+  const inside = a.x >= b.x && ax2 <= bx2 && a.y >= b.y && ay2 <= by2;
+  const midY = (Math.max(a.y, b.y) + Math.min(ay2, by2)) / 2;
+  const midX = (Math.max(a.x, b.x) + Math.min(ax2, bx2)) / 2;
+  const cy = a.y + a.height / 2;
+  const cx = a.x + a.width / 2;
+  if (inside) {
+    lines.push({ x1: b.x, y1: cy, x2: a.x, y2: cy }, { x1: ax2, y1: cy, x2: bx2, y2: cy }, { x1: cx, y1: b.y, x2: cx, y2: a.y }, { x1: cx, y1: ay2, x2: cx, y2: by2 });
+  } else {
+    const yOverlap = Math.min(ay2, by2) > Math.max(a.y, b.y);
+    const xOverlap = Math.min(ax2, bx2) > Math.max(a.x, b.x);
+    const y = yOverlap ? midY : cy;
+    const x = xOverlap ? midX : cx;
+    if (bx2 <= a.x) lines.push({ x1: bx2, y1: y, x2: a.x, y2: y });
+    else if (b.x >= ax2) lines.push({ x1: ax2, y1: y, x2: b.x, y2: y });
+    if (by2 <= a.y) lines.push({ x1: x, y1: by2, x2: x, y2: a.y });
+    else if (b.y >= ay2) lines.push({ x1: x, y1: ay2, x2: x, y2: b.y });
+  }
+  const shown = lines.filter((l) => Math.hypot(l.x2 - l.x1, l.y2 - l.y1) >= 0.5);
+  const box = { x: toScreen(b).x, y: toScreen(b).y, x2: toScreen({ x: bx2, y: by2 }).x, y2: toScreen({ x: bx2, y: by2 }).y };
+  return (
+    <g className="design-measure" aria-hidden="true">
+      <rect x={box.x} y={box.y} width={box.x2 - box.x} height={box.y2 - box.y} />
+      {shown.map((l, i) => {
+        const p = toScreen({ x: l.x1, y: l.y1 });
+        const q = toScreen({ x: l.x2, y: l.y2 });
+        const label = String(Math.round(Math.hypot(l.x2 - l.x1, l.y2 - l.y1) * 100) / 100);
+        const mx = (p.x + q.x) / 2;
+        const my = (p.y + q.y) / 2;
+        const w = label.length * 6.8 + 10;
+        return (
+          <g key={i}>
+            <line x1={p.x} y1={p.y} x2={q.x} y2={q.y} />
+            <rect className="design-measure-tag" x={mx - w / 2} y={my - 9} width={w} height={18} rx={3} />
+            <text x={mx} y={my + 4} textAnchor="middle">
+              {label}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+const GRID_COLOR: Record<LayoutGrid["pattern"], string> = { columns: "#FF00001A", rows: "#FF00001A", grid: "#FF000033" };
+
+/** Frames' layout grids over their content, as Figma draws them; never exported. */
+function LayoutGrids({ page, camera }: { page: Page; camera: { x: number; y: number; zoom: number } }) {
+  const out: ReactNode[] = [];
+  const visit = (nodes: DesignNode[], parent: Matrix) => {
+    for (const n of nodes) {
+      if (n.visible === false) continue;
+      const m = multiply(parent, localMatrix(n));
+      if (n.grids?.length && (n.type === "frame" || n.type === "component")) {
+        const parts: ReactNode[] = [];
+        n.grids.forEach((g, gi) => {
+          if (g.hidden) return;
+          const fill = g.color ?? GRID_COLOR[g.pattern];
+          if (g.pattern === "grid") {
+            const step = Math.max(1, g.size ?? 8);
+            // Lines closer than 4 screen pixels would be a solid wash.
+            if (step * camera.zoom < 4) return;
+            const d: string[] = [];
+            for (let x = step; x < n.width; x += step) d.push(`M${x} 0V${n.height}`);
+            for (let y = step; y < n.height; y += step) d.push(`M0 ${y}H${n.width}`);
+            parts.push(<path key={gi} d={d.join("")} stroke={fill} strokeWidth={1 / camera.zoom} fill="none" />);
+            return;
+          }
+          for (const [at, size] of gridTracks(g, g.pattern === "columns" ? n.width : n.height)) {
+            parts.push(g.pattern === "columns" ? <rect key={`${gi}-${at}`} x={at} y={0} width={size} height={n.height} fill={fill} /> : <rect key={`${gi}-${at}`} x={0} y={at} width={n.width} height={size} fill={fill} />);
+          }
+        });
+        if (parts.length) {
+          out.push(
+            <g key={n.id} transform={`matrix(${m.join(" ")})`}>
+              {parts}
+            </g>,
+          );
+        }
+      }
+      if (n.children) visit(n.children, m);
+    }
+  };
+  visit(page.children, [1, 0, 0, 1, 0, 0]);
+  if (!out.length) return null;
+  return (
+    <g className="design-grids" transform={`translate(${camera.x} ${camera.y}) scale(${camera.zoom})`}>
+      {out}
+    </g>
+  );
+}
+
 function FrameLabels({ page, toScreen, selection }: { page: Page; toScreen: (p: Point) => Point; selection: string[] }) {
+  // Top-level frames and sections are labelled, and so are the frames a section holds.
+  const labelled: { node: DesignNode; origin: Point }[] = [];
+  for (const n of page.children) {
+    if (n.visible === false) continue;
+    if (n.type === "frame" || n.type === "component" || n.type === "section") labelled.push({ node: n, origin: { x: n.x, y: n.y } });
+    if (n.type === "section")
+      for (const c of n.children ?? []) if (c.visible !== false && (c.type === "frame" || c.type === "component")) labelled.push({ node: c, origin: { x: n.x + c.x, y: n.y + c.y } });
+  }
   return (
     <g className="design-frame-labels">
-      {page.children
-        .filter((n) => (n.type === "frame" || n.type === "component") && n.visible !== false)
-        .map((n) => {
-          const p = toScreen(apply(localMatrix(n), { x: 0, y: 0 }));
-          return (
-            <text key={n.id} x={p.x} y={p.y - 6} data-on={selection.includes(n.id) || undefined} data-component={n.type === "component" || undefined}>
-              {n.type === "component" ? `◇ ${n.name}` : n.name}
-            </text>
-          );
-        })}
+      {labelled.map(({ node: n, origin }) => {
+        const p = toScreen(origin);
+        return (
+          <text key={n.id} x={p.x} y={p.y - 6} data-on={selection.includes(n.id) || undefined} data-component={n.type === "component" || undefined} data-section={n.type === "section" || undefined}>
+            {n.type === "component" ? `◇ ${n.name}` : n.name}
+          </text>
+        );
+      })}
     </g>
+  );
+}
+
+/** Slices: a dashed green box with the name and the size, never exported. */
+function Slices({ page, toScreen, zoom, selection }: { page: Page; toScreen: (p: Point) => Point; zoom: number; selection: string[] }) {
+  const slices: DesignNode[] = [];
+  const visit = (nodes: DesignNode[]) => {
+    for (const n of nodes) {
+      if (n.visible === false) continue;
+      if (n.type === "slice") slices.push(n);
+      if (n.children) visit(n.children);
+    }
+  };
+  visit(page.children);
+  if (!slices.length) return null;
+  return (
+    <g className="design-slices">
+      {slices.map((n) => {
+        const at = locate(page, n.id);
+        if (!at) return null;
+        const box = worldBounds(at.path, sizeOf);
+        const a = toScreen({ x: box.x, y: box.y });
+        return (
+          <g key={n.id} data-on={selection.includes(n.id) || undefined}>
+            <rect x={a.x} y={a.y} width={box.width * zoom} height={box.height * zoom} />
+            <text x={a.x + 4} y={a.y + 12}>{`${n.name} · ${Math.round(box.width)}×${Math.round(box.height)}`}</text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+/** A step for ruler labels that keeps them about 60 screen pixels apart. */
+function rulerStep(zoom: number): number {
+  const target = 60 / zoom;
+  const pow = Math.pow(10, Math.floor(Math.log10(target)));
+  for (const m of [1, 2, 5, 10]) if (pow * m >= target) return pow * m;
+  return pow * 10;
+}
+
+/** Rulers along the top and left edge. Dragging out of one pulls a guide. */
+function Rulers({ host, size, camera, selection, page }: { host: React.RefObject<HTMLDivElement | null>; size: { width: number; height: number }; camera: { x: number; y: number; zoom: number }; selection: string[]; page: Page }) {
+  const step = rulerStep(camera.zoom);
+  const minor = step / (step >= 5 ? 5 : 1);
+  const ticks = (len: number, offset: number): { at: number; major: boolean; screen: number }[] => {
+    const out: { at: number; major: boolean; screen: number }[] = [];
+    const from = Math.floor((RULER - offset) / camera.zoom / minor) * minor;
+    const to = Math.ceil((len - offset) / camera.zoom / minor) * minor;
+    for (let v = from; v <= to; v += minor) {
+      const screen = offset + v * camera.zoom;
+      if (screen < RULER || screen > len) continue;
+      out.push({ at: Math.round(v * 1000) / 1000, major: Math.abs(v / step - Math.round(v / step)) < 1e-6, screen });
+    }
+    return out;
+  };
+  const box = selectionBounds(page, selection, sizeOf);
+  const start = (axis: "x" | "y") => (e: React.PointerEvent) => {
+    if (e.button !== 0 || !host.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragGuide(host.current, axis, -1);
+  };
+  const w = size.width;
+  const h = size.height;
+  return (
+    <svg className="design-rulers" width={w} height={h} aria-hidden="true">
+      <rect className="design-ruler-bg" x={0} y={0} width={w} height={RULER} onPointerDown={start("y")} style={{ cursor: "row-resize" }} />
+      <rect className="design-ruler-bg" x={0} y={0} width={RULER} height={h} onPointerDown={start("x")} style={{ cursor: "col-resize" }} />
+      {box && <rect className="design-ruler-sel" x={camera.x + box.x * camera.zoom} y={0} width={box.width * camera.zoom} height={RULER} />}
+      {box && <rect className="design-ruler-sel" x={0} y={camera.y + box.y * camera.zoom} width={RULER} height={box.height * camera.zoom} />}
+      {ticks(w, camera.x).map((k) => (
+        <g key={`x${k.at}`}>
+          <line className="design-ruler-tick" x1={k.screen} x2={k.screen} y1={k.major ? 8 : 15} y2={RULER} />
+          {k.major && <text className="design-ruler-label" x={k.screen + 3} y={9}>{k.at}</text>}
+        </g>
+      ))}
+      {ticks(h, camera.y).map((k) => (
+        <g key={`y${k.at}`}>
+          <line className="design-ruler-tick" y1={k.screen} y2={k.screen} x1={k.major ? 8 : 15} x2={RULER} />
+          {k.major && (
+            <text className="design-ruler-label" transform={`translate(9 ${k.screen - 3}) rotate(-90)`}>
+              {k.at}
+            </text>
+          )}
+        </g>
+      ))}
+      <rect className="design-ruler-corner" x={0} y={0} width={RULER} height={RULER} />
+    </svg>
   );
 }
 

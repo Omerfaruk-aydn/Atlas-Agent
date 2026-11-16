@@ -9,7 +9,8 @@
 export const FORMAT = "atlas-design";
 export const VERSION = 1;
 
-export type NodeType = "frame" | "group" | "rect" | "ellipse" | "line" | "polygon" | "star" | "path" | "text" | "image" | "component" | "instance";
+/** "section" organises frames on the canvas (a labelled, unclipped holder); "slice" marks a region to export. */
+export type NodeType = "frame" | "group" | "rect" | "ellipse" | "line" | "polygon" | "star" | "path" | "text" | "image" | "component" | "instance" | "section" | "slice";
 
 export interface GradientStop {
   offset: number;
@@ -18,7 +19,8 @@ export interface GradientStop {
 
 export type Paint =
   | { type: "solid"; color: string; /** A colour variable that sets `color` for the document's active mode. */ variable?: string; opacity?: number; visible?: boolean }
-  | { type: "linear" | "radial"; stops: GradientStop[]; angle?: number; opacity?: number; visible?: boolean }
+  /** Angular: the colours sweep around the centre, starting at `angle` degrees (0 = 3 o'clock). */
+  | { type: "linear" | "radial" | "angular"; stops: GradientStop[]; angle?: number; opacity?: number; visible?: boolean }
   /** A picture fills the shape: cropped to cover, fitted whole, or stretched. */
   | { type: "image"; src: string; fit?: "cover" | "contain" | "stretch"; opacity?: number; visible?: boolean };
 
@@ -30,6 +32,9 @@ export interface Stroke {
   dash?: number[];
   opacity?: number;
   visible?: boolean;
+  /** Ends and corners of open paths, as in SVG; icons use round. */
+  cap?: "round" | "square";
+  join?: "round" | "bevel";
 }
 
 export interface Effect {
@@ -66,6 +71,21 @@ export interface Layout {
 }
 
 /** How a child follows its parent's resizing when the parent has no layout. */
+/** A frame's guide grid, as in Figma; drawn in the editor only, never exported. */
+export interface LayoutGrid {
+  pattern: "columns" | "rows" | "grid";
+  /** Columns and rows: how many. */
+  count?: number;
+  /** Grid: the cell. Columns and rows: a fixed track width (0 or absent stretches). */
+  size?: number;
+  gutter?: number;
+  margin?: number;
+  align?: "stretch" | "start" | "center" | "end";
+  /** #RRGGBBAA. */
+  color?: string;
+  hidden?: boolean;
+}
+
 export interface Constraints {
   x: "left" | "right" | "center" | "stretch" | "scale";
   y: "top" | "bottom" | "center" | "stretch" | "scale";
@@ -101,6 +121,8 @@ export interface DesignNode {
   /** In a layout parent: stay where x and y say, outside the flow. */
   absolute?: boolean;
   constraints?: Constraints;
+  /** Frames and components: guide grids. */
+  grids?: LayoutGrid[];
   /** Groups: combine the shapes inside into one (union, subtract the rest from the first, intersect, exclude overlaps); the group's fills paint the result. */
   bool_op?: "union" | "subtract" | "intersect" | "exclude";
   /** A shape that clips the siblings above it in the same parent, and is not drawn itself. */
@@ -133,6 +155,8 @@ export interface DesignNode {
   // Images.
   src?: string;
   fit?: "cover" | "contain" | "stretch";
+  /** Images: the crop. `zoom` ≥ 1 enlarges the picture about the box's centre; x and y shift it as shares of the box. */
+  crop?: ImageCrop;
   // Paths: SVG path data drawn in a box of view_box[0] × view_box[1], scaled to the node.
   d?: string;
   view_box?: [number, number];
@@ -142,6 +166,10 @@ export interface DesignNode {
   inner?: number;
   // Instances.
   component_id?: string;
+  /** Set on the root of a kit block placed with insert. */
+  kit?: { id: string; props?: Record<string, unknown> };
+  /** Image description for export and assistive tech. */
+  alt?: string;
 }
 
 /** Shared looks a node points at by id: change the style, every node using it follows. */
@@ -192,7 +220,8 @@ export interface Interaction {
 }
 
 /** What an instance changes in its component's layers, by layer id. */
-export type Overrides = Record<string, Partial<Pick<DesignNode, "visible" | "opacity" | "fills" | "strokes" | "effects" | "text" | "font" | "radius" | "fill_style" | "text_style" | "effect_style">>>;
+/** What an instance changes in its component's layers; `d` swaps a path's geometry (an icon swap). */
+export type Overrides = Record<string, Partial<Pick<DesignNode, "visible" | "opacity" | "fills" | "strokes" | "effects" | "text" | "font" | "radius" | "fill_style" | "text_style" | "effect_style" | "d">>>;
 
 export interface Reply {
   author: string;
@@ -214,11 +243,24 @@ export interface Comment {
   replies?: Reply[];
 }
 
+export interface ImageCrop {
+  zoom: number;
+  x: number;
+  y: number;
+}
+
+/** A ruler guide: a line across the page at `at`, on the x (vertical line) or y (horizontal line) axis. */
+export interface RulerGuide {
+  axis: "x" | "y";
+  at: number;
+}
+
 export interface Page {
   id: string;
   name: string;
   background: string;
   children: DesignNode[];
+  guides?: RulerGuide[];
 }
 
 export interface DesignDoc {
@@ -229,10 +271,16 @@ export interface DesignDoc {
   styles?: Styles;
   variables?: Variables;
   comments?: Comment[];
+  /** The design kit theme the styles and variables came from (internal/design/kit.go). */
+  theme?: { id: string; accent?: string };
+  /** Present when the theme was derived from a brand colour. */
+  custom?: Record<string, unknown>;
+  /** Hash of each page at the last agent render. */
+  renders?: { page: string; hash: string }[];
 }
 
-export const CONTAINERS: ReadonlySet<NodeType> = new Set(["frame", "group", "component"]);
-const TYPES: ReadonlySet<string> = new Set(["frame", "group", "rect", "ellipse", "line", "polygon", "star", "path", "text", "image", "component", "instance"]);
+export const CONTAINERS: ReadonlySet<NodeType> = new Set(["frame", "group", "component", "section"]);
+const TYPES: ReadonlySet<string> = new Set(["frame", "group", "rect", "ellipse", "line", "polygon", "star", "path", "text", "image", "component", "instance", "section", "slice"]);
 
 export const isContainer = (n: DesignNode): boolean => CONTAINERS.has(n.type);
 
@@ -271,6 +319,30 @@ const num = (v: unknown, fallback: number, lo = -LIMIT, hi = LIMIT): number => (
 const str = (v: unknown, fallback: string, max = 200): string => (typeof v === "string" ? v.slice(0, max) : fallback);
 const color = (v: unknown, fallback: string): string => (isColor(v) ? v.toUpperCase() : fallback);
 
+function sanitizeGrid(v: unknown): LayoutGrid | null {
+  if (typeof v !== "object" || v === null) return null;
+  const r = v as Record<string, unknown>;
+  const pattern = r.pattern === "rows" || r.pattern === "grid" ? r.pattern : "columns";
+  const g: LayoutGrid = { pattern };
+  if (pattern === "grid") {
+    const cell = num(r.size, 8, 0, 10_000);
+    g.size = cell >= 1 ? cell : 8;
+  } else {
+    const count = Math.round(num(r.count, 5, 0, 100));
+    g.count = count >= 1 ? count : 5;
+    const size = num(r.size, 0, 0, 10_000);
+    if (size > 0) g.size = size;
+    const gutter = num(r.gutter, 0, 0, 10_000);
+    if (gutter > 0) g.gutter = gutter;
+    const margin = num(r.margin, 0, 0, 10_000);
+    if (margin > 0) g.margin = margin;
+    g.align = r.align === "start" || r.align === "center" || r.align === "end" ? r.align : "stretch";
+  }
+  if (isColor(r.color)) g.color = (r.color as string).toUpperCase();
+  if (r.hidden === true) g.hidden = true;
+  return g;
+}
+
 const refId = (v: unknown): string | null => (typeof v === "string" && /^[\w:-]{1,64}$/.test(v) ? v : null);
 
 function sanitizePaint(raw: unknown): Paint | null {
@@ -280,7 +352,7 @@ function sanitizePaint(raw: unknown): Paint | null {
     ...(r.opacity !== undefined ? { opacity: num(r.opacity, 1, 0, 1) } : {}),
     ...(r.visible === false ? { visible: false } : {}),
   };
-  if (r.type === "linear" || r.type === "radial") {
+  if (r.type === "linear" || r.type === "radial" || r.type === "angular") {
     const stops = Array.isArray(r.stops)
       ? r.stops
           .filter((s): s is Record<string, unknown> => typeof s === "object" && s !== null)
@@ -304,6 +376,8 @@ function sanitizeStroke(raw: unknown): Stroke | null {
   if (r.opacity !== undefined) s.opacity = num(r.opacity, 1, 0, 1);
   if (r.visible === false) s.visible = false;
   if (refId(r.variable)) s.variable = refId(r.variable)!;
+  if (r.cap === "round" || r.cap === "square") s.cap = r.cap;
+  if (r.join === "round" || r.join === "bevel") s.join = r.join;
   return s;
 }
 
@@ -385,6 +459,7 @@ function sanitizeOverrides(raw: object): Overrides | null {
     if (refId(r.fill_style)) o.fill_style = refId(r.fill_style)!;
     if (refId(r.text_style)) o.text_style = refId(r.text_style)!;
     if (refId(r.effect_style)) o.effect_style = refId(r.effect_style)!;
+    if (typeof r.d === "string" && r.d) o.d = r.d.slice(0, 1 << 16);
     if (Object.keys(o).length) out[id] = o;
   }
   return Object.keys(out).length ? out : null;
@@ -523,7 +598,8 @@ function sanitizeNode(raw: unknown, depth: number, state: SanitizeState): Design
   else if (Array.isArray(r.radius) && r.radius.length === 4) n.radius = r.radius.map((v) => num(v, 0, 0, LIMIT)) as [number, number, number, number];
   if (CONTAINERS.has(type)) {
     n.children = Array.isArray(r.children) ? r.children.map((c) => sanitizeNode(c, depth + 1, state)).filter((c): c is DesignNode => c !== null) : [];
-    if (type !== "group") n.clip = r.clip !== false;
+    if (type === "section") n.clip = r.clip === true;
+    else if (type !== "group") n.clip = r.clip !== false;
   }
   if (type === "frame" || type === "component") {
     const l = sanitizeLayout(r.layout);
@@ -546,6 +622,10 @@ function sanitizeNode(raw: unknown, depth: number, state: SanitizeState): Design
     const y = c.y === "bottom" || c.y === "center" || c.y === "stretch" || c.y === "scale" ? c.y : "top";
     if (x !== "left" || y !== "top") n.constraints = { x, y };
   }
+  if ((type === "frame" || type === "component") && Array.isArray(r.grids)) {
+    const list = r.grids.slice(0, 8).map(sanitizeGrid).filter((g): g is LayoutGrid => g !== null);
+    if (list.length) n.grids = list;
+  }
   if (type === "text") {
     n.text = str(r.text, "", 100_000);
     const f = (typeof r.font === "object" && r.font !== null ? r.font : {}) as Record<string, unknown>;
@@ -563,6 +643,12 @@ function sanitizeNode(raw: unknown, depth: number, state: SanitizeState): Design
   if (type === "image") {
     n.src = str(r.src, "", 16 << 20);
     n.fit = r.fit === "contain" || r.fit === "stretch" ? r.fit : "cover";
+    if (typeof r.crop === "object" && r.crop !== null) {
+      const c = r.crop as Record<string, unknown>;
+      const crop = { zoom: num(c.zoom, 1, 1, 20), x: num(c.x, 0, -20, 20), y: num(c.y, 0, -20, 20) };
+      if (crop.zoom !== 1 || crop.x !== 0 || crop.y !== 0) n.crop = crop;
+    }
+    if (typeof r.alt === "string" && r.alt) n.alt = r.alt.slice(0, 200);
   }
   if (type === "path") {
     n.d = str(r.d, "", 1 << 20);
@@ -586,6 +672,13 @@ function sanitizeNode(raw: unknown, depth: number, state: SanitizeState): Design
     const o = sanitizeOverrides(r.overrides);
     if (o) n.overrides = o;
   }
+  if ((type === "frame" || type === "component") && typeof r.kit === "object" && r.kit !== null) {
+    const k = r.kit as Record<string, unknown>;
+    if (typeof k.id === "string" && /^[\w./-]{1,40}$/.test(k.id)) {
+      n.kit = { id: k.id };
+      if (typeof k.props === "object" && k.props !== null && !Array.isArray(k.props)) n.kit.props = k.props as Record<string, unknown>;
+    }
+  }
   return n;
 }
 
@@ -603,6 +696,8 @@ export function defaultName(type: NodeType): string {
     image: "Image",
     component: "Component",
     instance: "Instance",
+    section: "Section",
+    slice: "Slice",
   };
   return names[type];
 }
@@ -624,11 +719,18 @@ export function sanitizeDoc(raw: unknown): DesignDoc {
       let id = typeof pr.id === "string" && /^[\w:-]{1,64}$/.test(pr.id) ? pr.id : newId();
       if (state.seen.has(id)) id = newId();
       state.seen.add(id);
+      const guides = Array.isArray(pr.guides)
+        ? pr.guides
+            .slice(0, 200)
+            .filter((g): g is Record<string, unknown> => typeof g === "object" && g !== null && (g.axis === "x" || g.axis === "y") && typeof g.at === "number" && Number.isFinite(g.at))
+            .map((g) => ({ axis: g.axis as "x" | "y", at: num(g.at, 0, -LIMIT, LIMIT) }))
+        : [];
       pages.push({
         id,
         name: str(pr.name, `Page ${pages.length + 1}`),
         background: color(pr.background, "#F5F5F5"),
         children: Array.isArray(pr.children) ? pr.children.map((c) => sanitizeNode(c, 0, state)).filter((c): c is DesignNode => c !== null) : [],
+        ...(guides.length ? { guides } : {}),
       });
     }
   }
@@ -640,6 +742,17 @@ export function sanitizeDoc(raw: unknown): DesignDoc {
   if (variables) out.variables = variables;
   const comments = sanitizeComments(r.comments, new Set(pages.map((p) => p.id)));
   if (comments.length) out.comments = comments;
+  const theme = r.theme as Record<string, unknown> | undefined;
+  if (theme && typeof theme.id === "string" && theme.id) out.theme = { id: theme.id.slice(0, 40), ...(typeof theme.accent === "string" && theme.accent ? { accent: theme.accent.slice(0, 40) } : {}) };
+  if (out.theme?.id === "custom" && typeof r.custom === "object" && r.custom !== null) out.custom = r.custom as Record<string, unknown>;
+  if (Array.isArray(r.renders)) {
+    const ids = new Set(pages.map((p) => p.id));
+    const renders = r.renders
+      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+      .map((item) => ({ page: typeof item.page === "string" ? item.page : "", hash: typeof item.hash === "string" ? item.hash : "" }))
+      .filter((item) => ids.has(item.page) && /^[0-9a-f]{24}$/.test(item.hash));
+    if (renders.length) out.renders = renders;
+  }
   return out;
 }
 
@@ -653,6 +766,9 @@ export function createNode(type: NodeType, props: Partial<DesignNode> = {}): Des
       break;
     case "group":
       base.children = [];
+      break;
+    case "section":
+      Object.assign(base, { fills: [{ type: "solid", color: "#FFFFFF" }], children: [], clip: false });
       break;
     case "rect":
     case "ellipse":

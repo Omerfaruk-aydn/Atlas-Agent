@@ -110,16 +110,23 @@ function layoutNode(n: DesignNode, given: Given, sizeOf: SizeOf): DesignNode {
   const padMain = row ? pl + pr : pt + pb;
   const padCross = row ? pt + pb : pl + pr;
 
-  // First pass: each child at its natural size, so a hugging parent knows what it holds.
-  const kids = n.children.map((c) => layoutNode(c, {}, sizeOf));
-  const flow = kids.filter(inFlow);
   const mainOf = (c: DesignNode) => (row ? sizeOf(c).width : sizeOf(c).height);
   const crossOf = (c: DesignNode) => (row ? sizeOf(c).height : sizeOf(c).width);
   const fillMain = (c: DesignNode) => (row ? c.sizing_x === "fill" : c.sizing_y === "fill");
   const fillCross = (c: DesignNode) => l.cross === "stretch" || (row ? c.sizing_y === "fill" : c.sizing_x === "fill");
-
   const hugX = given.width === undefined && n.sizing_x === "hug";
   const hugY = given.height === undefined && n.sizing_y === "hug";
+
+  // First pass: each child at its natural size, so a hugging parent knows what it holds.
+  // When the cross size is already known, children that fill it get it now: text that
+  // wraps at the frame's width is as tall as it will be before the frame hugs it.
+  // A fill frame's own size is not known until its parent gives it.
+  const fixedX = given.width !== undefined || (n.sizing_x ?? "fixed") === "fixed";
+  const fixedY = given.height !== undefined || (n.sizing_y ?? "fixed") === "fixed";
+  const crossKnown = row ? fixedY : fixedX;
+  const knownCross = Math.max(0, (row ? (given.height ?? n.height) : (given.width ?? n.width)) - padCross);
+  const kids = n.children.map((c) => (crossKnown && inFlow(c) && fillCross(c) ? layoutNode(c, row ? { height: knownCross } : { width: knownCross }, sizeOf) : layoutNode(c, {}, sizeOf)));
+  const flow = kids.filter(inFlow);
   const gaps = Math.max(0, flow.length - 1) * l.gap;
   const natural = flow.reduce((sum, c) => sum + mainOf(c), 0);
   const crossMax = flow.reduce((m, c) => Math.max(m, crossOf(c)), 0);
@@ -164,6 +171,17 @@ function layoutNode(n: DesignNode, given: Given, sizeOf: SizeOf): DesignNode {
 
   const base = !differs(width, n.width) && !differs(height, n.height) ? n : { ...n, width, height };
   return positioned.every((k, i) => k === n.children![i]) ? base : { ...base, children: positioned };
+}
+
+/**
+ * An instance's layers placed again at the instance's size, the way its
+ * main's auto layout would place them: a longer label or a wider instance
+ * reflows the content instead of stretching or clipping it. layout.go's
+ * layoutInstance does the same.
+ */
+export function layoutInstance(master: DesignNode, kids: DesignNode[], width: number, height: number, sizeOf: SizeOf): DesignNode[] {
+  const laid = layoutNode({ ...master, children: kids }, { width, height }, sizeOf);
+  return laid.children ?? kids;
 }
 
 /**

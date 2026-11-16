@@ -1,4 +1,6 @@
+import { layoutInstance } from "./layout";
 import { type DesignDoc, type DesignNode, type Effect, type Overrides, type Paint, type Stroke, type Styles, type Variables, components } from "./model";
+import { sizeOf } from "./text";
 
 /**
  * Turns a document's shared looks into plain values for drawing: colour
@@ -68,9 +70,10 @@ export function masterFor(instance: DesignNode, masters: DesignNode[]): DesignNo
 function overridden(n: DesignNode, over: Overrides | undefined): DesignNode {
   const o = over?.[n.id];
   if (!o) return n;
-  const { font, ...rest } = o;
+  const { font, d, ...rest } = o;
   const next: DesignNode = { ...n, ...rest };
   if (font && n.font) next.font = { ...n.font, ...font };
+  if (d && n.type === "path") next.d = d;
   return next;
 }
 
@@ -97,7 +100,7 @@ function resolveNode(n: DesignNode, ctx: Context, over: Overrides | undefined, d
     if (master?.children) {
       const merged = out.overrides;
       const kids = master.children.map((c) => resolveNode(c, ctx, merged, depth + 1));
-      out = { ...out, children: kids };
+      out = { ...out, children: master.layout ? layoutInstance(master, kids, out.width, out.height, sizeOf) : kids };
     }
   } else if (out.children && out.type !== "instance") {
     const kids = out.children.map((c) => resolveNode(c, ctx, over, depth));

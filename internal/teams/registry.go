@@ -14,6 +14,7 @@ package teams
 
 import (
 	"context"
+	"log/slog"
 	"sort"
 	"sync"
 	"time"
@@ -21,9 +22,15 @@ import (
 
 // Message is one entry in a team's mailbox.
 type Message struct {
-	Seq  int
+	Seq int
+	// From is the sender's session id; Name is its handle on the board.
 	From string
+	Name string
 	Text string
+	// To lists who the text addresses: member handles, "all", or "#channel".
+	// It is read from the text (see Mentions), so a message with no @ is a
+	// broadcast nobody is paged for.
+	To   []string
 	Time time.Time
 }
 
@@ -35,6 +42,12 @@ type Registry struct {
 	messages map[string][]Message
 	counter  map[string]int
 	waiters  map[string]chan struct{}
+
+	members   map[string]*member
+	loaded    map[string]bool
+	store     *store
+	nextOrder int
+	clock     func() time.Time
 }
 
 // NewRegistry returns an empty, ready-to-use Registry.
@@ -44,6 +57,9 @@ func NewRegistry() *Registry {
 		messages: make(map[string][]Message),
 		counter:  make(map[string]int),
 		waiters:  make(map[string]chan struct{}),
+		members:  make(map[string]*member),
+		loaded:   make(map[string]bool),
+		clock:    time.Now,
 	}
 }
 
@@ -84,13 +100,28 @@ func (r *Registry) TeamFor(sessionID string) string {
 func (r *Registry) Send(teamID, from, text string) Message {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.counter[teamID]++
-	msg := Message{Seq: r.counter[teamID], From: from, Text: text, Time: time.Now()}
-	r.messages[teamID] = append(r.messages[teamID], msg)
-	if ch, ok := r.waiters[teamID]; ok {
-		close(ch)
-		delete(r.waiters, teamID)
+	r.loadLocked(teamID)
+	now := r.clock()
+	msg := Message{From: from, Name: r.nameLocked(from), Text: text, To: Mentions(text), Time: now}
+	if r.store != nil {
+		// The database numbers the message, so another process posting at the
+		// same moment cannot take the same number.
+		if seq, err := r.store.insert(teamID, msg); err != nil {
+			slog.Warn("Could not save a team board message; keeping it in memory", "error", err)
+		} else {
+			msg.Seq = seq
+			r.loadLocked(teamID)
+		}
 	}
+	if msg.Seq == 0 {
+		r.counter[teamID]++
+		msg.Seq = r.counter[teamID]
+		r.messages[teamID] = append(r.messages[teamID], msg)
+	}
+	if m, ok := r.members[from]; ok {
+		m.lastPost = now
+	}
+	r.wakeLocked(teamID)
 	return msg
 }
 
@@ -99,6 +130,7 @@ func (r *Registry) Send(teamID, from, text string) Message {
 func (r *Registry) Since(teamID string, since int) []Message {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.loadLocked(teamID)
 	return r.sinceLocked(teamID, since)
 }
 
@@ -116,23 +148,41 @@ func (r *Registry) sinceLocked(teamID string, since int) []Message {
 // available at that point (possibly none).
 func (r *Registry) Wait(ctx context.Context, teamID string, since int, timeout time.Duration) []Message {
 	r.mu.Lock()
+	r.loadLocked(teamID)
 	if msgs := r.sinceLocked(teamID, since); len(msgs) > 0 || timeout <= 0 {
 		r.mu.Unlock()
 		return msgs
 	}
-	ch, ok := r.waiters[teamID]
-	if !ok {
-		ch = make(chan struct{})
-		r.waiters[teamID] = ch
+	deadline := time.Now().Add(timeout)
+	for {
+		ch, ok := r.waiters[teamID]
+		if !ok {
+			ch = make(chan struct{})
+			r.waiters[teamID] = ch
+		}
+		r.mu.Unlock()
+		timer := time.NewTimer(min(time.Until(deadline), r.pollEvery()))
+		select {
+		case <-ch:
+		case <-ctx.Done():
+		case <-timer.C:
+		}
+		timer.Stop()
+		r.mu.Lock()
+		r.loadLocked(teamID)
+		if msgs := r.sinceLocked(teamID, since); len(msgs) > 0 || ctx.Err() != nil || !time.Now().Before(deadline) {
+			r.mu.Unlock()
+			return msgs
+		}
 	}
-	r.mu.Unlock()
+}
 
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	select {
-	case <-ch:
-	case <-ctx.Done():
-	case <-timer.C:
+// pollEvery is how long a parked reader sleeps before checking the database
+// for messages written by another process. Without a store nobody else can
+// write, so it sleeps until woken.
+func (r *Registry) pollEvery() time.Duration {
+	if r.store == nil {
+		return time.Hour
 	}
-	return r.Since(teamID, since)
+	return pollInterval
 }

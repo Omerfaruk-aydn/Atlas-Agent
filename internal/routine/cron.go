@@ -36,6 +36,9 @@ type Schedule struct {
 	dow     uint64
 	domStar bool
 	dowStar bool
+	// loc is the CRON_TZ zone, or nil to use the location of the time given
+	// to Next.
+	loc *time.Location
 }
 
 type fieldSpec struct {
@@ -74,6 +77,24 @@ func ParseSchedule(expr string) (Schedule, error) {
 		return Schedule{}, errors.New("cron expression is empty")
 	}
 	text := original
+	// An optional CRON_TZ=<zone> (or TZ=<zone>) prefix pins the schedule to a
+	// time zone, so "9am" stays 9am across daylight saving changes.
+	var loc *time.Location
+	for _, prefix := range []string{"CRON_TZ=", "TZ="} {
+		if rest, ok := strings.CutPrefix(text, prefix); ok {
+			zone, after, found := strings.Cut(rest, " ")
+			if !found || strings.TrimSpace(after) == "" {
+				return Schedule{}, fmt.Errorf("%s needs a zone followed by the cron expression", strings.TrimSuffix(prefix, "="))
+			}
+			l, err := time.LoadLocation(zone)
+			if err != nil {
+				return Schedule{}, fmt.Errorf("unknown time zone %q: %w", zone, err)
+			}
+			loc = l
+			text = strings.TrimSpace(after)
+			break
+		}
+	}
 	if strings.HasPrefix(text, "@") {
 		expanded, ok := macros[strings.ToLower(text)]
 		if !ok {
@@ -85,7 +106,7 @@ func ParseSchedule(expr string) (Schedule, error) {
 	if len(fields) != 5 {
 		return Schedule{}, fmt.Errorf("cron expression %q needs 5 fields (minute hour day-of-month month day-of-week), got %d", original, len(fields))
 	}
-	s := Schedule{expr: original}
+	s := Schedule{expr: original, loc: loc}
 	specs := []fieldSpec{minuteSpec, hourSpec, domSpec, monthSpec, dowSpec}
 	targets := []*uint64{&s.minute, &s.hour, &s.dom, &s.month, &s.dow}
 	for i, field := range fields {
@@ -188,6 +209,9 @@ const searchHorizon = 5 * 366 * 24 * time.Hour
 // Next returns the first matching minute strictly after t, or the zero
 // time when the expression never matches within five years.
 func (s Schedule) Next(t time.Time) time.Time {
+	if s.loc != nil {
+		t = t.In(s.loc)
+	}
 	t = t.Truncate(time.Minute).Add(time.Minute)
 	limit := t.Add(searchHorizon)
 	for t.Before(limit) {

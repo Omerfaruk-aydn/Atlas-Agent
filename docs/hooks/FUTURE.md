@@ -80,7 +80,7 @@ envelopes keep working unchanged. No version bump required.
 
 ## Sub-agent opt-in
 
-**Status:** not implemented.
+**Status:** implemented.
 
 ### Background
 
@@ -100,7 +100,7 @@ the coder's side. The sub-agent's inner loop is the part that's exempt.
 - Policy that cares about the _tool_ not the _caller_: "never fetch from this
   domain, even in `agentic_fetch`."
 
-Until someone actually asks, don't ship this. YAGNI.
+Shipped as proposed: set `include_sub_agents` on a hook, or pass `--include-sub-agents` to `hook add`. Only command hooks can opt in; an agent-action hook is itself a sub-agent run and would start another for each of its own calls. The payload carries `"is_sub_agent": true` and the environment `ATLAS_AGENT_SUB_AGENT=1`.
 
 ### Proposed shape
 

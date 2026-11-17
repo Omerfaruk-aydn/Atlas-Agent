@@ -17,8 +17,9 @@ forward.
 - Hooks are Claude Code-compatible
 - Atlas ships with a builtin `atlas-hook` skill write, edit, and configure
   hooks; just tell Atlas how to configure Atlas
-- Atlas currently supports just one hook, `PreToolUse`, with plans to support
-  the full gamut; please let us know which hooks you'd like to see next
+- Atlas supports eight events: `PreToolUse`, `PostToolUse`, `UserPromptSubmit`,
+  `SessionStart`, `SessionEnd`, `PreCompact`, `Stop` and `SubagentStop`; see
+  [Events](#events). Please let us know which ones you'd like to see next
 - Hooks run in parallel for speed, but their results compose in config order
   for determinism
 
@@ -141,9 +142,11 @@ and project-level, with project level hooks taking precedence.
       {
         "name": "no-rm-rf", // friendly name shown in the TUI
         "matcher": "bash", // regex tested against the tool name
+        "if": "Bash(git push*)", // optional: only when the call's command/path matches; * is a wildcard
         "command": "./hooks/my-hot-hook.sh", // the path to the hook
         "timeout": 10, // in seconds; default 30
         "required": true, // fail closed on execution error or timeout
+        "include_sub_agents": true, // also run for delegated agents; default false
       },
     ],
   },
@@ -177,7 +180,12 @@ wins when rewriting input, but first deny wins when blocking.
 
 ## Events
 
-Here are the events you can hook into (spoiler: there's currently just one):
+Here are the events you can hook into. `PreToolUse` is documented in full
+below; `PostToolUse`, `UserPromptSubmit`, `SessionStart`, `SessionEnd` and
+`PreCompact` have no tool-call matcher (except PostToolUse, which matches the
+tool name like PreToolUse) and are described in their Go doc comments in
+`internal/hooks/hooks.go`. `Stop` and `SubagentStop` follow the table of
+contents below.
 
 ### PreToolUse
 
@@ -192,14 +200,49 @@ stuff, and so on.
 > Event names are case insensitive and snake-caseable, so `PreToolUse`,
 > `pretooluse`, `PRETOOLUSE`, `pre_tool_use`, and `PRE_TOOL_USE` all work.
 
-**Scope**: `PreToolUse` only fires on the **top-level agent's** tool calls.
+**Scope**: by default a hook fires only on the **top-level agent's** tool calls.
 Sub-agents (the `agent` task tool, `agentic_fetch`, etc.) run without hook
 interception so a single delegated turn doesn't trigger your hook N times. The
 outer sub-agent tool call itself _is_ hooked, so policy like "never let the
-agent spawn sub-agents" still works.
+agent spawn sub-agents" still works. A command hook that sets
+`"include_sub_agents": true` also runs for the tool calls of sub-agents; its
+payload then carries `"is_sub_agent": true` (and `ATLAS_AGENT_SUB_AGENT=1` is
+set), so one script can tell the two apart. Agent-action hooks cannot opt in.
 
 Hooks are keyed by event name. Only `command` is required, and you can omit
 `matcher` to match all tools.
+
+### Stop and SubagentStop
+
+`Stop` fires when the top-level agent finishes a turn on its own and every
+completion gate (evaluator, contract, configured checks) has already passed.
+`SubagentStop` is the same for a delegated agent, just before its report reaches
+the parent. Matchers do not apply.
+
+A hook that answers `{"decision": "deny", "reason": "..."}` (or exits with code
+2) keeps the agent working: the reason becomes its next instruction. Use it for
+things the model should not be trusted to remember, such as "run the formatter
+before you stop" or "the changelog is not updated yet".
+
+The payload adds two fields:
+
+- `stop_hook_active`: `true` when this stop already follows a continuation that a
+  Stop hook requested. Check it to avoid asking for the same thing twice.
+- `last_assistant_message`: the agent's final message of the turn (truncated to
+  10,000 bytes).
+
+Safety rules, enforced by Atlas and not by your script:
+
+- A Stop hook runs **after** the gates and can only add work. If a gate already
+  sent the turn back or left it unresolved or unverified, the hooks do not run,
+  and no hook can mark an unfinished turn as done.
+- At most 3 continuations per request (`hooks.MaxStopContinuations`); after that
+  the turn ends even if the hook still objects.
+- A `halt` decision is ignored: the turn is already ending.
+- A hook that crashes or times out lets the turn end (unless it is `required`,
+  in which case the failure is a deny and counts toward the cap of 3).
+
+Try it with `atlas hooks run stop`.
 
 ## Building Hooks
 
@@ -745,3 +788,20 @@ We'd love to hear your thoughts on this project. Need help? We gotchu.
 
 <!--prettier-ignore-->
 Atlas热爱开源 • Atlas loves open source
+
+### Narrowing a hook with `if`
+
+`matcher` selects tools by name. `if` narrows further by what the call is
+doing: `"if": "Bash(git push*)"` fires only for a bash call whose command
+matches, `"if": "Edit(src/*.go)"` only for edits of matching files. The
+pattern is tested against the call's main argument (`command`, `file_path`,
+`path`, `url` or `pattern`, whichever it has first); `*` matches any text.
+`"if": "Bash"` is the same as a matcher on the tool name. In `atlasrc`:
+`hook add PreToolUse --command ./check.sh --if 'Bash(git push*)'`.
+
+### `OnToolError`
+
+Hooks under `OnToolError` run only when a tool call failed. The payload is the
+same as `PostToolUse`, with the error text in `tool_response`. A `context` in
+the reply is appended to the failed result; `halt` ends the turn. Ordinary
+`PostToolUse` hooks keep firing on failures as before.

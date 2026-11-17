@@ -3,6 +3,7 @@ package prompt
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,6 +15,8 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/engineering"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/filepathext"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/knowledge"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/rules"
 )
 
 const (
@@ -111,6 +114,21 @@ func readContextFile(p string, limit int) *ContextFile {
 	return &ContextFile{Path: p, Content: string(b)}
 }
 
+// demotedContextFile stands in for a context file that is over budget. It
+// costs a few hundred bytes regardless of the file's size.
+func demotedContextFile(p string, size int64, budget int) *ContextFile {
+	if _, err := os.Stat(p); err != nil {
+		return nil
+	}
+	reason := "it is larger than the per-file budget"
+	if budget <= len(contextTruncation) {
+		reason = "the total context budget is spent"
+	}
+	return &ContextFile{Path: p, Demoted: true, Content: fmt.Sprintf(
+		"[Context file not inlined: %s (%d bytes) -- %s. Read it with the view tool when its rules are relevant.]\n",
+		filepath.Base(p), size, reason)}
+}
+
 func ignoredContextDir(name string) bool {
 	switch strings.ToLower(name) {
 	case ".git", "node_modules", "vendor", "dist", "build", "__pycache__":
@@ -137,7 +155,7 @@ func (l *contextLoader) load(paths []string, store *config.ConfigStore, scope st
 			candidates = l.directoryCandidates(p)
 		}
 		for _, candidate := range candidates {
-			if l.count >= contextCountLimit || l.remaining <= len(contextTruncation) {
+			if l.count >= contextCountLimit {
 				l.limited = true
 				return result
 			}
@@ -146,7 +164,18 @@ func (l *contextLoader) load(paths []string, store *config.ConfigStore, scope st
 				continue
 			}
 			l.seen[key] = true
-			f := readContextFile(candidate, min(contextFileLimit, l.remaining))
+			// A file that does not fit is demoted to a pointer rather than cut
+			// mid-sentence: the model sees that it exists, why it was not
+			// inlined, and can read it on demand.
+			budget := min(contextFileLimit, l.remaining)
+			var f *ContextFile
+			if info, err := os.Lstat(candidate); err == nil && info.Mode().IsRegular() &&
+				(budget <= len(contextTruncation) || info.Size() > int64(budget)) {
+				f = demotedContextFile(candidate, info.Size(), budget)
+				l.limited = true
+			} else {
+				f = readContextFile(candidate, budget)
+			}
 			if f == nil {
 				continue
 			}
@@ -247,4 +276,29 @@ func (l *contextLoader) boundedDirectoryEntries(path string) ([]os.DirEntry, boo
 			return nil, false
 		}
 	}
+}
+
+// projectRulesContext turns the project's triggered rules (.atlas/rules)
+// into one context entry: always_on rules inline, the rest as pointers.
+func projectRulesContext(workingDir string) *ContextFile {
+	dir := filepath.Join(workingDir, ".atlas", "rules")
+	rs, err := rules.Load(dir)
+	if err != nil || len(rs) == 0 {
+		return nil
+	}
+	text := rules.Render(rs)
+	if text == "" {
+		return nil
+	}
+	return &ContextFile{Path: dir, Content: text, Origin: ".atlas/rules", Scope: "project"}
+}
+
+// knowledgeContext is the index of the project's approved knowledge items.
+func knowledgeContext(workingDir string) *ContextFile {
+	dir := knowledge.DirFor(workingDir)
+	text := knowledge.New(dir, workingDir).Index()
+	if text == "" {
+		return nil
+	}
+	return &ContextFile{Path: dir, Content: text, Origin: ".atlas/knowledge", Scope: "project"}
 }

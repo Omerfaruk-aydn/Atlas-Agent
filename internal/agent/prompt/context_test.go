@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/knowledge"
 
 	"github.com/stretchr/testify/require"
 )
@@ -70,18 +71,23 @@ func TestContextSharedBudgetAndFileCount(t *testing.T) {
 	for i := range 70 {
 		name := fmt.Sprintf("%02d.md", i)
 		paths = append(paths, name)
-		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(strings.Repeat("a", 70000)), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(strings.Repeat("a", 60000)), 0o644))
 	}
 	store := newPromptTestConfig(t, dir)
 	loader := newContextLoader()
 	files := loader.load(paths[:2], store, "project")
 	files = append(files, loader.load(paths[2:], store, "global")...)
-	require.Len(t, files, 4)
-	total := 0
-	for _, f := range files {
-		total += len(f.Content)
+	// Four files fit the shared budget; the rest are demoted to pointers, up
+	// to the file-count limit.
+	require.Len(t, files, contextCountLimit)
+	inlined := 0
+	for i, f := range files {
+		require.Equal(t, i >= 4, f.Demoted, f.Path)
+		if !f.Demoted {
+			inlined += len(f.Content)
+		}
 	}
-	require.Equal(t, 256*1024, total)
+	require.Equal(t, 4*60000, inlined)
 	loader = newContextLoader()
 	for _, p := range paths {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, p), []byte("a"), 0o644))
@@ -137,4 +143,45 @@ func TestContextCandidateBudgetIsShared(t *testing.T) {
 	require.True(t, loader.limited)
 	require.Empty(t, loader.directoryCandidates(dir))
 	require.Equal(t, contextCandidateLimit, loader.discovered)
+}
+
+func TestContextOversizedFileIsDemotedToAPointer(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("small rules"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "big.md"), []byte(strings.Repeat("x", contextFileLimit+10)), 0o644))
+	store := newPromptTestConfig(t, dir)
+	loader := newContextLoader()
+	files := loader.load([]string{"."}, store, "project")
+	require.Len(t, files, 2)
+	require.Equal(t, "small rules", files[0].Content)
+	require.False(t, files[0].Demoted)
+	require.True(t, files[1].Demoted)
+	require.Contains(t, files[1].Content, "big.md")
+	require.Contains(t, files[1].Content, "view tool")
+	require.Less(t, len(files[1].Content), 300)
+	require.True(t, loader.limited)
+}
+
+func TestProjectRulesContext(t *testing.T) {
+	dir := t.TempDir()
+	require.Nil(t, projectRulesContext(dir))
+	rulesDir := filepath.Join(dir, ".atlas", "rules")
+	require.NoError(t, os.MkdirAll(rulesDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(rulesDir, "style.md"), []byte("---\ntrigger: always_on\n---\nUse tabs.\n"), 0o644))
+	f := projectRulesContext(dir)
+	require.NotNil(t, f)
+	require.Contains(t, f.Content, "Use tabs.")
+}
+
+func TestKnowledgeContextListsOnlyApprovedItems(t *testing.T) {
+	dir := t.TempDir()
+	require.Nil(t, knowledgeContext(dir))
+	store := knowledge.New(knowledge.DirFor(dir), dir)
+	it, err := store.Propose("Deploy", "how we ship", "run the script", nil)
+	require.NoError(t, err)
+	require.Nil(t, knowledgeContext(dir), "a proposal is not context")
+	require.NoError(t, store.Approve(it.ID))
+	f := knowledgeContext(dir)
+	require.NotNil(t, f)
+	require.Contains(t, f.Content, "deploy: Deploy -- how we ship")
 }

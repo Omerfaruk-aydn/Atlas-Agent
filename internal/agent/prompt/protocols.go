@@ -9,12 +9,12 @@ import (
 	"unicode"
 )
 
-const ProtocolVersion = "atlas-prompt-v3"
+const ProtocolVersion = "atlas-prompt-v4"
 
 //go:embed protocols/*.md
 var protocols embed.FS
 
-var protocolOrder = []string{"large_project", "architecture", "migration", "debug", "research", "ui", "automation", "artifacts", "data_analysis", "security", "integration", "operations", "support", "platform"}
+var protocolOrder = []string{"new_project", "large_project", "architecture", "migration", "debug", "research", "ui", "automation", "artifacts", "data_analysis", "security", "integration", "operations", "support", "platform"}
 
 type protocolKey struct{}
 
@@ -59,6 +59,7 @@ func SelectProtocols(task, role string) []string {
 		"integration":   has("integration", "mcp", "connector", "entegrasyon"),
 		"operations":    has("operations", "slack", "calendar", "takvim", "toplantı"),
 		"support":       role == "it-support" || has("remote_support", "helpdesk") || containsAny(strings.ToLower(task), "uzak destek", "uzaktan destek", "remote support", "it support", "bt destek", "karşı bilgisayar", "karşıdaki bilgisayar", "bağlı bilgisayar", "destek oturumu", "support session"),
+		"new_project":   startsSomethingNew(strings.FieldsFunc(strings.ToLower(task), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' })),
 		"large_project": has("platform", "modules", "modüller", "modülleri", "orchestrate", "workflow", "planner", "planning", "roadmap", "mimari", "architect", "architecture") || len(task) > 1600,
 		"architecture":  has("architect", "architecture", "mimari", "mimarisini", "contract", "contracts", "sözleşme", "api", "backend"),
 		"migration":     has("migration", "migrate", "migrasyon", "schema", "şema", "backfill", "upgrade", "sqlite", "database", "veritabanı"),
@@ -106,4 +107,26 @@ func RenderProtocols(ids []string) (string, error) {
 	}
 	out.WriteString("</prompt_recipe>")
 	return out.String(), nil
+}
+
+// startsSomethingNew recognizes a request to build a new application, site,
+// game or service: a verb of making together with something that is made, or
+// "from scratch". A bare "build" or a fix to an existing project does not
+// count.
+func startsSomethingNew(words []string) bool {
+	has := func(keys ...string) bool {
+		for _, key := range keys {
+			if slices.Contains(words, key) {
+				return true
+			}
+		}
+		return false
+	}
+	if has("scratch", "sıfırdan", "greenfield", "bootstrap", "scaffold") {
+		return true
+	}
+	making := has("build", "create", "make", "develop", "yap", "yapar", "yapalım", "oluştur", "oluşturur", "kodla", "hazırla")
+	made := has("app", "application", "website", "webapp", "site", "sitesi", "game", "dashboard", "platform", "saas", "cli", "backend", "frontend", "fullstack",
+		"uygulama", "uygulaması", "oyun", "oyunu", "proje", "projesi", "project", "panel", "paneli", "sistem", "sistemi")
+	return making && made
 }

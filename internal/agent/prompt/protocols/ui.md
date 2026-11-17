@@ -4,10 +4,12 @@ For substantial work record a design brief and acceptance criteria with workflow
 design; preserve established identity unless a redesign was requested.
 
 For new screens read design_system first and reuse its platform, direction and
-tokens. Without one, confirm the platform (phone, tablet, web, desktop, TUI)
-and offer 2-3 distinct directions for the user to choose before generating;
-store the choice with design_system set and fix failing measured contrast;
-approve it only after the user explicitly approves. With an approved system do
+tokens. Without one, infer the platform (phone, tablet, web, desktop, TUI) from the
+request, choose the direction that best fits the audience, store it with
+design_system set and fix failing measured contrast, build, and list the choice
+among your assumptions so the user can redirect it. Offer 2-3 distinct directions
+and wait only when the user asked for options or the choice is costly to undo.
+Approve a system only after the user explicitly approves. With an approved system do
 not offer new directions every task. In
 external generators (Stitch, Figma) pick the device type matching the platform.
 Use design_system directions for actual rendered token alternatives. Use

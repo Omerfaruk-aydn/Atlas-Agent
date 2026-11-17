@@ -84,3 +84,23 @@ func TestSupportProtocolFollowsRemoteSupportWork(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, text, "remote_support")
 }
+
+func TestNewProjectProtocolStartsOnlyForSomethingNew(t *testing.T) {
+	t.Parallel()
+	for _, task := range []string{
+		"Build a todo app with a Go backend and a React frontend",
+		"sıfırdan bir pomodoro uygulaması yap",
+		"Create a landing page website for my bakery",
+		"scaffold the service",
+	} {
+		require.Contains(t, SelectProtocols(task, ""), "new_project", task)
+	}
+	for _, task := range []string{
+		"Fix one spelling in README",
+		"capital quick build",
+		"make the tests pass",
+		"explain how the project works",
+	} {
+		require.NotContains(t, SelectProtocols(task, ""), "new_project", task)
+	}
+}

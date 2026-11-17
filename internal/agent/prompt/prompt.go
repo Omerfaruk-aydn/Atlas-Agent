@@ -59,6 +59,8 @@ type ContextFile struct {
 	Content string
 	Origin  string
 	Scope   string
+	// Demoted marks a stand-in pointer for a file that was over budget.
+	Demoted bool
 }
 
 type Option func(*Prompt)
@@ -158,6 +160,14 @@ func (p *Prompt) promptData(ctx context.Context, provider, model string, store *
 	loader := newContextLoader()
 	contextFiles := loader.load(cfg.Options.ContextPaths, store, "project")
 	globalContextFiles := loader.load(cfg.Options.GlobalContextPaths, store, "global")
+	if f := projectRulesContext(workingDir); f != nil {
+		contextFiles = append(contextFiles, *f)
+	}
+	if cfg.Options != nil && cfg.Options.Knowledge {
+		if f := knowledgeContext(workingDir); f != nil {
+			contextFiles = append(contextFiles, *f)
+		}
+	}
 
 	// Discover and load skills metadata.
 	var availSkillXML string

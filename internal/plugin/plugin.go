@@ -89,6 +89,10 @@ func Install(source, pluginsRoot string, replace bool) (Manifest, error) {
 			return Manifest{}, err
 		}
 	}
+	// A fresh install or a replacement never inherits an earlier approval.
+	if err := forget(pluginsRoot, manifest.Name); err != nil {
+		return Manifest{}, err
+	}
 	if err := os.MkdirAll(destination, 0o755); err != nil {
 		return Manifest{}, err
 	}

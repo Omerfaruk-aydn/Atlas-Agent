@@ -46,3 +46,56 @@ func TestInstallRequiresExplicitReplacement(t *testing.T) {
 	_, err = Install(source, root, true)
 	require.NoError(t, err)
 }
+
+func TestStateDefaultsAndExplicitChoice(t *testing.T) {
+	t.Parallel()
+	source := t.TempDir()
+	root := t.TempDir()
+
+	writeManifest(t, filepath.Join(source, "safe"), `{"name":"safe","version":"1","contents":["skills"]}`)
+	writeManifest(t, filepath.Join(source, "runner"), `{"name":"runner","version":"1","contents":["skills","hooks"]}`)
+	for _, name := range []string{"safe", "runner"} {
+		_, err := Install(filepath.Join(source, name), root, false)
+		require.NoError(t, err)
+		require.NoError(t, os.MkdirAll(filepath.Join(root, name, "skills"), 0o755))
+	}
+
+	// Defaults: code-free packages are on, code-running ones are off.
+	require.Equal(t, []string{filepath.Join(root, "safe", "skills")}, ContentDirs(root, "skills"))
+
+	require.NoError(t, SetEnabled(root, "runner", true))
+	require.Len(t, ContentDirs(root, "skills"), 2)
+
+	require.NoError(t, SetEnabled(root, "safe", false))
+	require.Equal(t, []string{filepath.Join(root, "runner", "skills")}, ContentDirs(root, "skills"))
+
+	require.Error(t, SetEnabled(root, "missing", true))
+	require.Error(t, SetEnabled(root, "../escape", true))
+}
+
+// A replaced package must not inherit the approval given to the old one.
+func TestReinstallForgetsApproval(t *testing.T) {
+	t.Parallel()
+	source := filepath.Join(t.TempDir(), "src")
+	root := t.TempDir()
+	writeManifest(t, source, `{"name":"runner","version":"1","contents":["hooks"]}`)
+	_, err := Install(source, root, false)
+	require.NoError(t, err)
+	require.NoError(t, SetEnabled(root, "runner", true))
+	require.True(t, List(root)[0].Enabled)
+
+	_, err = Install(source, root, true)
+	require.NoError(t, err)
+	require.False(t, List(root)[0].Enabled, "executable package is off again after replacement")
+
+	require.NoError(t, Remove(root, "runner"))
+	require.Empty(t, List(root))
+	require.NotContains(t, LoadState(root).Enabled, "runner")
+}
+
+func TestCorruptStateFileFallsBackToDefaults(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, StateFile), []byte("{not json"), 0o600))
+	require.Empty(t, LoadState(root).Enabled)
+}

@@ -43,6 +43,33 @@ type Runner struct {
 	cwd              string
 	projectDir       string
 	executionBinding *execution.Binding
+	// subAgent marks a runner built by ForSubAgents; its hooks see
+	// is_sub_agent in the payload and ATLAS_AGENT_SUB_AGENT in the environment.
+	subAgent bool
+}
+
+// ForSubAgents returns a runner holding only the hooks that opted in with
+// include_sub_agents (command hooks only), or nil when none did. Hooks skip sub-agents by default
+// so a delegated turn does not fire an ordinary hook once per inner call.
+func (r *Runner) ForSubAgents() *Runner {
+	if r == nil {
+		return nil
+	}
+	var kept []compiledHook
+	for _, h := range r.hooks {
+		// An agent-action hook is itself a sub-agent run; letting it fire
+		// for sub-agents could start another one for each of its own calls.
+		if h.cfg.IncludeSubAgents && h.cfg.Prompt == "" {
+			kept = append(kept, h)
+		}
+	}
+	if len(kept) == 0 {
+		return nil
+	}
+	copy := *r
+	copy.hooks = kept
+	copy.subAgent = true
+	return &copy
 }
 
 type agentActionCounts struct {
@@ -129,6 +156,9 @@ type runInput struct {
 	toolInputJSON string
 	toolResponse  string
 	prompt        string
+	subAgent      bool
+	stopActive    bool
+	lastMessage   string
 }
 
 // Run executes all matching hooks for the given event and tool, returning
@@ -154,6 +184,18 @@ func (r *Runner) RunPost(ctx context.Context, sessionID, toolName, toolInputJSON
 	})
 }
 
+// RunToolError executes the OnToolError hooks for a tool call that failed,
+// handing them the error text as the tool response.
+func (r *Runner) RunToolError(ctx context.Context, sessionID, toolName, toolInputJSON, errorText string) (AggregateResult, error) {
+	return r.run(ctx, runInput{
+		eventName:     EventOnToolError,
+		sessionID:     sessionID,
+		toolName:      toolName,
+		toolInputJSON: toolInputJSON,
+		toolResponse:  errorText,
+	})
+}
+
 // RunPrompt executes the matching hooks for EventUserPromptSubmit, handing
 // them the prompt that is about to reach the model.
 func (r *Runner) RunPrompt(ctx context.Context, sessionID, prompt string) (AggregateResult, error) {
@@ -161,6 +203,18 @@ func (r *Runner) RunPrompt(ctx context.Context, sessionID, prompt string) (Aggre
 		eventName: EventUserPromptSubmit,
 		sessionID: sessionID,
 		prompt:    prompt,
+	})
+}
+
+// RunStop executes the matching hooks for EventStop or EventSubagentStop.
+// stopActive tells the hook this stop already follows a Stop-hook
+// continuation; lastMessage is the agent's final message of the turn.
+func (r *Runner) RunStop(ctx context.Context, eventName, sessionID string, stopActive bool, lastMessage string) (AggregateResult, error) {
+	return r.run(ctx, runInput{
+		eventName:   eventName,
+		sessionID:   sessionID,
+		stopActive:  stopActive,
+		lastMessage: lastMessage,
 	})
 }
 
@@ -178,7 +232,16 @@ func (r *Runner) RunSessionEvent(ctx context.Context, eventName, sessionID strin
 func (r *Runner) run(ctx context.Context, in runInput) (AggregateResult, error) {
 	eventName, sessionID := in.eventName, in.sessionID
 	toolName, toolInputJSON := in.toolName, in.toolInputJSON
-	matching := r.matchingHooks(toolName)
+	var matching []config.HookConfig
+	for _, h := range r.matchingHooks(toolName) {
+		// Error-only hooks belong to OnToolError runs and nothing else.
+		if h.OnlyOnError != (eventName == EventOnToolError) {
+			continue
+		}
+		if matchesIf(h.If, toolName, toolInputJSON) {
+			matching = append(matching, h)
+		}
+	}
 	if len(matching) == 0 {
 		return AggregateResult{Decision: DecisionNone}, nil
 	}
@@ -202,6 +265,10 @@ func (r *Runner) run(ctx context.Context, in runInput) (AggregateResult, error) 
 	envVars := BuildEnv(eventName, toolName, sessionID, r.cwd, r.projectDir, toolInputJSON)
 	if in.prompt != "" {
 		envVars = append(envVars, "ATLAS_AGENT_PROMPT="+in.prompt)
+	}
+	if r.subAgent {
+		in.subAgent = true
+		envVars = append(envVars, "ATLAS_AGENT_SUB_AGENT=1")
 	}
 	payload := buildPayload(in, r.cwd)
 

@@ -776,3 +776,16 @@ func TestRunSessionEventCanDeny(t *testing.T) {
 	require.Equal(t, DecisionDeny, result.Decision)
 	require.Equal(t, "context window locked", result.Reason)
 }
+
+func TestParseStdoutInjectSteps(t *testing.T) {
+	t.Parallel()
+	got := parseStdout(`{"decision":"deny","reason":"Not done.","inject_steps":["Run the tests"," ","Fix failures"]}`)
+	require.Equal(t, DecisionDeny, got.Decision)
+	require.Equal(t, "Not done.\nDo these steps next:\n1. Run the tests\n2. Fix failures", got.Reason)
+
+	got = parseStdout(`{"decision":"deny","inject_steps":["Only step"]}`)
+	require.Equal(t, "Do these steps next:\n1. Only step", got.Reason)
+
+	got = parseStdout(`{"decision":"allow","inject_steps":["Ignored"]}`)
+	require.Empty(t, got.Reason, "an allow carries no instruction")
+}

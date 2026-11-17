@@ -18,6 +18,20 @@ const (
 	// but it can halt the turn, and its context is appended to what the
 	// model sees.
 	EventPostToolUse = "PostToolUse"
+	// EventPreInvocation fires before each model request of the top-level
+	// agent. A deny decision stops that request, which is how a hook enforces
+	// a budget or a freeze. EventPostInvocation fires after each model step
+	// finishes and is observational.
+	EventPreInvocation  = "PreInvocation"
+	EventPostInvocation = "PostInvocation"
+	// EventPostCompact fires after the conversation was summarized. It is
+	// observational; a hook can use it to record what the session learned.
+	EventPostCompact = "PostCompact"
+	// EventOnToolError fires instead of PostToolUse's error-only hooks when a
+	// tool fails (an error result or an error return), with the error text in
+	// the payload. Hooks configured under OnToolError are stored with the
+	// PostToolUse hooks and marked OnlyOnError.
+	EventOnToolError = "OnToolError"
 	// EventUserPromptSubmit fires before a prompt reaches the model, with
 	// the prompt in the payload. It can refuse the prompt outright, or
 	// add context the model sees alongside it. Matchers do not apply:
@@ -47,7 +61,26 @@ const (
 	// silent threshold trip) does not go through this gate -- it calls
 	// Summarize directly.
 	EventPreCompact = "PreCompact"
+
+	// EventStop fires when the top-level agent finishes a turn on its own and
+	// every completion gate has passed. A deny decision keeps the agent
+	// working: the hook's reason becomes the next instruction. The payload
+	// carries stop_hook_active (true when this stop already follows a Stop
+	// hook continuation) and last_assistant_message, so a script can tell a
+	// first stop from a retry. Continuations are capped (MaxStopContinuations),
+	// and a halt decision is ignored: the turn is ending anyway. Matchers do
+	// not apply. A Stop hook runs after the evaluator and contract gates and
+	// can only add work; it can never mark an unfinished turn as done.
+	EventStop = "Stop"
+	// EventSubagentStop is EventStop for a delegated agent: it fires when a
+	// sub-agent finishes its turn, and a deny sends that sub-agent back to
+	// work before its report reaches the parent.
+	EventSubagentStop = "SubagentStop"
 )
+
+// MaxStopContinuations bounds how many times Stop hooks may send one request
+// back to work. A hook that never stops asking cannot hold a turn open.
+const MaxStopContinuations = 3
 
 // HaltExitCode is the exit code that halts the whole turn. 2 blocks the
 // current tool call; 49 sits in the no-man's-land between the

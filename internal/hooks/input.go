@@ -33,6 +33,15 @@ type Payload struct {
 	ToolResponse string `json:"tool_response,omitempty"`
 	// Prompt is what the user submitted. Only UserPromptSubmit hooks see it.
 	Prompt string `json:"prompt,omitempty"`
+	// SubAgent is true when the call comes from a delegated agent, not the
+	// top-level one. Only hooks that set include_sub_agents ever see it.
+	SubAgent bool `json:"is_sub_agent,omitempty"`
+	// StopHookActive is true on a Stop or SubagentStop hook when this stop
+	// already follows a continuation that a Stop hook requested.
+	StopHookActive bool `json:"stop_hook_active,omitempty"`
+	// LastAssistantMessage is the agent's final message of the turn. Only
+	// Stop and SubagentStop hooks see it, truncated to MaxToolResponseInPayload.
+	LastAssistantMessage string `json:"last_assistant_message,omitempty"`
 }
 
 // MaxToolResponseInPayload caps how much of a tool's output is handed to a
@@ -66,19 +75,29 @@ func buildPayload(in runInput, cwd string) []byte {
 		toolResponse = toolResponse[:MaxToolResponseInPayload] + "\n... [truncated]"
 	}
 	p := Payload{
-		Event:        in.eventName,
-		SessionID:    in.sessionID,
-		CWD:          cwd,
-		ToolName:     in.toolName,
-		ToolInput:    toolInput,
-		ToolResponse: toolResponse,
-		Prompt:       in.prompt,
+		Event:                in.eventName,
+		SessionID:            in.sessionID,
+		CWD:                  cwd,
+		ToolName:             in.toolName,
+		ToolInput:            toolInput,
+		ToolResponse:         toolResponse,
+		Prompt:               in.prompt,
+		SubAgent:             in.subAgent,
+		StopHookActive:       in.stopActive,
+		LastAssistantMessage: truncateForPayload(in.lastMessage),
 	}
 	data, err := json.Marshal(p)
 	if err != nil {
 		return []byte("{}")
 	}
 	return data
+}
+
+func truncateForPayload(s string) string {
+	if len(s) <= MaxToolResponseInPayload {
+		return s
+	}
+	return s[:MaxToolResponseInPayload] + "\n... [truncated]"
 }
 
 // BuildEnv constructs the environment variable slice for a hook command.
@@ -133,6 +152,7 @@ func parseStdout(stdout string) HookResult {
 		Reason       string          `json:"reason"`
 		Context      json.RawMessage `json:"context"`
 		UpdatedInput json.RawMessage `json:"updated_input"`
+		InjectSteps  []string        `json:"inject_steps"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
 		return HookResult{Decision: DecisionNone}
@@ -153,7 +173,38 @@ func parseStdout(stdout string) HookResult {
 	}
 	result.Decision = parseDecision(parsed.Decision)
 	result.UpdatedInput = rawToString(parsed.UpdatedInput)
+	if result.Decision == DecisionDeny {
+		result.Reason = withInjectedSteps(result.Reason, parsed.InjectSteps)
+	}
 	return result
+}
+
+// maxInjectedSteps bounds how many steps one hook can queue.
+const maxInjectedSteps = 10
+
+// withInjectedSteps appends a hook's inject_steps to its reason as a numbered
+// list, so a Stop hook that denies completion can hand the agent a concrete
+// list of work to do next. Steps travel only with a deny: an allow carries no
+// instruction to follow.
+func withInjectedSteps(reason string, steps []string) string {
+	var lines []string
+	for _, step := range steps {
+		if step = strings.TrimSpace(step); step == "" {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("%d. %s", len(lines)+1, step))
+		if len(lines) == maxInjectedSteps {
+			break
+		}
+	}
+	if len(lines) == 0 {
+		return reason
+	}
+	list := "Do these steps next:\n" + strings.Join(lines, "\n")
+	if strings.TrimSpace(reason) == "" {
+		return list
+	}
+	return reason + "\n" + list
 }
 
 // parseContext accepts either a single string or an array of strings and

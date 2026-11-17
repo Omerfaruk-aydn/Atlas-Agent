@@ -43,3 +43,33 @@ func TestRequiredPolicySurvivesActionDeduplication(t *testing.T) {
 	require.Equal(t, 1, result.HookCount)
 	require.True(t, result.RequiredFailure)
 }
+
+func TestForSubAgentsKeepsOnlyOptedInCommandHooks(t *testing.T) {
+	t.Parallel()
+	runner := NewRunner([]config.HookConfig{
+		{Command: "exit 0", Name: "ordinary"},
+		{Command: "exit 0", Name: "audit", IncludeSubAgents: true},
+		{Prompt: "review", Agent: "reviewer", Name: "agent", IncludeSubAgents: true},
+	}, t.TempDir(), t.TempDir())
+
+	sub := runner.ForSubAgents()
+	require.NotNil(t, sub)
+	names := []string{}
+	for _, h := range sub.Hooks() {
+		names = append(names, h.Name)
+	}
+	require.Equal(t, []string{"audit"}, names, "an agent-action hook never runs for sub-agents")
+	require.Len(t, runner.Hooks(), 3, "the top-level runner is untouched")
+
+	require.Nil(t, NewRunner([]config.HookConfig{{Command: "exit 0"}}, t.TempDir(), t.TempDir()).ForSubAgents())
+	var none *Runner
+	require.Nil(t, none.ForSubAgents())
+}
+
+func TestSubAgentHookSeesItsCaller(t *testing.T) {
+	t.Parallel()
+	payload := string(buildPayload(runInput{eventName: EventPreToolUse, toolName: "bash", toolInputJSON: `{}`, subAgent: true}, "."))
+	require.Contains(t, payload, `"is_sub_agent":true`)
+	top := string(buildPayload(runInput{eventName: EventPreToolUse, toolName: "bash", toolInputJSON: `{}`}, "."))
+	require.NotContains(t, top, "is_sub_agent")
+}

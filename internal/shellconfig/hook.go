@@ -44,8 +44,10 @@ var hookAddFlags = []flagSpec{
 	{name: "--agent", jsonKey: "agent", kind: flagString, op: opSet},
 	{name: "--max-fires", jsonKey: "max_fires", kind: flagInt, op: opSet},
 	{name: "--matcher", jsonKey: "matcher", kind: flagString, op: opSet},
+	{name: "--if", jsonKey: "if", kind: flagString, op: opSet},
 	{name: "--timeout", jsonKey: "timeout", kind: flagInt, op: opSet},
 	{name: "--required", jsonKey: "required", kind: flagBool, op: opSet},
+	{name: "--include-sub-agents", jsonKey: "include_sub_agents", kind: flagBool, op: opSet},
 	{name: "--name", jsonKey: "name", kind: flagString, op: opSet},
 }
 

@@ -15,7 +15,7 @@ func (h *Harness) ValidateAblation() error {
 		return nil
 	}
 	for _, name := range h.DisabledGates {
-		if !slices.Contains([]string{"evaluator", "contract", "advisor", "goal_judge", "escalator", "lint_fix", "mutation"}, name) {
+		if !slices.Contains([]string{"evaluator", "contract", "advisor", "goal_judge", "escalator", "lint_fix", "mutation", "open_issues", "victory_audit", "background_workers"}, name) {
 			return fmt.Errorf("unsupported harness gate ablation %q", name)
 		}
 	}

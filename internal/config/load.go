@@ -30,6 +30,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/filepathext"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/fsext"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/home"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/plugin"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shellconfig"
 	"github.com/qjebbs/go-jsons"
 	"github.com/tidwall/gjson"
@@ -724,6 +725,10 @@ func (c *Config) setDefaults(workingDir, dataDir string) {
 	// Project specific skills dirs.
 	c.Options.SkillsPaths = append(c.Options.SkillsPaths, ProjectSkillsDir(workingDir)...)
 
+	// Skills from installed plugins that are switched on.
+	pluginsRoot := filepath.Join(workingDir, ".atlas", "plugins")
+	c.Options.SkillsPaths = append(c.Options.SkillsPaths, plugin.ContentDirs(pluginsRoot, "skills")...)
+
 	// Add the default subagents directories if not already present.
 	for _, dir := range GlobalSubagentsDirs() {
 		if !slices.Contains(c.Options.SubagentsPaths, dir) {
@@ -731,6 +736,7 @@ func (c *Config) setDefaults(workingDir, dataDir string) {
 		}
 	}
 	c.Options.SubagentsPaths = append(c.Options.SubagentsPaths, ProjectSubagentsDir(workingDir)...)
+	c.Options.SubagentsPaths = append(c.Options.SubagentsPaths, plugin.ContentDirs(pluginsRoot, "agents")...)
 
 	if str, ok := appenv.Lookup("ENABLE_PROVIDER_AUTO_UPDATE"); ok {
 		// Opt-in flag: set to "1"/"true" to fetch the provider catalog from
@@ -1594,6 +1600,14 @@ func normalizeHookEvent(name string) string {
 		return "PreToolUse"
 	case "posttooluse":
 		return "PostToolUse"
+	case "ontoolerror":
+		return "OnToolError"
+	case "preinvocation":
+		return "PreInvocation"
+	case "postinvocation":
+		return "PostInvocation"
+	case "postcompact":
+		return "PostCompact"
 	case "userpromptsubmit":
 		return "UserPromptSubmit"
 	case "sessionstart":
@@ -1602,6 +1616,10 @@ func normalizeHookEvent(name string) string {
 		return "SessionEnd"
 	case "precompact":
 		return "PreCompact"
+	case "stop":
+		return "Stop"
+	case "subagentstop":
+		return "SubagentStop"
 	default:
 		return name
 	}
@@ -1620,6 +1638,16 @@ func (c *Config) ValidateHooks() error {
 			c.Hooks[canonical] = append(c.Hooks[canonical], eventHooks...)
 			delete(c.Hooks, event)
 		}
+	}
+
+	// OnToolError hooks ride with the PostToolUse hooks and fire only when
+	// the tool failed.
+	if errorHooks, ok := c.Hooks["OnToolError"]; ok {
+		for i := range errorHooks {
+			errorHooks[i].OnlyOnError = true
+		}
+		c.Hooks["PostToolUse"] = append(c.Hooks["PostToolUse"], errorHooks...)
+		delete(c.Hooks, "OnToolError")
 	}
 
 	for event, eventHooks := range c.Hooks {

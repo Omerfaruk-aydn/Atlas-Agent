@@ -5,10 +5,14 @@ import (
 	"time"
 )
 
-func TestToolBrowserDefaultsToDisabled(t *testing.T) {
+func TestToolBrowserDefaultsToEnabledAndCanBeSwitchedOff(t *testing.T) {
 	var b ToolBrowser
-	if b.IsEnabled() {
-		t.Fatal("IsEnabled() = true, want false when unset")
+	if !b.IsEnabled() {
+		t.Fatal("IsEnabled() = false, want true when unset")
+	}
+	off := false
+	if (ToolBrowser{Enabled: &off}).IsEnabled() {
+		t.Fatal("IsEnabled() = true, want false when enabled is false")
 	}
 }
 

@@ -609,6 +609,20 @@ type Options struct {
 	// provider is retried before the turn gives up. Unset keeps the
 	// provider library's default; 0 disables retries.
 	MaxProviderRetries *int `json:"max_provider_retries,omitempty" jsonschema:"description=How many times to retry a failed provider request. Unset keeps the default; 0 disables retries.,example=5"`
+	// Knowledge turns on project knowledge: the agent may propose notes, and
+	// the ones you approve appear as an index in every session.
+	Knowledge bool `json:"knowledge,omitempty" jsonschema:"description=Let the agent propose project notes; approved notes appear as a short index in every session (atlas knowledge approve),default=false"`
+	// AutoSandbox lets commands the shell policy would ask about run without a
+	// prompt when they run inside the execution sandbox and the risk is one the
+	// sandbox contains (privilege use, writes to your shell startup files).
+	AutoSandbox bool `json:"auto_sandbox,omitempty" jsonschema:"description=Run commands that would need a prompt for risks the execution sandbox contains (sudo, shell startup files) without asking when the sandbox is on,default=false"`
+	// MCPApps allows MCP servers to attach interactive pages (ui:// resources)
+	// to their tools. Off by default.
+	MCPApps bool `json:"mcp_apps,omitempty" jsonschema:"description=Allow MCP servers to attach interactive ui:// pages to tools; pages are shown in a sandboxed frame,default=false"`
+	// PlanApproval sets how exit_plan_mode asks for approval: always (ask every
+	// time, the default), auto (small low-risk plans proceed unasked) or turbo
+	// (never ask; the plan is still checked against the project).
+	PlanApproval string `json:"plan_approval,omitempty" jsonschema:"description=How a plan is approved when the agent leaves plan mode: always asks every time; auto lets small low-risk plans proceed; turbo never asks.,enum=always,enum=auto,enum=turbo,default=always"`
 	// MaxConcurrentSubAgents caps how many agent-tool sub-agents run at
 	// once. Zero or unset means no limit.
 	MaxConcurrentSubAgents int `json:"max_concurrent_subagents,omitempty" jsonschema:"description=Cap how many agent-tool sub-agents run at the same time. Zero or unset means no limit.,example=3"`
@@ -949,6 +963,7 @@ type Harness struct {
 	LintFix                  *bool    `json:"lint_fix,omitempty" jsonschema:"description=Check new LSP errors after edits and enforce a configured fast linter. Opt-in; may execute project commands.,default=false"`
 	LintCommand              string   `json:"lint_command,omitempty" jsonschema:"description=Optional fast lint shell command run through normal permissions and hooks."`
 	LintTimeoutSeconds       int      `json:"lint_timeout_seconds,omitempty" jsonschema:"description=Time budget for each fast lint observation; zero selects 10 seconds.,default=10,minimum=0,maximum=120"`
+	VictoryAudit             bool     `json:"victory_audit,omitempty" jsonschema:"description=Before a turn may finish, re-run up to three verification commands the agent reported passing and send the turn back if a fresh run disagrees."`
 	CompletionCommands       []string `json:"completion_commands,omitempty" jsonschema:"description=Opt-in build/test/type/secret-scan commands run before paid review through normal permissions and hooks."`
 	CompletionTimeoutSeconds int      `json:"completion_timeout_seconds,omitempty" jsonschema:"description=Time budget for each completion check; zero selects 120 seconds and values above 600 are capped.,default=120,minimum=0,maximum=600"`
 	RedGreen                 *bool    `json:"red_green,omitempty" jsonschema:"description=Require an observed failing check followed by implementation changes and the same check passing.,default=false"`
@@ -1742,7 +1757,13 @@ type HookConfig struct {
 	// Regex pattern tested against the tool name. Empty means match all.
 	Matcher string `json:"matcher,omitempty" jsonschema:"description=Regex pattern tested against the tool name. Empty means match all tools."`
 	// Shell command to execute.
-	Command  string `json:"command,omitempty" jsonschema:"description=Shell command to execute when the hook fires; mutually exclusive with prompt"`
+	Command string `json:"command,omitempty" jsonschema:"description=Shell command to execute when the hook fires; mutually exclusive with prompt"`
+	// OnlyOnError marks a hook configured under OnToolError: it is kept with the
+	// PostToolUse hooks but fires only when the tool failed.
+	OnlyOnError bool `json:"only_on_error,omitempty" jsonschema:"-"`
+	// If narrows a hook further than Matcher: Tool(pattern) fires it only when
+	// the call's main argument matches, for example Bash(git push*).
+	If       string `json:"if,omitempty" jsonschema:"description=Only fire when the call matches Tool(pattern), for example Bash(git push*) or Edit(src/*.go). * matches any text."`
 	Prompt   string `json:"prompt,omitempty" jsonschema:"description=Bounded read-only specialist task; mutually exclusive with command"`
 	Agent    string `json:"agent,omitempty" jsonschema:"description=Named specialist for a prompt action"`
 	MaxFires int    `json:"max_fires,omitempty" jsonschema:"description=Maximum agent actions per session and hook,default=3,minimum=1,maximum=16"`
@@ -1993,6 +2014,7 @@ func allToolNames() []string {
 		"orchestrate",
 		"debate",
 		"delegate",
+		"script",
 		"vibe",
 		"facts",
 		"inspect_file",
@@ -2003,8 +2025,12 @@ func allToolNames() []string {
 		"memory",
 		"question",
 		"request_permission",
+		"session_read",
 		"session_search",
+		"issues",
+		"knowledge",
 		"skill_manage",
+		"walkthrough",
 		"sourcegraph",
 		"todos",
 		"design_search",
@@ -2145,7 +2171,7 @@ func resolveAllowedTools(allTools []string, disabledTools []string) []string {
 }
 
 func resolveReadOnlyTools(tools []string) []string {
-	readOnlyTools := []string{"glob", "grep", "ls", "lsp_call_hierarchy", "lsp_definition", "lsp_symbols", "session_search", "sourcegraph", "usage", "view", "video", "design_search"}
+	readOnlyTools := []string{"glob", "grep", "ls", "lsp_call_hierarchy", "lsp_definition", "lsp_symbols", "session_read", "session_search", "sourcegraph", "usage", "view", "video", "design_search"}
 	// filter to only include tools that are in allowedtools (include mode)
 	return filterSlice(tools, readOnlyTools, true)
 }

@@ -6,6 +6,66 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// The permission shortcut used to prefix-match safeCommands, so these
+// mutating forms ran without a prompt even in manual mode.
+func TestSafeReadOnlyCommand(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]bool{
+		"ls -la":                      true,
+		"pwd":                         true,
+		"echo hello":                  true,
+		"git status":                  true,
+		"git diff HEAD~1":             true,
+		"git log --oneline -5":        true,
+		"git branch":                  true,
+		"git branch -a":               true,
+		"git branch --show-current":   true,
+		"git tag -l":                  true,
+		"git remote -v":               true,
+		"git config --get user.name":  true,
+		"hostname":                    true,
+		"date":                        true,
+		"echo x > ~/.bashrc":          false,
+		"echo x >> notes":             false,
+		"cat < /etc/passwd":           false,
+		"ls\nrm -rf x":                false,
+		"ls & rm x":                   false,
+		"kill -9 1":                   false,
+		"killall node":                false,
+		"timeout 5 rm x":              false,
+		"nohup ./run.sh":              false,
+		"nice rm x":                   false,
+		"time rm x":                   false,
+		"env rm -rf x":                false,
+		"set -e":                      false,
+		"git branch -D main":          false,
+		"git branch newbranch":        false,
+		"git tag v1":                  false,
+		"git remote add o url":        false,
+		"git remote set-url origin u": false,
+		"git diff --output=out.txt":   false,
+		"git diff --ext-diff":         false,
+		"git grep -O less foo":        false,
+		"date -s 2020-01-01":          false,
+		"date --set=2020-01-01":       false,
+		"hostname newname":            false,
+		"hostname -F file":            false,
+		"ls; rm x":                    false,
+		"ls | xargs rm":               false,
+		"ls $(rm x)":                  false,
+		"":                            false,
+		"lsattr -R /":                 false,
+		"git statusx":                 false,
+	}
+	for command, want := range tests {
+		t.Run(command, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, want, safeReadOnlyCommand(command), "safeReadOnlyCommand(%q)", command)
+		})
+	}
+}
+
 func TestContainsCommandChaining(t *testing.T) {
 	t.Parallel()
 

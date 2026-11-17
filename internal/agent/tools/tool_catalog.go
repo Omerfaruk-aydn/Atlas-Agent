@@ -62,9 +62,9 @@ var toolCategoryByName = map[string]string{
 	"browser":        "browser",
 	"captcha_detect": "browser", "captcha_solve": "browser",
 	"computer": "desktop", "tool_pipeline": "pipeline",
-	"agent": "agents", "agent_result": "agents", "delegate": "agents", "orchestrate": "agents", "debate": "agents", "vibe": "agents",
+	"agent": "agents", "agent_result": "agents", "delegate": "agents", "orchestrate": "agents", "debate": "agents", "script": "agents", "vibe": "agents",
 	"todos": "planning", "goal": "planning", "requirement_trace": "planning", "exit_plan_mode": "planning", "enter_plan_mode": "planning", "image_compare": "vision", "pdf_render": "vision", "question": "planning",
-	"memory": "memory", "facts": "memory", "session_search": "memory", "context_select": "memory",
+	"memory": "memory", "facts": "memory", "session_search": "memory", "session_read": "memory", "walkthrough": "planning", "issues": "planning", "knowledge": "memory", "context_select": "memory",
 	"code_query": "code", "code_map": "code", "project_map": "code", "project_model": "code", "dead_code": "code", "type_hierarchy": "code", "import_graph": "code",
 	"impact_analysis": "code", "code_metrics": "code", "api_surface": "code", "anti_pattern_scan": "code", "todo_scan": "code",
 	"verify": "testing", "test_select": "testing", "mutation_test": "testing", "test_run": "testing", "coverage_report": "testing",
@@ -309,7 +309,7 @@ func IntentTools(text string) []string {
 		add("code_map", "project_map")
 	}
 	if strings.Contains(folded, "oturum gecmis") || strings.Contains(folded, "session history") {
-		add("session_search")
+		add("session_search", "session_read")
 	}
 	if strings.Contains(folded, "guvenlik tara") || strings.Contains(folded, "security scan") {
 		add("security_scan")

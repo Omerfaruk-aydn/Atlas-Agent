@@ -74,7 +74,7 @@ type BrowserTaskParams struct {
 type BrowserRequirementInput struct {
 	ID      string `json:"id"`
 	Text    string `json:"text"`
-	Verify  string `json:"verify,omitempty" description:"structural (current DOM/value evidence), visual (current screenshot), either (default), observation (historical source-scoped research) or delivery (saved final response only)."`
+	Verify  string `json:"verify,omitempty" description:"structural (current DOM/value evidence), visual (current screenshot), either (default), observation (historical source-scoped research), delivery (saved final response only) or design (the saved design file; subject is the file name, expect lists terms joined by ';', \"A > B\" meaning layer B inside layer A; it closes by itself, no evidence)."`
 	Expect  string `json:"expect,omitempty" description:"Optional text a structural evidence call must have returned, e.g. a panel label that exists only when the property is real (\"Main component\", \"Remove auto layout\", \"Navigate to\"). Evidence without it is refused."`
 	Subject string `json:"subject,omitempty" description:"For observation: explicit entity whose claim is being checked; it must occur in the source's returned text."`
 	Source  string `json:"source,omitempty" description:"For observation: exact HTTP(S) source URL returned by the evidence call. Observation requires source, subject and expect; delivery requires expect text in the final response."`
@@ -156,6 +156,8 @@ type browserTask struct {
 	ProgressSignature      string            `json:"progress_signature,omitempty"`
 	StopReason             string            `json:"stop_reason,omitempty"`
 	Migrated               bool              `json:"migrated_from_v1,omitempty"`
+	// root is the project the design files of "design" requirements live in.
+	root string
 }
 
 type browserTaskRecord struct {
@@ -238,6 +240,9 @@ func loadBrowserTasks(root, sessionID string) (*browserTaskFile, error) {
 		if err := json.Unmarshal(data, &file); err != nil {
 			return nil, fmt.Errorf("browser task checkpoint is unreadable: %w", err)
 		}
+		if file.Active != nil {
+			file.Active.root = root
+		}
 		return &file, nil
 	}
 	// A v1 checkpoint becomes the active task. Its evidence and blockers
@@ -247,7 +252,7 @@ func loadBrowserTasks(root, sessionID string) (*browserTaskFile, error) {
 	if err := json.Unmarshal(data, &old); err != nil {
 		return nil, fmt.Errorf("browser task checkpoint is unreadable: %w", err)
 	}
-	task := &browserTask{ID: "t1", State: taskActive, Goal: old.Goal, Requirements: old.Requirements, Steps: old.Steps, Created: old.Created, StepsTotal: old.StepsTotal, Migrated: true}
+	task := &browserTask{ID: "t1", State: taskActive, Goal: old.Goal, Requirements: old.Requirements, Steps: old.Steps, Created: old.Created, StepsTotal: old.StepsTotal, Migrated: true, root: root}
 	return &browserTaskFile{Version: browserTaskVersion, Seq: 1, Active: task}, nil
 }
 
@@ -303,6 +308,12 @@ func (t *browserTask) evidenceStale(e browserEvidence) string {
 
 // effective is the status completion is decided on, with its reason.
 func (t *browserTask) effective(r browserRequirement) (string, string) {
+	if r.Verify == "design" && r.Status != ReqBlocked {
+		if designRequirementMet(t.root, r) {
+			return ReqVerified, ""
+		}
+		return ReqPending, ""
+	}
 	switch r.Status {
 	case ReqVerified:
 		if r.Verify == "observation" || r.Verify == "delivery" {
@@ -432,7 +443,7 @@ func evidenceMatches(verify, verification string) bool {
 		return verification == "structural" || verification == "observed"
 	case "observation":
 		return verification == "observed"
-	case "delivery":
+	case "delivery", "design":
 		return false
 	}
 	return verification == "visual" || verification == "structural" || verification == "observed"
@@ -452,12 +463,17 @@ func validRequirements(reqs []BrowserRequirementInput) error {
 		}
 		seen[r.ID] = true
 		switch r.Verify {
-		case "", "either", "structural", "visual", "observation", "delivery":
+		case "", "either", "structural", "visual", "observation", "delivery", "design":
 		default:
-			return errors.New("verify must be structural, visual, either, observation or delivery")
+			return errors.New("verify must be structural, visual, either, observation, delivery or design")
 		}
 		if r.Verify == "observation" && (strings.TrimSpace(r.Subject) == "" || !validResearchSource(r.Source) || strings.TrimSpace(r.Expect) == "") {
 			return errors.New("observation requires an explicit subject, an HTTP(S) source URL and an expected extracted claim")
+		}
+		if r.Verify == "design" {
+			if err := validDesignRequirement(r); err != nil {
+				return err
+			}
 		}
 		if r.Verify == "delivery" && strings.TrimSpace(r.Expect) == "" {
 			return errors.New("delivery requires expect text that the final response must contain")
@@ -551,7 +567,11 @@ func planTask(file *browserTaskFile, p BrowserTaskParams) error {
 			r.Verify = "either"
 		}
 		text := truncateRunes(r.Text, 300)
-		expect := truncateRunes(strings.TrimSpace(r.Expect), 120)
+		expectLimit := 120
+		if r.Verify == "design" {
+			expectLimit = 400
+		}
+		expect := truncateRunes(strings.TrimSpace(r.Expect), expectLimit)
 		subject := truncateRunes(strings.TrimSpace(r.Subject), 160)
 		source := strings.TrimSpace(r.Source)
 		i := slices.IndexFunc(task.Requirements, func(e browserRequirement) bool { return e.ID == r.ID })
@@ -594,6 +614,9 @@ func updateTask(task *browserTask, stateID string, p BrowserTaskParams) error {
 	case ReqPending, ReqInProgress:
 		req.Blocker, req.BlockerEvidence, req.BlockedEpoch = "", nil, ""
 	case ReqVerified:
+		if req.Verify == "design" {
+			return errors.New("a design requirement is checked from the saved design file by itself; keep building in the editor and it closes when the file shows its terms")
+		}
 		if req.Verify == "delivery" {
 			return errors.New("delivery can only be verified by the saved final response; browser observations and model notes are not delivery")
 		}

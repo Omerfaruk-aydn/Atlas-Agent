@@ -29,7 +29,7 @@ func TestTaskRoutingPreloadsRelevantCapabilities(t *testing.T) {
 		{"git durumunu incele", []string{"git_status", "git_diff"}},
 		{"bu projenin haritasını çıkar", []string{"code_map", "project_map"}},
 		{"show the code map", []string{"code_map", "project_map"}},
-		{"oturum geçmişini bul", []string{"session_search"}},
+		{"oturum geçmişini bul", []string{"session_search", "session_read"}},
 		{"merhaba", nil},
 		{"YouTube API client kodunu düzenle", nil},
 		{"Do not open YouTube; explain its API", nil},

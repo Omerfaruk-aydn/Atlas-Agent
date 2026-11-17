@@ -115,3 +115,26 @@ func TestFilterTools(t *testing.T) {
 		require.Len(t, result, 0)
 	})
 }
+
+func TestAppOnlyToolsAreHiddenFromTheModel(t *testing.T) {
+	t.Parallel()
+	meta := func(visibility ...any) map[string]any {
+		return map[string]any{"ui": map[string]any{"resourceUri": "ui://x/app", "visibility": visibility}}
+	}
+	tools := []*Tool{
+		{Name: "plain"},
+		{Name: "both", Meta: meta("model", "app")},
+		{Name: "app_only", Meta: meta("app")},
+		{Name: "no_visibility", Meta: map[string]any{"ui": map[string]any{"resourceUri": "ui://x/app"}}},
+	}
+	got := filterTools(config.MCPConfig{}, tools)
+	var names []string
+	for _, tool := range got {
+		names = append(names, tool.Name)
+	}
+	require.Equal(t, []string{"plain", "both", "no_visibility"}, names)
+
+	uri, vis := appUI(tools[1])
+	require.Equal(t, "ui://x/app", uri)
+	require.Equal(t, []string{"model", "app"}, vis)
+}

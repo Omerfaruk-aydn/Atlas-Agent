@@ -131,3 +131,55 @@ func TestTeamSendAndReadShareATeamAcrossDifferentSessions(t *testing.T) {
 	_ = runTeamReadTool(t, reg, "sibling-session", `{}`)
 	require.Contains(t, reg.teamForCalls, "sibling-session")
 }
+
+// The tools against the real registry: addressing, the cursor guard and status.
+func TestTeamReadOnlyMineWaitsForTheMessageThatPagesYou(t *testing.T) {
+	reg := teams.NewRegistry()
+	reg.Join("lead", "rev")
+	reg.SetName("lead", "lead")
+	reg.SetName("rev", "reviewer")
+	reg.Send("lead", "lead", "chatter for nobody")
+	reg.Send("lead", "lead", "@reviewer please look at #1")
+
+	ctx := context.WithValue(t.Context(), SessionIDContextKey, "rev")
+	resp, err := NewTeamReadTool(reg).Run(ctx, fantasy.ToolCall{ID: "c", Name: TeamReadToolName, Input: `{"only_mine":true}`})
+	require.NoError(t, err)
+	require.False(t, resp.IsError)
+	require.Contains(t, resp.Content, "@reviewer please look at #1")
+	require.NotContains(t, resp.Content, "chatter for nobody")
+	require.Contains(t, resp.Content, "lead (", "the sender is shown by handle")
+	require.Contains(t, resp.Metadata, `"seq_after":2`)
+}
+
+func TestTeamReadRefusesACursorAheadOfTheBoard(t *testing.T) {
+	reg := teams.NewRegistry()
+	reg.Send("lead", "lead", "one")
+	ctx := context.WithValue(t.Context(), SessionIDContextKey, "lead")
+	resp, err := NewTeamReadTool(reg).Run(ctx, fantasy.ToolCall{ID: "c", Name: TeamReadToolName, Input: `{"since":7}`})
+	require.NoError(t, err)
+	require.True(t, resp.IsError)
+	require.Contains(t, resp.Content, "seq_after")
+	require.Contains(t, resp.Metadata, `"seq_after":1`, "the error hands back the right cursor")
+}
+
+func TestTeamReadStatusShowsRosterAndStall(t *testing.T) {
+	reg := teams.NewRegistry()
+	reg.Join("lead", "dev")
+	reg.SetName("lead", "lead")
+	reg.SetName("dev", "dev")
+	reg.Send("lead", "dev", "[blocked] need the staging key")
+
+	ctx := context.WithValue(t.Context(), SessionIDContextKey, "lead")
+	resp, err := NewTeamReadTool(reg).Run(ctx, fantasy.ToolCall{ID: "c", Name: TeamReadToolName, Input: `{"status":true}`})
+	require.NoError(t, err)
+	require.Contains(t, resp.Content, "@lead: working")
+	require.Contains(t, resp.Content, "@dev: working")
+	require.Contains(t, resp.Content, "No stall found", "a fresh [blocked] post is not yet a stall")
+}
+
+func TestTeamStatusNeedsARegistryThatKnowsTheRoster(t *testing.T) {
+	ctx := context.WithValue(t.Context(), SessionIDContextKey, "s")
+	resp, err := NewTeamReadTool(&fakeTeamRegistry{}).Run(ctx, fantasy.ToolCall{ID: "c", Name: TeamReadToolName, Input: `{"status":true}`})
+	require.NoError(t, err)
+	require.True(t, resp.IsError)
+}

@@ -181,13 +181,31 @@ func TestBashTool_ChainedCommandsDenied(t *testing.T) {
 	tool, perms := newBashToolWithRecordingPerms(workingDir, false)
 	ctx := context.WithValue(context.Background(), SessionIDContextKey, "test-session")
 
+	// A chained command with a risky tail still reaches the user, who denies it.
 	resp := runBashTool(t, tool, ctx, BashParams{
 		Description: "chained ls denied",
-		Command:     "ls && rm -rf /",
+		Command:     "ls && git reset --hard HEAD~1",
 	})
 
 	require.Equal(t, 1, perms.requestCount)
+	require.False(t, perms.lastSafe)
 	require.Contains(t, resp.Content, "User denied permission")
+}
+
+func TestBashTool_PolicyBlocksCatastrophicCommandsBeforeAsking(t *testing.T) {
+	workingDir := t.TempDir()
+	tool, perms := newBashToolWithRecordingPerms(workingDir, true)
+	ctx := context.WithValue(context.Background(), SessionIDContextKey, "policy-block-session")
+
+	resp := runBashTool(t, tool, ctx, BashParams{
+		Description: "wipe",
+		Command:     "ls && rm -rf /",
+	})
+
+	require.True(t, resp.IsError)
+	require.Contains(t, resp.Content, "Blocked by command policy")
+	require.Contains(t, resp.Content, "rm-system-root")
+	require.Equal(t, 0, perms.requestCount, "a denied command never reaches the prompt")
 }
 
 func runBashTool(t *testing.T, tool fantasy.AgentTool, ctx context.Context, params BashParams) fantasy.ToolResponse {

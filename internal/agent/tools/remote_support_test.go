@@ -3,13 +3,14 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/testenv"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/testenv"
 
 	fantasy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/nodes"

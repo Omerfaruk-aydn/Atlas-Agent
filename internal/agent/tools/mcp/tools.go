@@ -173,6 +173,7 @@ func getTools(ctx context.Context, session *ClientSession) ([]*Tool, error) {
 
 func updateTools(cfg *config.ConfigStore, name string, tools []*Tool) int {
 	mcpCfg, ok := cfg.Config().MCP[name]
+	recordAppTools(name, tools, mcpCfg.DisabledTools)
 	if ok {
 		tools = filterTools(mcpCfg, tools)
 	}
@@ -187,6 +188,8 @@ func updateTools(cfg *config.ConfigStore, name string, tools []*Tool) int {
 // filterTools filters tools based on enabled_tools (allow list) and
 // disabled_tools (deny list) from the MCP config.
 func filterTools(mcpCfg config.MCPConfig, tools []*Tool) []*Tool {
+	// Tools that exist only for an app page are never offered to the model.
+	tools = dropAppOnly(tools)
 	if len(mcpCfg.EnabledTools) > 0 {
 		filtered := make([]*Tool, 0, len(mcpCfg.EnabledTools))
 		for _, tool := range tools {

@@ -19,6 +19,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/execution"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/fsext"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
+	atlaspolicy "github.com/Omerfaruk-aydn/Atlas-Agent/internal/policy"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/rehearsal"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/shell"
 )
@@ -192,23 +193,40 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 			execWorkingDir = filepath.Join(workingDir, execWorkingDir)
 		}
 
-		isSafeReadOnly := false
-		cmdLower := strings.ToLower(params.Command)
-
-		if !containsCommandChaining(params.Command) {
-			for _, safe := range safeCommands {
-				if strings.HasPrefix(cmdLower, safe) {
-					if len(cmdLower) == len(safe) || cmdLower[len(safe)] == ' ' || cmdLower[len(safe)] == '-' {
-						isSafeReadOnly = true
-						break
-					}
-				}
-			}
-		}
+		// Only argv-free single observation commands skip the prompt;
+		// see safeReadOnlyCommand for what counts.
+		isSafeReadOnly := len(params.Argv) == 0 && safeReadOnlyCommand(params.Command)
 
 		sessionID := GetSessionFromContext(ctx)
 		if sessionID == "" {
 			return fantasy.ToolResponse{}, fmt.Errorf("session ID is required for executing shell command")
+		}
+		// The policy engine judges the parsed command: Deny refuses it, Ask
+		// removes the read-only shortcut so the user is prompted.
+		policyText := cmp.Or(params.Command, strings.Join(params.Argv, " "))
+		policyCtx := atlaspolicy.Context{Dir: execWorkingDir}
+		if strings.Contains(policyText, "push") {
+			policyCtx.Branch = currentGitBranch(ctx, execWorkingDir)
+		}
+		var verdict atlaspolicy.Verdict
+		if len(params.Argv) > 0 {
+			verdict = PolicyFor(sessionID).CheckArgv(params.Argv, policyCtx)
+		} else {
+			verdict = PolicyFor(sessionID).Check(policyText, policyCtx)
+		}
+		if verdict.Action == atlaspolicy.Deny {
+			return fantasy.NewTextErrorResponse("Blocked by command policy: " + verdict.Message()), nil
+		}
+		policyNote := ""
+		if verdict.Action == atlaspolicy.Ask {
+			isSafeReadOnly = false
+			policyNote = verdict.Message()
+			// auto_sandbox: inside the sandbox the harm the policy asked about
+			// cannot happen, so the permission service may grant it without a
+			// prompt. Plan mode still denies, since Safe does not override it.
+			if autoSandbox.Load() && execution.HasBinding(ctx) && verdictContainedBySandbox(verdict) {
+				isSafeReadOnly = true
+			}
 		}
 		// Always request: the safe-command short-circuit now lives
 		// inside the permission service (Safe: true), so ModePlan can
@@ -217,6 +235,9 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 		description := fmt.Sprintf("Execute command: %s", cmp.Or(params.Command, fmt.Sprint(params.Argv)))
 		if risk, risky := rehearsal.Classify(cmp.Or(params.Command, strings.Join(params.Argv, " "))); risky {
 			description += "\n" + risk.Hint()
+		}
+		if policyNote != "" {
+			description += "\n" + policyNote
 		}
 		p, err := permissions.Request(
 			ctx,
@@ -408,7 +429,14 @@ func NewBashTool(permissions permission.Service, workingDir string, attribution 
 		BashToolName,
 		string(bashDescription(attribution, modelID, policy, limits)),
 		func(ctx context.Context, params BashParams, call fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			watchRoot := cmp.Or(params.WorkingDir, workingDir)
+			before := snapshotWatched(watchRoot)
 			resp, err := run(ctx, params, call)
+			if err == nil && !resp.IsError {
+				if note := monitorNote(watchedChanges(before, snapshotWatched(watchRoot))); note != "" {
+					resp.Content += note
+				}
+			}
 			return annotateBashExit(resp, err)
 		},
 	)

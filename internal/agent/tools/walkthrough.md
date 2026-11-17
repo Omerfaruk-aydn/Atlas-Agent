@@ -1,0 +1,3 @@
+Produce the end-of-task walkthrough from recorded facts, not from memory: the files that actually changed (from git), how that compares with the plan the user approved (files changed but not planned, planned but not touched), the checks the harness recorded as passing, and any check that failed before the change and passed after it.
+
+Call it once when the work is finished, before the final answer, and base the summary on its output instead of describing the work from memory. If it says nothing was verified, say so to the user; do not claim a check that is not listed. Optional `goal`: one line about what the work was for.

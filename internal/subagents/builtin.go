@@ -8,6 +8,11 @@ import (
 	"sync"
 )
 
+// OrchestratorMode is the built-in mode that runs a task as a team of
+// background workers. The harness treats a session wearing it specially:
+// it may not end a turn while its workers are uncollected.
+const OrchestratorMode = "orchestrator"
+
 // builtinFS holds the subagent definitions that ship inside the binary:
 // the "modes" a user can put to work without authoring anything. Each is
 // a specialist system prompt plus a "model" field naming the model role

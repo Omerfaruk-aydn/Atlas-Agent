@@ -198,3 +198,23 @@ func TestMatchIsCaseInsensitive(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "research", got.Name)
 }
+
+func TestSubagentLimitsAreParsedAndBounded(t *testing.T) {
+	t.Parallel()
+	s, err := ParseContent([]byte("---\nname: scout\ndescription: Looks around\nmax_steps: 12\ntimeout_seconds: 300\nmcp: [docs, search]\n---\nBody"))
+	require.NoError(t, err)
+	require.Equal(t, 12, s.MaxSteps)
+	require.Equal(t, 300, s.TimeoutSeconds)
+	require.Equal(t, []string{"docs", "search"}, s.MCP)
+	require.NoError(t, s.Validate())
+
+	for name, bad := range map[string]Subagent{
+		"negative steps":  {Name: "x", Description: "d", MaxSteps: -1},
+		"too many steps":  {Name: "x", Description: "d", MaxSteps: MaxStepsLimit + 1},
+		"long timeout":    {Name: "x", Description: "d", TimeoutSeconds: MaxTimeoutSeconds + 1},
+		"empty mcp name":  {Name: "x", Description: "d", MCP: []string{" "}},
+		"too many to use": {Name: "x", Description: "d", MCP: make([]string, 17)},
+	} {
+		require.Error(t, bad.Validate(), name)
+	}
+}

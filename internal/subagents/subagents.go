@@ -23,6 +23,10 @@ const (
 
 	MaxNameLength        = 64
 	MaxDescriptionLength = 1024
+
+	// MaxStepsLimit and MaxTimeoutSeconds bound what a definition may ask for.
+	MaxStepsLimit     = 500
+	MaxTimeoutSeconds = 4 * 60 * 60
 )
 
 var namePattern = regexp.MustCompile(`^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$`)
@@ -47,8 +51,17 @@ type Subagent struct {
 	// (agent, delegate, orchestrate, debate) -- see
 	// agent.subagentAllowedTools, since nothing here caps delegation
 	// depth and an unbounded default would let a subagent invoke itself.
-	Tools        []string `yaml:"tools,omitempty" json:"tools,omitempty"`
-	Instructions string   `yaml:"-" json:"instructions"`
+	Tools []string `yaml:"tools,omitempty" json:"tools,omitempty"`
+	// MCP names the MCP servers this subagent may use. Empty keeps the
+	// default: every server for a subagent that can write, none for a
+	// read-only one. A listed server gives all of its tools.
+	MCP []string `yaml:"mcp,omitempty" json:"mcp,omitempty"`
+	// MaxSteps caps the model steps of one run. Zero keeps the global cap.
+	MaxSteps int `yaml:"max_steps,omitempty" json:"max_steps,omitempty"`
+	// TimeoutSeconds caps how long one run may last. Zero keeps the global
+	// sub-agent timeout.
+	TimeoutSeconds int    `yaml:"timeout_seconds,omitempty" json:"timeout_seconds,omitempty"`
+	Instructions   string `yaml:"-" json:"instructions"`
 	// Path is the file this subagent was parsed from. Empty for a
 	// Subagent built in memory rather than discovered from disk.
 	Path string `yaml:"-" json:"path"`
@@ -76,6 +89,20 @@ func (s *Subagent) Validate() error {
 	}
 	if err := s.Contract.Validate(); err != nil {
 		errs = append(errs, err)
+	}
+	if s.MaxSteps < 0 || s.MaxSteps > MaxStepsLimit {
+		errs = append(errs, fmt.Errorf("max_steps must be between 0 and %d", MaxStepsLimit))
+	}
+	if s.TimeoutSeconds < 0 || s.TimeoutSeconds > MaxTimeoutSeconds {
+		errs = append(errs, fmt.Errorf("timeout_seconds must be between 0 and %d", MaxTimeoutSeconds))
+	}
+	if len(s.MCP) > 16 {
+		errs = append(errs, errors.New("mcp lists at most 16 servers"))
+	}
+	for _, name := range s.MCP {
+		if strings.TrimSpace(name) == "" {
+			errs = append(errs, errors.New("mcp names must not be empty"))
+		}
 	}
 
 	if s.Name == "" {

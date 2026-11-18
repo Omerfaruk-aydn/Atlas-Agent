@@ -24,6 +24,7 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0
 	github.com/creack/pty v1.1.24
 	github.com/disintegration/imaging v1.6.2
+	github.com/dop251/goja v0.0.0-20261110204830-f493a2b600d6
 	github.com/dustin/go-humanize v1.0.1
 	github.com/gen2brain/beeep v0.11.2
 	github.com/go-git/go-git/v5 v5.19.2
@@ -69,6 +70,7 @@ require (
 	github.com/yuin/goldmark v1.7.17
 	github.com/yuin/goldmark-emoji v1.0.5
 	github.com/zeebo/xxh3 v1.1.0
+	go.starlark.net v0.0.0-20261021141710-4f4267fb140d
 	go.uber.org/goleak v1.3.0
 	go.yaml.in/yaml/v4 v4.0.0-rc.3
 	golang.design/x/clipboard v0.8.0
@@ -119,7 +121,6 @@ require (
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/cyphar/filepath-securejoin v0.6.1 // indirect
 	github.com/dlclark/regexp2/v2 v2.11.0 // indirect
-	github.com/dop251/goja v0.0.0-20261110204830-f493a2b600d6 // indirect
 	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/esiqveland/notify v0.13.3 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
@@ -200,7 +201,6 @@ require (
 	go.opentelemetry.io/otel v1.45.0 // indirect
 	go.opentelemetry.io/otel/metric v1.45.0 // indirect
 	go.opentelemetry.io/otel/trace v1.45.0 // indirect
-	go.starlark.net v0.0.0-20261021141710-4f4267fb140d // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.design/x/x11 v0.2.0 // indirect

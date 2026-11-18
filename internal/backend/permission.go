@@ -32,6 +32,7 @@ func (b *Backend) GrantPermission(workspaceID string, req proto.PermissionGrant)
 	case proto.PermissionAllowForSession:
 		return ws.Permissions.GrantPersistent(perm), nil
 	case proto.PermissionDeny:
+		permission.SetDenyFeedback(perm.ToolCallID, req.Feedback)
 		return ws.Permissions.Deny(perm), nil
 	default:
 		return false, ErrInvalidPermissionAction

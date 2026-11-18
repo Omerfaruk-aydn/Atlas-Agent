@@ -1,8 +1,10 @@
 package backend
 
 import (
+	"context"
 	"errors"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools/mcp"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/question"
 )
@@ -83,4 +85,24 @@ func (b *Backend) SetPermissionMode(workspaceID string, mode permission.Permissi
 	}
 	ws.Permissions.SetMode(mode)
 	return nil
+}
+
+// GetMCPApp loads the interactive page an MCP tool offers, or nil when the
+// tool has none. It fails when the mcp_apps option is off.
+func (b *Backend) GetMCPApp(ctx context.Context, workspaceID, toolName string) (*mcp.AppPage, error) {
+	ws, err := b.GetWorkspace(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	return mcp.AppForTool(ctx, ws.Cfg, toolName)
+}
+
+// CallMCPApp runs a tool on behalf of an MCP app page. See mcp.CallFromApp
+// for what a page may call.
+func (b *Backend) CallMCPApp(ctx context.Context, workspaceID, pageTool, tool string, arguments map[string]any) (mcp.AppCallResult, error) {
+	ws, err := b.GetWorkspace(workspaceID)
+	if err != nil {
+		return mcp.AppCallResult{}, err
+	}
+	return mcp.CallFromApp(ctx, ws.Cfg, pageTool, tool, arguments)
 }

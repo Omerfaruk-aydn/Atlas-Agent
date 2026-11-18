@@ -190,6 +190,9 @@ type Workspace struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
+	// reviews holds the reviews started in this workspace (see review.go).
+	reviews reviewBook
+
 	// runMu guards closing and gates dispatch of new agent runs.
 	// closing is set by Shutdown so no new runs are accepted once
 	// teardown has begun. runWG tracks dispatched agent goroutines

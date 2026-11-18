@@ -2,12 +2,14 @@ package backend
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/history"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/proto"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session/replay"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session/rewind"
 )
 
@@ -201,4 +203,55 @@ func (b *Backend) RenameSession(ctx context.Context, workspaceID, sessionID, tit
 		return err
 	}
 	return ws.Sessions.Rename(ctx, sessionID, title)
+}
+
+// SideChatTagPrefix marks a branch made as a side chat; the rest is the
+// full ID of the session it was forked from.
+const SideChatTagPrefix = session.SideChatTagPrefix
+
+// BranchSession copies a session's conversation, up to messageID or up to its
+// last complete step when messageID is empty, into a new session tagged as a
+// side chat of the source. Files are left alone and the source is not changed.
+func (b *Backend) BranchSession(ctx context.Context, workspaceID, sourceSessionID, messageID string) (session.Session, error) {
+	return b.branchSession(ctx, workspaceID, sourceSessionID, messageID, false)
+}
+
+// BranchConversation is BranchSession for a chat of its own: the copy is
+// tagged as a branch of its source, not as a side chat.
+func (b *Backend) BranchConversation(ctx context.Context, workspaceID, sourceSessionID, messageID string) (session.Session, error) {
+	return b.branchSession(ctx, workspaceID, sourceSessionID, messageID, true)
+}
+
+func (b *Backend) branchSession(ctx context.Context, workspaceID, sourceSessionID, messageID string, plain bool) (session.Session, error) {
+	ws, err := b.GetWorkspace(workspaceID)
+	if err != nil {
+		return session.Session{}, err
+	}
+	if messageID == "" {
+		if err := ws.Messages.FlushAll(ctx); err != nil {
+			return session.Session{}, err
+		}
+		all, err := ws.Messages.List(ctx, sourceSessionID)
+		if err != nil {
+			return session.Session{}, err
+		}
+		for i := len(all) - 1; i >= 0; i-- {
+			if replay.CheckBranchable(all, i) == nil {
+				messageID = all[i].ID
+				break
+			}
+		}
+		if messageID == "" {
+			return session.Session{}, errors.New("the session has nothing to branch from yet")
+		}
+	}
+	tag := SideChatTagPrefix + sourceSessionID
+	if plain {
+		tag = rewind.BranchTagPrefix + sourceSessionID
+	}
+	res, err := rewind.NewBrancher(ws.Sessions, ws.Messages, ws.History).Branch(ctx, rewind.BranchOptions{SourceID: sourceSessionID, MessageID: messageID, ExtraTags: []string{tag}})
+	if err != nil {
+		return session.Session{}, err
+	}
+	return res.Session, nil
 }

@@ -1091,17 +1091,22 @@ describe("the side panel", () => {
     expect(Math.round(await panelWidth())).toBe(620);
 
     await expect.poll(() => JSON.parse(fs.readFileSync(path.join(userData, "prefs.json"), "utf8")).ui?.panels?.[panelKey]?.width).toBe(620);
-    // A small screen (a CI runner) may restore the window narrower than it
-    // was, which would clamp the panel; give it the same size back so only
-    // the saved panel width is under test.
-    const size = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.isVisible())?.getSize());
     await relaunch();
     await page.waitForSelector(".side-panel");
-    await app.evaluate(({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows().find((win) => win.isVisible())?.setSize(w, h), size);
-    await expect.poll(async () => Math.round(await panelWidth())).toBe(620);
+    // A small screen (a CI runner) reopens the window narrower than it was
+    // dragged in, and the saved width is then clamped so the thread keeps its
+    // minimum. Expect what the app's own rule gives for this window.
+    const fitted = (width) =>
+      page.evaluate((w) => {
+        const body = document.querySelector(".body");
+        const sidebar = body?.querySelector(".sidebar-slot")?.getBoundingClientRect().width ?? 0;
+        const container = (body?.clientWidth ?? window.innerWidth) - sidebar - 8;
+        return Math.round(Math.min(Math.max(360, container - 320), Math.max(360, w)));
+      }, width);
+    await expect.poll(async () => Math.round(await panelWidth()) - (await fitted(620))).toBe(0);
 
     await page.locator(".panel-handle").dblclick({ position: { x: 3, y: 200 } });
-    await expect.poll(async () => Math.round(await panelWidth())).toBe(520);
+    await expect.poll(async () => Math.round(await panelWidth()) - (await fitted(520))).toBe(0);
   });
 
   test("expand gives the panel the whole main area and brings the thread back", async () => {

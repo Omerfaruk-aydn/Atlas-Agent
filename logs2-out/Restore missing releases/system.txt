@@ -1,8 +1,0 @@
-2026-09-01T18:23:49.6130000Z Evaluating restore.if
-2026-09-01T18:23:49.6130000Z Evaluating: success()
-2026-09-01T18:23:49.6130000Z Result: true
-2026-09-01T18:23:49.8640000Z Requested labels: ubuntu-latest
-2026-09-01T18:23:49.8640000Z Job defined at: Omerfaruk-aydn/Atlas-Agent/.github/workflows/release-restore.yml@refs/heads/main
-2026-09-01T18:23:49.8640000Z Waiting for a runner to pick up this job...
-2026-09-01T18:23:50.1810000Z Job is about to start running on the hosted runner: GitHub Actions 1000001261
-2026-09-01T18:23:50.1820000Z Job is waiting for a hosted runner to come online.

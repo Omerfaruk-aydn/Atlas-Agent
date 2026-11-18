@@ -1,0 +1,22 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes: {label: Version, description: Output of `atlas-agent --version`}
+    validations: {required: true}
+  - type: input
+    id: os
+    attributes: {label: Operating system}
+    validations: {required: true}
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did it happen?
+      options: [Terminal UI, Desktop app, Web UI, "atlas-agent run", Other]
+    validations: {required: true}
+  - type: textarea
+    id: what
+    attributes: {label: What happened, description: "Steps to reproduce, what you expected and what you saw. Do not paste API keys."}
+    validations: {required: true}

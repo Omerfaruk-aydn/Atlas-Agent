@@ -19,18 +19,32 @@ Change how it is configured just by telling it to.
 
 </div>
 
+## Quick start
+
 ```bash
-curl -fsSL https://github.com/Omerfaruk-aydn/Atlas-Agent/releases/latest/download/install.sh | bash
-atlas-agent
+npm install -g @atlas-coder/atlas-agent     # Windows, macOS, Linux
+cd your-project
+atlas-agent                                 # terminal UI
+atlas-agent app                             # desktop app (Windows x64)
 ```
 
-See the [October 2026 model catalog and Xiaomi API / Token Plan setup](docs/provider-catalog-update-2026-10.md)
-for the verified models, regional endpoints, and key login commands.
-The [catalog verification report](docs/provider-catalog-fixes-2026-10-01.md)
-records the completed provider updates, source evidence, and test results.
+Other installers (shell script, PowerShell, manual download, source) are under [Install](#install).
+Sign in with a plan you already pay for (`atlas-agent login`) or add an API key, then describe a task.
 
-The [agent workspace guide](docs/agent-workspace.md) covers live task controls,
-persistent steering, dependency views, diffs, process output and checkpoint recovery.
+## Why people pick it
+
+| | |
+| --- | --- |
+| **Any model, one tool** | Claude, GPT, Gemini, Qwen, MiniMax, Kimi, local models. 71 providers in the embedded catalog, kept current (latest: [November 2026 update](docs/model-catalog-2026-11.md)). |
+| **Use the plan you already have** | Sign in with ChatGPT, Claude, GitHub Copilot or Google Antigravity instead of buying API credit. |
+| **Orchestrator mode** | A lead agent splits the work, runs subagents in parallel and checks the result. See [Orchestrator mode](docs/orchestrator-mode.md). |
+| **Terminal, desktop and web** | The same engine in a TUI, an Electron desktop app with one window per project, and a web UI. |
+| **Delegate, debate, goals** | Subagents keep your context small, `debate` argues hard calls out, `/goal` keeps working until a judge says it is done. |
+| **Safe by default** | Permission prompts, a policy layer that refuses to run files fetched from the network, and hooks. |
+| **One static binary** | Go, no runtime to install, MIT licensed. |
+
+The [agent workspace guide](docs/agent-workspace.md) covers live task controls, persistent steering,
+dependency views, diffs, process output and checkpoint recovery.
 
 <!--
   Demo goes here: a short terminal recording (asciinema, or a GIF made with
@@ -44,7 +58,7 @@ persistent steering, dependency views, diffs, process output and checkpoint reco
 
 > [!NOTE]
 > Atlas Agent is MIT-licensed and open to contributions. Issues and pull requests are welcome —
-> see [Contributing](#contributing). If something in this README has drifted from the code, that is
+> see [CONTRIBUTING.md](CONTRIBUTING.md) and the [good first issues](https://github.com/Omerfaruk-aydn/Atlas-Agent/labels/good%20first%20issue). If something in this README has drifted from the code, that is
 > a good first PR.
 
 ---

@@ -94,3 +94,9 @@ web/playwright-report/
 
 # Built release binaries from local verification runs must not be committed.
 /artifacts/*/release/*/atlas-agent-*
+
+# Local debugging output
+logs.zip
+logs2.zip
+logs2-out/
+*.log

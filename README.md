@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/hero.png" alt="Atlas Agent" width="860">
+  <img src="docs/assets/clip-hero.webp" alt="Atlas Agent fixing a failing Go test with Claude Sonnet 5.5 in the desktop app" width="860">
 </p>
 
 <p align="center">

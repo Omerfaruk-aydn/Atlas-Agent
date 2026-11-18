@@ -1,65 +1,139 @@
-<div align="center">
+<p align="center">
+  <img src="docs/assets/hero.png" alt="Atlas Agent" width="860">
+</p>
 
-# Atlas Agent
+<p align="center">
+  <strong>A coding agent that isn't locked to one model.</strong><br>
+  Terminal, desktop and web. Bring any API key or the plan you already pay for.
+</p>
 
-**A terminal-first AI coding agent that isn't locked to one model.**
+<p align="center">
+  <a href="https://www.npmjs.com/package/@atlas-coder/atlas-agent"><img src="https://img.shields.io/npm/v/%40atlas-coder%2Fatlas-agent?style=flat&colorA=222222&colorB=CB3837&label=npm" alt="npm version"></a>
+  <a href="https://github.com/Omerfaruk-aydn/Atlas-Agent/releases/latest"><img src="https://img.shields.io/github/v/release/Omerfaruk-aydn/Atlas-Agent?style=flat&colorA=222222&colorB=E05735&label=release" alt="Release"></a>
+  <a href="https://github.com/Omerfaruk-aydn/Atlas-Agent/actions/workflows/lint.yml"><img src="https://img.shields.io/github/actions/workflow/status/Omerfaruk-aydn/Atlas-Agent/lint.yml?style=flat&colorA=222222&colorB=3FB950&label=lint" alt="Lint"></a>
+  <a href="LICENSE.md"><img src="https://img.shields.io/github/license/Omerfaruk-aydn/Atlas-Agent?style=flat&colorA=222222&colorB=58A6FF" alt="License"></a>
+  <a href="https://go.dev"><img src="https://img.shields.io/badge/Go-00ADD8?style=flat&colorA=222222&logo=go&logoColor=white" alt="Go"></a>
+  <a href="https://www.electronjs.org"><img src="https://img.shields.io/badge/Electron-47848F?style=flat&colorA=222222&logo=electron&logoColor=white" alt="Electron"></a>
+  <a href="https://github.com/Omerfaruk-aydn/Atlas-Agent/stargazers"><img src="https://img.shields.io/github/stars/Omerfaruk-aydn/Atlas-Agent?style=flat&colorA=222222&colorB=F2CC60" alt="Stars"></a>
+</p>
 
-Plug in Claude, GPT, Gemini, MiniMax, a local model, or a flat-rate coding plan you already pay for.
-Delegate work to subagents instead of blowing up your context. Argue hard calls out between several
-models before committing to one. Hand it a goal and let it keep working toward it on its own.
-Change how it is configured just by telling it to.
+The agent that works with whatever you already have: any model, any plan, any editor setup.
+Free of vendor lock-in, built to keep working on a goal while you do something else.
 
-[![Release](https://img.shields.io/github/v/release/Omerfaruk-aydn/Atlas-Agent?label=release)](https://github.com/Omerfaruk-aydn/Atlas-Agent/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE.md)
-[![npm](https://img.shields.io/npm/v/%40atlas-coder%2Fatlas-agent?label=npm)](https://www.npmjs.com/package/@atlas-coder/atlas-agent)
-[![Go Report Card](https://goreportcard.com/badge/github.com/Omerfaruk-aydn/Atlas-Agent)](https://goreportcard.com/report/github.com/Omerfaruk-aydn/Atlas-Agent)
-[![Stars](https://img.shields.io/github/stars/Omerfaruk-aydn/Atlas-Agent?style=social)](https://github.com/Omerfaruk-aydn/Atlas-Agent/stargazers)
+**71** providers · **80+** built-in tools · **10** subagent modes · **10** coding-plan logins · **9** LSP tools · one static Go binary.
 
-**80+ built-in tools · 10 built-in subagent modes · 71 providers in the embedded catalog · 10 coding-plan logins · MCP + Skills + hooks for everything else**
+## Install
 
-</div>
-
-## Quick start
-
-```bash
-npm install -g @atlas-coder/atlas-agent     # Windows, macOS, Linux
-cd your-project
-atlas-agent                                 # terminal UI
-atlas-agent app                             # desktop app (Windows x64)
+```sh
+npm install -g @atlas-coder/atlas-agent
 ```
 
-Other installers (shell script, PowerShell, manual download, source) are under [Install](#install).
+Then:
+
+```sh
+cd your-project
+atlas-agent          # terminal UI
+atlas-agent app      # desktop app, one window per project (Windows x64)
+atlas-agent web      # web UI
+```
+
+**macOS · Linux**
+
+```sh
+curl -fsSL https://github.com/Omerfaruk-aydn/Atlas-Agent/releases/latest/download/install.sh | bash
+```
+
+**Windows (PowerShell)**
+
+```powershell
+irm https://github.com/Omerfaruk-aydn/Atlas-Agent/releases/latest/download/install.ps1 | iex
+```
+
+Manual downloads, source builds and upgrade commands are under [Install](#install-details).
 Sign in with a plan you already pay for (`atlas-agent login`) or add an API key, then describe a task.
 
-## Why people pick it
+## Every model. _Every plan._
+
+Pick any model and Atlas keeps the same tools, prompts and permissions around it. Change it mid-session
+with one command, or give each job its own: a strong model for the main session, a cheap one for titles,
+another to judge whether a goal is done. The catalog is checked against vendor pages and updated as models
+ship ([November 2026 update](docs/model-catalog-2026-11.md)).
 
 | | |
 | --- | --- |
-| **Any model, one tool** | Claude, GPT, Gemini, Qwen, MiniMax, Kimi, local models. 71 providers in the embedded catalog, kept current (latest: [November 2026 update](docs/model-catalog-2026-11.md)). |
-| **Use the plan you already have** | Sign in with ChatGPT, Claude, GitHub Copilot or Google Antigravity instead of buying API credit. |
-| **Orchestrator mode** | A lead agent splits the work, runs subagents in parallel and checks the result. See [Orchestrator mode](docs/orchestrator-mode.md). |
-| **Terminal, desktop and web** | The same engine in a TUI, an Electron desktop app with one window per project, and a web UI. |
-| **Delegate, debate, goals** | Subagents keep your context small, `debate` argues hard calls out, `/goal` keeps working until a judge says it is done. |
-| **Safe by default** | Permission prompts, a policy layer that refuses to run files fetched from the network, and hooks. |
-| **One static binary** | Go, no runtime to install, MIT licensed. |
+| **Frontier APIs** | Anthropic, OpenAI, Google, xAI, DeepSeek, Mistral and more |
+| **Coding plans** | ChatGPT (Codex), Claude, GitHub Copilot, Google Antigravity, Kimi, Z.ai, MiniMax, Alibaba |
+| **Run it yourself** | Ollama, LM Studio, any OpenAI-compatible server |
 
-The [agent workspace guide](docs/agent-workspace.md) covers live task controls, persistent steering,
-dependency views, diffs, process output and checkpoint recovery.
+## Not another chat window, _a whole team_.
 
-<!--
-  Demo goes here: a short terminal recording (asciinema, or a GIF made with
-  vhs/terminalizer) showing one real task end to end -- e.g. "fix the failing
-  test": the agent reading the code, running the suite, and the diff landing.
-  Record one, upload it (drag-and-drop into a GitHub issue comment for a CDN
-  URL, or commit it under docs/), then replace this comment with:
-      ![demo](docs/demo.gif)
-  Under ~15 seconds showing one real edit lands better than a long feature tour.
--->
+### 01 · Orchestrator mode
+
+Hand it a large task and the lead agent plans the work, starts workers in parallel, coordinates them on a
+team board, waits for every result and has an independent verifier check the combined outcome before it
+reports. The lead never edits files itself, so its context stays about the plan. [Orchestrator mode](docs/orchestrator-mode.md)
+
+<p align="center"><img src="docs/assets/modes.png" alt="Choosing the orchestrator mode in the Atlas desktop app" width="760"></p>
+
+### 02 · Subagents that keep your context small
+
+A subagent runs in a session of its own. Everything it reads and greps stays there; only the answer comes
+back. Reading twenty files to answer one question costs you a paragraph, not twenty files.
+[Token economics](#token-economics-why-delegation-is-cheaper)
+
+### 03 · Debate: models that argue before they agree
+
+`debate` puts one question to several models over multiple rounds. Each sees what the others said and answers
+it; a judge can close it out. Disagreement that survives is reported as disagreement instead of being averaged
+into a consensus nobody reached. [Delegation](#delegation-agent-orchestrate-delegate-debate)
+
+### 04 · Goals that keep going
+
+Set a goal with `/goal` and walk away. Atlas works toward it step by step and a separate judge model decides
+whether it is truly finished, so "done" is checked and not claimed. [Autonomous goals](#autonomous-goals)
+
+### 05 · Configure it by talking to it
+
+"Use the cheap model for summaries." "Turn the browser tool on." "Make me a subagent that only reviews UI."
+`atlas_config` makes the change and tells you what it did. No settings dialog to hunt through.
+[Talk to it to configure it](#talk-to-it-to-configure-it)
+
+### 06 · A desktop app, not only a terminal
+
+`atlas-agent app` opens an Electron app with one window per project: live task controls, diffs, process
+output, checkpoint recovery and a built-in browser. It ships inside the npm package on Windows.
+[Agent workspace](docs/agent-workspace.md)
+
+### 07 · The IDE's knowledge, wired in
+
+Nine LSP tools (definitions, references, renames, diagnostics) so refactors go through the language server
+instead of grep. [Tools](#code-intelligence-lsp)
+
+### 08 · Safe by default
+
+Every command with a side effect asks first, unless you say otherwise. A policy layer refuses to run files
+that came from the network until you have cleared them. Hooks run before the permission check, so your own
+scripts can veto a call. [Permissions and safety](#permissions-and-safety)
+
+### 09 · Drives a real browser and the Windows desktop
+
+Browse signed-in pages, read PDFs, and, when you switch it on, take screenshots and click through real
+Windows apps. [Browser and desktop automation](docs/INTERACTION_AUTOMATION.md)
+
+### 10 · Extend it your way
+
+MCP servers, Agent Skills and shell hooks plug in without touching the source.
+[Extensibility](#extensibility-skills-mcp-hooks)
+
+## Whatever the task needs, _it is in the box_
+
+[80+ tools](#tools) for editing, search, Git and pull requests, testing, static analysis, infrastructure,
+knowledge and sessions. [Worktrees and teams](#sessions-worktrees-and-teams) for parallel work.
+[Recipes](#recipes) for the common jobs: review a PR, hunt a flaky test, bump a dependency safely.
 
 > [!NOTE]
-> Atlas Agent is MIT-licensed and open to contributions. Issues and pull requests are welcome —
-> see [CONTRIBUTING.md](CONTRIBUTING.md) and the [good first issues](https://github.com/Omerfaruk-aydn/Atlas-Agent/labels/good%20first%20issue). If something in this README has drifted from the code, that is
-> a good first PR.
+> Atlas Agent is MIT-licensed and open to contributions. Issues and pull requests are welcome,
+> see [CONTRIBUTING.md](CONTRIBUTING.md) and the [good first issues](https://github.com/Omerfaruk-aydn/Atlas-Agent/labels/good%20first%20issue).
 
 ---
 
@@ -68,7 +142,7 @@ dependency views, diffs, process output and checkpoint recovery.
 **Getting started**
 - [What Atlas Agent is](#what-atlas-agent-is)
 - [How it compares](#how-it-compares)
-- [Install](#install)
+- [Install](#install-details)
 - [Your first session](#your-first-session)
 - [CLI reference](#cli-reference)
 - [In-session commands](#in-session-commands)
@@ -178,7 +252,7 @@ worth nothing:
 
 ---
 
-## Install
+## Install details
 
 ### One-line install
 

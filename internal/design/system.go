@@ -58,7 +58,7 @@ type systemLinter struct {
 	missingFonts           map[string]bool
 }
 
-func (s *systemLinter) add(sev, rule string, n *Node, format string, args ...any) {
+func (s *systemLinter) addf(sev, rule string, n *Node, format string, args ...any) {
 	id := ""
 	if n != nil {
 		id = n.ID
@@ -89,14 +89,14 @@ func (s *systemLinter) walk(n *Node, comp *Node, screen bool, root *Node) {
 	}
 	if n.Type == TypeComponent {
 		if screen && comp == nil {
-			s.add("warning", "main-on-screen", n, "main component %q sits inside screen %q; keep mains on the Library page and place an instance here", n.Name, root.Name)
+			s.addf("warning", "main-on-screen", n, "main component %q sits inside screen %q; keep mains on the Library page and place an instance here", n.Name, root.Name)
 		}
 		comp = n
 		s.component(n)
 	}
 	inComp := comp != nil
 	if defaultNameRe.MatchString(n.Name) && inComp {
-		s.add("warning", "component-names", n, "layer %q inside component %q keeps a default name; name it for what it is (Label, Icon, Container)", n.Name, componentLabel(comp))
+		s.addf("warning", "component-names", n, "layer %q inside component %q keeps a default name; name it for what it is (Label, Icon, Container)", n.Name, componentLabel(comp))
 	}
 	if n.Type == TypeText && n.Font != nil && n.Font.Family != "" && !KitFont(n.Font.Family) {
 		if s.missingFonts == nil {
@@ -104,12 +104,12 @@ func (s *systemLinter) walk(n *Node, comp *Node, screen bool, root *Node) {
 		}
 		if !s.missingFonts[n.Font.Family] {
 			s.missingFonts[n.Font.Family] = true
-			s.add("warning", "font-missing", n, "%q is not a face the renderer has, so every render shows a fallback and you are judging type you cannot see; use one of %s", n.Font.Family, strings.Join(KitFamilies, ", "))
+			s.addf("warning", "font-missing", n, "%q is not a face the renderer has, so every render shows a fallback and you are judging type you cannot see; use one of %s", n.Font.Family, strings.Join(KitFamilies, ", "))
 		}
 	}
 	if n.Type == TypeText && n.TextStyle == "" && s.textStyles >= 3 {
 		if inComp {
-			s.add("error", "component-text-style", n, "text %q in component %q has no text style; give it one of the file's %d text styles", short(n.TextValue()), comp.Name, s.textStyles)
+			s.addf("error", "component-text-style", n, "text %q in component %q has no text style; give it one of the file's %d text styles", short(n.TextValue()), comp.Name, s.textStyles)
 		} else {
 			s.looseText++
 			if s.firstText == nil {
@@ -123,7 +123,7 @@ func (s *systemLinter) walk(n *Node, comp *Node, screen bool, root *Node) {
 				continue
 			}
 			if inComp {
-				s.add("warning", "component-colour", n, "%q in component %q is filled with %s instead of a colour token; bind it so modes and themes follow", n.Name, comp.Name, f.Color)
+				s.addf("warning", "component-colour", n, "%q in component %q is filled with %s instead of a colour token; bind it so modes and themes follow", n.Name, comp.Name, f.Color)
 			} else {
 				s.looseColour++
 				if s.firstColour == nil {
@@ -138,7 +138,7 @@ func (s *systemLinter) walk(n *Node, comp *Node, screen bool, root *Node) {
 			if v != 0 && !onScale(v, s.space) {
 				s.offScale++
 				if s.offScale <= 8 {
-					s.add("warning", "space-scale", n, "%q uses %gpx, which is not on the spacing scale %s", n.Name, v, scaleText(s.space))
+					s.addf("warning", "space-scale", n, "%q uses %gpx, which is not on the spacing scale %s", n.Name, v, scaleText(s.space))
 				}
 				break
 			}
@@ -147,7 +147,7 @@ func (s *systemLinter) walk(n *Node, comp *Node, screen bool, root *Node) {
 	if n.Radius != nil && len(s.radii) > 0 && n.Type != TypeText {
 		for _, r := range n.Radius.Corners {
 			if r != 0 && !onScale(r, s.radii) && r < math.Min(n.Width, n.Height)/2-0.5 {
-				s.add("warning", "radius-scale", n, "%q has radius %g, which is not on the radius scale %s", n.Name, r, scaleText(s.radii))
+				s.addf("warning", "radius-scale", n, "%q has radius %g, which is not on the radius scale %s", n.Name, r, scaleText(s.radii))
 				break
 			}
 		}
@@ -192,12 +192,12 @@ func (s *systemLinter) component(n *Node) {
 		}
 	}
 	if flow >= 2 && n.Layout == nil {
-		s.add("error", "component-layout", n, "component %q places %d layers by hand; give it auto layout (direction, gap, padding) so it resizes with its content", n.Name, flow)
+		s.addf("error", "component-layout", n, "component %q places %d layers by hand; give it auto layout (direction, gap, padding) so it resizes with its content", n.Name, flow)
 	}
 	name := strings.ToLower(n.Name + " " + n.Set)
 	for _, word := range []string{"button", "tab", "chip", "toggle", "switch", "checkbox", "radio", "icon button", "segment"} {
 		if strings.Contains(name, word) && (n.Height < 44 && n.Height > 0) && !strings.Contains(name, "size=sm") && !strings.Contains(name, "size=xs") {
-			s.add("warning", "component-target", n, "%q is %.0fpx tall; a control people tap needs 44px (keep a small size only as an explicit size variant)", n.Name, n.Height)
+			s.addf("warning", "component-target", n, "%q is %.0fpx tall; a control people tap needs 44px (keep a small size only as an explicit size variant)", n.Name, n.Height)
 			break
 		}
 	}
@@ -238,12 +238,12 @@ func (s *systemLinter) variantSets() {
 		seen := map[string]*Node{}
 		for _, m := range members {
 			if len(m.Variant) != len(keys) {
-				s.add("error", "variants", m, "variant %q of %q does not set every property (%s)", m.Name, name, strings.Join(keys, ", "))
+				s.addf("error", "variants", m, "variant %q of %q does not set every property (%s)", m.Name, name, strings.Join(keys, ", "))
 				continue
 			}
 			key := variantKey(m.Variant, keys)
 			if other := seen[key]; other != nil {
-				s.add("warning", "variants", m, "%q and %q are the same variant of %q (%s)", other.Name, m.Name, name, key)
+				s.addf("warning", "variants", m, "%q and %q are the same variant of %q (%s)", other.Name, m.Name, name, key)
 			}
 			seen[key] = m
 		}
@@ -277,7 +277,7 @@ func (s *systemLinter) variantSets() {
 			if len(shown) > 6 {
 				shown = shown[:6]
 			}
-			s.add("error", "variants", members[0], "set %q misses %d of %d variants: %s", name, len(missing), len(combos), strings.Join(shown, "; "))
+			s.addf("error", "variants", members[0], "set %q misses %d of %d variants: %s", name, len(missing), len(combos), strings.Join(shown, "; "))
 		}
 	}
 }
@@ -307,7 +307,7 @@ func (s *systemLinter) repeats(root *Node) {
 		}
 		for _, list := range groups {
 			if len(list) >= 3 {
-				s.add("warning", "detached-repeat", list[0], "%d layers in %q (%q, %q…) repeat the same structure; make one a component and use instances", len(list), n.Name, list[0].Name, list[1].Name)
+				s.addf("warning", "detached-repeat", list[0], "%d layers in %q (%q, %q…) repeat the same structure; make one a component and use instances", len(list), n.Name, list[0].Name, list[1].Name)
 				reported++
 				break
 			}
@@ -349,13 +349,13 @@ func isSetRow(n *Node) bool {
 
 func (s *systemLinter) totals() {
 	if s.looseText > 0 {
-		s.add("warning", "text-style", s.firstText, "%d text layers on screens use their own font settings instead of the file's %d text styles; apply the styles", s.looseText, s.textStyles)
+		s.addf("warning", "text-style", s.firstText, "%d text layers on screens use their own font settings instead of the file's %d text styles; apply the styles", s.looseText, s.textStyles)
 	}
 	if s.looseColour > 0 {
-		s.add("warning", "raw-colour", s.firstColour, "%d layers on screens are filled with a raw #hex instead of a colour token", s.looseColour)
+		s.addf("warning", "raw-colour", s.firstColour, "%d layers on screens are filled with a raw #hex instead of a colour token", s.looseColour)
 	}
 	if s.offScale > 8 {
-		s.add("warning", "space-scale", nil, "%d layouts in all use spacing off the scale %s", s.offScale, scaleText(s.space))
+		s.addf("warning", "space-scale", nil, "%d layouts in all use spacing off the scale %s", s.offScale, scaleText(s.space))
 	}
 }
 
@@ -426,19 +426,19 @@ func (s *systemLinter) appChrome(root *Node) {
 		return true
 	})
 	if !status {
-		s.add("warning", "app-chrome", root, "screen %q has no status bar; a phone screen starts with the system status bar (time, signal, battery), named \"Status bar\"", root.Name)
+		s.addf("warning", "app-chrome", root, "screen %q has no status bar; a phone screen starts with the system status bar (time, signal, battery), named \"Status bar\"", root.Name)
 	}
 	if !home && root.Height >= 800 {
-		s.add("warning", "app-chrome", root, "screen %q has no home indicator; end the screen with the 34px home indicator area, named \"Home indicator\"", root.Name)
+		s.addf("warning", "app-chrome", root, "screen %q has no home indicator; end the screen with the 34px home indicator area, named \"Home indicator\"", root.Name)
 	}
 	if !material {
-		s.add("warning", "no-material", root, "screen %q is only boxes, text and icons, which reads as a wireframe; give it one thing specific to the subject: map(), chart(), pattern(), a path() illustration, or a real photo (design_canvas photo) placed with image()", root.Name)
+		s.addf("warning", "no-material", root, "screen %q is only boxes, text and icons, which reads as a wireframe; give it one thing specific to the subject: map(), chart(), pattern(), a path() illustration, or a real photo (design_canvas photo) placed with image()", root.Name)
 	}
 	if mixed := mixedLanguage(root); mixed != "" {
-		s.add("warning", "mixed-language", root, "screen %q mixes languages (%s); write every label in the person's language, keeping only names", root.Name, mixed)
+		s.addf("warning", "mixed-language", root, "screen %q mixes languages (%s); write every label in the person's language, keeping only names", root.Name, mixed)
 	}
 	if band != nil {
-		s.add("warning", "web-hero", band, "%q is a full-width colour band %.0fpx tall: that is a website hero. In an app, content sits in inset cards or grouped lists on the screen background, with a large title above", band.Name, band.Height)
+		s.addf("warning", "web-hero", band, "%q is a full-width colour band %.0fpx tall: that is a website hero. In an app, content sits in inset cards or grouped lists on the screen background, with a large title above", band.Name, band.Height)
 	}
 }
 

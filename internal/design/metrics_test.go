@@ -15,7 +15,7 @@ func TestMetricsLoadAndKern(t *testing.T) {
 	t.Parallel()
 	loadMetrics()
 	require.NoError(t, metricsErr)
-	for _, name := range []string{"Inter", "Geist", "Fraunces", "Poppins", "Playwrite US Trad", "JetBrains Mono"} {
+	for _, name := range []string{"Inter", "Geist", "Fraunces", "Poppins", "Playwrite US Trad", "JetBrains Mono"} { //nolint:misspell // Playwrite is the font family's name.
 		require.NotNil(t, metrics[name], name)
 		require.NotNil(t, metrics[name][400], name)
 	}
@@ -83,7 +83,7 @@ func TestFontWidthsMatchBrowser(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(in, raw, 0o644))
 
-	cmd := exec.Command("node", filepath.Join("kit", "gen", "measure.mjs"), in, out)
+	cmd := exec.CommandContext(t.Context(), "node", filepath.Join("kit", "gen", "measure.mjs"), in, out)
 	cmd.Dir = "."
 	buf, err := cmd.CombinedOutput()
 	if err != nil {

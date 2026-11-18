@@ -16,7 +16,7 @@ var kitFonts = map[string][2]string{
 	"geist":             {"Geist Variable", "sans-serif"},
 	"montserrat":        {"Montserrat Variable", "sans-serif"},
 	"outfit":            {"Outfit Variable", "sans-serif"},
-	"playwrite us trad": {"Playwrite US Trad Variable", "cursive"},
+	"playwrite us trad": {"Playwrite US Trad Variable", "cursive"}, //nolint:misspell // Playwrite is the font family's name.
 	"roboto":            {"Roboto Variable", "sans-serif"},
 	"jetbrains mono":    {"JetBrains Mono Variable", "monospace"},
 	"poppins":           {"Poppins", "sans-serif"},
@@ -24,7 +24,7 @@ var kitFonts = map[string][2]string{
 
 // KitFamilies are the typefaces the renderer has, by the name a design
 // uses.
-var KitFamilies = []string{"Albert Sans", "DM Sans", "Figtree", "Fraunces", "Fustat", "Geist", "Inter", "JetBrains Mono", "Montserrat", "Outfit", "Playwrite US Trad", "Poppins", "Roboto"}
+var KitFamilies = []string{"Albert Sans", "DM Sans", "Figtree", "Fraunces", "Fustat", "Geist", "Inter", "JetBrains Mono", "Montserrat", "Outfit", "Playwrite US Trad", "Poppins", "Roboto"} //nolint:misspell // Playwrite is the font family's name.
 
 // FontStack is the CSS font-family list for a family: the bundled face
 // first, then the name as written, then a generic family of the same kind.

@@ -1,6 +1,7 @@
 package design
 
 import (
+	"context"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
@@ -225,7 +226,7 @@ func Raster(svgPath, pngPath, fontsDir, playwrightDir string) error {
 	if fontsDir == "" {
 		fontsDir = "-"
 	}
-	cmd := exec.Command("node", script, svgPath, pngPath, fontsDir, playwrightDir)
+	cmd := exec.CommandContext(context.Background(), "node", script, svgPath, pngPath, fontsDir, playwrightDir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("rasterise: %w\n%s", err, out)

@@ -31,7 +31,9 @@ func TestStudioServesTheEditorAndTheProjectsDesigns(t *testing.T) {
 	require.Contains(t, s.URL("home"), "/design.html?file=home")
 
 	get := func(path string) (int, string) {
-		res, err := http.Get(s.Base() + path)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, s.Base()+path, nil)
+		require.NoError(t, err)
+		res, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		defer res.Body.Close()
 		body, _ := io.ReadAll(res.Body)
@@ -54,13 +56,16 @@ func TestStudioServesTheEditorAndTheProjectsDesigns(t *testing.T) {
 
 	// A save needs the studio token: another page cannot write the file.
 	doc := `{"name":"home","doc":{"format":"atlas-design","version":1,"name":"Home","pages":[{"id":"p","name":"Page 1","children":[]}]},"create":false,"base_rev":""}`
-	res, err := http.Post(s.Base()+"/api/workspaces/studio/design/file", "application/json", strings.NewReader(doc))
+	post, err := http.NewRequestWithContext(t.Context(), http.MethodPost, s.Base()+"/api/workspaces/studio/design/file", strings.NewReader(doc))
+	require.NoError(t, err)
+	post.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(post)
 	require.NoError(t, err)
 	res.Body.Close()
 	require.Equal(t, http.StatusForbidden, res.StatusCode)
 
 	// Another host name (DNS rebinding) is refused.
-	req, _ := http.NewRequest(http.MethodGet, s.Base()+"/studio.json", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, s.Base()+"/studio.json", nil)
 	req.Host = "evil.example:80"
 	res, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)

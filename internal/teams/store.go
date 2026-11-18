@@ -1,6 +1,7 @@
 package teams
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -110,7 +111,7 @@ CREATE TABLE IF NOT EXISTS messages (
 	ts      INTEGER NOT NULL,
 	PRIMARY KEY (team, seq)
 ) WITHOUT ROWID;`
-	if _, err := db.Exec(schema); err != nil {
+	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("prepare board database: %w", err)
 	}
@@ -128,16 +129,17 @@ func (s *store) insert(team string, msg Message) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	tx, err := db.Begin()
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	var seq int
-	if err := tx.QueryRow(`SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE team = ?`, team).Scan(&seq); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(seq), 0) + 1 FROM messages WHERE team = ?`, team).Scan(&seq); err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(
+	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO messages (team, seq, from_id, name, text, to_json, ts) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		team, seq, msg.From, msg.Name, msg.Text, string(to), msg.Time.UnixNano(),
 	); err != nil {
@@ -160,7 +162,7 @@ func (s *store) after(team string, seq int) ([]Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := db.Query(
+	rows, err := db.QueryContext(context.Background(),
 		`SELECT seq, from_id, name, text, to_json, ts FROM messages WHERE team = ? AND seq > ? ORDER BY seq`,
 		team, seq,
 	)

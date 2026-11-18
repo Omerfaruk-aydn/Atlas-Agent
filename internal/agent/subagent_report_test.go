@@ -78,7 +78,7 @@ func TestChangedBetweenSeesShellWritesAndIgnoresAtlasState(t *testing.T) {
 func TestTreeStampsNoticeAFileWrittenOutsideTheEditTools(t *testing.T) {
 	root := t.TempDir()
 	git := func(args ...string) {
-		out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput()
+		out, err := exec.CommandContext(t.Context(), "git", append([]string{"-C", root}, args...)...).CombinedOutput()
 		require.NoError(t, err, string(out))
 	}
 	git("init", "-q")

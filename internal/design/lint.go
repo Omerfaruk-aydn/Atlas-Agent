@@ -117,7 +117,7 @@ type linter struct {
 	unnamed  int
 }
 
-func (l *linter) add(sev, rule string, n *Node, format string, args ...any) {
+func (l *linter) addf(sev, rule string, n *Node, format string, args ...any) {
 	id := ""
 	if n != nil {
 		id = n.ID
@@ -336,13 +336,13 @@ func (l *linter) walk(n *Node, path []*Node, mobile bool, inKit *BlockRef) {
 			}
 		}
 		if f.Type == "linear" && len(f.Stops) >= 2 && slopGradient(f.Stops) {
-			l.add("info", "gradient", n, "a purple-to-blue gradient is the most common generated look; a solid accent or a gradient of the brand's own hues reads as more deliberate")
+			l.addf("info", "gradient", n, "a purple-to-blue gradient is the most common generated look; a solid accent or a gradient of the brand's own hues reads as more deliberate")
 		}
 	}
 	if n.Layout != nil {
 		for _, v := range append([]float64{n.Layout.Gap}, n.Layout.Pad[:]...) {
 			if v != math.Trunc(v) || int(v)%2 != 0 {
-				l.add("warning", "spacing", n, "spacing %.4gpx is off the 4px grid (use 4, 8, 12, 16, 24, 32…)", v)
+				l.addf("warning", "spacing", n, "spacing %.4gpx is off the 4px grid (use 4, 8, 12, 16, 24, 32…)", v)
 				break
 			}
 		}
@@ -352,7 +352,7 @@ func (l *linter) walk(n *Node, path []*Node, mobile bool, inKit *BlockRef) {
 	}
 	if mobile && (len(n.Interactions) > 0 || strings.Contains(strings.ToLower(n.Name), "button")) && n.Type != TypeText {
 		if n.Height < 40 || n.Width < 40 {
-			l.add("warning", "touch-target", n, "%.0f×%.0f is smaller than a finger; make tappable things at least 44×44 on a phone", n.Width, n.Height)
+			l.addf("warning", "touch-target", n, "%.0f×%.0f is smaller than a finger; make tappable things at least 44×44 on a phone", n.Width, n.Height)
 		}
 	}
 	clips := n.Type.IsContainer() && n.Type != TypeGroup && (n.Clip == nil || *n.Clip)
@@ -367,7 +367,7 @@ func (l *linter) walk(n *Node, path []*Node, mobile bool, inKit *BlockRef) {
 			if inKit != nil {
 				sev = "error"
 			}
-			l.add(sev, "clipped", c, "sticks out of %q (%.0f×%.0f at %.0f,%.0f in a %.0f×%.0f frame) and is cut off", n.Name, c.Width, c.Height, c.X, c.Y, n.Width, n.Height)
+			l.addf(sev, "clipped", c, "sticks out of %q (%.0f×%.0f at %.0f,%.0f in a %.0f×%.0f frame) and is cut off", n.Name, c.Width, c.Height, c.X, c.Y, n.Width, n.Height)
 		}
 		if !c.Absolute {
 			flow = append(flow, c)
@@ -386,25 +386,25 @@ func (l *linter) text(n *Node, path []*Node, mobile bool, inKit *BlockRef) {
 		l.families[n.Font.Family]++
 		l.sizes[n.Font.Size]++
 		if n.Font.Size < 10 || (!mobile && n.Font.Size < 12) {
-			l.add("warning", "small-text", n, "%.0fpx text is hard to read; use 12px or more (10px only for phone tab labels)", n.Font.Size)
+			l.addf("warning", "small-text", n, "%.0fpx text is hard to read; use 12px or more (10px only for phone tab labels)", n.Font.Size)
 		}
 	}
 	if note := overflowNote(n); note != "" {
-		l.add("error", "overflow", n, "text overflows its box; use auto_resize \"height\" or make it taller")
+		l.addf("error", "overflow", n, "text overflows its box; use auto_resize \"height\" or make it taller")
 	}
 	if hasEmoji(s) {
-		l.add("warning", "emoji", n, "emoji used as an icon or decoration; place a real icon ({\"icon\":\"name\"}) instead")
+		l.addf("warning", "emoji", n, "emoji used as an icon or decoration; place a real icon ({\"icon\":\"name\"}) instead")
 	}
 	if placeholderRe.MatchString(s) {
-		l.add("error", "placeholder", n, "placeholder copy; write the real words")
+		l.addf("error", "placeholder", n, "placeholder copy; write the real words")
 	}
 	if inKit != nil && sampleLeftIn(inKit, s) {
-		l.add("warning", "sample-copy", n, "still the block's sample copy; give the slot the brief's own words")
+		l.addf("warning", "sample-copy", n, "still the block's sample copy; give the slot the brief's own words")
 	}
 	if n.Font != nil && n.AutoResize != "width" && n.Width > 0 {
 		chars := n.Width / (n.Font.Size * 0.5)
 		if chars > 95 && len([]rune(s)) > 120 {
-			l.add("warning", "line-length", n, "lines run to about %.0f characters; keep body text between 45 and 80 (narrow the box)", chars)
+			l.addf("warning", "line-length", n, "lines run to about %.0f characters; keep body text between 45 and 80 (narrow the box)", chars)
 		}
 	}
 	if len(n.Fills) == 0 || n.Fills[0].Type != "solid" {
@@ -440,9 +440,9 @@ func (l *linter) text(n *Node, path []*Node, mobile bool, inKit *BlockRef) {
 	}
 	switch {
 	case ratio < need-1.5:
-		l.add("error", "contrast", n, "contrast %.2f:1 against %s is unreadable; needs %.1f:1", ratio, bg, need)
+		l.addf("error", "contrast", n, "contrast %.2f:1 against %s is unreadable; needs %.1f:1", ratio, bg, need)
 	case ratio < need:
-		l.add("warning", "contrast", n, "contrast %.2f:1 against %s is below %.1f:1", ratio, bg, need)
+		l.addf("warning", "contrast", n, "contrast %.2f:1 against %s is below %.1f:1", ratio, bg, need)
 	}
 }
 
@@ -454,7 +454,7 @@ func (l *linter) nearMisses(parent *Node, kids []*Node) {
 			a, b := edges(kids[i]), edges(kids[j])
 			for k := range 3 {
 				if d := math.Abs(a[k] - b[k]); d > 0.5 && d < 4 {
-					l.add("warning", "alignment", parent, "%q and %q are %.1fpx off from lining up; align them or use auto layout", kids[i].Name, kids[j].Name, d)
+					l.addf("warning", "alignment", parent, "%q and %q are %.1fpx off from lining up; align them or use auto layout", kids[i].Name, kids[j].Name, d)
 					return
 				}
 			}
@@ -500,7 +500,7 @@ func (l *linter) totals() {
 			names = append(names, f)
 		}
 		sort.Strings(names)
-		l.add("warning", "fonts", nil, "%d font families (%s); keep to two plus a mono", len(names), strings.Join(names, ", "))
+		l.addf("warning", "fonts", nil, "%d font families (%s); keep to two plus a mono", len(names), strings.Join(names, ", "))
 	}
 	if len(l.sizes) > 9 {
 		sizes := make([]float64, 0, len(l.sizes))
@@ -512,22 +512,22 @@ func (l *linter) totals() {
 		for i, s := range sizes {
 			parts[i] = strconv.FormatFloat(s, 'f', -1, 64)
 		}
-		l.add("warning", "type-scale", nil, "%d text sizes (%s); use the theme's type scale", len(sizes), strings.Join(parts, ", "))
+		l.addf("warning", "type-scale", nil, "%d text sizes (%s); use the theme's type scale", len(sizes), strings.Join(parts, ", "))
 	}
 	if len(l.colours) > 16 {
-		l.add("warning", "palette", nil, "%d different fill colours; a theme needs about a dozen", len(l.colours))
+		l.addf("warning", "palette", nil, "%d different fill colours; a theme needs about a dozen", len(l.colours))
 	}
 	if l.unbound > 0 {
-		l.add("info", "tokens", nil, "%d fills use their own colour instead of the theme's variables (c-*); they will not follow a theme or dark mode switch", l.unbound)
+		l.addf("info", "tokens", nil, "%d fills use their own colour instead of the theme's variables (c-*); they will not follow a theme or dark mode switch", l.unbound)
 	}
 	if l.report.Nodes > 0 {
 		l.report.Kit = float64(l.kitNodes) / float64(l.report.Nodes)
 	}
 	if l.themed && l.report.Nodes >= 40 && l.kitNodes*2 < l.report.Nodes && l.unbound >= 8 {
-		l.add("error", "kit-coverage", nil, "only %.0f%% of layers come from kit blocks and %d fills ignore the theme; build with insert and change slots with set_block_props instead of drawing over the block", 100*l.report.Kit, l.unbound)
+		l.addf("error", "kit-coverage", nil, "only %.0f%% of layers come from kit blocks and %d fills ignore the theme; build with insert and change slots with set_block_props instead of drawing over the block", 100*l.report.Kit, l.unbound)
 	}
 	if l.unnamed > 3 {
-		l.add("info", "names", nil, "%d layers keep default names like \"Frame 3\"; name them for the person and for code export", l.unnamed)
+		l.addf("info", "names", nil, "%d layers keep default names like \"Frame 3\"; name them for the person and for code export", l.unnamed)
 	}
 }
 

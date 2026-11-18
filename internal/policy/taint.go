@@ -73,7 +73,7 @@ func (t *Taint) taintedLocked(p string) bool {
 
 func norm(p, dir string) string {
 	p = strings.ReplaceAll(p, `\`, "/")
-	if !path.IsAbs(p) && !(len(p) > 1 && p[1] == ':') && dir != "" {
+	if !path.IsAbs(p) && (len(p) < 2 || p[1] != ':') && dir != "" {
 		p = path.Join(strings.ReplaceAll(dir, `\`, "/"), p)
 	}
 	p = path.Clean(p)

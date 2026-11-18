@@ -18,7 +18,7 @@ const (
 )
 
 var (
-	pathLikeRe = regexp.MustCompile("[A-Za-z0-9_][A-Za-z0-9_./\\\\-]*\\.[A-Za-z0-9]{1,6}")
+	pathLikeRe = regexp.MustCompile(`[A-Za-z0-9_][A-Za-z0-9_./\\-]*\.[A-Za-z0-9]{1,6}`)
 	secretLike = regexp.MustCompile(`(?i)(sk-[a-z0-9_-]{20,}|ghp_[a-z0-9]{30,}|github_pat_[a-z0-9_]{30,}|AKIA[0-9A-Z]{16}|xox[baprs]-[a-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|(api[_-]?key|secret|token|password)["']?\s*[:=]\s*["']?[a-z0-9_\-./+=]{16,})`)
 )
 

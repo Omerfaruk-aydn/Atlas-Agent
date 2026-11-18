@@ -17,7 +17,7 @@ func TestWalkthroughComparesApprovedPlanWithGitChanges(t *testing.T) {
 		t.Skip("git is not installed")
 	}
 	dir := t.TempDir()
-	require.NoError(t, exec.Command("git", "-C", dir, "init", "-q").Run())
+	require.NoError(t, exec.CommandContext(t.Context(), "git", "-C", dir, "init", "-q").Run())
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "planned.go"), []byte("package x"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "surprise.go"), []byte("package x"), 0o644))
 

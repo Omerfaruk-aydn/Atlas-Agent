@@ -17,11 +17,11 @@ func TestWithoutSideChatsHonoursIncludeSide(t *testing.T) {
 	}
 
 	// The list and the search handlers both pass their results through this.
-	plain := httptest.NewRequest("GET", "/v1/workspaces/w/sessions/search?q=x", nil)
+	plain := httptest.NewRequestWithContext(t.Context(), "GET", "/v1/workspaces/w/sessions/search?q=x", nil)
 	got := withoutSideChats(sessions, plain)
 	require.Len(t, got, 1)
 	require.Equal(t, "main", got[0].ID)
 
-	desktop := httptest.NewRequest("GET", "/v1/workspaces/w/sessions/search?q=x&include_side=1", nil)
+	desktop := httptest.NewRequestWithContext(t.Context(), "GET", "/v1/workspaces/w/sessions/search?q=x&include_side=1", nil)
 	require.Len(t, withoutSideChats(sessions, desktop), 2)
 }

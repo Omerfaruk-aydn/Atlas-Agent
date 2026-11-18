@@ -22,7 +22,7 @@ func TestAntigravityCatalogEffortReachesAccountAdapter(t *testing.T) {
 	require.NotEmpty(t, provider.Models)
 	var tested int
 	for _, model := range provider.Models {
-		// gpt-oss-120b retired on 2026-11-02 and is no longer selectable.
+		// gpt-oss-120b retired on 2026-11-18 and is no longer selectable.
 		if model.ID != "claude-sonnet-5-5" && model.ID != "claude-opus-5-5" {
 			continue
 		}

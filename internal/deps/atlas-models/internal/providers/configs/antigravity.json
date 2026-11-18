@@ -150,9 +150,9 @@
         "status": "deprecated",
         "replacement": "gemini-3.8-flash",
         "source_url": "https://antigravity.google/docs/models",
-        "verified_at": "2026-10-20",
+        "verified_at": "2026-11-18",
         "note": "",
-        "retirement_date": "2026-11-02"
+        "retirement_date": "2026-11-18"
       }
     }
   ]

@@ -8,6 +8,18 @@
   "default_small_model_id": "qwen3.8-flash",
   "models": [
     {
+      "id": "qwen4-max",
+      "name": "Qwen4 Max",
+      "cost_per_1m_in": 1.5,
+      "cost_per_1m_out": 4.5,
+      "cost_per_1m_in_cached": 1.875,
+      "cost_per_1m_out_cached": 0.075,
+      "context_window": 1000000,
+      "default_max_tokens": 131072,
+      "can_reason": true,
+      "supports_attachments": true
+    },
+    {
       "id": "qwen3.8-max",
       "name": "Qwen3.8 Max",
       "cost_per_1m_in": 2,

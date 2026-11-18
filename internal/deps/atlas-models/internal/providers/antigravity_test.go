@@ -35,7 +35,7 @@ func TestAntigravityAccountCatalog(t *testing.T) {
 		require.Zero(t, model.CostPer1MIn)
 		require.Zero(t, model.CostPer1MOut)
 	}
-	// The gpt-oss-120b route retired on 2026-11-02, so the selectable
+	// The gpt-oss-120b route retired on 2026-11-18, so the selectable
 	// catalog omits it. Gemini 3.8 Flash is the documented replacement.
 	require.NotContains(t, models, "gpt-oss-120b")
 	flash := models["gemini-3.8-flash"]

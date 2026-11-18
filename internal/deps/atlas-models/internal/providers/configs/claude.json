@@ -21,6 +21,26 @@
       "default_reasoning_effort": "medium"
     },
     {
+      "id": "claude-fable-5-2",
+      "name": "Claude Fable 5.2",
+      "cost_per_1m_in": 0,
+      "cost_per_1m_out": 0,
+      "cost_per_1m_in_cached": 0,
+      "cost_per_1m_out_cached": 0,
+      "context_window": 1000000,
+      "default_max_tokens": 128000,
+      "can_reason": true,
+      "supports_attachments": true,
+      "reasoning_levels": [
+        "max",
+        "xhigh",
+        "high",
+        "medium",
+        "low"
+      ],
+      "default_reasoning_effort": "high"
+    },
+    {
       "id": "claude-fable-5-1",
       "name": "Claude Fable 5.1",
       "cost_per_1m_in": 0,

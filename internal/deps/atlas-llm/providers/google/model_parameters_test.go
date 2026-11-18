@@ -79,3 +79,25 @@ func TestArgonSamplingAndExplicitCacheContract(t *testing.T) {
 	_, _, _, err = lm.prepareParams(call)
 	require.ErrorContains(t, err, "implicit caching only")
 }
+
+func TestGemini4FamilyRejectsExplicitCachedContent(t *testing.T) {
+	t.Parallel()
+	for _, id := range []string{"gemini-4-carbon", "gemini-4-argon", "gemini-4-hydrogen"} {
+		lm := languageModel{modelID: id, providerOptions: options{backend: genai.BackendGeminiAPI}}
+		call := fantasy.Call{
+			ProviderOptions: fantasy.ProviderOptions{Name: &ProviderOptions{CachedContent: "cachedContents/old"}},
+			Prompt:          fantasy.Prompt{{Role: fantasy.MessageRoleUser, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "hi"}}}},
+		}
+		_, _, _, err := lm.prepareParams(call)
+		require.ErrorContains(t, err, "implicit caching only", id)
+	}
+	// Earlier families still accept a cache reference.
+	lm := languageModel{modelID: "gemini-3.8-flash", providerOptions: options{backend: genai.BackendGeminiAPI}}
+	call := fantasy.Call{
+		ProviderOptions: fantasy.ProviderOptions{Name: &ProviderOptions{CachedContent: "cachedContents/ok"}},
+		Prompt:          fantasy.Prompt{{Role: fantasy.MessageRoleUser, Content: []fantasy.MessagePart{fantasy.TextPart{Text: "hi"}}}},
+	}
+	cfg, _, _, err := lm.prepareParams(call)
+	require.NoError(t, err)
+	require.Equal(t, "cachedContents/ok", cfg.CachedContent)
+}

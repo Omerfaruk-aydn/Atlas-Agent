@@ -347,8 +347,9 @@ func (g languageModel) prepareParams(call fantasy.Call) (*genai.GenerateContentC
 		})
 	}
 	if providerOptions.CachedContent != "" {
-		if strings.HasPrefix(g.modelID, "gemini-4-argon") {
-			return nil, nil, nil, fmt.Errorf("Gemini 4 Argon supports implicit caching only; remove cached_content")
+		// Carbon, Argon and Hydrogen document implicit caching only.
+		if strings.HasPrefix(g.modelID, "gemini-4-") {
+			return nil, nil, nil, fmt.Errorf("Gemini 4 models support implicit caching only; remove cached_content")
 		}
 		config.CachedContent = providerOptions.CachedContent
 	}

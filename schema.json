@@ -222,8 +222,8 @@
       "properties": {
         "enabled": {
           "type": "boolean",
-          "description": "Turn the completion gate on.",
-          "default": false
+          "description": "Turn the completion gate on. It is on unless this is set to false or the harness switches it off.",
+          "default": true
         },
         "max_rounds": {
           "type": "integer",
@@ -331,6 +331,10 @@
           "minimum": 0,
           "description": "Time budget for each fast lint observation; zero selects 10 seconds.",
           "default": 10
+        },
+        "victory_audit": {
+          "type": "boolean",
+          "description": "Before a turn may finish"
         },
         "completion_commands": {
           "items": {
@@ -487,6 +491,10 @@
           "type": "string",
           "description": "Shell command to execute when the hook fires; mutually exclusive with prompt"
         },
+        "if": {
+          "type": "string",
+          "description": "Only fire when the call matches Tool(pattern)"
+        },
         "prompt": {
           "type": "string",
           "description": "Bounded read-only specialist task; mutually exclusive with command"
@@ -510,6 +518,11 @@
         "required": {
           "type": "boolean",
           "description": "Fail closed when this hook cannot execute successfully. PreToolUse blocks the call and PostToolUse stops the turn.",
+          "default": false
+        },
+        "include_sub_agents": {
+          "type": "boolean",
+          "description": "Also run this hook for the tool calls of sub-agents; the payload then carries is_sub_agent",
           "default": false
         }
       },
@@ -1062,11 +1075,43 @@
             5
           ]
         },
+        "knowledge": {
+          "type": "boolean",
+          "description": "Let the agent propose project notes; approved notes appear as a short index in every session (atlas knowledge approve)",
+          "default": false
+        },
+        "auto_sandbox": {
+          "type": "boolean",
+          "description": "Run commands that would need a prompt for risks the execution sandbox contains (sudo",
+          "default": false
+        },
+        "mcp_apps": {
+          "type": "boolean",
+          "description": "Allow MCP servers to attach interactive ui:// pages to tools; pages are shown in a sandboxed frame",
+          "default": false
+        },
+        "plan_approval": {
+          "type": "string",
+          "enum": [
+            "always",
+            "auto",
+            "turbo"
+          ],
+          "description": "How a plan is approved when the agent leaves plan mode: always asks every time; auto lets small low-risk plans proceed; turbo never asks.",
+          "default": "always"
+        },
         "max_concurrent_subagents": {
           "type": "integer",
           "description": "Cap how many agent-tool sub-agents run at the same time. Zero or unset means no limit.",
           "examples": [
             3
+          ]
+        },
+        "subagent_timeout": {
+          "type": "integer",
+          "description": "Longest time in seconds one sub-agent run may last. Unset means 1800; negative means no limit.",
+          "examples": [
+            900
           ]
         },
         "restrict_writes_to_working_dir": {
@@ -2095,8 +2140,8 @@
         },
         "enabled": {
           "type": "boolean",
-          "description": "Turn on the browser tool so the agent can navigate / click / type / screenshot / run JavaScript in a real Chrome or Chromium instance. Requires a Chrome or Chromium install on PATH (or executable_path below).",
-          "default": false
+          "description": "Turn on the browser tool so the agent can navigate / click / type / screenshot / run JavaScript in a real Chrome or Chromium instance. Requires a Chrome or Chromium install on PATH (or executable_path below). On unless set to false.",
+          "default": true
         },
         "executable_path": {
           "type": "string",
@@ -2774,6 +2819,13 @@
           "type": "boolean",
           "description": "When a feature is finished, its checks pass and the progress notes are updated, continue the next feature in a fresh context built from the plan, the progress notes and the user's messages instead of carrying the whole conversation.",
           "default": true
+        },
+        "auto_plan_files": {
+          "type": "integer",
+          "description": "Ask for a work plan once a request has changed this many files without one. Zero means 6; a negative value turns the request off.",
+          "examples": [
+            6
+          ]
         }
       },
       "additionalProperties": false,

@@ -70,6 +70,7 @@ an answer, because nobody is there to give one. See docs/routines.md.`,
 		newRoutineRunCommand(),
 		newRoutineLogsCommand(),
 		newRoutineDaemonCommand(),
+		newRoutineSyncCommand(),
 		newRoutineToggleCommand("enable", true),
 		newRoutineToggleCommand("disable", false),
 	)

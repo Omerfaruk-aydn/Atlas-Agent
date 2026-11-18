@@ -157,6 +157,8 @@ func runSessionList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
+	// Side chats belong to the desktop app's side panel.
+	list = session.WithoutSideChats(list)
 	if sessionListTag != "" {
 		list = filterSessionsByTag(list, sessionListTag)
 	}
@@ -388,6 +390,7 @@ func runSessionLast(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to list sessions: %w", err)
 	}
+	list = session.WithoutSideChats(list)
 
 	if len(list) == 0 {
 		return fmt.Errorf("no sessions found")

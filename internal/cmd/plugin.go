@@ -20,6 +20,24 @@ func pluginRoot(cmd *cobra.Command) (string, error) {
 	return filepath.Join(root, ".atlas", "plugins"), nil
 }
 
+// listedPlugin is a manifest plus whether the package is switched on. The
+// manifest fields stay flat in the JSON, so existing consumers still parse it.
+type listedPlugin struct {
+	plugin.Manifest
+	Enabled bool `json:"enabled"`
+}
+
+func setPluginEnabled(cmd *cobra.Command, name string, enabled bool) error {
+	root, err := pluginRoot(cmd)
+	if err != nil {
+		return err
+	}
+	if err := plugin.SetEnabled(root, name, enabled); err != nil {
+		return err
+	}
+	return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{"plugin": name, "enabled": enabled})
+}
+
 func newPluginCommand() *cobra.Command {
 	command := &cobra.Command{Use: "plugin", Short: "Install and inspect portable Atlas customization packages"}
 	validate := &cobra.Command{Use: "validate <directory>", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
@@ -99,14 +117,15 @@ func newPluginCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		manifests := []plugin.Manifest{}
+		state := plugin.LoadState(root)
+		manifests := []listedPlugin{}
 		for _, entry := range entries {
 			if entry.IsDir() {
 				manifest, err := plugin.Load(filepath.Join(root, entry.Name()))
 				if err != nil {
 					return err
 				}
-				manifests = append(manifests, manifest)
+				manifests = append(manifests, listedPlugin{Manifest: manifest, Enabled: plugin.IsEnabled(state, manifest)})
 			}
 		}
 		return json.NewEncoder(cmd.OutOrStdout()).Encode(manifests)
@@ -123,9 +142,15 @@ func newPluginCommand() *cobra.Command {
 		if manifest.Name != args[0] {
 			return fmt.Errorf("plugin directory and manifest name differ")
 		}
-		return os.RemoveAll(filepath.Join(root, args[0]))
+		return plugin.Remove(root, args[0])
 	}}
-	command.AddCommand(initCommand, install, list, remove, validate)
+	enable := &cobra.Command{Use: "enable <name>", Short: "Switch on an installed plugin (needed for plugins that run hooks or MCP)", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		return setPluginEnabled(cmd, args[0], true)
+	}}
+	disable := &cobra.Command{Use: "disable <name>", Short: "Switch off an installed plugin without removing it", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		return setPluginEnabled(cmd, args[0], false)
+	}}
+	command.AddCommand(initCommand, install, list, remove, validate, enable, disable)
 	return command
 }
 

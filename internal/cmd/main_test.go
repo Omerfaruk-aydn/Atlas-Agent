@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/appenv"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/testenv"
 )
 
 // TestMain points this package's tests at an empty global configuration.
@@ -41,6 +42,9 @@ func TestMain(m *testing.M) {
 	os.Setenv(appenv.Prefix+"GLOBAL_CONFIG", dir)
 	os.Setenv(appenv.Prefix+"GLOBAL_DATA", dir)
 	os.Setenv(appenv.Prefix+"SUBAGENTS_DIR", filepath.Join(dir, "agents"))
+	// A directory made under the temp folder must not be found inside a
+	// repository a developer keeps around their user folder.
+	testenv.KeepGitInsideTemp()
 
 	code := m.Run()
 

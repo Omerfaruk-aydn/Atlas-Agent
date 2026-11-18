@@ -113,10 +113,12 @@ func TestCheckStatusNames(t *testing.T) {
 	require.Equal(t, "fail", statusFail.String())
 }
 
-// The browser tool is opt-in, so doctor says nothing about it unless it's
-// turned on.
+// The browser tool is on by default; doctor says nothing about it once it has
+// been switched off.
 func TestDoctorSaysNothingAboutBrowserWhenItIsOff(t *testing.T) {
-	got, _ := doctorOutput(t, t.TempDir(), t.TempDir())
+	workingDir := t.TempDir()
+	writeAtlasConfig(t, workingDir, `{"tools":{"browser":{"enabled":false}}}`)
+	got, _ := doctorOutput(t, workingDir, t.TempDir())
 	require.NotContains(t, got, "browser:")
 }
 

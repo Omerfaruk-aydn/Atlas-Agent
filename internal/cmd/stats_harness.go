@@ -46,7 +46,7 @@ from real sessions rather than guesses.`,
 		if gateErr != nil {
 			return gateErr
 		}
-		_, err = fmt.Fprint(cmd.OutOrStdout(), harnessmetrics.Format(harnessmetrics.Summarize(events), since), harnessmetrics.FormatGates(harnessmetrics.SummarizeGates(gates)))
+		_, err = fmt.Fprint(cmd.OutOrStdout(), harnessmetrics.Format(harnessmetrics.Summarize(events), since), harnessmetrics.FormatGates(harnessmetrics.SummarizeGates(gates)), harnessmetrics.FormatAblation(harnessmetrics.SummarizeGates(gates)))
 		return err
 	},
 }

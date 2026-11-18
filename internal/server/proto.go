@@ -635,6 +635,7 @@ func (c *controllerV1) handleGetWorkspaceSessions(w http.ResponseWriter, r *http
 		c.handleError(w, r, err)
 		return
 	}
+	sessions = withoutSideChats(sessions, r)
 	ws, _ := c.backend.GetWorkspace(id)
 	result := make([]proto.Session, len(sessions))
 	for i, s := range sessions {
@@ -665,6 +666,7 @@ func (c *controllerV1) handleGetWorkspaceSessionsSearch(w http.ResponseWriter, r
 		c.handleError(w, r, err)
 		return
 	}
+	sessions = withoutSideChats(sessions, r)
 	ws, _ := c.backend.GetWorkspace(id)
 	result := make([]proto.Session, len(sessions))
 	for i, s := range sessions {
@@ -919,6 +921,43 @@ func (c *controllerV1) handlePostWorkspaceSessionRewind(w http.ResponseWriter, r
 //	@Router			/workspaces/{id}/sessions/{sid}/rewind/before [post]
 func (c *controllerV1) handlePostWorkspaceSessionRewindBefore(w http.ResponseWriter, r *http.Request) {
 	c.rewindSession(w, r, c.backend.RewindSessionBefore)
+}
+
+// handlePostWorkspaceSessionBranch copies a session into a side chat: a new
+// session with the same conversation, tagged with its source. Files are not
+// touched and the source session is not changed.
+//
+//	@Summary		Branch a session into a side chat
+//	@Tags			sessions
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string					true	"Workspace ID"
+//	@Param			sid		path		string					true	"Session ID"
+//	@Param			request	body		proto.BranchRequest		false	"Branch point"
+//	@Success		200		{object}	proto.Session
+//	@Failure		400		{object}	proto.Error
+//	@Failure		404		{object}	proto.Error
+//	@Failure		500		{object}	proto.Error
+//	@Router			/workspaces/{id}/sessions/{sid}/branch [post]
+func (c *controllerV1) handlePostWorkspaceSessionBranch(w http.ResponseWriter, r *http.Request) {
+	var req proto.BranchRequest
+	if r.ContentLength != 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			c.server.logError(r, "Failed to decode request", "error", err)
+			jsonError(w, http.StatusBadRequest, "failed to decode request")
+			return
+		}
+	}
+	branch := c.backend.BranchSession
+	if req.Plain {
+		branch = c.backend.BranchConversation
+	}
+	sess, err := branch(r.Context(), r.PathValue("id"), r.PathValue("sid"), req.MessageID)
+	if err != nil {
+		c.handleError(w, r, err)
+		return
+	}
+	jsonEncode(w, sessionToProto(sess))
 }
 
 // rewindSession decodes a rewind request, applies fork and writes the result.
@@ -1644,6 +1683,14 @@ func (c *controllerV1) handleError(w http.ResponseWriter, r *http.Request, err e
 		status = http.StatusNotFound
 	case errors.Is(err, backend.ErrAgentNotInitialized):
 		status = http.StatusBadRequest
+	case errors.Is(err, backend.ErrReviewNotFound):
+		status = http.StatusNotFound
+	case errors.Is(err, backend.ErrReviewEmpty):
+		status = http.StatusBadRequest
+	case errors.Is(err, backend.ErrReviewBusy):
+		status = http.StatusTooManyRequests
+	case errors.Is(err, backend.ErrReviewUnsupported):
+		status = http.StatusNotImplemented
 	case errors.Is(err, backend.ErrPathRequired):
 		status = http.StatusBadRequest
 	case errors.Is(err, backend.ErrInvalidPermissionAction),
@@ -1687,4 +1734,14 @@ func jsonError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(proto.Error{Message: message})
+}
+
+// withoutSideChats drops side chats from a list, unless the client says it
+// shows them (the desktop app does, with include_side=1). They live in the
+// app's side panel; in every other client they would look like stray chats.
+func withoutSideChats(sessions []session.Session, r *http.Request) []session.Session {
+	if r.URL.Query().Get("include_side") == "1" {
+		return sessions
+	}
+	return session.WithoutSideChats(sessions)
 }

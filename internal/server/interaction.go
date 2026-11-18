@@ -2,10 +2,12 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/backend"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/proto"
 )
@@ -215,4 +217,66 @@ func (c *controllerV1) handlePostWorkspaceSessionTitle(w http.ResponseWriter, r 
 	out.IsBusy = isSessionBusy(ws, sess.ID)
 	out.AttachedClients = attachedClients(ws, sess.ID)
 	jsonEncode(w, out)
+}
+
+// handleGetWorkspaceMCPApp returns the interactive page an MCP tool offers.
+//
+//	@Summary		Get an MCP app page
+//	@Tags			mcp
+//	@Produce		json
+//	@Param			id		path		string	true	"Workspace ID"
+//	@Param			tool	query		string	true	"Tool name as the model sees it, mcp_<server>_<tool>"
+//	@Success		200		{object}	proto.MCPApp
+//	@Failure		404		{object}	proto.Error
+//	@Router			/workspaces/{id}/mcp/app [get]
+func (c *controllerV1) handleGetWorkspaceMCPApp(w http.ResponseWriter, r *http.Request) {
+	tool := r.URL.Query().Get("tool")
+	if tool == "" {
+		jsonError(w, http.StatusBadRequest, "tool is required")
+		return
+	}
+	page, err := c.backend.GetMCPApp(r.Context(), r.PathValue("id"), tool)
+	if err != nil {
+		if errors.Is(err, backend.ErrWorkspaceNotFound) {
+			c.handleError(w, r, err)
+			return
+		}
+		jsonError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	if page == nil {
+		jsonError(w, http.StatusNotFound, "this tool has no app page")
+		return
+	}
+	jsonEncode(w, proto.MCPApp{Server: page.Server, Tool: page.Tool, URI: page.URI, HTML: page.HTML})
+}
+
+// handlePostWorkspaceMCPAppCall runs a tool for an MCP app page.
+//
+//	@Summary		Call a tool from an MCP app page
+//	@Tags			mcp
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		string				true	"Workspace ID"
+//	@Param			request	body		proto.MCPAppCall	true	"The page's tool and the tool it wants to call"
+//	@Success		200		{object}	proto.MCPAppCallResult
+//	@Failure		400		{object}	proto.Error
+//	@Failure		403		{object}	proto.Error
+//	@Router			/workspaces/{id}/mcp/app/call [post]
+func (c *controllerV1) handlePostWorkspaceMCPAppCall(w http.ResponseWriter, r *http.Request) {
+	var req proto.MCPAppCall
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10)).Decode(&req); err != nil || req.Tool == "" || req.Call == "" {
+		jsonError(w, http.StatusBadRequest, "tool and call are required")
+		return
+	}
+	res, err := c.backend.CallMCPApp(r.Context(), r.PathValue("id"), req.Tool, req.Call, req.Arguments)
+	if err != nil {
+		if errors.Is(err, backend.ErrWorkspaceNotFound) {
+			c.handleError(w, r, err)
+			return
+		}
+		jsonError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	jsonEncode(w, proto.MCPAppCallResult{Content: res.Content, IsError: res.IsError})
 }

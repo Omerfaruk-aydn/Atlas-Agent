@@ -5,6 +5,13 @@ followed by a restricted editor, bounded agent hook actions, request inspection,
 and usage profiles. These extend the existing `agent` tool and workflow controls;
 ordinary permissions, session budgets, cancellation and runner limits still apply.
 
+## Orchestrator mode
+
+The built-in `orchestrator` session mode plans a task, runs independent pieces
+as background workers, coordinates them on the team board and does not finish
+until every worker is collected and the result is verified. See
+[orchestrator-mode.md](orchestrator-mode.md).
+
 ## Persistent specialists
 
 Ask Atlas to reuse a specialist workstream, or call the agent tool with:

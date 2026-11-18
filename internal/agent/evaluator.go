@@ -117,11 +117,16 @@ type evaluatorLedger struct {
 	lintBaseline  []string
 	qualityRaised string
 	qualityRounds int
-	fuzzSuggested bool
-	redRuns       map[string]evaluatorCommand
-	redGreen      []workplan.RedEvidence
-	mu            sync.Mutex
-	request       string
+	// workerRounds counts the orchestrator's send-backs for uncollected
+	// workers since it last collected one; workerCollected is how many
+	// answers had been collected at that point. See workersGate.
+	workerRounds    int
+	workerCollected int
+	fuzzSuggested   bool
+	redRuns         map[string]evaluatorCommand
+	redGreen        []workplan.RedEvidence
+	mu              sync.Mutex
+	request         string
 	// open is set while the request is still being worked on, so a
 	// message the user sends meanwhile is added to it.
 	open bool
@@ -154,6 +159,9 @@ type evaluatorLedger struct {
 	// checkProblemsRaised is the set of unrunnable plan checks already
 	// reported, so the same list is not sent back twice.
 	checkProblemsRaised string
+	// planAsked is set once a request that changed many files without a plan
+	// has been asked for one, so it is asked only once.
+	planAsked bool
 	// planReviewed is the review key of the plan already reviewed.
 	planReviewed string
 	// images are the latest screenshots the agent took, for the visual
@@ -226,6 +234,9 @@ type evaluatorDecision struct {
 	// Review is the status of the independent review this turn required;
 	// empty when none was required (nothing changed).
 	Review reviewStatus
+	// stopHook marks a Continue that a Stop hook requested, so the next
+	// turn counts against hooks.MaxStopContinuations.
+	stopHook bool
 }
 
 // SetEvaluatorOptions updates the completion gate in place so a
@@ -661,6 +672,10 @@ func (a *sessionAgent) evaluateTurn(ctx context.Context, sessionID, report strin
 	ledger := a.evaluatorLedgerFor(sessionID)
 	ledger.mu.Lock()
 	a.saveHarnessLearning(sessionID, ledger)
+	if decision, stop := a.workersGate(sessionID, ledger); stop {
+		ledger.mu.Unlock()
+		return decision
+	}
 	if !ledger.changed && !ledger.lastFailed && ledger.projectError == "" {
 		ledger.mu.Unlock()
 		return evaluatorDecision{}

@@ -65,7 +65,9 @@ func TestGreetingSendsCorePaletteOnly(t *testing.T) {
 // B: discovery, then reading, editing and running a check across steps.
 // The discovered tool is advertised on the very next request.
 func TestCodingFlowLoadsDiscoveredToolNextStep(t *testing.T) {
-	h := newPayloadCoordinator(t, wireOpenAI, "", "",
+	// The completion gate is on by default; this test is about tool loading, so
+	// it counts only the working steps.
+	h := newPayloadCoordinator(t, wireOpenAI, `, "evaluator": {"enabled": false}`, "",
 		toolCallReply(wireOpenAI, "c1", "tool_search", map[string]any{"names": []string{"project_map"}}),
 		toolCallReply(wireOpenAI, "c2", "view", map[string]any{"file_path": "main.go"}),
 		toolCallReply(wireOpenAI, "c3", "edit", map[string]any{"file_path": "main.go", "old_string": "old", "new_string": "new"}),

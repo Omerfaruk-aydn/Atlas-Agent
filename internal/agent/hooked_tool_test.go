@@ -157,3 +157,16 @@ func TestWrapToolsWithHooks(t *testing.T) {
 		require.Equal(t, inputs, wrapToolsWithHooks(inputs, nil, nil, true))
 	})
 }
+
+func TestSubAgentsFireOnlyTheHooksThatOptedIn(t *testing.T) {
+	t.Parallel()
+	inputs := []fantasy.AgentTool{&fakeTool{name: "a"}}
+
+	ordinary := newRunner(t, `exit 0`)
+	require.Equal(t, inputs, wrapToolsWithHooks(inputs, ordinary, ordinary, true), "an ordinary hook skips sub-agents")
+
+	optedIn := hooks.NewRunner([]config.HookConfig{{Command: "exit 0", IncludeSubAgents: true}}, t.TempDir(), t.TempDir())
+	out := wrapToolsWithHooks(inputs, optedIn, nil, true)
+	_, ok := out[0].(*hookedTool)
+	require.True(t, ok, "an opted-in hook wraps sub-agent tools")
+}

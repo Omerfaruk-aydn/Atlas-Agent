@@ -58,3 +58,63 @@ func TestEveryBuiltToolIsAllowed(t *testing.T) {
 			"the coordinator builds %q but no agent may use it: add it to allToolNames", tool.Info().Name)
 	}
 }
+
+// The orchestrator mode coordinates and never edits: the main session keeps
+// its planning, delegation and board tools, gets the team board without the
+// tools.teams switch, and loses every tool that writes or runs commands.
+func TestOrchestratorModeNarrowsTheMainSessionTools(t *testing.T) {
+	env := testEnv(t)
+	cfg, err := config.Init(env.workingDir, "", false)
+	require.NoError(t, err)
+	c := &coordinator{
+		cfg:          cfg,
+		sessions:     env.sessions,
+		messages:     env.messages,
+		permissions:  env.permissions,
+		history:      env.history,
+		filetracker:  *env.filetracker,
+		memory:       memoryStore(cfg),
+		skillTracker: skills.NewTracker(nil),
+		interactive:  true,
+	}
+	cfg.SetupAgents()
+	cfg.Config().Options.SessionMode = "orchestrator"
+	agentCfg := cfg.Config().Agents[config.AgentCoder]
+
+	mode, ok := c.sessionMode()
+	require.True(t, ok)
+	allowed := subagentAllowedTools(mode, agentCfg.AllowedTools)
+	for _, name := range []string{AgentToolName, AgentResultToolName, tools.TeamSendToolName, tools.TeamReadToolName, tools.TodosToolName, "worktree", "view"} {
+		require.Contains(t, allowed, name)
+	}
+
+	buildable := agentCfg
+	buildable.AllowedTools = slices.DeleteFunc(slices.Clone(agentCfg.AllowedTools), func(name string) bool {
+		return name == AgentToolName || name == tools.AgenticFetchToolName || name == OrchestrateToolName || name == DelegateToolName || name == VibeToolName
+	})
+	built, err := c.assembleTools(t.Context(), buildable, false)
+	require.NoError(t, err)
+	var names []string
+	for _, tool := range c.filterTools(built, buildable, nil, nil, false) {
+		names = append(names, tool.Info().Name)
+	}
+	for _, want := range []string{tools.TeamSendToolName, tools.TeamReadToolName, tools.TodosToolName, "view", "grep", GoalToolName} {
+		require.Contains(t, names, want)
+	}
+	for _, banned := range []string{"edit", "multiedit", "write", "bash", "download"} {
+		require.NotContains(t, names, banned, "the orchestrator must not %s itself", banned)
+	}
+
+	// Without the mode the board tools stay behind their switch.
+	cfg.Config().Options.SessionMode = ""
+	built, err = c.assembleTools(t.Context(), buildable, false)
+	require.NoError(t, err)
+	names = names[:0]
+	for _, tool := range c.filterTools(built, buildable, nil, nil, false) {
+		names = append(names, tool.Info().Name)
+	}
+	require.Contains(t, names, "edit")
+	if !cfg.Config().Tools.Teams.IsEnabled() {
+		require.NotContains(t, names, tools.TeamSendToolName)
+	}
+}

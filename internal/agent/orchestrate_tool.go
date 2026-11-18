@@ -65,10 +65,9 @@ func (c *coordinator) orchestrateTool(ctx context.Context) (fantasy.AgentTool, e
 	discovered := subagents.Discover(opts.SubagentsPaths)
 	subagentInstances := csync.NewMap[string, SessionAgent]()
 
-	// A limiter scoped to this tool, the same way agentTool's is: it
-	// bounds how many of the agents named in one orchestrate call run at
-	// once, using the same MaxConcurrentSubAgents setting.
-	limiter := newConcurrencyLimiter(c.cfg.Config().Options.MaxConcurrentSubAgents)
+	// The coordinator-wide limiter, shared with the agent, delegate and
+	// debate tools, using the MaxConcurrentSubAgents setting.
+	limiter := c.sharedSubagentLimiter(c.cfg.Config().Options.MaxConcurrentSubAgents)
 
 	return fantasy.NewParallelAgentTool(
 		OrchestrateToolName,
@@ -174,6 +173,7 @@ func (c *coordinator) runOrchestratedAgent(ctx context.Context, p orchestratedAg
 		ToolCallID:     p.toolCallID,
 		Prompt:         p.prompt,
 		SessionTitle:   p.name + " agent session",
+		BoardName:      p.name,
 	})
 	if err != nil {
 		return orchestrateResult{name: p.name, err: err}

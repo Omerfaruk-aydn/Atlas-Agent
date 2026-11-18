@@ -22,6 +22,24 @@ func newConcurrencyLimiter(n int) *concurrencyLimiter {
 	return &concurrencyLimiter{slots: make(chan struct{}, n)}
 }
 
+// sharedSubagentLimiter returns the coordinator-wide limiter for n
+// concurrent sub-agents. Every tool that starts sub-agents (agent,
+// orchestrate, delegate, debate) takes its limiter here, so the cap is a
+// real bound on the sub-agents running at once instead of a bound per tool
+// -- four tools with their own limiters allowed four times the setting.
+//
+// The limiter is replaced only when the configured capacity changes; tool
+// instances built earlier keep releasing into the limiter they acquired from.
+func (c *coordinator) sharedSubagentLimiter(n int) *concurrencyLimiter {
+	c.subLimiterMu.Lock()
+	defer c.subLimiterMu.Unlock()
+	if c.subLimiter == nil || c.subLimiterN != n {
+		c.subLimiter = newConcurrencyLimiter(n)
+		c.subLimiterN = n
+	}
+	return c.subLimiter
+}
+
 // acquire waits for a slot. It returns the context's error if the caller is
 // cancelled while waiting, so a cancelled sub-agent does not sit in the
 // queue for work nobody wants any more.

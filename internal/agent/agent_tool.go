@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -20,6 +21,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/hooks"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/subagents"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/workplan"
 )
 
 // subagentSpawningTools are excluded from a configured subagent's default
@@ -30,7 +32,7 @@ import (
 // without limit. A subagent that explicitly lists these in its own "tools"
 // front matter still gets them: this default only applies when Tools is
 // empty.
-var subagentSpawningTools = []string{AgentToolName, DelegateToolName, OrchestrateToolName, DebateToolName, "workflow", "worktree"}
+var subagentSpawningTools = []string{AgentToolName, DelegateToolName, OrchestrateToolName, DebateToolName, ScriptToolName, VibeToolName, AgentResultToolName, "workflow", "worktree"}
 
 // subagentAllowedTools decides which tools a named subagent gets built
 // with. A subagent that lists its own "tools" gets exactly that list --
@@ -81,20 +83,23 @@ func subagentAllowedTools(sub *subagents.Subagent, coderTools []string) []string
 var agentToolDescription string
 
 type AgentParams struct {
-	OwnedPaths     []string         `json:"owned_paths,omitempty" description:"Literal relative ownership paths required in architect_edit mode to bound editor writes."`
-	SessionKey     string           `json:"session_key,omitempty" description:"Reuse this named specialist's durable conversation within the parent session. Changing its role, tools or workspace starts a new conversation."`
-	Mode           string           `json:"mode,omitempty" description:"single (default), batch, or architect_edit."`
-	BatchID        string           `json:"batch_id,omitempty" description:"Durable batch identifier. Required in batch mode."`
-	Items          []AgentBatchItem `json:"items,omitempty" description:"Batch items with unique IDs and input substituted for {{item}} in prompt."`
-	RetryFailed    bool             `json:"retry_failed,omitempty" description:"Retry only failed rows; omit items to load the stored batch definition. Successful and interrupted rows are never replayed."`
-	Architect      string           `json:"architect,omitempty" description:"Named read-only architect for architect_edit mode."`
-	Editor         string           `json:"editor,omitempty" description:"Named editor for architect_edit mode."`
-	TaskType       string           `json:"task_type,omitempty" description:"Structured task type for automatic routing: frontend, backend, test, review, debug, security, architecture, planning, research, docs, refactor, product-design, visual-quality, motion, desktop, browser, document, presentation, data-analysis, template, integration or operations."`
-	RequiredTools  []string         `json:"required_tools,omitempty" description:"Tool capabilities the selected specialist must support."`
-	ExpectedOutput string           `json:"expected_output,omitempty" description:"Required role output, e.g. implementation, findings, test-results or plan."`
-	QualityOnly    bool             `json:"quality_only,omitempty" description:"Run the named specialist with direct edits, MCP and delegation disabled for independent validation."`
-	WorkspaceID    string           `json:"workspace_id,omitempty" description:"Registered isolated workspace ID; tools are rebuilt with this workspace as their root."`
-	Prompt         string           `json:"prompt" description:"The task for the agent to perform"`
+	OwnedPaths      []string         `json:"owned_paths,omitempty" description:"Literal relative ownership paths required in architect_edit mode to bound editor writes."`
+	SessionKey      string           `json:"session_key,omitempty" description:"Reuse this named specialist's durable conversation within the parent session. Changing its role, tools or workspace starts a new conversation."`
+	Mode            string           `json:"mode,omitempty" description:"single (default), batch, or architect_edit."`
+	BatchID         string           `json:"batch_id,omitempty" description:"Durable batch identifier. Required in batch mode."`
+	Items           []AgentBatchItem `json:"items,omitempty" description:"Batch items with unique IDs and input substituted for {{item}} in prompt."`
+	RetryFailed     bool             `json:"retry_failed,omitempty" description:"Retry only failed rows; omit items to load the stored batch definition. Successful and interrupted rows are never replayed."`
+	Architect       string           `json:"architect,omitempty" description:"Named read-only architect for architect_edit mode."`
+	Editor          string           `json:"editor,omitempty" description:"Named editor for architect_edit mode."`
+	TaskType        string           `json:"task_type,omitempty" description:"Structured task type for automatic routing: frontend, backend, test, review, debug, security, architecture, planning, research, docs, refactor, product-design, visual-quality, motion, desktop, browser, document, presentation, data-analysis, template, integration or operations."`
+	RequiredTools   []string         `json:"required_tools,omitempty" description:"Tool capabilities the selected specialist must support."`
+	ExpectedOutput  string           `json:"expected_output,omitempty" description:"Required role output, e.g. implementation, findings, test-results or plan."`
+	QualityOnly     bool             `json:"quality_only,omitempty" description:"Run the named specialist with direct edits, MCP and delegation disabled for independent validation."`
+	RunInBackground bool             `json:"run_in_background,omitempty" description:"Start the agent and return at once with an id; read its answer later with agent_result. Single mode only. Use it for work you do not need before your next step, such as a long review or a parallel investigation."`
+	WorkspaceID     string           `json:"workspace_id,omitempty" description:"Registered isolated workspace ID; tools are rebuilt with this workspace as their root."`
+	Isolation       string           `json:"isolation,omitempty" description:"\"worktree\": run the named specialist in its own fresh Git worktree, so agents running in parallel never write to the same files. Needs agent_name. The agent starts from HEAD (uncommitted changes are not copied). Its answer ends with the workspace id and the files it changed; nothing reaches your checkout until you review the patch with the worktree tool and apply it."`
+	ResultSchema    map[string]any   `json:"result_schema,omitempty" description:"JSON Schema the agent's final reply must match. The reply is validated and returned as compact JSON; a reply that does not match is sent back to the same agent up to twice. Use it when you will aggregate or act on the answer in code, for example several agents that must each return {\"verdict\": ..., \"files\": [...]}. Single mode only; keep it under 16 KiB."`
+	Prompt          string           `json:"prompt" description:"The task for the agent to perform"`
 	// AgentName optionally names a configured subagent (see
 	// internal/subagents and `atlas agent list`) to run the task with,
 	// instead of the default agent.
@@ -115,6 +120,8 @@ type AgentResponseMetadata struct {
 	// routing was not requested, found no match, or agent_name was set
 	// explicitly instead.
 	RoutedTo string `json:"routed_to,omitempty"`
+	// Run reports what the delegated run did.
+	Run *SubAgentRun `json:"run,omitempty"`
 }
 
 const (
@@ -149,9 +156,10 @@ func (c *coordinator) agentTool(ctx context.Context, available ...func() []strin
 	discovered := subagents.Discover(opts.SubagentsPaths)
 	subagentInstances := csync.NewMap[string, SessionAgent]()
 
-	// One limiter for the tool, not per call: the point is to bound the
-	// sub-agents running across all of this tool's concurrent calls.
-	limiter := newConcurrencyLimiter(c.cfg.Config().Options.MaxConcurrentSubAgents)
+	// One limiter for the whole coordinator, shared with the orchestrate,
+	// delegate and debate tools: the point is to bound the sub-agents
+	// running across every tool and every concurrent call.
+	limiter := c.sharedSubagentLimiter(c.cfg.Config().Options.MaxConcurrentSubAgents)
 
 	return fantasy.NewParallelAgentTool(
 		AgentToolName,
@@ -171,8 +179,18 @@ func (c *coordinator) agentTool(ctx context.Context, available ...func() []strin
 				return fantasy.ToolResponse{}, errors.New("agent message id missing from context")
 			}
 
+			compiled, err := compileResultSchema(params.ResultSchema)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(err.Error()), nil
+			}
+			if compiled != nil && params.Mode != "" && params.Mode != "single" {
+				return fantasy.NewTextErrorResponse("result_schema works with single mode only"), nil
+			}
+
 			p := agentToolCallParams{
-				sessionKey: params.SessionKey,
+				isolation:    params.Isolation,
+				resultSchema: compiled,
+				sessionKey:   params.SessionKey,
 				availableTools: func() []string {
 					if len(available) > 0 {
 						return available[0]()
@@ -194,6 +212,22 @@ func (c *coordinator) agentTool(ctx context.Context, available ...func() []strin
 				auto:              params.Auto,
 				prompt:            params.Prompt,
 			}
+			if params.RunInBackground {
+				if params.Mode != "" && params.Mode != "single" {
+					return fantasy.NewTextErrorResponse("run_in_background works with single mode only"), nil
+				}
+				label := params.Prompt
+				if params.AgentName != "" {
+					label = params.AgentName + ": " + label
+				}
+				id, err := sharedBackgroundRuns.startNamed(ctx, sessionID, label, func(bg context.Context) (fantasy.ToolResponse, error) {
+					return c.runAgentMode(bg, params, p)
+				})
+				if err != nil {
+					return fantasy.NewTextErrorResponse(err.Error()), nil
+				}
+				return fantasy.NewTextResponse(fmt.Sprintf("Started in the background as %s. Carry on with other work; read its answer with %s (id %q), with wait=true when you have nothing else to do.", id, AgentResultToolName, id)), nil
+			}
 			return c.runAgentMode(ctx, params, p)
 		},
 	), nil
@@ -207,6 +241,8 @@ func (c *coordinator) agentTool(ctx context.Context, available ...func() []strin
 // making a network call -- the same trick TestRunOrchestratedAgentHappyPath
 // uses for orchestrate.
 type agentToolCallParams struct {
+	isolation         string
+	resultSchema      *resultSchema
 	sessionKey        string
 	availableTools    []string
 	route             subagents.RouteRequest
@@ -284,6 +320,13 @@ func (c *coordinator) runAgentToolCall(ctx context.Context, p agentToolCallParam
 		} else {
 			p.discovered = []*subagents.Subagent{&copy}
 		}
+	}
+	isolatedID, refused := c.isolateRun(ctx, p)
+	if refused != nil {
+		return *refused, nil
+	}
+	if isolatedID != "" {
+		p.workspaceID = isolatedID
 	}
 	if p.sessionKey != "" {
 		if len(p.sessionKey) > 128 || p.qualityOnly || p.agentName == "" || c.engineering == nil {
@@ -371,6 +414,15 @@ func (c *coordinator) runAgentToolCall(ctx context.Context, p agentToolCallParam
 		p.prompt += contextText
 	}
 
+	// The delegate sees what the whole task is for, not the owner's instructions.
+	p.prompt += workplan.Brief(c.cfg.WorkingDir())
+
+	ownTimeout := 0
+	if p.agentName != "" {
+		if named, ok := subagents.Find(p.discovered, p.agentName); ok {
+			ownTimeout = named.TimeoutSeconds
+		}
+	}
 	resp, err := c.runSubAgent(ctx, subAgentParams{
 		PersistentSessionID: persistentID,
 		Agent:               runAgent,
@@ -379,11 +431,22 @@ func (c *coordinator) runAgentToolCall(ctx context.Context, p agentToolCallParam
 		ToolCallID:          p.toolCallID,
 		Prompt:              p.prompt,
 		SessionTitle:        sessionTitle,
+		TimeoutSeconds:      ownTimeout,
+		ResultSchema:        p.resultSchema,
+		BoardName:           p.agentName,
 	})
+	if err == nil && isolatedID != "" && !resp.IsError {
+		resp.Content += c.isolatedFooter(ctx, p.sessionID, isolatedID)
+	}
 	if err != nil || routedTo == "" {
 		return resp, err
 	}
-	return fantasy.WithResponseMetadata(resp, AgentResponseMetadata{RoutedTo: routedTo, RoutingReason: routingReason}), nil
+	var meta AgentResponseMetadata
+	if resp.Metadata != "" {
+		_ = json.Unmarshal([]byte(resp.Metadata), &meta)
+	}
+	meta.RoutedTo, meta.RoutingReason = routedTo, routingReason
+	return fantasy.WithResponseMetadata(resp, meta), nil
 }
 
 // resolveSubagent returns the cached SessionAgent for a named subagent,
@@ -444,7 +507,10 @@ func (c *coordinator) buildSubagentSessionAgent(ctx context.Context, taskCfg con
 		if enabled {
 			modelCfg, ok = measured, true
 		}
-		if !ok && !sub.InheritModel {
+		// An orchestrator's workers run on the session's model when their
+		// role has none: the team would otherwise fail on every specialist
+		// the user has not routed yet.
+		if !ok && !sub.InheritModel && !c.orchestrating() {
 			return nil, fmt.Errorf(
 				"subagent %q needs the %q model role assigned before it can run; call atlas_config with action \"set_role\" and role %q to assign it a provider and model",
 				sub.Name, sub.Model, config.StripRoleReference(sub.Model))
@@ -487,6 +553,13 @@ func (c *coordinator) buildSubagentSessionAgent(ctx context.Context, taskCfg con
 	if sub.ReadOnly {
 		subCfg.AllowedMCP = map[string][]string{}
 	}
+	if len(sub.MCP) > 0 {
+		// A listed server gives all of its tools, and only listed servers are used.
+		subCfg.AllowedMCP = make(map[string][]string, len(sub.MCP))
+		for _, name := range sub.MCP {
+			subCfg.AllowedMCP[strings.TrimSpace(name)] = nil
+		}
+	}
 	agentTools, err := c.buildTools(ctx, subCfg, true)
 	if err != nil {
 		return nil, err
@@ -510,8 +583,9 @@ func (c *coordinator) buildSubagentSessionAgent(ctx context.Context, taskCfg con
 		AutoSummarizeAt:      c.cfg.Config().Options.AutoSummarizeAt,
 		MaxProviderRetries:   c.cfg.Config().Options.MaxProviderRetries,
 		MaxSessionCost:       c.cfg.Config().Options.MaxSessionCost,
-		MaxStepsPerTurn:      c.cfg.Config().Options.MaxStepsPerTurn,
+		MaxStepsPerTurn:      subagentStepCap(c.cfg.Config().Options.MaxStepsPerTurn, sub.MaxSteps),
 		PromptHooks:          c.hookRunner(hooks.EventUserPromptSubmit),
+		StopHooks:            c.hookRunner(hooks.EventSubagentStop),
 		OnProviderExhausted:  c.credentials.Advance,
 		IsYolo:               c.permissions.SkipRequests(),
 		Permissions:          c.permissions,

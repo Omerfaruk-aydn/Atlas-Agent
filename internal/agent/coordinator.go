@@ -45,6 +45,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/integrations"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/isolation"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/knowledge"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/localapps"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/log"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/lsp"
@@ -182,6 +183,12 @@ type Coordinator interface {
 }
 
 type coordinator struct {
+	// subLimiter is the one sub-agent concurrency pool shared by the
+	// agent, orchestrate, delegate and debate tools.
+	subLimiterMu sync.Mutex
+	subLimiter   *concurrencyLimiter
+	subLimiterN  int
+
 	oracleBudgets    sync.Map
 	automationMu     sync.Mutex
 	automationCancel context.CancelFunc
@@ -369,7 +376,7 @@ func NewCoordinator(ctx context.Context, opts CoordinatorOptions) (Coordinator, 
 		credentials:  credentials.Load(filepath.Join(opts.Config.Config().Options.DataDirectory, credentials.StateFileName)),
 		engineering:  engineering.NewStore(opts.Config.Config().Options.DataDirectory),
 		codeMap:      codemap.NewBuilder(filepath.Join(opts.Config.Config().Options.DataDirectory, "codemap")),
-		teams:        teams.NewRegistry(),
+		teams:        newTeamRegistry(opts.Config.Config().Options.DataDirectory),
 		goalRuns:     csync.NewMap[string, *goalRun](),
 		goalJudge:    csync.NewValue(ptrBox[Model]{}),
 		integrations: opts.Integrations,
@@ -997,6 +1004,10 @@ func (c *coordinator) buildAgent(ctx context.Context, prompt *prompt.Prompt, age
 		PromptHooks:            c.hookRunner(hooks.EventUserPromptSubmit),
 		SessionStartHooks:      c.hookRunner(hooks.EventSessionStart),
 		PreCompactHooks:        c.hookRunner(hooks.EventPreCompact),
+		PreInvocationHooks:     c.hookRunner(hooks.EventPreInvocation),
+		PostInvocationHooks:    c.hookRunner(hooks.EventPostInvocation),
+		PostCompactHooks:       c.hookRunner(hooks.EventPostCompact),
+		StopHooks:              c.hookRunner(hooks.EventStop),
 		OnProviderExhausted:    c.credentials.Advance,
 		AdvisorModel:           advisorModel,
 		AdvisorTools:           advisorTools,
@@ -1064,6 +1075,11 @@ func (c *coordinator) buildAgent(ctx context.Context, prompt *prompt.Prompt, age
 }
 
 func (c *coordinator) buildTools(ctx context.Context, agent config.Agent, isSubAgent bool) ([]fantasy.AgentTool, error) {
+	if opts := c.cfg.Config().Options; opts != nil {
+		// The shell policy's audit log lives with the rest of the session data.
+		tools.SetPolicyAuditDir(opts.DataDirectory)
+		tools.SetAutoSandbox(opts.AutoSandbox)
+	}
 	allTools, err := c.assembleTools(ctx, agent, isSubAgent)
 	if err != nil {
 		return nil, err
@@ -1162,6 +1178,19 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		allTools = append(allTools, delegateTool)
 	}
 
+	// Project knowledge is opt-in: the tool exists only when the option is on.
+	if opts := c.cfg.Config().Options; opts != nil && opts.Knowledge && slices.Contains(agent.AllowedTools, tools.KnowledgeToolName) {
+		allTools = append(allTools, tools.NewKnowledgeTool(knowledge.New(knowledge.DirFor(c.cfg.WorkingDir()), c.cfg.WorkingDir())))
+	}
+
+	if slices.Contains(agent.AllowedTools, ScriptToolName) {
+		scriptTool, err := c.scriptTool(ctx)
+		if err != nil {
+			return nil, err
+		}
+		allTools = append(allTools, scriptTool)
+	}
+
 	if slices.Contains(agent.AllowedTools, VibeToolName) {
 		vibeTool, err := c.vibeTool(ctx)
 		if err != nil {
@@ -1202,7 +1231,14 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		tools.NewJobKillTool(),
 		tools.NewDownloadTool(c.permissions, c.cfg.WorkingDir(), nil, urlPolicy(c.cfg), pathPolicy, c.cfg.Config().Options.MaxDownloadBytes),
 		fantasy.RejectUnknownInput(tools.NewEditTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy)),
-		tools.NewExitPlanModeTool(c.permissions, c.cfg.WorkingDir()),
+		tools.NewExitPlanModeTool(c.permissions, c.cfg.WorkingDir(), func() string {
+			if opts := c.cfg.Config().Options; opts != nil {
+				return opts.PlanApproval
+			}
+			return ""
+		}),
+		tools.NewWalkthroughTool(c.cfg.WorkingDir()),
+		tools.NewIssuesTool(),
 		tools.NewImageCompareTool(c.cfg.WorkingDir()),
 		tools.NewPDFRenderTool(c.cfg.WorkingDir()),
 		fantasy.RejectUnknownInput(tools.NewMultiEditTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy)),
@@ -1214,12 +1250,13 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 		tools.NewFactsTool(c.facts, c.permissions),
 		tools.NewInspectFileTool(c.cfg.WorkingDir()),
 		tools.NewSessionSearchTool(c.messages),
+		tools.NewSessionReadTool(c.sessions, c.messages, tools.GetSessionFromContext),
 		tools.NewSkillManageTool(skillDirs(c.cfg), c.allSkills, c.permissions),
 		tools.NewUsageTool(c.sessions, c.cfg.Config().Options.MaxSessionCost, c.engineering),
 		tools.NewSourcegraphTool(nil),
 		tools.NewTodosTool(c.sessions),
 		tools.NewDesignSearchTool(),
-		fantasy.RejectUnknownInput(tools.NewDesignCanvasTool(c.cfg.WorkingDir())),
+		fantasy.RejectUnknownInput(tools.NewDesignCanvasTool(c.cfg.WorkingDir(), c.imageGenerator())),
 		tools.NewViewTool(c.lspManager, c.permissions, c.filetracker, c.skillTracker, c.cfg.WorkingDir(), tools.NewViewLimits(c.cfg.Config()), c.cfg.Config().Options.SkillsPaths...),
 		tools.NewVideoTool(c.cfg.WorkingDir(), c.permissions, c.cfg.Config().Options.Voice),
 		fantasy.RejectUnknownInput(tools.NewWriteTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir(), pathPolicy)),
@@ -1329,7 +1366,9 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 	// Team tools are opt-in like the others above, even though they have
 	// no external footprint: they only matter once sub-agents are in
 	// play, so they stay out of the palette otherwise.
-	if c.cfg.Config().Tools.Teams.IsEnabled() {
+	// A session mode that coordinates a team (the orchestrator) turns them
+	// on for itself and for every worker it starts.
+	if c.cfg.Config().Tools.Teams.IsEnabled() || c.modeUsesTeamBoard() {
 		allTools = append(allTools, tools.NewTeamSendTool(c.teams), tools.NewTeamReadTool(c.teams))
 	}
 
@@ -1508,9 +1547,15 @@ func (c *coordinator) assembleTools(ctx context.Context, agent config.Agent, isS
 
 func (c *coordinator) filterTools(allTools []fantasy.AgentTool, agent config.Agent, preRunner, postRunner *hooks.Runner, isSubAgent bool) []fantasy.AgentTool {
 	if !isSubAgent {
-		if mode, ok := c.sessionMode(); ok && mode.ReadOnly {
+		// A mode that is read-only, or that lists its own tools, limits the
+		// main session the same way it limits a delegated run of it: the
+		// orchestrator mode keeps its coordination tools and loses edit and
+		// shell tools, for example.
+		if mode, ok := c.sessionMode(); ok && (mode.ReadOnly || len(mode.Tools) > 0) {
 			agent.AllowedTools = subagentAllowedTools(mode, agent.AllowedTools)
-			agent.AllowedMCP = map[string][]string{}
+			if mode.ReadOnly {
+				agent.AllowedMCP = map[string][]string{}
+			}
 		}
 	}
 	var filteredTools []fantasy.AgentTool
@@ -2546,6 +2591,10 @@ func (c *coordinator) UpdateModels(ctx context.Context) error {
 		c.hookRunner(hooks.EventSessionStart),
 		c.hookRunner(hooks.EventPreCompact),
 	)
+	c.currentAgent.SetStopHooks(c.hookRunner(hooks.EventStop))
+	if sa, ok := c.currentAgent.(*sessionAgent); ok {
+		sa.SetInvocationHooks(c.hookRunner(hooks.EventPreInvocation), c.hookRunner(hooks.EventPostInvocation), c.hookRunner(hooks.EventPostCompact))
+	}
 
 	// Advisor and escalation settings had the same gap: toggling the
 	// advisor, changing its model role, review cadence, or notify
@@ -2807,6 +2856,13 @@ type subAgentParams struct {
 	// SessionSetup is an optional callback invoked after session creation
 	// but before agent execution, for custom session configuration.
 	SessionSetup func(sessionID string)
+	// BoardName is the handle the sub-agent takes on the team board (what
+	// others write after an @). Empty derives it from SessionTitle.
+	BoardName string
+	// ResultSchema, when set, makes the run return data: the final reply
+	// must be JSON matching it, and a reply that is not is sent back to the
+	// same sub-agent for correction (see resultSchema).
+	ResultSchema *resultSchema
 }
 
 // runSubAgent runs a sub-agent and handles session management and cost accumulation.
@@ -2890,6 +2946,13 @@ func (c *coordinator) runSubAgent(ctx context.Context, params subAgentParams) (f
 	// same as c.notify/c.runComplete elsewhere in this file.
 	if c.teams != nil {
 		c.teams.Join(params.SessionID, session.ID)
+		// The session that started the work is the team's lead; each
+		// sub-agent gets a handle others can @mention. A finished member
+		// is marked so the stall monitor never reports it and readers
+		// parked on it are woken.
+		c.teams.NameIfUnset(params.SessionID, "lead")
+		c.teams.SetName(session.ID, boardName(params))
+		defer c.teams.MarkDone(session.ID)
 	}
 
 	// Get model configuration
@@ -2934,10 +2997,10 @@ func (c *coordinator) runSubAgent(ctx context.Context, params subAgentParams) (f
 		}
 		ctx = childContext
 	}
-	run := func() (*fantasy.AgentResult, error) {
+	run := func(prompt string) (*fantasy.AgentResult, error) {
 		return params.Agent.Run(ctx, SessionAgentCall{
 			SessionID:        session.ID,
-			Prompt:           params.Prompt,
+			Prompt:           prompt,
 			MaxOutputTokens:  maxTokens,
 			ProviderOptions:  getProviderOptions(model, providerCfg),
 			Temperature:      model.ModelCfg.Temperature,
@@ -2949,7 +3012,11 @@ func (c *coordinator) runSubAgent(ctx context.Context, params subAgentParams) (f
 			OnAuthRefresh:    c.makeAuthRefreshCallback(providerCfg),
 		})
 	}
-	result, err := run()
+	firstPrompt := params.Prompt
+	if params.ResultSchema != nil {
+		firstPrompt += params.ResultSchema.instruction()
+	}
+	result, err := run(firstPrompt)
 	// Notify only if still unauthorized after retry. AWS SSO is handled
 	// transparently inside OnAuthRefresh, so it needs no post-run notice.
 	if err != nil && isUnauthorized(err) && c.notify != nil {
@@ -2969,13 +3036,39 @@ func (c *coordinator) runSubAgent(ctx context.Context, params subAgentParams) (f
 	if output == "" {
 		return fantasy.NewTextErrorResponse("Sub-agent completed but produced no text output."), nil
 	}
+	structured := params.ResultSchema != nil
+	if structured {
+		for attempt := 0; ; attempt++ {
+			clean, problems := params.ResultSchema.check(output)
+			if problems == "" {
+				output = clean
+				break
+			}
+			if attempt >= maxResultSchemaRetries {
+				return fantasy.NewTextErrorResponse(fmt.Sprintf("The sub-agent's reply still did not match result_schema after %d attempts.\nProblems:\n%s\nLast reply:\n%s", attempt+1, problems, evaluatorTruncate(output))), nil
+			}
+			result, err = run(params.ResultSchema.retryPrompt(problems))
+			if err != nil {
+				return fantasy.NewTextErrorResponse(fmt.Sprintf("Failed to generate response: %s", err)), nil
+			}
+			if output = subAgentOutput(result); output == "" {
+				return fantasy.NewTextErrorResponse("Sub-agent completed but produced no text output."), nil
+			}
+		}
+	}
 	report := c.reportRun(ctx, session.ID, time.Since(started))
 	if len(ownership.OwnedPaths) > 0 {
 		touched := slices.Concat(report.FilesChanged, changedBetween(treeBefore, treeStamps(ctx, ownershipRoot)))
 		report.OutsideOwned = outsideOwned(touched, ownershipRoot, ownership.OwnedPaths)
 		report.OutsideOwned = slices.Compact(slices.Sorted(slices.Values(report.OutsideOwned)))
 	}
-	response := fantasy.NewTextResponse(output + report.note())
+	// A structured result is data: the run note stays in the metadata so the
+	// text a parent parses is only the JSON.
+	text := output + report.note()
+	if structured {
+		text = output
+	}
+	response := fantasy.NewTextResponse(text)
 	return fantasy.WithResponseMetadata(response, AgentResponseMetadata{Run: &report}), nil
 }
 

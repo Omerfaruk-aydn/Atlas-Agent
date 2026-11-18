@@ -106,40 +106,6 @@ func (c *coordinator) AskSideQuestion(ctx context.Context, sessionID, question s
 // runSideQuestion runs question on agent inside a scratch session that is
 // removed again whatever the outcome.
 func (c *coordinator) runSideQuestion(ctx context.Context, agent SessionAgent, parentSessionID, question string) (SideAnswer, error) {
-	ctx, cancel := context.WithTimeout(ctx, sideQuestionTimeout)
-	defer cancel()
-
-	var scratch string
-	if parentSessionID != "" {
-		child, err := c.sessions.CreateChild(ctx, parentSessionID, "Side question")
-		if err != nil {
-			return SideAnswer{}, fmt.Errorf("create side question session: %w", err)
-		}
-		scratch = child.ID
-	} else {
-		// No conversation yet, so there is nothing to hang the scratch
-		// session off.
-		created, err := c.sessions.Create(ctx, "Side question")
-		if err != nil {
-			return SideAnswer{}, fmt.Errorf("create side question session: %w", err)
-		}
-		scratch = created.ID
-	}
-	defer func() {
-		// The caller may have cancelled; the scratch session still has
-		// to go.
-		cleanup, done := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-		defer done()
-		if parentSessionID != "" {
-			if err := c.updateParentSessionCostDelta(cleanup, scratch, parentSessionID, 0); err != nil {
-				slog.Warn("Failed to bill side question cost to its session", "session", parentSessionID, "error", err)
-			}
-		}
-		if err := c.sessions.Delete(cleanup, scratch); err != nil {
-			slog.Warn("Failed to delete side question session", "session", scratch, "error", err)
-		}
-	}()
-
 	prompt := question
 	if parentSessionID != "" {
 		msgs, err := c.messages.List(ctx, parentSessionID)
@@ -149,6 +115,70 @@ func (c *coordinator) runSideQuestion(ctx context.Context, agent SessionAgent, p
 			prompt = buildSideQuestionPrompt(sideQuestionExcerpt(msgs, sideQuestionContextBudget), question)
 		}
 	}
+	text, model, err := c.runScratch(ctx, agent, scratchRun{
+		ParentSessionID: parentSessionID,
+		Label:           "side question",
+		Title:           "Side question",
+		Prompt:          prompt,
+		Timeout:         sideQuestionTimeout,
+	})
+	if err != nil {
+		return SideAnswer{}, err
+	}
+	return SideAnswer{Text: text, Model: model}, nil
+}
+
+// scratchRun describes one question put to a throwaway agent.
+type scratchRun struct {
+	// ParentSessionID is the session the cost is billed to and the scratch
+	// session hangs off. Empty when there is no conversation yet.
+	ParentSessionID string
+	// Label names the run in error messages ("side question").
+	Label string
+	// Title is the scratch session's title while it exists.
+	Title   string
+	Prompt  string
+	Timeout time.Duration
+}
+
+// runScratch runs one prompt on agent inside a scratch session that starts
+// empty, so the agent sees nothing of the parent conversation but what the
+// prompt carries, and is deleted again whatever the outcome. It returns the
+// agent's final text and the model that wrote it.
+func (c *coordinator) runScratch(ctx context.Context, agent SessionAgent, run scratchRun) (text, modelName string, err error) {
+	ctx, cancel := context.WithTimeout(ctx, run.Timeout)
+	defer cancel()
+
+	var scratch string
+	if run.ParentSessionID != "" {
+		child, err := c.sessions.CreateChild(ctx, run.ParentSessionID, run.Title)
+		if err != nil {
+			return "", "", fmt.Errorf("create %s session: %w", run.Label, err)
+		}
+		scratch = child.ID
+	} else {
+		// No conversation yet, so there is nothing to hang the scratch
+		// session off.
+		created, err := c.sessions.Create(ctx, run.Title)
+		if err != nil {
+			return "", "", fmt.Errorf("create %s session: %w", run.Label, err)
+		}
+		scratch = created.ID
+	}
+	defer func() {
+		// The caller may have cancelled; the scratch session still has
+		// to go.
+		cleanup, done := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer done()
+		if run.ParentSessionID != "" {
+			if err := c.updateParentSessionCostDelta(cleanup, scratch, run.ParentSessionID, 0); err != nil {
+				slog.Warn("Failed to bill scratch run cost to its session", "run", run.Label, "session", run.ParentSessionID, "error", err)
+			}
+		}
+		if err := c.sessions.Delete(cleanup, scratch); err != nil {
+			slog.Warn("Failed to delete scratch session", "run", run.Label, "session", scratch, "error", err)
+		}
+	}()
 
 	model := agent.Model()
 	maxTokens := model.CatwalkCfg.DefaultMaxTokens
@@ -157,12 +187,12 @@ func (c *coordinator) runSideQuestion(ctx context.Context, agent SessionAgent, p
 	}
 	providerCfg, ok := c.cfg.Config().Providers.Get(model.ModelCfg.Provider)
 	if !ok {
-		return SideAnswer{}, errModelProviderNotConfigured
+		return "", "", errModelProviderNotConfigured
 	}
 
 	result, err := agent.Run(ctx, SessionAgentCall{
 		SessionID:        scratch,
-		Prompt:           prompt,
+		Prompt:           run.Prompt,
 		MaxOutputTokens:  maxTokens,
 		ProviderOptions:  getProviderOptions(model, providerCfg),
 		Temperature:      model.ModelCfg.Temperature,
@@ -174,13 +204,13 @@ func (c *coordinator) runSideQuestion(ctx context.Context, agent SessionAgent, p
 		OnAuthRefresh:    c.makeAuthRefreshCallback(providerCfg),
 	})
 	if err != nil {
-		return SideAnswer{}, fmt.Errorf("side question failed: %w", err)
+		return "", "", fmt.Errorf("%s failed: %w", run.Label, err)
 	}
-	text := strings.TrimSpace(subAgentOutput(result))
+	text = strings.TrimSpace(subAgentOutput(result))
 	if text == "" {
-		return SideAnswer{}, errors.New("the side question produced no answer")
+		return "", "", fmt.Errorf("the %s produced no answer", run.Label)
 	}
-	return SideAnswer{Text: text, Model: model.ModelCfg.Model}, nil
+	return text, model.ModelCfg.Model, nil
 }
 
 // normalizeSideQuestion trims question and rejects one that is empty or

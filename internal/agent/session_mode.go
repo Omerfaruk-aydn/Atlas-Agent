@@ -3,9 +3,11 @@ package agent
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/prompt"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/subagents"
 )
 
@@ -46,6 +48,20 @@ func (c *coordinator) sessionMode() (*subagents.Subagent, bool) {
 		return nil, false
 	}
 	return mode, true
+}
+
+// modeUsesTeamBoard reports whether the active session mode coordinates
+// through the team board, which turns the team tools on without the
+// tools.teams switch.
+func (c *coordinator) modeUsesTeamBoard() bool {
+	mode, ok := c.sessionMode()
+	return ok && slices.Contains(mode.Tools, tools.TeamSendToolName)
+}
+
+// orchestrating reports whether the session wears the orchestrator mode.
+func (c *coordinator) orchestrating() bool {
+	mode, ok := c.sessionMode()
+	return ok && strings.EqualFold(mode.Name, subagents.OrchestratorMode)
 }
 
 // withSessionMode appends the active mode's instructions to a freshly

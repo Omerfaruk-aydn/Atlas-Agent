@@ -51,6 +51,7 @@ import (
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/interaction"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/message"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/permission"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/policy"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/pubsub"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/stringext"
@@ -92,6 +93,9 @@ type SessionAgentCall struct {
 	QueueContinuation bool
 	// internalContinuation preserves trusted user intent across automatic turns.
 	internalContinuation bool
+	// stopHookRounds counts how many times Stop hooks have already sent this
+	// request back to work; hooks.MaxStopContinuations bounds it.
+	stopHookRounds int
 	// overflowRetried marks a turn re-queued after compaction because its
 	// request did not fit the model; a second overflow ends it with an error.
 	overflowRetried bool
@@ -162,6 +166,7 @@ type SessionAgent interface {
 	SetSummarizeOptions(autoSummarizeAt float64, disableAutoSummarize bool, compactModel *Model)
 	SetLimits(maxProviderRetries *int, maxSessionCost float64, maxStepsPerTurn int)
 	SetHooks(promptHooks, sessionStartHooks, preCompactHooks *hooks.Runner)
+	SetStopHooks(stopHooks *hooks.Runner)
 	SetAdvisorOptions(advisorModel *Model, advisorTools []fantasy.AgentTool, everyNTurns int, notifyThreshold string)
 	SetEscalateOptions(escalateModel *Model, escalateTools []fantasy.AgentTool, threshold string)
 	SetEvaluatorOptions(evaluatorModel *Model, evaluatorTools []fantasy.AgentTool, maxRounds int)
@@ -287,6 +292,13 @@ type sessionAgent struct {
 	// runs; a deny/halt decision skips summarization for that turn. Nil
 	// when none are configured.
 	preCompactHooks *csync.Value[ptrBox[hooks.Runner]]
+	// stopHooks fires EventStop (or EventSubagentStop for a delegated
+	// agent) when a turn ends on its own with every gate passed; a deny
+	// decision sends the agent back to work. Nil when none are configured.
+	stopHooks *csync.Value[ptrBox[hooks.Runner]]
+	// invocationHooks fires PreInvocation before and PostInvocation after each
+	// model step of the top-level agent.
+	invocationHooks *csync.Value[ptrBox[invocationRunners]]
 	// onProviderExhausted is called with a provider ID when a 429 hits it
 	// and the model fallback chain has nowhere further to go, so a caller
 	// (the coordinator's credential rotator) can make the next session or
@@ -453,6 +465,11 @@ type SessionAgentOptions struct {
 	// PreCompactHooks runs EventPreCompact before auto-summarization.
 	// Nil means none are configured.
 	PreCompactHooks *hooks.Runner
+	// PreInvocationHooks and PostInvocationHooks run around each model step.
+	PreInvocationHooks, PostInvocationHooks, PostCompactHooks *hooks.Runner
+	// StopHooks runs EventStop, or EventSubagentStop for a sub-agent, when a
+	// turn ends on its own. Nil means none are configured.
+	StopHooks *hooks.Runner
 	// OnProviderExhausted is called with a provider ID when a 429 hits it
 	// with no further model fallback to move to. Nil means no credential
 	// rotation is wired up.
@@ -527,6 +544,8 @@ func NewSessionAgent(
 		sessionStartHooks:      csync.NewValue(ptrBox[hooks.Runner]{v: opts.SessionStartHooks}),
 		startedSessions:        csync.NewMap[string, bool](),
 		preCompactHooks:        csync.NewValue(ptrBox[hooks.Runner]{v: opts.PreCompactHooks}),
+		stopHooks:              csync.NewValue(ptrBox[hooks.Runner]{v: opts.StopHooks}),
+		invocationHooks:        csync.NewValue(ptrBox[invocationRunners]{v: &invocationRunners{pre: opts.PreInvocationHooks, post: opts.PostInvocationHooks, postCompact: opts.PostCompactHooks}}),
 		advisorModel:           csync.NewValue(ptrBox[Model]{v: opts.AdvisorModel}),
 		advisorTools:           csync.NewSliceFrom(opts.AdvisorTools),
 		advisorNotes:           csync.NewMap[string, string](),
@@ -883,6 +902,13 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 	ctx = tools.WithDesktopTaskScope(ctx, call.Prompt)
 	if !call.internalContinuation {
 		ctx = tools.WithUserInstruction(ctx, call.Prompt)
+		if !a.isSubAgent {
+			// A prohibition in the user's own words ("do not push") becomes a
+			// deny rule for the shell, and "you may push" takes it back.
+			engine := tools.PolicyFor(call.SessionID)
+			engine.Lift(call.Prompt)
+			engine.AddConstraints(policy.ConstraintsFromText(call.Prompt)...)
+		}
 	}
 	if call.DesktopOnly {
 		ctx = tools.WithGUIOnlyDesktop(ctx)
@@ -1277,6 +1303,9 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				return callContext, prepared, fmt.Errorf("persist previous model step: %w", stepFinishErr)
 			}
 			a.selectWorkPhase(chain, largeModel, options.Messages, call.SessionID)
+			if denied, reason := a.preInvocationDenied(callContext, call.SessionID); denied {
+				return callContext, prepared, fmt.Errorf("model request blocked by a PreInvocation hook: %s", reason)
+			}
 			if a.engineering != nil {
 				scope := engineering.GetScope(callContext, call.SessionID)
 				if err := a.engineering.Check(callContext, scope.SessionID, scope.TaskID); err != nil {
@@ -1591,6 +1620,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		},
 		OnStepFinish: func(stepResult fantasy.StepResult) (finishErr error) {
 			a.recordEvaluatorEvidence(call.SessionID, []fantasy.StepResult{stepResult})
+			a.postInvocation(ctx, call.SessionID)
 			producer := originOf(chain.Current())
 			for _, reasoning := range stepResult.Content.Reasoning() {
 				part := fantasy.ReasoningPart{Text: reasoning.Text, ProviderOptions: fantasy.ProviderOptions(reasoning.ProviderMetadata)}
@@ -1962,6 +1992,19 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		// follow-ups, just as an evaluator continuation does.
 		a.markRequestOpen(call.SessionID, evaluation.Continue != "" || evaluation.Unresolved != "" || evaluation.Unverified != "" || len(pending) > 0)
 	}
+	// Stop hooks run last, only on a turn that ended on its own and passed
+	// every gate. They can add work; they cannot clear a gate that failed.
+	if result != nil && currentAssistant != nil && len(result.Steps) > 0 &&
+		result.Steps[len(result.Steps)-1].FinishReason == fantasy.FinishReasonStop &&
+		len(currentAssistant.ToolCalls()) == 0 && !shouldSummarize && monitor.stoppedReason() == "" && genCtx.Err() == nil {
+		if pending, _ := a.messageQueue.Get(call.SessionID); len(pending) == 0 {
+			var stopped bool
+			evaluation, stopped = a.applyStopHooks(genCtx, call, currentAssistant.Content().Text, evaluation)
+			if stopped {
+				a.markRequestOpen(call.SessionID, true)
+			}
+		}
+	}
 	if evaluation.Unresolved != "" && currentAssistant != nil {
 		currentAssistant.AddFinish(message.FinishReasonEndTurn, "Evaluator findings unresolved", evaluation.Unresolved)
 		if updateErr := a.messages.Update(context.WithoutCancel(ctx), *currentAssistant); updateErr != nil {
@@ -2030,6 +2073,9 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		next.Attachments, next.Accepted, next.OnComplete, next.RunID, next.acceptSeq = nil, nil, nil, "", 0
 		next.QueueContinuation = false
 		next.internalContinuation = true
+		if evaluation.stopHook {
+			next.stopHookRounds = call.stopHookRounds + 1
+		}
 		queuedMessages = append(queuedMessages, next)
 		a.messageQueue.Set(call.SessionID, queuedMessages)
 	} else if !queueReady && mark == 0 {
@@ -2203,9 +2249,17 @@ func (a *sessionAgent) Summarize(ctx context.Context, sessionID string, opts fan
 		summaryModel = *compactModel
 	}
 
+	summaryBefore := ""
+	if before, getErr := a.sessions.Get(ctx, sessionID); getErr == nil {
+		summaryBefore = before.SummaryMessageID
+	}
+
 	err := a.summarizeAttempt(ctx, sessionID, summaryModel, usingCompactModel, opts, onAuthRefresh)
-	if err == nil || !usingCompactModel || errors.Is(err, context.Canceled) || errors.Is(err, ErrSessionBusy) {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, ErrSessionBusy) {
 		return err
+	}
+	if !usingCompactModel {
+		return a.fallbackAfterFailure(ctx, sessionID, summaryBefore, err)
 	}
 
 	// The compact role's model built fine at agent construction time but
@@ -2216,7 +2270,25 @@ func (a *sessionAgent) Summarize(ctx context.Context, sessionID string, opts fan
 	// here never recovers on its own, since every later turn hits the
 	// same over-budget check and retries the same broken compact model.
 	slog.Warn("Compact model role failed to summarize; retrying with the session's own model", "error", err)
-	return a.summarizeAttempt(ctx, sessionID, a.largeModel.Get(), false, opts, onAuthRefresh)
+	err = a.summarizeAttempt(ctx, sessionID, a.largeModel.Get(), false, opts, onAuthRefresh)
+	return a.fallbackAfterFailure(ctx, sessionID, summaryBefore, err)
+}
+
+// fallbackAfterFailure is the last step of Summarize: when no model could
+// write a summary, the deterministic summary keeps the session from staying
+// over its context budget. It returns the original error only when even that
+// fails.
+func (a *sessionAgent) fallbackAfterFailure(ctx context.Context, sessionID, summaryBefore string, err error) error {
+	if !a.summarizeFailureNeedsFallback(ctx, sessionID, summaryBefore, err) {
+		return err
+	}
+	slog.Warn("No model could summarize; using the deterministic fallback summary", "session_id", sessionID, "error", err)
+	if fbErr := a.fallbackSummary(ctx, sessionID); fbErr != nil {
+		slog.Error("Fallback summary failed", "session_id", sessionID, "error", fbErr)
+		return err
+	}
+	a.recordHarness(harnessmetrics.Compaction, sessionID, map[string]string{"fallback": "deterministic"})
+	return nil
 }
 
 // summarizeAttempt runs one summarize call against a specific model. See
@@ -2374,6 +2446,7 @@ func (a *sessionAgent) summarizeAttempt(ctx context.Context, sessionID string, s
 	if err != nil {
 		return err
 	}
+	a.afterCompaction(genCtx, sessionID, summaryMessage.Content().Text)
 
 	// Release the active request before processing queued messages so that
 	// Run() does not see the session as busy.
@@ -3080,6 +3153,12 @@ func (a *sessionAgent) SetHooks(promptHooks, sessionStartHooks, preCompactHooks 
 	a.promptHooks.Set(ptrBox[hooks.Runner]{v: promptHooks})
 	a.sessionStartHooks.Set(ptrBox[hooks.Runner]{v: sessionStartHooks})
 	a.preCompactHooks.Set(ptrBox[hooks.Runner]{v: preCompactHooks})
+}
+
+// SetStopHooks updates the Stop (or SubagentStop) hook runner in place, for
+// the same reason SetHooks exists: a config edit must reach a running session.
+func (a *sessionAgent) SetStopHooks(stopHooks *hooks.Runner) {
+	a.stopHooks.Set(ptrBox[hooks.Runner]{v: stopHooks})
 }
 
 // SetAdvisorOptions updates the advisor's model, tools, review cadence, and

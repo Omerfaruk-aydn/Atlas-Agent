@@ -47,6 +47,8 @@ func (m *mockSessionAgent) SetLimits(maxProviderRetries *int, maxSessionCost flo
 func (m *mockSessionAgent) SetHooks(promptHooks, sessionStartHooks, preCompactHooks *hooks.Runner) {
 }
 
+func (m *mockSessionAgent) SetStopHooks(stopHooks *hooks.Runner) {}
+
 func (m *mockSessionAgent) SetAdvisorOptions(advisorModel *Model, advisorTools []fantasy.AgentTool, everyNTurns int, notifyThreshold string) {
 }
 

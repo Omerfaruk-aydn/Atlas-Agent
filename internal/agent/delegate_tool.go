@@ -65,10 +65,9 @@ func (c *coordinator) delegateTool(ctx context.Context) (fantasy.AgentTool, erro
 	discovered := subagents.Discover(opts.SubagentsPaths)
 	subagentInstances := csync.NewMap[string, SessionAgent]()
 
-	// A limiter scoped to this tool, the same way orchestrateTool's is:
-	// it bounds how many of the tasks in one delegate call run at once,
-	// using the same MaxConcurrentSubAgents setting.
-	limiter := newConcurrencyLimiter(c.cfg.Config().Options.MaxConcurrentSubAgents)
+	// The coordinator-wide limiter, shared with the agent, orchestrate and
+	// debate tools, using the MaxConcurrentSubAgents setting.
+	limiter := c.sharedSubagentLimiter(c.cfg.Config().Options.MaxConcurrentSubAgents)
 
 	return fantasy.NewParallelAgentTool(
 		DelegateToolName,

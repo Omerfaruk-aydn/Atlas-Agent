@@ -161,6 +161,10 @@ func (a *sessionAgent) checkContractStage(ctx context.Context, sessionID string,
 		return a.sendContractBack(ctx, sessionID, ledger, nil, "the work plan cannot be read: "+err.Error()), true
 	}
 	if plan == nil {
+		if prompt := a.planlessPrompt(a.ledgerRoot(ledger), ledger); prompt != "" {
+			active = true
+			return evaluatorDecision{Continue: prompt}, true
+		}
 		return evaluatorDecision{}, false
 	}
 	active = true

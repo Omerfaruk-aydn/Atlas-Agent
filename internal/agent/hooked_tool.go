@@ -31,11 +31,15 @@ func WithToolHooks(inner fantasy.AgentTool, pre, post *hooks.Runner) fantasy.Age
 }
 
 // wrapToolsWithHooks returns a tool slice with each entry wrapped in a
-// hookedTool. Returns the original slice unchanged when runner is nil or
-// when isSubAgent is true — sub-agents never fire hooks, the top-level
-// invocation of the sub-agent tool itself is wrapped on the caller's side.
+// hookedTool. Returns the original slice unchanged when there is no runner.
+// A sub-agent only fires the hooks that opted in with include_sub_agents; the
+// rest skip it, and the top-level invocation of the sub-agent tool itself is
+// wrapped on the caller's side.
 func wrapToolsWithHooks(tools []fantasy.AgentTool, pre, post *hooks.Runner, isSubAgent bool) []fantasy.AgentTool {
-	if (pre == nil && post == nil) || isSubAgent {
+	if isSubAgent {
+		pre, post = pre.ForSubAgents(), post.ForSubAgents()
+	}
+	if pre == nil && post == nil {
 		return tools
 	}
 	out := make([]fantasy.AgentTool, len(tools))
@@ -104,6 +108,7 @@ func (h *hookedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 
 	resp, err := h.inner.Run(ctx, call)
 	if err != nil {
+		h.notifyToolError(ctx, sessionID, call, err.Error())
 		return resp, err
 	}
 
@@ -115,7 +120,46 @@ func (h *hookedTool) Run(ctx context.Context, call fantasy.ToolCall) (fantasy.To
 	}
 
 	resp.Metadata = mergeHookMetadata(resp.Metadata, result)
-	return h.runPostHooks(ctx, sessionID, call, resp)
+	resp, _ = h.runPostHooks(ctx, sessionID, call, resp)
+	if resp.IsError {
+		resp = h.foldToolErrorHooks(ctx, sessionID, call, resp)
+	}
+	return resp, nil
+}
+
+// notifyToolError tells OnToolError hooks about a call that returned a Go
+// error. The error itself is returned to the caller unchanged, so the hooks'
+// output is not used.
+func (h *hookedTool) notifyToolError(ctx context.Context, sessionID string, call fantasy.ToolCall, text string) {
+	if h.post == nil {
+		return
+	}
+	if _, err := h.post.RunToolError(ctx, sessionID, call.Name, call.Input, text); err != nil {
+		slog.Warn("OnToolError hook execution error", "tool", call.Name, "error", err)
+	}
+}
+
+// foldToolErrorHooks runs OnToolError hooks for an error result and adds
+// their context to what the model sees; a hook may also halt the turn.
+func (h *hookedTool) foldToolErrorHooks(ctx context.Context, sessionID string, call fantasy.ToolCall, resp fantasy.ToolResponse) fantasy.ToolResponse {
+	if h.post == nil {
+		return resp
+	}
+	result, err := h.post.RunToolError(ctx, sessionID, call.Name, call.Input, resp.Content)
+	if err != nil {
+		slog.Warn("OnToolError hook execution error, keeping the tool result", "tool", call.Name, "error", err)
+		return resp
+	}
+	if result.Context != "" {
+		resp.Content += "\n" + result.Context
+	}
+	if result.Halt {
+		resp.StopTurn = true
+		if result.Reason != "" {
+			resp.Content += "\n\nTurn halted by hook. Reason: " + result.Reason
+		}
+	}
+	return resp
 }
 
 // runPostHooks fires PostToolUse and folds its outcome into the response.

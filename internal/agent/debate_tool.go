@@ -83,7 +83,7 @@ func (c *coordinator) debateTool(ctx context.Context) (fantasy.AgentTool, error)
 	}
 	discovered := subagents.Discover(opts.SubagentsPaths)
 	subagentInstances := csync.NewMap[string, SessionAgent]()
-	limiter := newConcurrencyLimiter(opts.MaxConcurrentSubAgents)
+	limiter := c.sharedSubagentLimiter(opts.MaxConcurrentSubAgents)
 
 	return fantasy.NewAgentTool(
 		DebateToolName,

@@ -71,6 +71,14 @@ func (a *sessionAgent) deterministicChecks(ctx context.Context, id string, l *ev
 		gate.finish("send_back", "changed_file_secret")
 		return decision, true
 	}
+	if text := tools.OpenIssuesBlockingCompletion(id); text != "" && a.harnessOptions().GateEnabled("open_issues") {
+		gate.finish("send_back", "open_issues")
+		return a.qualitySendBack(l, text), true
+	}
+	if decision, stop := a.victoryAudit(ctx, id, l); stop {
+		gate.finish("send_back", "victory_audit_disagrees")
+		return decision, true
+	}
 	opts := a.harnessOptions()
 	if opts == nil || len(opts.CompletionCommands) == 0 {
 		gate.finish("skipped", "no_configured_commands")

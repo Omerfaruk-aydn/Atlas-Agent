@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/testenv"
+
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/agent/tools"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/deps/atlas-llm"
@@ -25,6 +27,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	testenv.KeepGitInsideTemp()
 	slog.SetLogLoggerLevel(slog.LevelError)
 	m.Run()
 }

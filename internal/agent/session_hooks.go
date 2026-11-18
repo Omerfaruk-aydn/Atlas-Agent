@@ -3,7 +3,9 @@ package agent
 import (
 	"context"
 	"log/slog"
+	"strings"
 
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/harnessmetrics"
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/hooks"
 )
 
@@ -65,4 +67,54 @@ func (a *sessionAgent) preCompactDenied(ctx context.Context, sessionID string) b
 		return true
 	}
 	return false
+}
+
+// stopHookDefaultReason is the instruction a Stop hook's deny turns into when
+// the hook gave no reason of its own.
+const stopHookDefaultReason = "A Stop hook asked you to keep working. Re-read the request, finish what is still open, and report again."
+
+// applyStopHooks runs Stop (or SubagentStop) hooks on a turn that ended on
+// its own, after every completion gate has already passed. A deny decision
+// turns the hook's reason into the agent's next instruction, up to
+// hooks.MaxStopContinuations times per request.
+//
+// It only ever adds work. A turn a gate already sent back, left unresolved
+// or marked unverified is returned unchanged and the hooks do not run: a
+// script must not be able to wave an unfinished turn through, and there is
+// nothing for it to veto when the gates have already refused. A halt
+// decision is ignored too, because the turn is ending anyway. A hook that
+// fails to run fails open for the same reason a failed prompt hook does.
+//
+// The second result reports whether the hooks sent the agent back to work.
+func (a *sessionAgent) applyStopHooks(ctx context.Context, call SessionAgentCall, lastMessage string, evaluation evaluatorDecision) (evaluatorDecision, bool) {
+	if evaluation.Continue != "" || evaluation.Unresolved != "" || evaluation.Unverified != "" {
+		return evaluation, false
+	}
+	runner := a.stopHooks.Get().v
+	if runner == nil {
+		return evaluation, false
+	}
+	event := hooks.EventStop
+	if a.isSubAgent {
+		event = hooks.EventSubagentStop
+	}
+	result, err := runner.RunStop(ctx, event, call.SessionID, call.stopHookRounds > 0, lastMessage)
+	if err != nil {
+		slog.Warn("Stop hook execution error, ending the turn", "event", event, "session_id", call.SessionID, "error", err)
+		return evaluation, false
+	}
+	if result.Decision != hooks.DecisionDeny {
+		return evaluation, false
+	}
+	if call.stopHookRounds >= hooks.MaxStopContinuations {
+		slog.Warn("Stop hooks asked to continue too many times; ending the turn",
+			"event", event, "session_id", call.SessionID, "rounds", call.stopHookRounds)
+		return evaluation, false
+	}
+	reason := strings.TrimSpace(result.Reason)
+	if reason == "" {
+		reason = stopHookDefaultReason
+	}
+	a.sessionTrace(call.SessionID).record(harnessmetrics.TraceEvent{Kind: "continuation", Name: event, Reason: "stop_hook"})
+	return evaluatorDecision{Continue: reason, stopHook: true}, true
 }

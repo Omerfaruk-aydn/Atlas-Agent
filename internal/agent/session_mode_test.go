@@ -10,6 +10,10 @@ import (
 
 func newSessionModeCoordinator(t *testing.T, mode string) *coordinator {
 	t.Helper()
+	// The developer's own config may define roles such as "review"; the tests
+	// are about what ships, not about one machine.
+	t.Setenv("ATLAS_AGENT_GLOBAL_CONFIG", t.TempDir())
+	t.Setenv("ATLAS_AGENT_GLOBAL_DATA", t.TempDir())
 	env := testEnv(t)
 	cfg, err := config.Init(env.workingDir, "", false)
 	require.NoError(t, err)

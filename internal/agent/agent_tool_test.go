@@ -426,7 +426,7 @@ func TestAgentToolAutoWithNoMatchFallsBackToTheDefaultAgent(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ranOnDefault, "no keyword match must fall back to the default agent")
 	require.Equal(t, "default agent answer", resp.Content)
-	require.Empty(t, resp.Metadata, "no match means no routing metadata, same as a plain agent_name-less call")
+	require.Empty(t, routingOf(t, resp.Metadata), "no match means no routing metadata, same as a plain agent_name-less call")
 }
 
 func TestAgentToolAutoIsIgnoredWhenAgentNameIsSet(t *testing.T) {
@@ -458,7 +458,7 @@ func TestAgentToolAutoIsIgnoredWhenAgentNameIsSet(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "frontend answer", resp.Content, "an explicit agent_name must win over auto-routing")
-	require.Empty(t, resp.Metadata, "an explicit agent_name carries no routing metadata")
+	require.Empty(t, routingOf(t, resp.Metadata), "an explicit agent_name carries no routing metadata")
 }
 
 func TestResolveSubagentUnknownNameErrors(t *testing.T) {
@@ -501,4 +501,23 @@ func TestRoleModelForIgnoresBuiltInNamesAndBrokenRoles(t *testing.T) {
 	require.False(t, ok, "a role that fails to build never breaks the agent")
 	_, ok = coord.roleModelFor(t.Context(), "")
 	require.False(t, ok)
+}
+
+// routingOf returns the routing fields of a response's metadata. The metadata
+// also reports what the run did, so "no routing" is no longer "no metadata".
+func routingOf(t *testing.T, metadata string) []string {
+	t.Helper()
+	if metadata == "" {
+		return nil
+	}
+	var meta AgentResponseMetadata
+	require.NoError(t, json.Unmarshal([]byte(metadata), &meta))
+	var out []string
+	if meta.RoutedTo != "" {
+		out = append(out, meta.RoutedTo)
+	}
+	if meta.RoutingReason != "" {
+		out = append(out, meta.RoutingReason)
+	}
+	return out
 }

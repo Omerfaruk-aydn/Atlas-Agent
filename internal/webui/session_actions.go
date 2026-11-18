@@ -18,6 +18,8 @@ func (g *Gateway) registerSessionActions(api *http.ServeMux) {
 	api.HandleFunc("POST /api/workspaces/{id}/sessions/{sid}/rewind/preview", g.withHub(g.handleRewind("/rewind/preview")))
 	api.HandleFunc("POST /api/workspaces/{id}/sessions/{sid}/rewind/before", g.withHub(g.handleRewind("/rewind/before")))
 	api.HandleFunc("POST /api/workspaces/{id}/sessions/{sid}/rewind", g.withHub(g.handleRewind("/rewind")))
+	api.HandleFunc("POST /api/workspaces/{id}/sessions/{sid}/side-chat", g.withHub(g.handleSideChat))
+	api.HandleFunc("POST /api/workspaces/{id}/sessions/{sid}/branch", g.withHub(g.handleBranchChat))
 	api.HandleFunc("GET /api/workspaces/{id}/sessions/{sid}/user-messages", g.withHub(g.relayGet("/sessions/{sid}/messages/user")))
 	api.HandleFunc("GET /api/workspaces/{id}/sessions/{sid}/files", g.withHub(g.relayGet("/sessions/{sid}/filetracker/files")))
 	api.HandleFunc("GET /api/workspaces/{id}/sessions/{sid}/subagents", g.withHub(g.relayGet("/sessions/{sid}/subagents")))
@@ -85,4 +87,53 @@ func (g *Gateway) handleRewind(suffix string) func(http.ResponseWriter, *http.Re
 func routeMissing(err error) bool {
 	var ue *upstreamError
 	return errors.As(err, &ue) && ue.Status == http.StatusNotFound && strings.Contains(ue.Message, "page not found")
+}
+
+// handleBranchChat copies the conversation, up to a message, into a chat of
+// its own. Files and the source session are left alone.
+func (g *Gateway) handleBranchChat(w http.ResponseWriter, r *http.Request, h *hub) {
+	var req proto.BranchRequest
+	if r.ContentLength != 0 && !decodeJSON(w, r, maxJSONBody, &req) {
+		return
+	}
+	req.Plain = true
+	ctx, cancel := context.WithTimeout(r.Context(), 2*upstreamTimeout)
+	defer cancel()
+	var out json.RawMessage
+	path := "/workspaces/" + url.PathEscape(h.workspaceID()) + "/sessions/" + url.PathEscape(r.PathValue("sid")) + "/branch"
+	if err := g.sendJSON(ctx, http.MethodPost, path, nil, req, &out); err != nil {
+		if routeMissing(err) {
+			writeError(w, http.StatusNotImplemented, "the running Atlas server is an older version")
+			return
+		}
+		writeUpstreamError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(out)
+}
+
+// handleSideChat forks the session into a side chat that shares its history
+// and leaves the session and the files alone.
+func (g *Gateway) handleSideChat(w http.ResponseWriter, r *http.Request, h *hub) {
+	var req proto.BranchRequest
+	if r.ContentLength != 0 && !decodeJSON(w, r, maxJSONBody, &req) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*upstreamTimeout)
+	defer cancel()
+	var out json.RawMessage
+	path := "/workspaces/" + url.PathEscape(h.workspaceID()) + "/sessions/" + url.PathEscape(r.PathValue("sid")) + "/branch"
+	if err := g.sendJSON(ctx, http.MethodPost, path, nil, req, &out); err != nil {
+		if routeMissing(err) {
+			writeError(w, http.StatusNotImplemented, "the running Atlas server is an older version")
+			return
+		}
+		writeUpstreamError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(out)
 }

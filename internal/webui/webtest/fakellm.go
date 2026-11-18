@@ -10,6 +10,7 @@
 //	[[bash]]         call the bash tool with a harmless echo
 //	[[slow]]         stream a long answer slowly, for cancellation
 //	[[big]]          answer with a large markdown document
+//	[[orchestrate]]  play the orchestrator mode with two background workers
 //
 // Anything else is echoed back as markdown. After a tool result the model
 // answers once with a summary that quotes the result.
@@ -162,6 +163,19 @@ func (f *FakeLLM) script(req chatRequest) scriptedReply {
 		// Auxiliary calls (titles, summaries) have no tools.
 		return scriptedReply{text: []string{"Fake session title"}}
 	}
+	// A review (the reviewer is handed <changed_files>) answers with one
+	// finding in the format the reviewer is told to use.
+	for _, m := range req.Messages {
+		if m.Role == "user" && strings.Contains(m.text(), "<changed_files>") {
+			if strings.Contains(m.text(), "[[review-slow]]") {
+				return scriptedReply{text: []string{"Reading... "}, delay: 30 * time.Second}
+			}
+			return scriptedReply{text: []string{"I read the diff.\n\n```json\n" + reviewFindingsJSON + "\n```"}}
+		}
+	}
+	if reply, ok := orchestrateScript(req); ok {
+		return reply
+	}
 	var lastUser string
 	var userHadImage bool
 	lastUserIndex := -1
@@ -236,6 +250,101 @@ func (f *FakeLLM) script(req chatRequest) scriptedReply {
 		echo += "\n\n(image received)"
 	}
 	return scriptedReply{text: []string{echo[:len(echo)/2], echo[len(echo)/2:]}}
+}
+
+var workerMarker = regexp.MustCompile(`\[\[worker (\w+)\]\]`)
+
+// OrchestratorWorkers are the workers an [[orchestrate]] prompt starts.
+var OrchestratorWorkers = []string{"alpha", "beta"}
+
+// WorkerDelay is how long a scripted worker takes over its final answer,
+// so the orchestrator is still waiting for it when it first tries to stop.
+var WorkerDelay = 700 * time.Millisecond
+
+// orchestrateScript plays the orchestrator mode end to end. The session
+// whose user prompt holds [[orchestrate]] starts one background worker per
+// name in OrchestratorWorkers, then tries to finish before collecting them
+// (the harness must send it back), then collects them one at a time with
+// agent_result and reports. A session whose prompt holds [[worker NAME]]
+// posts on the team board when it can and answers slowly.
+func orchestrateScript(req chatRequest) (scriptedReply, bool) {
+	call := func(name string, args map[string]any) (scriptedReply, bool) {
+		if !toolOffered(req.Tools, name) {
+			raw, _ := json.Marshal(map[string]any{"names": []string{name}})
+			return scriptedReply{toolName: "tool_search", toolArgs: string(raw)}, true
+		}
+		raw, _ := json.Marshal(args)
+		return scriptedReply{toolName: name, toolArgs: string(raw)}, true
+	}
+	trigger := -1
+	for i, m := range req.Messages {
+		if m.Role == "user" && strings.Contains(m.text(), "[[orchestrate]]") {
+			trigger = i
+			break
+		}
+	}
+	if trigger >= 0 {
+		var agents, collected int
+		sentBack := false
+		lastResult := ""
+		for _, m := range req.Messages[trigger+1:] {
+			for _, c := range m.ToolCalls {
+				switch c.Function.Name {
+				case "agent":
+					agents++
+				case "agent_result":
+					collected++
+				}
+			}
+			if m.Role == "tool" {
+				lastResult = m.text()
+			}
+			if m.Role != "tool" && strings.Contains(m.text(), "Do not finish yet") {
+				sentBack = true
+			}
+		}
+		switch {
+		case agents < len(OrchestratorWorkers):
+			name := OrchestratorWorkers[agents]
+			return call("agent", map[string]any{
+				"agent_name":        "backend",
+				"prompt":            "[[worker " + name + "]] Post your status on the team board for @lead, then report.",
+				"run_in_background": true,
+			})
+		case !sentBack:
+			return scriptedReply{text: []string{"Both workers are started."}}, true
+		case collected < len(OrchestratorWorkers):
+			return call("agent_result", map[string]any{"wait": true, "wait_timeout": 30})
+		default:
+			if len(lastResult) > 200 {
+				lastResult = lastResult[:200]
+			}
+			return scriptedReply{text: []string{"Orchestration complete. ", "Last worker: " + lastResult}}, true
+		}
+	}
+	for _, m := range req.Messages {
+		if m.Role != "user" {
+			continue
+		}
+		match := workerMarker.FindStringSubmatch(m.text())
+		if match == nil {
+			continue
+		}
+		posted, searched := false, false
+		for _, other := range req.Messages {
+			for _, c := range other.ToolCalls {
+				posted = posted || c.Function.Name == "team_send"
+				searched = searched || c.Function.Name == "tool_search"
+			}
+		}
+		// Load the board tool once if its schema is deferred; give up
+		// posting if it is not there at all.
+		if !posted && (toolOffered(req.Tools, "team_send") || !searched) {
+			return call("team_send", map[string]any{"text": "@lead worker " + match[1] + " is done"})
+		}
+		return scriptedReply{text: []string{"Worker " + match[1] + " ", "finished its piece."}, delay: WorkerDelay}, true
+	}
+	return scriptedReply{}, false
 }
 
 func toolOffered(tools []map[string]any, name string) bool {
@@ -397,3 +506,7 @@ func NewEnvironment(root, llmURL string) (*Environment, error) {
 		"XDG_CACHE_HOME":              dirs["cache"],
 	}}, nil
 }
+
+// reviewFindingsJSON is what the fake reviewer reports: one real finding and
+// one the reviewer calls a "nit".
+const reviewFindingsJSON = `{"summary":"One problem found.","findings":[{"severity":"nit","title":"Naming","file":"main.go","line":2,"explanation":"Unclear name.","suggestion":"Rename it."},{"severity":"high","title":"Empty input panics","file":"main.go","line":7,"explanation":"An empty slice indexes element 0.","suggestion":"Check the length first."}]}`

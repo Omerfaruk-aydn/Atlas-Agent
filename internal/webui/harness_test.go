@@ -217,9 +217,15 @@ type stream struct {
 
 // events opens the tab's event stream, resuming after the given sequence.
 func (b *browser) events(wsID string, after uint64) *stream {
+	return b.eventsQuery(wsID, after, "")
+}
+
+// eventsQuery opens the event stream with extra query parameters, such as
+// side=1 for the desktop app.
+func (b *browser) eventsQuery(wsID string, after uint64, query string) *stream {
 	b.t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.h.base+"/api/workspaces/"+wsID+"/events", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.h.base+"/api/workspaces/"+wsID+"/events"+query, nil)
 	require.NoError(b.t, err)
 	if after > 0 {
 		req.Header.Set("Last-Event-ID", strconv.FormatUint(after, 10))

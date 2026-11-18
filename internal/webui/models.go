@@ -257,6 +257,7 @@ func (g *Gateway) handleSettings(w http.ResponseWriter, r *http.Request, h *hub)
 		Tools     int    `json:"tools,omitempty"`
 		Prompts   int    `json:"prompts,omitempty"`
 		Resources int    `json:"resources,omitempty"`
+		Enabled   bool   `json:"enabled"`
 	}
 	mcps := []mcpView{}
 	var rawMCP map[string]json.RawMessage
@@ -272,12 +273,21 @@ func (g *Gateway) handleSettings(w http.ResponseWriter, r *http.Request, h *hub)
 			if json.Unmarshal(raw, &info) != nil {
 				continue
 			}
-			v := mcpView{Name: name, State: info.State, Tools: info.ToolCount, Prompts: info.PromptCount, Resources: info.ResourceCount}
+			v := mcpView{Name: name, State: info.State, Tools: info.ToolCount, Prompts: info.PromptCount, Resources: info.ResourceCount, Enabled: !cfg.MCP[name].Disabled}
 			var msg string
 			if json.Unmarshal(info.Error, &msg) == nil {
 				v.Error = msg
 			}
 			mcps = append(mcps, v)
+		}
+	}
+	for name, server := range cfg.MCP {
+		if !slices.ContainsFunc(mcps, func(m mcpView) bool { return m.Name == name }) {
+			state := "disconnected"
+			if server.Disabled {
+				state = "disabled"
+			}
+			mcps = append(mcps, mcpView{Name: name, State: state, Enabled: !server.Disabled})
 		}
 	}
 	sort.Slice(mcps, func(i, j int) bool { return mcps[i].Name < mcps[j].Name })

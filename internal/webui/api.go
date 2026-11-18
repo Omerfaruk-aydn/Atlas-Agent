@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/proto"
+	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/session"
 	"github.com/google/uuid"
 )
 
@@ -63,11 +64,19 @@ func (g *Gateway) Handler() http.Handler {
 	api.HandleFunc("POST /api/workspaces/{id}/sessions/{sid}/summarize", g.withHub(g.relayPost("/agent/sessions/{sid}/summarize")))
 	api.HandleFunc("GET /api/workspaces/{id}/pending", g.withHub(g.handlePending))
 	api.HandleFunc("POST /api/workspaces/{id}/permissions/{pid}", g.withHub(g.handlePermission))
+	api.HandleFunc("GET /api/workspaces/{id}/mcp-app", g.withHub(g.handleMCPApp))
+	api.HandleFunc("GET /api/workspaces/{id}/mcp-app/page", g.withHub(g.handleMCPAppPage))
+	api.HandleFunc("POST /api/workspaces/{id}/mcp-app/call", g.withHub(g.handleMCPAppCall))
 	api.HandleFunc("POST /api/workspaces/{id}/questions/{qid}/answer", g.withHub(g.handleAnswer))
 	api.HandleFunc("POST /api/workspaces/{id}/questions/{qid}/cancel", g.withHub(g.handleCancelQuestion))
 	api.HandleFunc("GET /api/workspaces/{id}/models", g.withHub(g.handleModels))
 	api.HandleFunc("POST /api/workspaces/{id}/models", g.withHub(g.handleSelectModel))
 	api.HandleFunc("GET /api/workspaces/{id}/settings", g.withHub(g.handleSettings))
+	api.HandleFunc("POST /api/workspaces/{id}/mcp/{name}", g.withHub(g.handleMCPEnabled))
+	api.HandleFunc("GET /api/workspaces/{id}/mcp/{name}/auth", g.withHub(g.handleMCPAuthURL))
+	api.HandleFunc("POST /api/workspaces/{id}/mcp/{name}/auth", g.withHub(g.handleMCPAuth))
+	api.HandleFunc("GET /api/workspaces/{id}/speech", g.withHub(g.handleSpeechStatus))
+	api.HandleFunc("POST /api/workspaces/{id}/speech", g.withHub(g.handleSpeechTranscribe))
 	api.HandleFunc("GET /api/workspaces/{id}/connections", g.withHub(g.relayGet("/connections")))
 	api.HandleFunc("POST /api/workspaces/{id}/connections/{connection}", g.withHub(g.relayConnection))
 	api.HandleFunc("POST /api/workspaces/{id}/connections/{connection}/test", g.withHub(g.relayPost("/connections/{connection}/test")))
@@ -81,6 +90,9 @@ func (g *Gateway) Handler() http.Handler {
 	api.HandleFunc("GET /api/workspaces/{id}/jobs/{jid}/output", g.withHub(g.handleJobOutput))
 	api.HandleFunc("DELETE /api/workspaces/{id}/jobs/{jid}", g.withHub(g.relayDelete("/jobs/{jid}")))
 	g.registerSessionActions(api)
+	g.registerFileRevert(api)
+	g.registerDesign(api)
+	g.registerReviews(api)
 	g.registerAppActions(api)
 	g.registerDots(api)
 	g.registerDotsAutomation(api)
@@ -143,7 +155,7 @@ func (g *Gateway) withHub(next func(http.ResponseWriter, *http.Request, *hub)) h
 // under the workspace prefix.
 func upstreamPath(r *http.Request, h *hub, suffix string) string {
 	out := "/workspaces/" + url.PathEscape(h.workspaceID()) + suffix
-	for _, name := range []string{"sid", "jid", "connection"} {
+	for _, name := range []string{"sid", "jid", "rid", "connection"} {
 		out = strings.ReplaceAll(out, "{"+name+"}", url.PathEscape(r.PathValue(name)))
 	}
 	return out
@@ -422,7 +434,11 @@ func (g *Gateway) handleEvents(w http.ResponseWriter, r *http.Request, h *hub) {
 	if !write(hello, false) {
 		return
 	}
+	sideChats := wantsSideChats(r)
 	for _, ev := range replay {
+		if !sideChats && isSideChatEvent(ev) {
+			continue
+		}
 		if !write(ev, true) {
 			return
 		}
@@ -445,6 +461,9 @@ func (g *Gateway) handleEvents(w http.ResponseWriter, r *http.Request, h *hub) {
 				return
 			}
 		case ev := <-sub.ch:
+			if !sideChats && isSideChatEvent(ev) {
+				continue
+			}
 			if !write(ev, true) {
 				return
 			}
@@ -455,11 +474,21 @@ func (g *Gateway) handleEvents(w http.ResponseWriter, r *http.Request, h *hub) {
 // --- Sessions ---
 
 func (g *Gateway) handleListSessions(w http.ResponseWriter, r *http.Request, h *hub) {
+	// The desktop app shows side chats in its side panel and asks for them;
+	// the web client, Dots and the terminal never see them.
+	var include url.Values
+	if wantsSideChats(r) {
+		include = url.Values{"include_side": []string{"1"}}
+	}
 	if q := strings.TrimSpace(r.URL.Query().Get("q")); q != "" {
-		g.relay(w, r, http.MethodGet, upstreamPath(r, h, "/sessions/search"), url.Values{"q": []string{q}}, nil)
+		query := url.Values{"q": []string{q}}
+		if include != nil {
+			query.Set("include_side", "1")
+		}
+		g.relay(w, r, http.MethodGet, upstreamPath(r, h, "/sessions/search"), query, nil)
 		return
 	}
-	g.relay(w, r, http.MethodGet, upstreamPath(r, h, "/sessions"), nil, nil)
+	g.relay(w, r, http.MethodGet, upstreamPath(r, h, "/sessions"), include, nil)
 }
 
 func (g *Gateway) handleCreateSession(w http.ResponseWriter, r *http.Request, h *hub) {
@@ -643,6 +672,8 @@ func (g *Gateway) handlePending(w http.ResponseWriter, r *http.Request, h *hub) 
 func (g *Gateway) handlePermission(w http.ResponseWriter, r *http.Request, h *hub) {
 	var req struct {
 		Action string `json:"action"`
+		// Feedback is the comment sent with a deny: what to change.
+		Feedback string `json:"feedback"`
 	}
 	if !decodeJSON(w, r, maxJSONBody, &req) {
 		return
@@ -674,7 +705,7 @@ func (g *Gateway) handlePermission(w http.ResponseWriter, r *http.Request, h *hu
 		return
 	}
 	var out proto.PermissionGrantResponse
-	if err := g.sendJSON(ctx, http.MethodPost, "/workspaces/"+id+"/permissions/grant", nil, proto.PermissionGrant{Permission: *target, Action: action}, &out); err != nil {
+	if err := g.sendJSON(ctx, http.MethodPost, "/workspaces/"+id+"/permissions/grant", nil, proto.PermissionGrant{Permission: *target, Action: action, Feedback: req.Feedback}, &out); err != nil {
 		writeUpstreamError(w, err)
 		return
 	}
@@ -780,3 +811,55 @@ func baseName(p string) string {
 }
 
 func equalFoldPath(a, b string) bool { return strings.EqualFold(a, b) }
+
+// wantsSideChats reports whether the client is the desktop app, which shows
+// side chats in its side panel and says so with side=1.
+func wantsSideChats(r *http.Request) bool {
+	return r.URL.Query().Get("side") == "1"
+}
+
+// isSideChatEvent reports whether an event is about a side chat's session.
+func isSideChatEvent(ev hubEvent) bool {
+	if ev.Type != "session" {
+		return false
+	}
+	var env struct {
+		Payload struct {
+			Tags []string `json:"tags"`
+		} `json:"payload"`
+	}
+	if json.Unmarshal(ev.Payload, &env) != nil {
+		return false
+	}
+	return session.IsSideChat(session.Session{Tags: env.Payload.Tags})
+}
+
+// handleMCPApp relays the page an MCP tool offers. Only the tool name is
+// forwarded.
+func (g *Gateway) handleMCPApp(w http.ResponseWriter, r *http.Request, h *hub) {
+	tool := r.URL.Query().Get("tool")
+	if tool == "" || len(tool) > 256 {
+		writeError(w, http.StatusBadRequest, "tool is required")
+		return
+	}
+	g.relay(w, r, http.MethodGet, upstreamPath(r, h, "/mcp/app"), url.Values{"tool": {tool}}, nil)
+}
+
+// handleMCPAppCall relays a page's tool call. The body is bounded and only the
+// three known fields are forwarded.
+func (g *Gateway) handleMCPAppCall(w http.ResponseWriter, r *http.Request, h *hub) {
+	var req proto.MCPAppCall
+	if !decodeJSON(w, r, 128<<10, &req) {
+		return
+	}
+	if req.Tool == "" || req.Call == "" {
+		writeError(w, http.StatusBadRequest, "tool and call are required")
+		return
+	}
+	data, err := json.Marshal(req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	g.relay(w, r, http.MethodPost, upstreamPath(r, h, "/mcp/app/call"), nil, bytes.NewReader(data))
+}

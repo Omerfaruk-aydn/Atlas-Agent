@@ -165,3 +165,103 @@ func TestEditedMessageBranchesFromJustBeforeIt(t *testing.T) {
 	require.NotContains(t, text(sess.ID), "edited question")
 	require.Len(t, b.messages(ws.ID, sess.ID), len(source))
 }
+
+// A side chat copies the conversation, is tagged with its source, and leaves
+// the source session alone.
+func TestSideChatCopiesTheConversationAndTagsItsSource(t *testing.T) {
+	h := newHarness(t)
+	b := h.signIn()
+	ws := b.open(h.project)
+	ev := b.events(ws.ID, 0)
+	sess := b.newSession(ws.ID)
+	b.run(ev, ws.ID, sess.ID, "first question")
+	h.waitIdle(ws.ID, sess.ID, 30*time.Second)
+	source := b.messages(ws.ID, sess.ID)
+
+	var side proto.Session
+	path := wsPath(ws.ID, "/sessions/", sess.ID, "/side-chat")
+	require.Equal(t, http.StatusOK, b.json(http.MethodPost, path, map[string]any{}, &side))
+	require.NotEqual(t, sess.ID, side.ID)
+	require.Contains(t, side.Tags, "side-of:"+sess.ID)
+
+	raw, err := json.Marshal(b.messages(ws.ID, side.ID))
+	require.NoError(t, err)
+	require.Contains(t, string(raw), "first question")
+	require.Len(t, b.messages(ws.ID, sess.ID), len(source))
+}
+
+// Side chats belong to the desktop app's side panel: every other client gets
+// neither the list entry nor the events, and the app, asking, gets both, with
+// the tag already on the very first event about the session.
+func TestSideChatsAreHiddenFromEveryClientButTheApp(t *testing.T) {
+	h := newHarness(t)
+	b := h.signIn()
+	ws := b.open(h.project)
+	other := b.events(ws.ID, 0)
+	app := b.eventsQuery(ws.ID, 0, "?side=1")
+	sess := b.newSession(ws.ID)
+	b.run(other, ws.ID, sess.ID, "first question")
+	h.waitIdle(ws.ID, sess.ID, 30*time.Second)
+
+	var side proto.Session
+	require.Equal(t, http.StatusOK, b.json(http.MethodPost, wsPath(ws.ID, "/sessions/", sess.ID, "/side-chat"), map[string]any{}, &side))
+
+	ids := func(path string) []string {
+		var list []proto.Session
+		require.Equal(t, http.StatusOK, b.json(http.MethodGet, path, nil, &list))
+		var out []string
+		for _, s := range list {
+			out = append(out, s.ID)
+		}
+		return out
+	}
+	require.Equal(t, []string{sess.ID}, ids(wsPath(ws.ID, "/sessions")))
+	require.ElementsMatch(t, []string{sess.ID, side.ID}, ids(wsPath(ws.ID, "/sessions")+"?side=1"))
+
+	sessionEvents := func(s *stream, id string) (created, untagged bool) {
+		for _, ev := range s.snapshot() {
+			if ev.Type != "session" {
+				continue
+			}
+			var env struct {
+				Type    string        `json:"type"`
+				Payload proto.Session `json:"payload"`
+			}
+			require.NoError(t, json.Unmarshal(ev.Payload, &env))
+			if env.Payload.ID != id {
+				continue
+			}
+			created = created || env.Type == "created"
+			untagged = untagged || len(env.Payload.Tags) == 0
+		}
+		return created, untagged
+	}
+	require.Eventually(t, func() bool { c, _ := sessionEvents(app, side.ID); return c }, 10*time.Second, 50*time.Millisecond, "the app hears of the side chat")
+	_, untagged := sessionEvents(app, side.ID)
+	require.False(t, untagged, "no event about a side chat arrives without its tag")
+	created, _ := sessionEvents(other, side.ID)
+	require.False(t, created, "other clients never hear of it")
+}
+
+// A branch is a chat of its own: it copies the conversation, is tagged with
+// its source but not as a side chat, and shows up in the ordinary chat list.
+func TestBranchChatIsAnOrdinaryChatTaggedWithItsSource(t *testing.T) {
+	h := newHarness(t)
+	b := h.signIn()
+	ws := b.open(h.project)
+	ev := b.events(ws.ID, 0)
+	sess := b.newSession(ws.ID)
+	b.run(ev, ws.ID, sess.ID, "branch question")
+	h.waitIdle(ws.ID, sess.ID, 30*time.Second)
+
+	var branch proto.Session
+	require.Equal(t, http.StatusOK, b.json(http.MethodPost, wsPath(ws.ID, "/sessions/", sess.ID, "/branch"), map[string]any{}, &branch))
+	require.NotEqual(t, sess.ID, branch.ID)
+	require.Contains(t, branch.Tags, "branch-of:"+sess.ID)
+	for _, tag := range branch.Tags {
+		require.NotContains(t, tag, "side-of:")
+	}
+	raw, err := json.Marshal(b.messages(ws.ID, branch.ID))
+	require.NoError(t, err)
+	require.Contains(t, string(raw), "branch question")
+}

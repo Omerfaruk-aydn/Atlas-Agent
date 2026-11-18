@@ -6,6 +6,23 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 
+const fakeKit = {
+  themes: [
+    { id: "zinc", name: "Zinc", platform: "web", note: "The shadcn/ui look.", source: "shadcn/ui", fonts: { heading: "Geist", body: "Geist", mono: "JetBrains Mono" }, colors: { bg: ["#FFFFFF", "#09090B"], card: ["#FFFFFF", "#18181B"], border: ["#E4E4E7", "#27272A"], text: ["#09090B", "#FAFAFA"], "text-muted": ["#71717A", "#A1A1AA"], accent: ["#18181B", "#FAFAFA"] } },
+    { id: "ios", name: "iOS", platform: "ios", note: "Apple system colours.", source: "Apple HIG", fonts: { heading: "Inter", body: "Inter", mono: "JetBrains Mono" }, colors: { bg: ["#F2F2F7", "#000000"], card: ["#FFFFFF", "#1C1C1E"], border: ["#C6C6C8", "#38383A"], text: ["#000000", "#FFFFFF"], "text-muted": ["#3C3C4399", "#EBEBF599"], accent: ["#007AFF", "#0A84FF"] } },
+  ],
+  accents: [{ name: "crimson", color: "#E93D82" }, { name: "grass", color: "#46A758" }],
+  blocks: [
+    { id: "web/hero", platform: "web", title: "Hero", description: "Centered headline.", width: 1440, height: 640 },
+    { id: "ios/list", platform: "ios", title: "Grouped list", description: "Inset grouped rows.", width: 390, height: 300 },
+  ],
+  icons: 2,
+};
+const fakeIcons = [
+  { name: "heart", d: "M4 12h16", tags: ["love"] },
+  { name: "house", d: "M4 12h16", tags: ["home"] },
+];
+
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".svg": "image/svg+xml" };
 // Keep in step with contentSecurityPolicy in internal/webui/api.go.
 const CSP =
@@ -50,6 +67,9 @@ export async function startFakeGateway({ renderer }) {
     reviewScript: null,
     reviewPolls: 0,
     permissionAnswers: [],
+    permissionFeedback: [],
+    mcpApp: null,
+    mcpCalls: [],
     questionAnswers: [],
     streams: new Set(),
     seq: 0,
@@ -69,6 +89,7 @@ export async function startFakeGateway({ renderer }) {
     designs: {},
     designRev: 0,
     designSaves: 0,
+    kitOps: [],
   };
   const designInfo = (name) => ({ name, rev: state.designs[name].rev, size: JSON.stringify(state.designs[name].doc).length, modified_at: now() });
 
@@ -232,13 +253,15 @@ export async function startFakeGateway({ renderer }) {
       const name = url.searchParams.get("name");
       return json(res, state.designs[name] ? 200 : 404, state.designs[name] ?? {});
     }
-    if (p === "/__test/state") return json(res, 200, { logins: state.logins, forks: state.forks, reviews: state.reviews, sideChats: state.sideChats, iconHits: state.iconHits, prompts: state.prompts, permissionAnswers: state.permissionAnswers, questionAnswers: state.questionAnswers, speechRequests: state.speechRequests, mcp: state.mcp });
+    if (p === "/__test/state") return json(res, 200, { logins: state.logins, forks: state.forks, reviews: state.reviews, sideChats: state.sideChats, iconHits: state.iconHits, prompts: state.prompts, permissionAnswers: state.permissionAnswers, permissionFeedback: state.permissionFeedback, mcpCalls: state.mcpCalls, questionAnswers: state.questionAnswers, speechRequests: state.speechRequests, mcp: state.mcp, kitOps: state.kitOps });
     if (p === "/__test/seed") {
       const seed = await body(req);
       state.sessions = seed.sessions ?? [];
       state.messages = seed.messages ?? {};
       state.mcp = seed.mcp ?? [];
       state.commands = seed.commands ?? [];
+      state.mcpApp = seed.mcpApp ?? null;
+      state.mcpCalls = [];
       state.speechRequests = [];
       state.rewindPreview = seed.rewindPreview ?? { files_to_write: 0, files_to_delete: 0 };
       state.designs = {};
@@ -339,8 +362,26 @@ export async function startFakeGateway({ renderer }) {
         return json(res, 200, {});
       }
       if (tail === "/pending") return json(res, 200, { permissions: [], questions: [] });
+      if (tail === "/mcp-app" && req.method === "GET") return state.mcpApp ? json(res, 200, state.mcpApp) : json(res, 404, { message: "no app" });
+      if (tail === "/mcp-app/page" && req.method === "GET") {
+        if (!state.mcpApp) return json(res, 404, { message: "no app" });
+        const bridge = `<script>(function(){var n=0,p={};window.addEventListener("message",function(e){var m=e.data;if(!m||m.type!=="atlas-mcp-result"||!p[m.id])return;var q=p[m.id];delete p[m.id];m.error?q.reject(new Error(m.error)):q.resolve(m.result)});window.atlas={callTool:function(name,args){return new Promise(function(resolve,reject){var id=++n;p[id]={resolve:resolve,reject:reject};parent.postMessage({type:"atlas-mcp-call",id:id,tool:String(name),arguments:args||{}},"*")})}}})();</script>`;
+        res.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Security-Policy": "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; frame-ancestors 'self'",
+          "X-Frame-Options": "SAMEORIGIN",
+        });
+        return res.end(`<!doctype html><meta charset="utf-8">${bridge}${state.mcpApp.html}`);
+      }
+      if (tail === "/mcp-app/call" && req.method === "POST") {
+        const call = await body(req);
+        state.mcpCalls.push(call);
+        return json(res, 200, { content: `ran ${call.call}` });
+      }
       if (tail.startsWith("/permissions/")) {
-        state.permissionAnswers.push((await body(req)).action);
+        const answer = await body(req);
+        state.permissionAnswers.push(answer.action);
+        state.permissionFeedback.push(answer.feedback ?? null);
         return json(res, 200, { resolved: true });
       }
       if (/^\/questions\/[^/]+\/answer$/.test(tail)) {
@@ -416,6 +457,36 @@ export async function startFakeGateway({ renderer }) {
         return json(res, 200, { name, rev: state.designs[name].rev });
       }
       if (tail === "/design/asset") return json(res, 404, { message: "no such image" });
+      // The design kit, in miniature: the Go side (internal/design/kit*.go) is tested on its own.
+      if (tail === "/design/kit") return json(res, 200, fakeKit);
+      if (tail === "/design/kit/icons") {
+        const q = (url.searchParams.get("q") ?? "").toLowerCase();
+        return json(res, 200, { icons: fakeIcons.filter((ic) => !q || ic.name.includes(q)) });
+      }
+      if (tail === "/design/kit/preview") {
+        res.writeHead(200, { "content-type": "image/svg+xml" });
+        return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#ddd"/></svg>');
+      }
+      if (tail === "/design/kit/apply") {
+        const { doc, page, ops } = await body(req);
+        state.kitOps.push(...ops);
+        const created = [];
+        const target = doc.pages.find((p) => p.id === page) ?? doc.pages[0];
+        for (const op of ops) {
+          if (op.op === "set_theme") doc.theme = { id: op.name, ...(op.accent ? { accent: op.accent } : {}) };
+          if (op.op === "insert") {
+            const id = op.id ?? op.block.split("/")[1];
+            target.children.push({ id, type: "frame", name: fakeKit.blocks.find((b) => b.id === op.block)?.title ?? op.block, x: 0, y: 0, width: 400, height: 200, fills: [{ type: "solid", color: "#FFFFFF" }], children: [] });
+            created.push(id);
+          }
+          if (op.op === "add") {
+            const id = `icon${state.kitOps.length}`;
+            target.children.push({ id, type: "path", name: `Icon/${op.node.icon}`, x: op.node.x ?? 0, y: op.node.y ?? 0, width: 24, height: 24, d: "M4 12h16", view_box: [24, 24], strokes: [{ color: "#000000", width: 2, cap: "round", join: "round" }] });
+            created.push(id);
+          }
+        }
+        return json(res, 200, { doc, created, notes: [] });
+      }
       return json(res, 404, { message: `no route ${tail}` });
     }
     serveFile(res, p);

@@ -49,6 +49,20 @@ async function openChat() {
   await ready();
 }
 
+/** Presses Escape until the element is gone: under load a key can reach the window before the menu has focus. */
+async function escapeUntilGone(selector) {
+  for (let i = 0; i < 6; i++) {
+    await page.keyboard.press("Escape");
+    try {
+      await page.waitForSelector(selector, { state: "detached", timeout: 3000 });
+      return;
+    } catch {
+      // Not closed yet: press again.
+    }
+  }
+  await page.waitForSelector(selector, { state: "detached" });
+}
+
 beforeAll(async () => {
   fs.mkdirSync(path.join(os.tmpdir(), "atlas-e2e-project"), { recursive: true });
   gateway = await startFakeGateway({ renderer: path.join(appDir, "renderer", "dist") });
@@ -238,8 +252,7 @@ describe("composer menus", () => {
     });
     expect(anchored).toBe(true);
     await page.click('.model-auto [role="switch"]');
-    await page.keyboard.press("Escape");
-    await page.waitForSelector(".model-menu", { state: "detached" });
+    await escapeUntilGone(".model-menu");
     await expect.poll(() => page.evaluate(() => document.activeElement?.classList.contains("model-trigger"))).toBe(true);
     expect(await page.locator(".model-trigger").innerText()).toContain("Auto");
     await page.click(".model-trigger");
@@ -351,6 +364,74 @@ describe("the agent asks", () => {
     expect((await gateway.state()).permissionAnswers.at(-1)).toBe("allow_session");
   });
 
+  test("a plan can be sent back with a comment", async () => {
+    await openChat();
+    const plan = { ...permission, id: "plan1", tool_name: "exit_plan_mode", description: "[MODIFY] a.go", action: "exit_plan_mode", params: {} };
+    await gateway.emit("permission_request", { type: "created", payload: plan });
+    await page.waitForSelector(".dock");
+    expect(await page.locator('[data-action="changes"]').count()).toBe(1);
+    await page.click('[data-action="changes"]');
+    await page.fill(".dock-comment", "Also cover the Windows path");
+    await page.keyboard.press("Control+Enter");
+    await page.waitForSelector(".composer textarea");
+    const state = await gateway.state();
+    expect(state.permissionAnswers.at(-1)).toBe("deny");
+    expect(state.permissionFeedback.at(-1)).toBe("Also cover the Windows path");
+
+    // An ordinary permission has no change request.
+    await gateway.emit("permission_request", { type: "created", payload: { ...permission, id: "p9" } });
+    await page.waitForSelector(".dock");
+    expect(await page.locator('[data-action="changes"]').count()).toBe(0);
+    await page.keyboard.press("Escape");
+    await page.waitForSelector(".composer textarea");
+  });
+
+  test("an MCP app page opens in a locked frame and can call its server's tools", async () => {
+    const html = `<button id="go" onclick="window.atlas.callTool('refresh', {n: 1}).then(function(r){document.getElementById('out').textContent = r.content}).catch(function(e){document.getElementById('out').textContent = 'error: ' + e.message})">Refresh</button><div id="out"></div>`;
+    await gateway.seed({
+      sessions: [session("s1", "Apps")],
+      messages: {
+        s1: [
+          userMessage("u1", "s1", "Show the board"),
+          assistantMessage("a1", "s1", [
+            { type: "tool_call", data: { id: "c1", name: "mcp_docs_board", input: "{}", finished: true } },
+            { type: "tool_result", data: { tool_call_id: "c1", name: "mcp_docs_board", content: "board ready", metadata: "", is_error: false } },
+          ]),
+        ],
+      },
+      mcpApp: { server: "docs", tool: "board", uri: "ui://docs/board", html },
+    });
+    await launch();
+    await page.click(".session-main");
+    await ready();
+    await page.click(".tool-row");
+    await page.click('[data-action="open-mcp-app"]');
+    const frame = page.frameLocator(".mcp-app-frame");
+    await frame.locator("#go").click();
+    await expect.poll(() => frame.locator("#out").textContent(), { timeout: 5000 }).toBe("ran refresh");
+    const calls = (await gateway.state()).mcpCalls;
+    expect(calls).toEqual([{ tool: "mcp_docs_board", call: "refresh", arguments: { n: 1 } }]);
+    // The frame has scripts but no same-origin access.
+    expect(await page.getAttribute(".mcp-app-frame", "sandbox")).toBe("allow-scripts");
+  });
+
+  test("the summary shows the agent's plan", async () => {
+    await gateway.seed({
+      sessions: [session("s1", "Planned", { todos: [{ id: "1", content: "Read the code", status: "completed", active_form: "Reading" }, { id: "2", content: "Write the fix", status: "in_progress", active_form: "Writing the fix" }, { id: "3", content: "Run the tests", status: "pending", active_form: "Running" }] })],
+      messages: { s1: [userMessage("u1", "s1", "Fix it"), assistantMessage("a1", "s1", parts("On it."))] },
+    });
+    await launch();
+    await page.click(".session-main");
+    await ready();
+    await page.click("[data-summary-trigger]");
+    await page.waitForSelector(".plan-step");
+    expect(await page.locator(".plan-step").count()).toBe(3);
+    expect(await page.locator('.plan-step[data-status="completed"]').count()).toBe(1);
+    expect(await page.textContent(".summary-pop")).toContain("Writing the fix");
+    expect(await page.textContent(".summary-pop")).toContain("1/3");
+    await page.keyboard.press("Escape");
+  });
+
   test("question dock collects an answer", async () => {
     await openChat();
     await gateway.emit("question_batch_request", {
@@ -410,8 +491,7 @@ describe("keyboard", () => {
     await page.waitForSelector(".settings");
     for (let i = 0; i < 12; i++) await page.keyboard.press("Tab");
     expect(await page.evaluate(() => !!document.activeElement?.closest(".settings"))).toBe(true);
-    await page.keyboard.press("Escape");
-    await page.waitForSelector(".settings", { state: "detached" });
+    await escapeUntilGone(".settings");
     expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("TEXTAREA");
   });
 
@@ -609,8 +689,7 @@ describe("keyboard shortcuts", () => {
     await page.waitForSelector("text=Press keys…");
     await page.keyboard.press("Control+Alt+J");
     await page.waitForSelector('[aria-label="Search chats: Ctrl+Alt+J"]');
-    await page.keyboard.press("Escape");
-    await page.waitForSelector(".settings", { state: "detached" });
+    await escapeUntilGone(".settings");
 
     await page.keyboard.press("Control+p");
     await page.waitForTimeout(150);
@@ -625,8 +704,7 @@ describe("keyboard shortcuts", () => {
     await page.keyboard.press("Control+,");
     await page.click('.settings-tab:has-text("Keyboard shortcuts")');
     await page.click('[aria-label^="Search chats:"]');
-    await page.keyboard.press("Escape");
-    await page.waitForSelector("text=Press keys…", { state: "detached" });
+    await escapeUntilGone("text=Press keys…");
     expect(await page.locator(".settings").count()).toBe(1);
 
     await page.click('[aria-label^="Search chats:"]');
@@ -708,8 +786,7 @@ describe("a sent message", () => {
   test("Esc leaves the message as it was", async () => {
     await openChat();
     await edit("Never mind");
-    await page.keyboard.press("Escape");
-    await page.waitForSelector(".user-edit", { state: "detached" });
+    await escapeUntilGone(".user-edit");
     expect(await page.locator(".user-text").innerText()).toBe("Hello");
     expect((await gateway.state()).forks).toEqual([]);
   });
@@ -954,12 +1031,27 @@ describe("the side panel", () => {
     await page.waitForSelector(".side-panel", { state: "detached" });
   });
 
+  // The box of an element once two reads a frame apart agree, so a pointer
+  // aimed at it does not land where a transition has just moved it from.
+  async function settledBox(selector) {
+    let last = null;
+    for (let i = 0; i < 60; i++) {
+      const box = await page.locator(selector).boundingBox();
+      if (last && box && Math.abs(box.x - last.x) < 0.5 && Math.abs(box.y - last.y) < 0.5) return box;
+      last = box;
+      await page.waitForTimeout(50);
+    }
+    throw new Error(`${selector} did not stop moving`);
+  }
+
   test("dragging the left edge resizes live, keeps both sides usable, persists, and double click resets", async () => {
     await openChat();
     await page.click(toggle);
     await page.waitForSelector(".side-panel");
     await expect.poll(async () => Math.round(await panelWidth())).toBe(520);
-    const edge = await page.locator(".panel-handle").boundingBox();
+    // The panel is 520 wide at once but slides in as its grid column opens, so
+    // wait for the handle to stop moving before grabbing it.
+    const edge = await settledBox(".panel-handle");
     const y = edge.y + 300;
     await page.mouse.move(edge.x + 5, y);
     await page.mouse.down();
@@ -1123,7 +1215,11 @@ describe("the side panel", () => {
     // The side chat is not a chat of the sidebar.
     expect(await page.locator(".session-main").count()).toBe(1);
 
-    await page.fill(".side-chat .composer textarea", "Only in the side chat");
+    // The new side chat has the focus: what the person types next goes there,
+    // not into the main thread's composer.
+    await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest(".side-chat .composer"))).toBe(true);
+    await page.keyboard.type("Only in the side chat");
+    expect(await page.locator(".conversation:not(.side-chat) .composer textarea").inputValue()).toBe("");
     await page.keyboard.press("Enter");
     await expect.poll(async () => (await gateway.state()).prompts.at(-1)).toMatchObject({ sid: "side2", prompt: "Only in the side chat" });
     expect((await gateway.state()).prompts.filter((p) => p.prompt === "Only in the side chat").map((p) => p.sid)).toEqual(["side2"]);
@@ -1244,14 +1340,12 @@ describe("the side panel", () => {
     expect(await viewCount()).toBe(1);
     expect(await page.locator(".web-snapshot").count()).toBe(0);
     expect(await onTop(".summary-pop")).toBe(true);
-    await page.keyboard.press("Escape");
-    await page.waitForSelector(".summary-pop", { state: "detached" });
+    await escapeUntilGone(".summary-pop");
     await page.click('.side-panel [aria-label="More"]');
     await page.waitForSelector(".menu");
     expect(await viewCount()).toBe(1);
     expect(await onTop(".menu")).toBe(true);
-    await page.keyboard.press("Escape");
-    await page.waitForSelector(".menu", { state: "detached" });
+    await escapeUntilGone(".menu");
     expect(await viewCount()).toBe(1);
 
     // A drag of the panel's edge follows the pointer live, also across the page.
@@ -1317,15 +1411,13 @@ describe("the side panel", () => {
     expect(box.y).toBeGreaterThanOrEqual(40);
     // Focus moves into it; Esc closes it and returns focus to the button.
     expect(await page.evaluate(() => !!document.activeElement?.closest(".summary-pop"))).toBe(true);
-    await page.keyboard.press("Escape");
-    await page.waitForSelector(".summary-pop", { state: "detached" });
+    await escapeUntilGone(".summary-pop");
     expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("Chat summary");
 
     // The keyboard opens it, and the shortcut does as well.
     await page.keyboard.press("Enter");
     await page.waitForSelector(".summary-pop");
-    await page.keyboard.press("Escape");
-    await page.waitForSelector(".summary-pop", { state: "detached" });
+    await escapeUntilGone(".summary-pop");
     await page.keyboard.press("Control+Shift+u");
     await page.waitForSelector(".summary-pop");
 
@@ -1628,8 +1720,7 @@ describe("the panel browser's features", () => {
     await page.fill(".find-bar input", "zzzz");
     await expect.poll(() => page.locator(".find-count").innerText()).toBe("No matches");
     expect(await page.locator('[aria-label="Next match"]').isDisabled()).toBe(true);
-    await page.keyboard.press("Escape");
-    await page.waitForSelector(".find-bar", { state: "detached" });
+    await escapeUntilGone(".find-bar");
     // The menu opens it as well.
     await menu("Find in page");
     await page.waitForSelector(".find-bar input");
@@ -1642,8 +1733,7 @@ describe("the panel browser's features", () => {
     await page.click('[aria-label="Zoom in"]');
     await page.click('[aria-label="Zoom in"]');
     await expect.poll(() => page.locator(".zoom-value").innerText()).toBe("125%");
-    await page.keyboard.press("Escape");
-    await page.waitForSelector(".web-menu", { state: "detached" });
+    await escapeUntilGone(".web-menu");
     expect((await viewInfo()).zoom).toBeCloseTo(1.25, 2);
     expect(await page.locator(".address-chip").innerText()).toBe("125%");
     await keyInView("=", ["control"]);
@@ -1658,8 +1748,7 @@ describe("the panel browser's features", () => {
     await page.waitForSelector(".web-menu");
     await page.click('[aria-label="Zoom in"]');
     await page.click('[aria-label="Zoom in"]');
-    await page.keyboard.press("Escape");
-    await page.waitForSelector(".web-menu", { state: "detached" });
+    await escapeUntilGone(".web-menu");
 
     // The same site in another page keeps it; so does a new tab.
     await page.fill('input[aria-label="Search or enter URL"]', `${gateway.origin}/__test/second-same-host`);
@@ -2112,8 +2201,7 @@ describe("the panel browser's features", () => {
     for (let i = 0; i < 6; i++) {
       await page.click('[aria-label="Chat summary"]');
       await page.waitForSelector(".summary-pop");
-      await page.keyboard.press("Escape");
-      await page.waitForSelector(".summary-pop", { state: "detached" });
+      await escapeUntilGone(".summary-pop");
     }
     expect(await viewCount()).toBe(1);
     await menu("Copy address");
@@ -2136,11 +2224,27 @@ describe("the panel browser's features", () => {
     await page.waitForSelector(".summary-pop");
     await page.click('.summary-pop [aria-label="Project menu"]');
     await page.waitForSelector(".menu");
+    // The menu takes focus a frame after it appears; an Esc before that has
+    // nothing to close it, so press it once focus is inside, as a person would.
+    await page.waitForFunction(() => document.activeElement?.closest(".menu"));
     await page.keyboard.press("Escape");
     await page.waitForSelector(".menu", { state: "detached" });
     expect(await page.locator(".summary-pop").count()).toBe(1);
+    await page.waitForFunction(() => document.activeElement?.closest(".summary-pop"));
     await page.keyboard.press("Escape");
     await page.waitForSelector(".summary-pop", { state: "detached" });
+  });
+
+  test("a chat's preview card stays shut after its row is clicked, and comes back on the next hover", async () => {
+    await openChat();
+    // The pointer is still on the row it clicked: no preview may open late on
+    // top of what comes next, where it would take that menu's Esc.
+    await page.waitForTimeout(900);
+    expect(await page.locator(".hover-card").count()).toBe(0);
+    const row = await page.locator(".session-main").boundingBox();
+    await page.mouse.move(row.x + row.width + 300, row.y + 300);
+    await page.mouse.move(row.x + 20, row.y + row.height / 2, { steps: 3 });
+    await page.waitForSelector(".hover-card");
   });
 
   test("the side panel saves a project's panel without erasing another project's", async () => {
@@ -2276,8 +2380,7 @@ describe("the panel browser's features", () => {
     await page.click('.summary-sources .summary-row:has-text("notes.txt")');
     await page.waitForSelector(".preview-text");
     expect(await page.locator(".preview-text").innerText()).toBe("fixture notes text");
-    await page.keyboard.press("Escape");
-    await page.waitForSelector(".preview-text", { state: "detached" });
+    await escapeUntilGone(".preview-text");
   });
 
   // ----- Round three -----
@@ -2351,8 +2454,7 @@ describe("the panel browser's features", () => {
     await page.keyboard.press("Control+f");
     await page.waitForSelector(".find-bar");
     await page.waitForTimeout(500);
-    await page.keyboard.press("Escape");
-    await page.waitForSelector(".find-bar", { state: "detached" });
+    await escapeUntilGone(".find-bar");
     await page.waitForTimeout(500);
     const frames = await page.evaluate(() => {
       window.__run = false;
@@ -3223,8 +3325,66 @@ describe("the design tool", () => {
     await expect.poll(() => page.locator(".design-present-bar .design-muted").innerText()).toBe("Detail");
     await page.click('.design-present button[aria-label="Back"]');
     await expect.poll(() => page.locator(".design-present-bar .design-muted").innerText()).toBe("Home");
-    await page.keyboard.press("Escape");
-    await page.waitForSelector(".design-present", { state: "detached" });
+    await escapeUntilGone(".design-present");
   });
+
+  test("the swarm dialog sends a brief that sets one page and one agent per variant", async () => {
+    const flow = { format: "atlas-design", version: 1, name: "Shop", pages: [{ id: "p1", name: "Page 1", background: "#F5F5F5", children: [] }] };
+    await openDesign({ flow });
+    await page.waitForSelector(".design-canvas[data-ready]");
+    const before = (await gateway.state()).prompts.length;
+    await page.click('button[aria-label="Swarm"]');
+    await page.waitForSelector(".design-swarm");
+    expect(await page.locator(".design-swarm button[data-on]").isDisabled()).toBe(true);
+    await page.fill(".design-swarm textarea", "A landing page for a coffee shop");
+    await page.fill('.design-swarm input[type="number"]', "9");
+    expect(await page.inputValue('.design-swarm input[type="number"]')).toBe("4");
+    await page.fill('.design-swarm input[type="text"]', "designer-a designer-b");
+    await page.click(".design-swarm button[data-on]");
+    await page.waitForSelector(".design-swarm", { state: "detached" });
+    await expect.poll(async () => (await gateway.state()).prompts.length).toBe(before + 1);
+    const sent = JSON.stringify((await gateway.state()).prompts.at(-1));
+    expect(sent).toContain("A landing page for a coffee shop");
+    expect(sent).toContain("Variant D");
+    expect(sent).toContain("run_in_background: true");
+    expect(sent).toContain("designer-a, designer-b");
+  });
+
+  test("the library switches the theme, places a block where it belongs and adds icons", async () => {
+    const flow = { format: "atlas-design", version: 1, name: "Shop", pages: [{ id: "p1", name: "Page 1", background: "#F5F5F5", children: [] }] };
+    await openDesign({ flow });
+    await page.waitForSelector(".design-canvas[data-ready]");
+    await page.click('button[aria-label="Library"]');
+    await page.waitForSelector(".design-library");
+    // A design without a theme opens on the themes.
+    await page.waitForSelector('.design-theme[aria-label="Zinc"]');
+    await page.click('.design-theme[aria-label="iOS"]');
+    await expect.poll(async () => (await saved("flow"))?.theme?.id).toBe("ios");
+    await page.click('.design-accent[aria-label="grass"]');
+    await expect.poll(async () => (await saved("flow"))?.theme).toEqual({ id: "ios", accent: "grass" });
+
+    // Blocks open on the theme's platform and land selected.
+    await page.click('.design-library-tabs [role="tab"]:has-text("Blocks")');
+    await page.waitForSelector('.design-block[aria-label="Grouped list"]');
+    expect(await page.locator('.design-block[aria-label="Hero"]').count()).toBe(0);
+    await page.click('.design-block[aria-label="Grouped list"]');
+    await expect.poll(async () => (await saved("flow"))?.pages[0].children.map((n) => n.id)).toEqual(["list"]);
+    await expect.poll(layerNames).toContain("Grouped list");
+    expect(await page.locator(".design-layer[aria-selected=true] .design-row-name").allInnerTexts()).toEqual(["Grouped list"]);
+
+    // Icons search and go into the selected frame.
+    await page.click('.design-library-tabs [role="tab"]:has-text("Icons")');
+    await page.fill(".design-library-search", "hea");
+    await page.waitForSelector('.design-icon[aria-label="heart"]');
+    expect(await page.locator('.design-icon[aria-label="house"]').count()).toBe(0);
+    await page.click('.design-icon[aria-label="heart"]');
+    await expect.poll(async () => (await gateway.state()).kitOps.at(-1)).toMatchObject({ op: "add", parent: "list", node: { icon: "heart" } });
+
+    // The icon is saved with the list; Escape closes the library.
+    await expect.poll(async () => (await saved("flow"))?.pages[0].children.length).toBe(2);
+    await page.locator(".design-library").press("Escape");
+    await page.waitForSelector(".design-library", { state: "detached" });
+  });
+
 
 });

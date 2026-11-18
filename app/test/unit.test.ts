@@ -1197,6 +1197,48 @@ describe("a sub-agent started in the background", () => {
   });
 });
 
+describe("the agents a chat started", () => {
+  const message = (id: string, parts: unknown[]) => ({ id, session_id: "s", role: "assistant", parts, model: "", provider: "", created_at: 1, updated_at: 1 }) as never;
+  const call = (id: string, name: string, input: object) => ({ type: "tool_call", data: { id, name, input: JSON.stringify(input), finished: true } });
+  const result = (id: string, name: string, content: string, is_error = false) => ({ type: "tool_result", data: { tool_call_id: id, name, content, metadata: "", is_error } });
+  const started = (id: string) => `Started in the background as ${id}. Carry on with other work.`;
+
+  test("a background worker counts as running until its answer is read", async () => {
+    const { agentCounts, settledRuns } = await import("../renderer/src/lib/subagent");
+    const chat = [
+      message("m1", [call("a1", "agent", { prompt: "api", run_in_background: true }), call("a2", "agent", { prompt: "page", run_in_background: true })]),
+      message("m2", [result("a1", "agent", started("agent-1a2b3c4d")), result("a2", "agent", started("agent-5e6f7a8b"))]),
+    ];
+    expect(agentCounts(chat)).toEqual({ done: 0, running: 2 });
+
+    // Checking on one that is still going settles nothing.
+    chat.push(message("m3", [call("r1", "agent_result", { id: "agent-1a2b3c4d" }), result("r1", "agent_result", "agent-1a2b3c4d is still running (12s so far).")]));
+    expect(agentCounts(chat)).toEqual({ done: 0, running: 2 });
+
+    // Waiting for whichever finishes next names the run it returns.
+    chat.push(message("m4", [call("r2", "agent_result", { wait: true }), result("r2", "agent_result", "agent-5e6f7a8b (frontend: page) finished.\n\nPage built.")]));
+    expect(settledRuns(chat)).toEqual(new Set(["agent-5e6f7a8b"]));
+    expect(agentCounts(chat)).toEqual({ done: 1, running: 1 });
+
+    // Reading by id, even a failed run, settles it.
+    chat.push(message("m5", [call("r3", "agent_result", { id: "agent-1a2b3c4d", wait: true }), result("r3", "agent_result", "model unavailable", true)]));
+    expect(agentCounts(chat)).toEqual({ done: 2, running: 0 });
+  });
+
+  test("a foreground agent is running until its result arrives, and board messages are not agents", async () => {
+    const { agentCounts } = await import("../renderer/src/lib/subagent");
+    const chat = [message("m1", [call("a1", "agent", { prompt: "look" }), call("t1", "team_send", { text: "@all hi" }), result("t1", "team_send", "Sent (seq 1).")])];
+    expect(agentCounts(chat)).toEqual({ done: 0, running: 1 });
+    chat.push(message("m2", [result("a1", "agent", "Found it.")]));
+    expect(agentCounts(chat)).toEqual({ done: 1, running: 0 });
+    // Stopping a worker settles it; an unknown id does not.
+    const stopped = [message("m1", [call("a1", "agent", { prompt: "x", run_in_background: true }), result("a1", "agent", started("agent-0000aaaa")), call("c1", "agent_result", { id: "agent-0000aaaa", cancel: true }), result("c1", "agent_result", "Stopped agent-0000aaaa.")])];
+    expect(agentCounts(stopped)).toEqual({ done: 1, running: 0 });
+    const unknown = [message("m1", [call("a1", "agent", { prompt: "x", run_in_background: true }), result("a1", "agent", started("agent-0000aaaa")), call("c1", "agent_result", { id: "agent-0000aaaa" }), result("c1", "agent_result", "no background sub-agent agent-0000aaaa in this session", true)])];
+    expect(agentCounts(unknown)).toEqual({ done: 0, running: 1 });
+  });
+});
+
 describe("what a finished sub-agent run reports", () => {
   test("reads the run out of a result's metadata", () => {
     const metadata = JSON.stringify({ run: { duration_ms: 65_400, cost_usd: 0.02, files_changed: ["a.go", "b.go"] } });
@@ -1924,5 +1966,168 @@ describe("developer handoff", () => {
     expect(kt).toContain("Column(");
     expect(kt).toContain("Arrangement.spacedBy(8.dp)");
     expect(kt).toContain("RoundedCornerShape(12.dp)");
+  });
+
+});
+
+describe("design swarm", () => {
+  const S = () => import("../renderer/src/features/design/swarm-prompt");
+
+  test("the variant count is kept in range and agent names are cleaned", async () => {
+    const { clampCount, parseAgents, variantName } = await S();
+    expect([clampCount(0), clampCount(3.4), clampCount(99), clampCount(NaN)]).toEqual([2, 3, 4, 2]);
+    expect(parseAgents("designer, critic  bad name! x;y gpt.5")).toEqual(["designer", "critic", "bad", "gpt.5"]);
+    expect(variantName(0)).toBe("Variant A");
+    expect(variantName(2)).toBe("Variant C");
+  });
+
+  test("the prompt sets one page, one direction and one background agent per variant", async () => {
+    const { swarmPrompt } = await S();
+    const text = swarmPrompt({ file: "landing", brief: "A landing page for a coffee shop", count: 3, agents: ["designer-a", "designer-b"] });
+    expect(text).toContain("design file \"landing\"");
+    expect(text).toContain("A landing page for a coffee shop");
+    for (const v of ["Variant A", "Variant B", "Variant C"]) expect(text).toContain("- " + v + ":");
+    expect(text).not.toContain("Variant D");
+    expect(text).toContain("run_in_background: true");
+    expect(text).toContain("only touch its own page");
+    expect(text).toContain("ONE top-level frame");
+    // The lead sets one theme for every variant; the variants build from the kit and lint their page.
+    expect(text).toContain("set_theme");
+    expect(text).toContain("never call set_theme");
+    expect(text).toContain("insert blocks");
+    expect(text).toContain("run lint");
+    expect(text).toContain("designer-a, designer-b");
+    expect(text).toContain("Cycle the list");
+    expect(swarmPrompt({ file: "x", brief: "b", count: 2, agents: [] })).not.toContain("agent_name");
+  });
+});
+
+describe("design kit", () => {
+  test("a hugging column measures wrapped text at its known width", () => {
+    const words = "one two three four five six seven eight nine ten eleven twelve";
+    const doc = resolveLayout(
+      docOf([
+        stack({ dir: "column", gap: 0, pad: 0, cross: "start" }, [{ id: "t", type: "text", x: 0, y: 0, width: 10, height: 10, text: words, font: { family: "Inter", size: 10, weight: 400 }, auto_resize: "height", sizing_x: "fill" }], { width: 100, sizing_y: "hug" }),
+      ]),
+      null,
+      designText.sizeOf,
+    );
+    const text = nodeIn(doc, "t");
+    expect(text.width).toBe(100);
+    // The frame is as tall as the text wrapped at 100px, not at its first 10px.
+    expect(nodeIn(doc, "f").height).toBe(designText.sizeOf(text).height);
+    expect(nodeIn(doc, "f").height).toBeLessThan(200);
+  });
+
+  test("icon strokes keep their caps and the document keeps its theme", () => {
+    const doc = designModel.sanitizeDoc({
+      theme: { id: "stone", accent: "grass" },
+      pages: [{ id: "p", name: "P", background: "#FFFFFF", children: [{ id: "i", type: "path", d: "M0 0L10 10", x: 0, y: 0, width: 24, height: 24, strokes: [{ color: "#000000", width: 2, cap: "round", join: "round" }, { color: "#000000", width: 1, cap: "spiky" }] }] }],
+    });
+    expect(doc.theme).toEqual({ id: "stone", accent: "grass" });
+    const strokes = doc.pages[0]!.children[0]!.strokes!;
+    expect([strokes[0]!.cap, strokes[0]!.join]).toEqual(["round", "round"]);
+    expect(strokes[1]!.cap).toBeUndefined();
+    expect(designModel.sanitizeDoc({ theme: { id: 5 }, pages: [] }).theme).toBeUndefined();
+  });
+
+  test("kit fonts resolve to their bundled faces", () => {
+    expect(designText.quoteFamily("Figtree")).toBe('"Figtree Variable", "Figtree", sans-serif');
+    expect(designText.quoteFamily("Fraunces")).toBe('"Fraunces Variable", "Fraunces", serif');
+    expect(designText.quoteFamily("Poppins")).toBe('"Poppins", sans-serif');
+    expect(designText.quoteFamily("Georgia")).toBe('"Georgia", sans-serif');
+  });
+
+  test("blocks go into a column frame and the library opens on the theme's platform", async () => {
+    const { blockTarget, platformOf } = await import("../renderer/src/features/design/Library");
+    const frame = (layout?: Record<string, unknown>) => ({ id: "f", type: "frame", name: "F", x: 0, y: 0, width: 10, height: 10, ...(layout ? { layout } : {}) }) as DNode;
+    expect(blockTarget(frame({ dir: "column", gap: 0, pad: [0, 0, 0, 0], main: "start", cross: "start" }))).toBe("f");
+    expect(blockTarget(frame({ dir: "row", gap: 0, pad: [0, 0, 0, 0], main: "start", cross: "start" }))).toBeUndefined();
+    expect(blockTarget(frame())).toBeUndefined();
+    expect(blockTarget(null)).toBeUndefined();
+    const kit = { themes: [{ id: "ios", platform: "ios" }], accents: [], blocks: [], icons: 0 } as never;
+    expect(platformOf(kit, "ios")).toBe("ios");
+    expect(platformOf(kit, "zinc")).toBe("web");
+    expect(platformOf(null, undefined)).toBe("web");
+  });
+});
+
+describe("design layout grids", async () => {
+  const geometry = await import("../renderer/src/features/design/geometry");
+  const model = await import("../renderer/src/features/design/model");
+
+  test("columns stretch across the frame inside the margins", () => {
+    const tracks = geometry.gridTracks({ pattern: "columns", count: 4, gutter: 16, margin: 16 }, 390);
+    expect(tracks.map(([at]) => at)).toEqual([16, 109.5, 203, 296.5]);
+    expect(tracks[0]![1]).toBeCloseTo(77.5);
+    const [lastAt, lastSize] = tracks[3]!;
+    expect(lastAt + lastSize).toBeCloseTo(374);
+  });
+
+  test("fixed columns sit at the start, the center or the end", () => {
+    expect(geometry.gridTracks({ pattern: "columns", count: 2, size: 100, gutter: 10, align: "center" }, 410)).toEqual([[100, 100], [210, 100]]);
+    expect(geometry.gridTracks({ pattern: "columns", count: 2, size: 100, gutter: 10, margin: 20, align: "end" }, 410)).toEqual([[180, 100], [290, 100]]);
+  });
+
+  test("grids survive sanitizing on frames only, with bad values repaired", () => {
+    const doc = model.sanitizeDoc({
+      format: "atlas-design",
+      version: 1,
+      name: "g",
+      pages: [{ id: "p", name: "P", children: [
+        { id: "f", type: "frame", name: "F", x: 0, y: 0, width: 390, height: 844, grids: [{ pattern: "grid", size: 0 }, { pattern: "bogus", count: -1, align: "sideways", color: "red" }] },
+        { id: "r", type: "rect", name: "R", x: 0, y: 0, width: 10, height: 10, grids: [{ pattern: "rows" }] },
+      ] }],
+    });
+    const [f, r] = doc.pages[0]!.children;
+    expect(f!.grids).toEqual([{ pattern: "grid", size: 8 }, { pattern: "columns", count: 5, align: "stretch" }]);
+    expect(r!.grids).toBeUndefined();
+  });
+});
+
+describe("design sections, slices, guides, crop and angular gradients", async () => {
+  const geometry = await import("../renderer/src/features/design/geometry");
+  const model = await import("../renderer/src/features/design/model");
+  const render = await import("../renderer/src/features/design/render");
+
+  test("a section holds frames, does not clip by default, and a slice holds nothing", () => {
+    const doc = model.sanitizeDoc({
+      pages: [{ id: "p", name: "P", background: "#fff", children: [
+        { id: "s", type: "section", name: "Flow", width: 500, height: 300, children: [{ id: "f", type: "frame", name: "A", width: 100, height: 100 }] },
+        { id: "sl", type: "slice", name: "Hero", width: 40, height: 40 },
+      ] }],
+    });
+    const [section, slice] = doc.pages[0]!.children;
+    expect(section!.children).toHaveLength(1);
+    expect(section!.clip).toBe(false);
+    expect(slice!.type).toBe("slice");
+  });
+
+  test("ruler guides keep only valid axes and positions", () => {
+    const doc = model.sanitizeDoc({ pages: [{ id: "p", name: "P", children: [], guides: [{ axis: "x", at: 12.4 }, { axis: "z", at: 1 }, { axis: "y", at: "no" }, { axis: "y", at: -8 }] }] });
+    expect(doc.pages[0]!.guides).toEqual([{ axis: "x", at: 12.4 }, { axis: "y", at: -8 }]);
+  });
+
+  test("snapping reaches a guide on its own axis only", () => {
+    const page = model.sanitizeDoc({ pages: [{ id: "p", name: "P", children: [{ id: "a", type: "rect", name: "R", x: 0, y: 0, width: 10, height: 10 }], guides: [{ axis: "x", at: 103 }] }] }).pages[0]!;
+    const snap = geometry.snapRect({ x: 100, y: 55, width: 20, height: 20 }, geometry.snapTargets(page, ["zz"]), 6);
+    expect(snap.dx).toBe(3);
+    expect(snap.dy).toBe(0);
+  });
+
+  test("an image's crop is clamped, and dropped when it does nothing", () => {
+    const kept = model.createNode("image", { src: "a.png", crop: { zoom: 2, x: 0.2, y: 0 } });
+    expect(kept.crop).toEqual({ zoom: 2, x: 0.2, y: 0 });
+    expect(model.createNode("image", { src: "a.png", crop: { zoom: 0.2, x: 0, y: 0 } }).crop).toBeUndefined();
+    expect(model.createNode("rect", { crop: { zoom: 2, x: 0, y: 0 } }).crop).toBeUndefined();
+  });
+
+  test("an angular gradient blends between its stops", () => {
+    const stops = [{ offset: 0, color: "#000000" }, { offset: 1, color: "#FFFFFF" }];
+    expect(render.colorAt(stops, 0.5).rgb).toBe("#808080");
+    expect(render.colorAt(stops, 0).rgb).toBe("#000000");
+    expect(render.colorAt(stops, 2).rgb).toBe("#FFFFFF");
+    const doc = model.sanitizeDoc({ pages: [{ id: "p", name: "P", children: [{ id: "r", type: "rect", name: "R", width: 50, height: 50, fills: [{ type: "angular", angle: 30, stops }] }] }] });
+    expect(doc.pages[0]!.children[0]!.fills![0]).toMatchObject({ type: "angular", angle: 30 });
   });
 });

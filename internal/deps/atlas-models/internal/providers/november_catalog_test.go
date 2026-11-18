@@ -132,10 +132,10 @@ func TestNovemberGemini4Family(t *testing.T) {
 	for _, id := range []string{"gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon"} {
 		findModel(t, all, "copilot", id)
 	}
-	// Antigravity routes need the account's own client and effort naming,
-	// which only a live account can confirm, so they are not added.
-	for _, m := range all["antigravity"].Models {
-		require.NotContains(t, []string{"gemini-4-carbon", "gemini-4-hydrogen"}, m.ID)
+	// Antigravity lists the three per Google's table; the adapter routes all
+	// Gemini 4 models through the CLI client with the low/medium/high suffix.
+	for _, id := range []string{"gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon"} {
+		findModel(t, all, "antigravity", id)
 	}
 }
 

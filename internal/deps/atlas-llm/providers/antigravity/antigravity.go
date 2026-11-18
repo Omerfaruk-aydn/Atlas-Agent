@@ -281,14 +281,14 @@ func resolveModel(modelID, effort string) (string, bool, error) {
 			continue
 		}
 		switch base {
-		case "gemini-4-argon", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-pro",
+		case "gemini-4-argon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-pro",
 			"claude-sonnet-5-5", "claude-opus-5-5", "gpt-oss-120b":
 			modelID, effort = base, cmp.Or(effort, level)
 		}
 		break
 	}
 	switch modelID {
-	case "gemini-4-argon", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash":
+	case "gemini-4-argon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash":
 		effort = cmp.Or(effort, "medium")
 		if effort != "low" && effort != "medium" && effort != "high" {
 			return "", true, fmt.Errorf("antigravity: %s supports low, medium or high effort", modelID)
@@ -561,7 +561,7 @@ func toGeminiPrompt(prompt fantasy.Prompt) (*geminiContent, []geminiContent, []f
 // the login stores (verified 2026-10-27 on a g1-pro-tier account: the same
 // token and project succeed once the product token is antigravity/cli).
 func requiresCLIClient(modelID string) bool {
-	return strings.HasPrefix(modelID, "gemini-4-argon")
+	return strings.HasPrefix(modelID, "gemini-4-")
 }
 
 func cliUserAgent() string {

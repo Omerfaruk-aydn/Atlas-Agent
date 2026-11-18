@@ -55,7 +55,7 @@ November that a vendor page confirmed.
   routes through the Responses API like the other GPT-6 models.
 - **Antigravity**: the published table makes Carbon Ultra and Enterprise only,
   Argon Pro (paid), Ultra and Enterprise, and Hydrogen Pro (non-trial), Ultra
-  and Enterprise. Carbon and Hydrogen are **not** added: the Antigravity
+  and Enterprise. Carbon and Hydrogen were added afterwards on the same routing as Argon (CLI client, low/medium/high suffix; not live-tested). Earlier note: the Antigravity
   adapter routes Argon through the CLI client and keys effort to the route
   name, and that can only be confirmed with a live account. GPT-OSS 120B is
   removed on 2026-11-18 (the table now says so; the catalog had 2026-11-02),

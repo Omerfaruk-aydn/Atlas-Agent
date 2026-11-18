@@ -177,7 +177,7 @@ func appendToolReply(prompt fantasy.Prompt, response *fantasy.Response) fantasy.
 
 func TestArgonUsesCLIClientIdentity(t *testing.T) {
 	t.Parallel()
-	for model, wantCLI := range map[string]bool{"gemini-4-argon": true, "gemini-3.8-flash": false, "claude-sonnet-5-5": false} {
+	for model, wantCLI := range map[string]bool{"gemini-4-argon": true, "gemini-4-carbon": true, "gemini-4-hydrogen": true, "gemini-3.8-flash": false, "claude-sonnet-5-5": false} {
 		t.Run(model, func(t *testing.T) {
 			t.Parallel()
 			var gotUA string

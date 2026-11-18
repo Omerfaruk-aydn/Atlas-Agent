@@ -260,3 +260,30 @@ test("a project opened in the browser is a server workspace (1)", async ({ page 
   const list = await server<{ path: string }[]>(stack, "GET", "/workspaces")
   expect(list.some((w) => w.path.toLowerCase() === stack.second.toLowerCase())).toBe(true)
 })
+
+test("the orchestrator mode runs a team of workers from the browser", async ({ page }) => {
+  await signIn(page)
+  const ws = await workspaceID(page)
+
+  // Pick the mode where the web UI offers it: Settings -> Agent -> Mode.
+  await page.goto(new URL(page.url()).origin + "/?view=settings")
+  await page.getByRole("tab", { name: "Agent" }).click()
+  const panel = page.getByRole("tabpanel", { name: "Agent" })
+  const row = panel.locator("div", { has: page.getByText("Modes are a global setting", { exact: false }) }).filter({ has: page.getByRole("button") }).last()
+  await row.getByRole("button").click()
+  await page.getByRole("option", { name: "orchestrator" }).click()
+  await expect(panel).toContainText("as a team")
+  await expect.poll(async () => (await server<{ options?: { session_mode?: string } }>(stack, "GET", `/workspaces/${ws}/config`)).options?.session_mode).toBe("orchestrator")
+
+  await page.goto(new URL(page.url()).origin + "/")
+  await expect(page.locator("[data-slot='home-panel']")).toBeVisible()
+  await newSession(page)
+  await send(page, "[[orchestrate]] Split this into two pieces.")
+  await sessionID(page)
+  await expect(page.getByText("Orchestration complete.")).toBeVisible({ timeout: 60_000 })
+  await idle(page)
+  await expect(page.locator("[data-component='status-line']")).toContainText("orchestrator")
+
+  // Leave the shared stack in its default mode for the other tests.
+  await server(stack, "POST", `/workspaces/${ws}/config/set`, { scope: 0, key: "options.session_mode", value: "" })
+})

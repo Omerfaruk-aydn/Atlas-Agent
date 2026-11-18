@@ -6,6 +6,7 @@
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
+import { randomBytes } from "node:crypto"
 import { createServer } from "node:net"
 import { tmpdir, homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
@@ -121,7 +122,10 @@ export async function startStack(): Promise<Stack> {
   const serverPort = await freePort()
   const webPort = await freePort()
   const serverHost = `tcp://127.0.0.1:${serverPort}`
-  const childEnv: NodeJS.ProcessEnv = { ...process.env, ...env, ATLAS_AGENT_SERVER_IDLE_TIMEOUT: "600" }
+  // One explicit token for the private server, so the tests' own API calls
+  // authenticate the same way the web gateway and the CLI do.
+  const token = randomBytes(32).toString("hex")
+  const childEnv: NodeJS.ProcessEnv = { ...process.env, ...env, ATLAS_AGENT_SERVER_IDLE_TIMEOUT: "600", ATLAS_SERVER_TOKEN: token }
   delete childEnv.ATLAS_AGENT_CLIENT_SERVER
 
   track(spawn(exe, ["server", "--host", serverHost], { env: childEnv, stdio: "ignore" }), "server")
@@ -169,7 +173,10 @@ export async function launchURL(stack: Stack): Promise<string> {
 export async function server<T = any>(stack: Stack, method: string, path: string, body?: unknown): Promise<T> {
   const rsp = await fetch(`${stack.serverURL}/v1${path}`, {
     method,
-    headers: body === undefined ? {} : { "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${stack.env.ATLAS_SERVER_TOKEN}`,
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (!rsp.ok) throw new Error(`${method} ${path}: ${rsp.status} ${await rsp.text()}`)

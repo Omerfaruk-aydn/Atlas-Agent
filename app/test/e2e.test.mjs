@@ -64,7 +64,12 @@ async function escapeUntilGone(selector) {
 }
 
 beforeAll(async () => {
-  fs.mkdirSync(path.join(os.tmpdir(), "atlas-e2e-project"), { recursive: true });
+  const project = path.join(os.tmpdir(), "atlas-e2e-project");
+  fs.mkdirSync(project, { recursive: true });
+  // The project is a repository of its own, so the branch shown in the
+  // Changes bar never depends on whether the temp folder happens to sit
+  // inside another repository (a home folder under git, or none on CI).
+  if (!fs.existsSync(path.join(project, ".git"))) spawnSync("git", ["init", "-q", "-b", "main", project], { windowsHide: true });
   gateway = await startFakeGateway({ renderer: path.join(appDir, "renderer", "dist") });
 });
 
@@ -1086,8 +1091,13 @@ describe("the side panel", () => {
     expect(Math.round(await panelWidth())).toBe(620);
 
     await expect.poll(() => JSON.parse(fs.readFileSync(path.join(userData, "prefs.json"), "utf8")).ui?.panels?.[panelKey]?.width).toBe(620);
+    // A small screen (a CI runner) may restore the window narrower than it
+    // was, which would clamp the panel; give it the same size back so only
+    // the saved panel width is under test.
+    const size = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.isVisible())?.getSize());
     await relaunch();
     await page.waitForSelector(".side-panel");
+    await app.evaluate(({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows().find((win) => win.isVisible())?.setSize(w, h), size);
     await expect.poll(async () => Math.round(await panelWidth())).toBe(620);
 
     await page.locator(".panel-handle").dblclick({ position: { x: 3, y: 200 } });
@@ -1901,8 +1911,9 @@ describe("the panel browser's features", () => {
     await page.fill(".note-pop .note-input", "Check this heading");
     await page.click('.note-pop .button[data-variant="primary"]');
     await page.waitForSelector('.toast:has-text("Note added")');
+    // The note reaches the composer a moment after the toast on a slow machine.
+    await expect.poll(() => page.inputValue(".composer textarea")).toContain("> Hello from the test page");
     const composer = await page.inputValue(".composer textarea");
-    expect(composer).toContain("> Hello from the test page");
     expect(composer).toContain("Check this heading");
     expect(composer).toContain(`${gateway.origin}/__test/page`);
     // The composer took focus, which closes the popover; open it again to see the note.
@@ -2832,7 +2843,8 @@ describe("the review of a turn's changes", () => {
     await openEditedChat({ polls: 2, findings });
     await page.click('[data-action="review"]');
     await page.waitForSelector(".review-state");
-    expect(await page.locator(".review-state").innerText()).toContain("Reviewing");
+    // "Starting the review…" comes first and turns into "Reviewing" once the server answers.
+    await expect.poll(() => page.locator(".review-state").innerText()).toContain("Reviewing");
     await page.waitForSelector(".finding");
     const severities = await page.locator(".finding").evaluateAll((els) => els.map((el) => el.getAttribute("data-severity")));
     expect(severities).toEqual(["high", "low"]);

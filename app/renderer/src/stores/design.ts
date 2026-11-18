@@ -9,13 +9,29 @@ import { t } from "../lib/i18n";
 import { align, type AlignKind, distribute, fitGroups, moveBy } from "../features/design/geometry";
 import { resolveLayout } from "../features/design/layout";
 import { mergeDocs } from "../features/design/merge";
-import { createNode, type DesignDoc, type DesignNode, emptyDoc, fileSlug, findNode, insertNodes, locate, nextName, type NodeType, pageOf, patchNodes, removeNodes, sanitizeDoc, topmost, updateNodes, walk } from "../features/design/model";
+import { createNode, type DesignDoc, type DesignNode, emptyDoc, fileSlug, findNode, insertNodes, locate, nextName, type NodeType, type Page, pageOf, patchNodes, type RulerGuide, removeNodes, sanitizeDoc, topmost, updateNodes, walk } from "../features/design/model";
 import { nodePath, outlineStroke, pathFields, shapeToPath } from "../features/design/path";
 import { bakeText, changedIds, copyNodes, detachInstance, duplicate, groupSelection, instantiate, makeComponent, paste, type Reorder, reorder, reparent, ungroup } from "../features/design/ops";
 import { sizeOf } from "../features/design/text";
 import { useApp } from "./app";
 
-export type Tool = "select" | "hand" | "frame" | "rect" | "ellipse" | "line" | "polygon" | "star" | "text" | "pen" | "pencil" | "comment";
+/** A design kit op, as internal/design/ops.go reads it. */
+export interface KitOp {
+  op: "set_theme" | "insert" | "add";
+  name?: string;
+  accent?: string;
+  mode?: string;
+  block?: string;
+  id?: string;
+  parent?: string;
+  index?: number;
+  x?: number;
+  y?: number;
+  props?: Record<string, unknown>;
+  node?: Record<string, unknown>;
+}
+
+export type Tool = "select" | "hand" | "frame" | "section" | "slice" | "eyedropper" | "rect" | "ellipse" | "line" | "polygon" | "star" | "text" | "pen" | "pencil" | "comment";
 export type BoolOp = "union" | "subtract" | "intersect" | "exclude";
 
 export interface DesignFile {
@@ -91,9 +107,34 @@ interface DesignState {
   /** The path whose points are being edited. */
   editPath: string | null;
   setEditPath(id: string | null): void;
+  /** Shift+A: auto layout on the selected frames, or the selection wrapped in a new auto-layout frame. */
+  addAutoLayout(): void;
+  /** Frames' layout grids are drawn (Ctrl+Shift+4). */
+  showGrids: boolean;
+  toggleGrids(): void;
+  /** Rulers along the top and left of the canvas (Shift+R); guides are pulled out of them. */
+  showRulers: boolean;
+  toggleRulers(): void;
+  /** Adds (index -1), moves or, with `at` null, removes a ruler guide of the open page, as one undo step unless `live`. */
+  setGuide(index: number, guide: RulerGuide | null, live?: boolean): void;
+  /** The image whose crop is being adjusted on the canvas (Enter or double-click on an image). */
+  cropping: string | null;
+  setCropping(id: string | null): void;
   /** The presentation is open over the editor. */
   presenting: boolean;
   setPresenting(on: boolean): void;
+  /** The swarm dialog is open. */
+  swarming: boolean;
+  setSwarming(on: boolean): void;
+  /** The design kit library is open. */
+  library: boolean;
+  setLibrary(on: boolean): void;
+  /**
+   * Runs design kit ops (set_theme, insert, icon adds: internal/design/kit.go)
+   * on the open document through the server, as one undoable step that
+   * selects what they made. Resolves to the made nodes' ids.
+   */
+  applyKit(ops: KitOp[]): Promise<string[]>;
   /** The comment thread open in the side panel. */
   activeComment: string | null;
   setActiveComment(id: string | null): void;
@@ -197,6 +238,11 @@ export const useDesign = create<DesignState>((set, get) => {
     editing: null,
     editPath: null,
     presenting: false,
+    showGrids: true,
+    showRulers: false,
+    cropping: null,
+    swarming: false,
+    library: false,
     activeComment: null,
     flash: [],
     gesture: null,
@@ -339,6 +385,75 @@ export const useDesign = create<DesignState>((set, get) => {
     },
     setActiveComment(id) {
       set({ activeComment: id });
+    },
+    setSwarming(on) {
+      set({ swarming: on });
+    },
+    addAutoLayout() {
+      const s = get();
+      if (!s.doc || !s.selection.length) return;
+      const page = pageOf(s.doc, s.pageId);
+      const nodes = s.selection.map((id) => locate(page, id)?.node).filter((n): n is DesignNode => !!n);
+      const frames = nodes.length > 0 && nodes.every((n) => (n.type === "frame" || n.type === "component") && !n.layout);
+      // The stack runs the way the content already does: wider than tall spreads as a row.
+      const direction = (kids: DesignNode[]): "row" | "column" => {
+        if (kids.length < 2) return "column";
+        const xs = kids.map((k) => k.x + k.width / 2);
+        const ys = kids.map((k) => k.y + k.height / 2);
+        return Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys) ? "row" : "column";
+      };
+      const gapOf = (kids: DesignNode[], dir: "row" | "column"): number => {
+        const sorted = [...kids].sort((a, b) => (dir === "row" ? a.x - b.x : a.y - b.y));
+        const gaps = sorted.slice(1).map((k, i) => (dir === "row" ? k.x - (sorted[i]!.x + sorted[i]!.width) : k.y - (sorted[i]!.y + sorted[i]!.height)));
+        const avg = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 8;
+        return Math.max(0, Math.round(avg));
+      };
+      if (frames) {
+        s.patch(
+          nodes.map((n) => n.id),
+          (n) => {
+            const kids = n.children ?? [];
+            const dir = direction(kids);
+            const minX = kids.length ? Math.min(...kids.map((k) => k.x)) : 0;
+            const minY = kids.length ? Math.min(...kids.map((k) => k.y)) : 0;
+            const maxX = kids.length ? Math.max(...kids.map((k) => k.x + k.width)) : n.width;
+            const maxY = kids.length ? Math.max(...kids.map((k) => k.y + k.height)) : n.height;
+            const pad: [number, number, number, number] = kids.length ? [Math.max(0, Math.round(minY)), Math.max(0, Math.round(n.width - maxX)), Math.max(0, Math.round(n.height - maxY)), Math.max(0, Math.round(minX))] : [0, 0, 0, 0];
+            return { layout: { dir, gap: gapOf(kids, dir), pad, main: "start", cross: "start" } as NonNullable<DesignNode["layout"]> };
+          },
+        );
+        return;
+      }
+      const dir = direction(nodes);
+      const gap = gapOf(nodes, dir);
+      s.frameSelection();
+      const after = get();
+      if (after.selection.length === 1) after.patch(after.selection, () => ({ layout: { dir, gap, pad: [0, 0, 0, 0], main: "start", cross: "start" } as NonNullable<DesignNode["layout"]>, sizing_x: "hug", sizing_y: "hug" }));
+    },
+    toggleGrids() {
+      set((s) => ({ showGrids: !s.showGrids }));
+    },
+    toggleRulers() {
+      set((s) => ({ showRulers: !s.showRulers }));
+    },
+    setCropping(id) {
+      set({ cropping: id });
+    },
+    setGuide(index, guide, live) {
+      const s = get();
+      if (!s.doc) return;
+      const rewrite = (p: Page): Page => {
+        const list = [...(p.guides ?? [])];
+        if (guide === null) list.splice(index, 1);
+        else if (index < 0 || index >= list.length) list.push(guide);
+        else list[index] = guide;
+        const next: Page = { ...p, guides: list };
+        if (!list.length) delete next.guides;
+        return next;
+      };
+      const doc = { ...s.doc, pages: s.doc.pages.map((p) => (p.id === s.pageId ? rewrite(p) : p)) };
+      if (live) get().preview(doc);
+      else get().commit(doc, s.selection);
     },
     setPresenting(on) {
       set({ presenting: on, editing: null, editPath: null });
@@ -594,6 +709,26 @@ export const useDesign = create<DesignState>((set, get) => {
           saveAgain = false;
           if (get().dirty) scheduleSave();
         }
+      }
+    },
+
+    setLibrary(on) {
+      set({ library: on });
+    },
+
+    async applyKit(ops) {
+      const s = get();
+      if (!s.doc || ops.length === 0) return [];
+      try {
+        const res = await http.post<{ doc: unknown; created: string[] | null; notes: string[] | null }>(api("/kit/apply", ownWorkspace()), { doc: s.doc, page: s.pageId, ops });
+        // An edit that landed while the server worked wins; the person can click again.
+        if (get().doc !== s.doc) return [];
+        const created = res.created ?? [];
+        get().commit(sanitizeDoc(res.doc), created.length ? created : undefined);
+        return created;
+      } catch (err) {
+        useApp.getState().toast(`${t("design.kitFailed")}: ${message(err)}`, "danger");
+        return [];
       }
     },
 

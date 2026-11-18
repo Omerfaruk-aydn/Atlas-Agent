@@ -4,11 +4,12 @@
 
 import { Popover } from "radix-ui";
 import { useMemo, useState } from "react";
-import type { Message } from "../../api/types";
+import type { Message, Todo } from "../../api/types";
 import { baseName } from "../../lib/format";
 import { t } from "../../lib/i18n";
 import { hostOf, SEARCH_URL } from "../../lib/panel";
 import { useKeys } from "../../lib/shortcuts";
+import { agentCounts } from "../../lib/subagent";
 import { category, toolFile } from "../../lib/tools";
 import { IconChat, IconCopy, IconDiff, IconFile, IconFolder, IconGlobe, IconLink, IconMore, IconPlus, IconSummary, IconTerminal } from "../../primitives/icons";
 import { Menu, Modal, Tip } from "../../primitives/ui";
@@ -18,6 +19,7 @@ import { SiteFavicon } from "./SiteIcon";
 import { useSessionChanges } from "./Tools";
 
 const NO_MESSAGES: Message[] = [];
+const NO_TODOS: Todo[] = [];
 const SOURCES_SHOWN = 4;
 const SOURCES_MAX = 60;
 
@@ -47,12 +49,9 @@ export function useGathered(): Gathered {
   return useMemo(() => {
     const sources: Source[] = [];
     const seen = new Set<string>();
-    let done = 0;
-    let running = 0;
     let search = false;
     for (let i = messages.length - 1; i >= 0; i--) {
       const message = messages[i]!;
-      const answered = new Set(message.parts.flatMap((p) => (p.type === "tool_result" ? [p.data.tool_call_id] : [])));
       for (let j = message.parts.length - 1; j >= 0; j--) {
         const part = message.parts[j]!;
         if (part.type === "image_url" && message.role === "user") {
@@ -66,10 +65,7 @@ export function useGathered(): Gathered {
         }
         if (part.type !== "tool_call") continue;
         const cat = category(part.data.name);
-        if (cat === "agent") {
-          if (answered.has(part.data.id)) done++;
-          else running++;
-        } else if (cat === "fetch") {
+        if (cat === "fetch") {
           const url = field(part.data.input, "url");
           if (/^https?:\/\//i.test(url) && !seen.has(url)) {
             seen.add(url);
@@ -90,7 +86,7 @@ export function useGathered(): Gathered {
         }
       }
     }
-    return { sources: sources.slice(0, SOURCES_MAX), agents: { done, running } };
+    return { sources: sources.slice(0, SOURCES_MAX), agents: agentCounts(messages) };
   }, [messages]);
 }
 
@@ -130,6 +126,8 @@ export function SummaryButton() {
   const workspace = useApp((s) => s.workspace);
   const currentId = useApp((s) => s.currentId);
   const sideChats = useApp((s) => s.sideChats);
+  const plan = useApp((s) => (s.currentId ? s.sessions.find((x) => x.id === s.currentId)?.todos : undefined)) ?? NO_TODOS;
+  const planDone = plan.filter((x) => x.status === "completed").length;
   const changes = useSessionChanges();
   const { sources, agents } = useGathered();
   const openTool = usePanel((s) => s.openTool);
@@ -227,6 +225,23 @@ export function SummaryButton() {
                 <span className="summary-muted">{t("summary.none")}</span>
               )}
             </button>
+
+            {plan.length > 0 && (
+              <>
+                <div className="summary-section">
+                  <h3>{t("summary.plan")}</h3>
+                  <span className="summary-muted">
+                    {planDone}/{plan.length} {t("summary.planDone")}
+                  </span>
+                </div>
+                {plan.map((step, i) => (
+                  <div key={step.id ?? i} className="summary-row summary-static plan-step" data-status={step.status}>
+                    <span className="plan-mark" aria-hidden="true" />
+                    <span className="summary-name">{step.status === "in_progress" && step.active_form ? step.active_form : step.content}</span>
+                  </div>
+                ))}
+              </>
+            )}
 
             {mine.length > 0 && (
               <>

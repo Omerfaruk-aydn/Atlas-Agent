@@ -54,6 +54,70 @@ export function startedInBackground(content: string | undefined): boolean {
   return /^Started in the background as agent-[0-9a-f]{8}(?![0-9a-z])/.test(content ?? "");
 }
 
+const RUN_ID = "agent-[0-9a-f]{8}(?![0-9a-z])";
+const STARTED = new RegExp(`^Started in the background as (${RUN_ID})`);
+const COLLECTED = new RegExp(`^(${RUN_ID})[^\\n]* finished\\.`);
+const AGENT_TOOLS = new Set(["agent", "subagent", "task"]);
+
+function inputId(input: string): string {
+  try {
+    const id = (JSON.parse(input) as { id?: unknown }).id;
+    return typeof id === "string" ? id : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The background sub-agents whose run is over as far as the chat shows: an
+ * agent_result call read the answer (by id, or as "the next one to finish")
+ * or stopped it. One that was only checked on while running is not.
+ */
+export function settledRuns(messages: Message[]): Set<string> {
+  const results = new Map<string, { content: string; is_error: boolean }>();
+  for (const message of messages) for (const part of message.parts) if (part.type === "tool_result") results.set(part.data.tool_call_id, part.data);
+  const settled = new Set<string>();
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (part.type !== "tool_call" || part.data.name !== "agent_result") continue;
+      const result = results.get(part.data.id);
+      if (!result) continue;
+      const id = inputId(part.data.input);
+      if (id) {
+        if (result.content.startsWith(`${id} is still running`) || result.content.startsWith("no background sub-agent")) continue;
+        settled.add(id);
+        continue;
+      }
+      const collected = COLLECTED.exec(result.content);
+      if (collected) settled.add(collected[1]!);
+    }
+  }
+  return settled;
+}
+
+/** How many sub-agents the chat started that are still working, and how many finished. */
+export function agentCounts(messages: Message[]): { done: number; running: number } {
+  const results = new Map<string, string>();
+  for (const message of messages) for (const part of message.parts) if (part.type === "tool_result") results.set(part.data.tool_call_id, part.data.content);
+  const settled = settledRuns(messages);
+  let done = 0;
+  let running = 0;
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (part.type !== "tool_call" || !AGENT_TOOLS.has(part.data.name)) continue;
+      const content = results.get(part.data.id);
+      if (content === undefined) {
+        running++;
+        continue;
+      }
+      const started = STARTED.exec(content);
+      if (started && !settled.has(started[1]!)) running++;
+      else done++;
+    }
+  }
+  return { done, running };
+}
+
 /** Reads the report out of a result's metadata; null when there is none or it is unreadable. */
 export function runReport(metadata: string | undefined): RunReport | null {
   if (!metadata) return null;

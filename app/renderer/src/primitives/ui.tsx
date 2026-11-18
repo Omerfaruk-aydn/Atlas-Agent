@@ -174,10 +174,31 @@ export function Pop({ trigger, children, side = "top", align = "start", classNam
 
 export const PopClose = Popover.Close;
 
+/**
+ * A preview shown while the pointer rests on its trigger. Pressing the trigger
+ * means the person is acting on it, not reading about it: the card closes and
+ * stays closed until the pointer comes back to the trigger. Otherwise an open
+ * timer started before the press (by the hover or the focus the press gave)
+ * could show it late, on top of whatever the press led to, where it would
+ * also take the next Esc away from that menu or popover.
+ */
 export function Hover({ card, children }: { card: ReactNode; children: ReactElement }) {
+  const [open, setOpen] = useState(false);
+  const pressed = useRef(false);
   return (
-    <HoverCard.Root openDelay={450} closeDelay={80}>
-      <HoverCard.Trigger asChild>{children}</HoverCard.Trigger>
+    <HoverCard.Root open={open} onOpenChange={(next) => setOpen(next && !pressed.current)} openDelay={450} closeDelay={80}>
+      <HoverCard.Trigger
+        asChild
+        onPointerDown={() => {
+          pressed.current = true;
+          setOpen(false);
+        }}
+        onPointerEnter={() => {
+          pressed.current = false;
+        }}
+      >
+        {children}
+      </HoverCard.Trigger>
       <HoverCard.Portal>
         <HoverCard.Content className="pop hover-card" side="right" align="start" sideOffset={10} collisionPadding={8}>
           {card}

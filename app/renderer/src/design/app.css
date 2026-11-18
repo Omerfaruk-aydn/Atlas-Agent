@@ -377,6 +377,7 @@ kbd { font: inherit; }
 .dock-text { color: var(--atlas-ink); line-height: var(--atlas-lh-ui-loose); user-select: text; }
 .dock-hint { color: var(--atlas-ink-3); user-select: text; }
 .dock-code { max-block-size: 160px; overflow: auto; padding: var(--atlas-space-2) var(--atlas-space-3); border-radius: var(--atlas-radius-md); background: var(--atlas-surface-1); user-select: text; }
+.dock-comment { inline-size: 100%; resize: vertical; padding: var(--atlas-space-2); border-radius: var(--atlas-radius-2, 8px); border: 1px solid var(--atlas-line, currentColor); background: var(--atlas-surface); color: inherit; font: inherit; margin-block-start: var(--atlas-space-2); }
 .dock-actions { display: flex; align-items: center; gap: var(--atlas-space-2); margin-block-start: var(--atlas-space-1); }
 .question { display: flex; flex-direction: column; gap: var(--atlas-space-2); }
 .choices { display: flex; flex-wrap: wrap; gap: var(--atlas-space-1_5); }

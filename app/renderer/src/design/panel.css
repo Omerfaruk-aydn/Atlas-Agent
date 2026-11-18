@@ -1,3 +1,4 @@
+.mcp-app-frame { inline-size: 100%; block-size: min(70vh, 640px); border: 1px solid var(--atlas-line, currentColor); border-radius: 8px; background: #fff; }
 /* The side panel and what lives in it: tab strip, browser, new tab page, tools,
    data views, the thread header, and the summary popover. Values come from
    tokens.css; Ember is not used. */
@@ -236,6 +237,12 @@ button.summary-row:hover { background: var(--atlas-hover); }
 .summary-row > svg { flex: none; color: var(--atlas-ink-2); }
 .summary-name { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .summary-counts { display: inline-flex; gap: var(--atlas-space-1_5); font-size: var(--atlas-text-small); }
+.plan-step { align-items: flex-start; }
+.plan-mark { flex: none; inline-size: 12px; block-size: 12px; margin-block-start: 3px; border-radius: 50%; border: 1.5px solid var(--atlas-ink-3); }
+.plan-step[data-status="in_progress"] .plan-mark { border-color: var(--atlas-info); background: var(--atlas-info); }
+.plan-step[data-status="completed"] .plan-mark { border-color: var(--atlas-ink-3); background: var(--atlas-ink-3); }
+.plan-step[data-status="completed"] .summary-name { color: var(--atlas-ink-3); text-decoration: line-through; }
+.plan-step .summary-name { white-space: normal; }
 .summary-muted { color: var(--atlas-ink-3); font-size: var(--atlas-text-small); }
 .summary-section { display: flex; align-items: center; justify-content: space-between; min-block-size: 28px; padding: var(--atlas-space-2) 2px 0 10px; }
 .summary-section h3 { margin: 0; font-size: var(--atlas-text-small); line-height: var(--atlas-lh-small); font-weight: var(--atlas-weight-medium); color: var(--atlas-ink-3); }

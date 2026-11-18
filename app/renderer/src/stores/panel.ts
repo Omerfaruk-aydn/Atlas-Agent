@@ -83,6 +83,13 @@ function savePanel(key: string, panel: ProjectPanel) {
   void window.atlas?.setPanel(key, panel);
 }
 
+/**
+ * Side chats the person has just started. Their composer takes the focus once
+ * it appears, so what they type next goes into the new chat and not the main
+ * thread; one restored with the panel at launch leaves the focus alone.
+ */
+export const focusSideChat = new Set<string>();
+
 const key = () => projectKey(useApp.getState().workspace?.path ?? useApp.getState().project);
 
 export const usePanel = create<PanelState>((set, get) => {
@@ -302,6 +309,7 @@ export const usePanel = create<PanelState>((set, get) => {
       try {
         const session = await http.post<Session>(`/api/workspaces/${encodeURIComponent(app.workspace?.id ?? "")}/sessions/${encodeURIComponent(source)}/side-chat`, {});
         useApp.setState((s) => ({ sideChats: [session, ...s.sideChats.filter((x) => x.id !== session.id)] }));
+        focusSideChat.add(session.id);
         get().openSideChat(session.id);
         return session;
       } catch (err) {

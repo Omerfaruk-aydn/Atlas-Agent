@@ -15,6 +15,10 @@ export function PermissionDock({ request }: { request: PermissionRequest }) {
   const waiting = useApp((s) => s.permissions.filter((p) => p.session_id === request.session_id).length);
   const sentence = permissionSentence(request);
   const primary = useRef<HTMLButtonElement>(null);
+  // "Request changes": declining a plan can carry a comment the agent reads.
+  const [asking, setAsking] = useState(false);
+  const [comment, setComment] = useState("");
+  const isPlan = request.tool_name === "exit_plan_mode";
 
   // Keyboard first: the dock takes focus and answers Enter, Ctrl+Enter and Esc.
   useEffect(() => primary.current?.focus(), []);
@@ -40,7 +44,33 @@ export function PermissionDock({ request }: { request: PermissionRequest }) {
       </div>
       {sentence.detail && <pre className="dock-code">{sentence.detail}</pre>}
       {request.description && !sentence.detail.includes(request.description) && request.description !== sentence.title && <div className="dock-hint">{request.description}</div>}
+      {asking && (
+        <textarea
+          className="dock-comment"
+          autoFocus
+          rows={3}
+          value={comment}
+          placeholder={t("approve.changesPlaceholder")}
+          aria-label={t("approve.changes")}
+          onChange={(e) => setComment(e.target.value)}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && comment.trim()) void answer(request.id, "deny", comment.trim());
+            if (e.key === "Escape") setAsking(false);
+          }}
+        />
+      )}
       <div className="dock-actions">
+        {isPlan && (
+          <button
+            type="button"
+            className="button"
+            data-action="changes"
+            onClick={() => (asking && comment.trim() ? void answer(request.id, "deny", comment.trim()) : setAsking(true))}
+          >
+            {t("approve.changes")}
+          </button>
+        )}
         <button type="button" className="button" data-action="deny" onClick={() => void answer(request.id, "deny")}>
           {t("approve.deny")}
           <Kbd keys="Esc" />

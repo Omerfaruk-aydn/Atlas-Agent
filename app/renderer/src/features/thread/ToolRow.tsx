@@ -12,6 +12,7 @@ import { IconAlert, IconBan, IconChevron } from "../../primitives/icons";
 import { Collapse, Shimmer, useElapsed } from "../../primitives/motion";
 import { Code } from "./CodeView";
 import { Markdown } from "./Markdown";
+import { McpAppButton } from "./McpApp";
 
 type State = "running" | "waiting" | "success" | "error" | "denied" | "stopped";
 
@@ -149,7 +150,7 @@ export const ToolRow = memo(function ToolRow({ call, result, active, waiting, de
         </span>
         {expandable && <IconChevron className="chevron" />}
       </button>
-      <Collapse open={expanded}>{expanded && (detail ? <div className="tool-body">{detail}</div> : <div className="tool-body"><Body call={call} result={result} meta={meta} /></div>)}</Collapse>
+      <Collapse open={expanded}>{expanded && (detail ? <div className="tool-body">{detail}</div> : <div className="tool-body"><Body call={call} result={result} meta={meta} />{result && call.name.startsWith("mcp_") && <McpAppButton tool={call.name} />}</div>)}</Collapse>
     </div>
   );
 });

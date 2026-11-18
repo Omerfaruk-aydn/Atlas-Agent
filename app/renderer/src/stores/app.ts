@@ -139,7 +139,7 @@ export interface AppState {
   togglePin(id: string): void;
   toggleArchive(id: string): void;
   searchSessions(query: string): Promise<Session[]>;
-  answerPermission(id: string, action: "allow" | "allow_session" | "deny"): Promise<void>;
+  answerPermission(id: string, action: "allow" | "allow_session" | "deny", feedback?: string): Promise<void>;
   answerQuestion(id: string, responses: QuestionResponse[]): Promise<void>;
   cancelQuestion(id: string): Promise<void>;
   selectModel(provider: string, model: string, options?: { type?: "large" | "small"; effort?: string; think?: boolean }): Promise<void>;
@@ -768,10 +768,10 @@ export const useApp = create<AppState>((set, get) => ({
     return (list ?? []).filter(isRootSession);
   },
 
-  async answerPermission(id, action) {
+  async answerPermission(id, action, feedback) {
     set((s) => ({ permissions: s.permissions.filter((p) => p.id !== id) }));
     syncBadge();
-    await http.post(`${ws()}/permissions/${encodeURIComponent(id)}`, { action });
+    await http.post(`${ws()}/permissions/${encodeURIComponent(id)}`, feedback ? { action, feedback } : { action });
   },
 
   async answerQuestion(id, responses) {

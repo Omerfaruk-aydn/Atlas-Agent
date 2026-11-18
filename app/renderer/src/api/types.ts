@@ -47,8 +47,18 @@ export interface Message {
   is_summary_message?: boolean;
 }
 
+/** One step of the plan the agent keeps for a chat. */
+export interface Todo {
+  id?: string;
+  content: string;
+  status: "pending" | "in_progress" | "completed" | string;
+  active_form?: string;
+}
+
 export interface Session {
   id: string;
+  /** The agent's plan for this chat, when it keeps one. */
+  todos?: Todo[];
   parent_session_id: string;
   title: string;
   message_count: number;

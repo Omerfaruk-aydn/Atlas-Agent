@@ -54,7 +54,12 @@ function run(cmd, args, cwd, timeoutMs, env = {}) {
 }
 
 // Usage numbers each harness prints in its JSON output, when it prints any.
-function usage(name, stdout) {
+function usage(name, stdout, stderr = "") {
+  if (name.startsWith("codex")) {
+    // Codex prints `tokens used` and the total, with a thousands separator.
+    const m = /tokens used\s*([\d.,]+)/i.exec(stdout + " " + stderr);
+    return m ? { tokens: Number(m[1].replace(/[.,]/g, "")) || undefined } : {};
+  }
   const last = stdout.trim().split("\n").reverse().find((l) => l.trim().startsWith("{"));
   if (!last) return {};
   try {
@@ -89,7 +94,7 @@ for (const name of wanted) {
       copyDir(path.join(suite, id, "hidden"), work);
       const check = task.check.map((a) => a.replaceAll("{suite}", suite));
       const verdict = run(check[0], check.slice(1), work, (task.timeout_seconds ?? 180) * 1000);
-      const entry = { harness: name, task: id, repeat: rep, pass: !setupError && verdict.code === 0, error: setupError ? (agent.stderr + agent.stdout).trim().slice(-400) : undefined, seconds: agent.seconds, timedOut: agent.timedOut, agentExit: agent.code, ...usage(name, agent.stdout), checkTail: (verdict.stdout + verdict.stderr).slice(-600) };
+      const entry = { harness: name, task: id, repeat: rep, pass: !setupError && verdict.code === 0, error: setupError ? (agent.stderr + agent.stdout).trim().slice(-400) : undefined, seconds: agent.seconds, timedOut: agent.timedOut, agentExit: agent.code, ...usage(name, agent.stdout, agent.stderr), checkTail: (verdict.stdout + verdict.stderr).slice(-600) };
       results.runs.push(entry);
       fs.writeFileSync(outFile, JSON.stringify(results, null, 2));
       console.log(`${name.padEnd(14)} ${id.padEnd(34)} ${entry.error ? "ERROR" : entry.pass ? "PASS" : "fail"} ${entry.seconds.toFixed(0)}s`);

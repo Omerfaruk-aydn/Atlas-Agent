@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const [file, outDir = "docs/assets"] = process.argv.slice(2);
+const [file, outDir = "docs/assets", name = "harness-bench"] = process.argv.slice(2);
 const data = JSON.parse(fs.readFileSync(file, "utf8"));
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -42,13 +42,13 @@ const tasks = new Set(data.runs.map((r) => r.task)).size;
 const repeats = Math.max(...data.runs.map((r) => r.repeat)) + 1;
 
 const md = [
-  `| ${"Harness"} | Model | Pass rate | Passed | Median time |`,
-  `| --- | --- | ---: | ---: | ---: |`,
-  ...rows.map((r) => `| ${r.atlas ? `**${r.label}**` : r.label} | ${r.model} | ${r.atlas ? `**${pct(r.rate)}**` : pct(r.rate)} | ${r.passed}/${r.runs} | ${Math.round(r.seconds)}s |`),
+  `| ${"Harness"} | Model | Pass rate | Passed | Median time | Median tokens |`,
+  `| --- | --- | ---: | ---: | ---: | ---: |`,
+  ...rows.map((r) => `| ${r.atlas ? `**${r.label}**` : r.label} | ${r.model} | ${r.atlas ? `**${pct(r.rate)}**` : pct(r.rate)} | ${r.passed}/${r.runs} | ${Math.round(r.seconds)}s | ${r.tokens ? `${Math.round(r.tokens / 1000)}k` : "n/a"} |`),
   "",
   `${tasks} tasks × ${repeats} run${repeats > 1 ? "s" : ""} each, hidden checks, ${data.started.slice(0, 10)}. Reproduce with \`node bench/harness/run.mjs\`.`,
 ].join("\n");
-fs.writeFileSync(path.join(outDir, "harness-bench.md"), md + "\n");
+fs.writeFileSync(path.join(outDir, `${name}.md`), md + "\n");
 
 function svg(theme) {
   const c = theme === "dark"
@@ -75,12 +75,12 @@ function svg(theme) {
     out.push(`<rect x="${left}" y="${y + 8}" width="${barW}" height="22" rx="6" fill="${c.track}"/>`);
     out.push(`<rect x="${left}" y="${y + 8}" width="${Math.max(4, barW * r.rate)}" height="22" rx="6" fill="${r.atlas ? c.hi : c.bar}"/>`);
     out.push(`<text x="${left + barW + 14}" y="${y + 24}" font-size="15" font-weight="700" fill="${r.atlas ? c.hi : c.fg}">${pct(r.rate)}</text>`);
-    out.push(`<text x="${W - 32}" y="${y + 24}" font-size="13" fill="${c.dim}" text-anchor="end">${Math.round(r.seconds)}s median</text>`);
+    out.push(`<text x="${W - 32}" y="${y + 24}" font-size="13" fill="${c.dim}" text-anchor="end">${Math.round(r.seconds)}s${r.tokens ? ` · ${Math.round(r.tokens / 1000)}k tokens` : ""}</text>`);
     groupY = y;
   });
   out.push(`<text x="32" y="${H - 18}" font-size="12" fill="${c.dim}">github.com/Omerfaruk-aydn/Atlas-Agent · bench/harness</text>`);
   out.push(`</svg>`);
   return out.join("\n");
 }
-for (const theme of ["light", "dark"]) fs.writeFileSync(path.join(outDir, `harness-bench-${theme}.svg`), svg(theme));
+for (const theme of ["light", "dark"]) fs.writeFileSync(path.join(outDir, `${name}-${theme}.svg`), svg(theme));
 console.log(md);

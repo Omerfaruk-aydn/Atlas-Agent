@@ -37,3 +37,38 @@ Rules for every take:
 
 Order in the README follows the table. A clip that cannot be shot honestly (the feature is not
 finished, or it needs an account the recording machine does not have) is left out rather than staged.
+
+## What was shot
+
+Every clip below was recorded with a real model through `app/test/film.mjs` (the desktop app) or
+`app/test/film-tui.mjs` (the real terminal UI in a bare Electron window), then encoded with `encode.py`.
+Scenes live in `app/test/film-scenes/`.
+
+| README | Clip | Surface | Scene |
+| --- | --- | --- | --- |
+| hero | `clip-hero` | App | `film.mjs hero` |
+| 01 | `clip-orchestrate` | CLI | `film-scenes/orchestrate.mjs` |
+| 02 | `clip-subagents` | CLI | `film-scenes/subagents.mjs` |
+| 03 | `clip-debate` | CLI | `film-scenes/debate.mjs` |
+| 04 | `clip-goal` | CLI | `film-scenes/goal.mjs` |
+| 05 | `clip-config` | CLI | `film-scenes/config-chat.mjs` |
+| 06 | `clip-review` | App | `film.mjs review` |
+| 07 | `clip-rewind` | App | `film.mjs rewind` |
+| 08 | `clip-safe` | CLI | `film-scenes/safe.mjs` |
+| 09 | `clip-hooks` | CLI | `film-scenes/hooks.mjs` |
+| 10 | `clip-browser` | App | `film.mjs browser` |
+| 11 | `clip-rename` | CLI | `film-scenes/rename.mjs` |
+| 12 | `clip-skills` | CLI | `film-scenes/skills.mjs` |
+| 13 | `clip-mcp` | CLI | `film-scenes/mcp.mjs` |
+| 14 | `clip-worktree` | CLI | `film-scenes/worktree.mjs` |
+| 15 | `clip-pr-review` | CLI | `film-scenes/pr-review.mjs` |
+| 16 | `clip-headless` | CLI | `film-scenes/headless.mjs` |
+| 17 | `clip-desktop` | Notepad window | `film-desktop.mjs desktop` |
+| 18 | `clip-voice` | App | `film.mjs voice` (needs `FILM_ELECTRON_ARGS`, a spoken WAV and the offline Vosk model) |
+| any model | `clip-model-switch` | App | `film.mjs model-switch` |
+
+Window clips (`clip-browser`, `clip-desktop`) come from `film-desktop.mjs`, which records only the target window and
+crops anything personal out of the frame.
+
+README clips are GIFs: `encode.py` writes an animated WebP and `togif.py` turns it into the optimized GIF the README
+embeds (`python docs/showcase/togif.py clip.webp --width 800 --colors 48`).

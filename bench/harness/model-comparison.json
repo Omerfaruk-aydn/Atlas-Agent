@@ -1,5 +1,5 @@
 {
-  "started": "2026-11-18T18:39:08.578Z",
+  "started": "2026-11-19T12:56:27.501Z",
   "config": {
     "timeout_seconds": 300,
     "harnesses": {
@@ -136,103 +136,104 @@
   "runs": [
     {
       "harness": "atlas-sonnet",
-      "task": "fix-capped-backoff",
-      "repeat": 0,
-      "pass": true,
-      "seconds": 28.38,
-      "timedOut": false,
-      "agentExit": 0,
-      "checkTail": "ok  \tbench.local/fix-capped-backoff\t0.382s\n"
-    },
-    {
-      "harness": "atlas-haiku",
       "task": "add-cache-ttl",
       "repeat": 0,
       "pass": true,
-      "seconds": 45.279,
+      "seconds": 33.505,
       "timedOut": false,
       "agentExit": 0,
-      "checkTail": "ok  \tbench/cache\t0.470s\n"
-    },
-    {
-      "harness": "atlas-haiku",
-      "task": "fix-capped-backoff",
-      "repeat": 0,
-      "pass": false,
-      "seconds": 300.018,
-      "timedOut": true,
-      "agentExit": null,
-      "checkTail": ""
-    },
-    {
-      "harness": "atlas-argon",
-      "task": "add-cache-ttl",
-      "repeat": 0,
-      "pass": true,
-      "seconds": 134.173,
-      "timedOut": false,
-      "agentExit": 0,
-      "checkTail": "ok  \tbench/cache\t0.466s\n"
-    },
-    {
-      "harness": "atlas-argon",
-      "task": "fix-capped-backoff",
-      "repeat": 0,
-      "pass": true,
-      "seconds": 69.641,
-      "timedOut": false,
-      "agentExit": 0,
-      "checkTail": "ok  \tbench.local/fix-capped-backoff\t0.395s\n"
-    },
-    {
-      "harness": "atlas-hydrogen",
-      "task": "add-cache-ttl",
-      "repeat": 0,
-      "pass": true,
-      "seconds": 81.968,
-      "timedOut": false,
-      "agentExit": 0,
-      "checkTail": "ok  \tbench/cache\t0.476s\n"
-    },
-    {
-      "harness": "atlas-hydrogen",
-      "task": "fix-capped-backoff",
-      "repeat": 0,
-      "pass": true,
-      "seconds": 48.095,
-      "timedOut": false,
-      "agentExit": 0,
-      "checkTail": "ok  \tbench.local/fix-capped-backoff\t0.418s\n"
-    },
-    {
-      "harness": "atlas-luna",
-      "task": "add-cache-ttl",
-      "repeat": 0,
-      "pass": true,
-      "seconds": 147.894,
-      "timedOut": false,
-      "agentExit": 0,
-      "checkTail": "ok  \tbench/cache\t0.492s\n"
-    },
-    {
-      "harness": "atlas-luna",
-      "task": "fix-capped-backoff",
-      "repeat": 0,
-      "pass": true,
-      "seconds": 159.738,
-      "timedOut": false,
-      "agentExit": 0,
-      "checkTail": "ok  \tbench.local/fix-capped-backoff\t0.423s\n"
+      "checkTail": "ok  \tbench/cache\t0.472s\n"
     },
     {
       "harness": "atlas-sonnet",
+      "task": "fix-capped-backoff",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 30.011,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench.local/fix-capped-backoff\t0.410s\n"
+    },
+    {
+      "harness": "atlas-haiku",
       "task": "add-cache-ttl",
       "repeat": 0,
       "pass": true,
-      "seconds": 53.075,
+      "seconds": 61.744,
       "timedOut": false,
       "agentExit": 0,
-      "checkTail": "ok  \tbench/cache\t0.480s\n"
+      "checkTail": "ok  \tbench/cache\t0.462s\n"
+    },
+    {
+      "harness": "atlas-haiku",
+      "task": "fix-capped-backoff",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 40.64,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench.local/fix-capped-backoff\t0.411s\n"
+    },
+    {
+      "harness": "atlas-argon",
+      "task": "add-cache-ttl",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 102.557,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench/cache\t0.468s\n"
+    },
+    {
+      "harness": "atlas-argon",
+      "task": "fix-capped-backoff",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 89.157,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench.local/fix-capped-backoff\t0.410s\n"
+    },
+    {
+      "harness": "atlas-hydrogen",
+      "task": "add-cache-ttl",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 108.335,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench/cache\t0.513s\n"
+    },
+    {
+      "harness": "atlas-hydrogen",
+      "task": "fix-capped-backoff",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 70.303,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench.local/fix-capped-backoff\t0.407s\n"
+    },
+    {
+      "harness": "atlas-luna",
+      "task": "add-cache-ttl",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 79.002,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench/cache\t0.468s\n"
+    },
+    {
+      "harness": "atlas-luna",
+      "task": "fix-capped-backoff",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 87.968,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench.local/fix-capped-backoff\t0.411s\n"
     }
-  ]
+  ],
+  "finished": "2026-11-19T13:08:26.945Z"
 }

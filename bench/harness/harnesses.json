@@ -39,13 +39,13 @@
     },
     "codex": {
       "label": "Codex CLI",
-      "model": "GPT-6.2 Sol",
+      "model": "GPT-5.6 Luna",
       "command": "codex",
       "args": [
         "exec",
         "--skip-git-repo-check",
         "-m",
-        "gpt-6.2-sol",
+        "gpt-5.6-luna",
         "--dangerously-bypass-approvals-and-sandbox",
         "{prompt}"
       ]
@@ -122,6 +122,21 @@
         "auto",
         "-m",
         "chatgpt/gpt-6-luna",
+        "{prompt}"
+      ]
+    },
+    "atlas-luna56": {
+      "label": "Atlas Agent",
+      "model": "GPT-5.6 Luna",
+      "command": "atlas-agent",
+      "args": [
+        "run",
+        "-q",
+        "--json",
+        "--permissions",
+        "auto",
+        "-m",
+        "chatgpt/gpt-5.6-luna",
         "{prompt}"
       ]
     }

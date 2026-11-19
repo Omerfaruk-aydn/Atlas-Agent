@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css">
+<style>
+  @font-face { font-family: "Cascadia Mono"; src: url("cascadia-mono.ttf"); font-weight: 200 700; }
+  html, body { margin: 0; height: 100%; background: #000000; overflow: hidden; }
+  /* Windows Terminal: a tab strip over the terminal surface. */
+  #bar { height: 40px; background: #1a1a1a; display: flex; align-items: flex-end; font: 12px "Segoe UI", sans-serif; color: #cccccc; }
+  .tab { height: 34px; width: 220px; margin-left: 8px; background: #000000; border-radius: 8px 8px 0 0; display: flex; align-items: center; padding: 0 12px; gap: 8px; box-sizing: border-box; }
+  .glyph { width: 14px; height: 14px; border-radius: 3px; background: #2b78d4; display: inline-block; }
+  #term { position: absolute; top: 40px; left: 0; right: 0; bottom: 0; padding: 6px 10px; box-sizing: border-box; background: #000000; }
+</style>
+<div id="bar"><div class="tab"><span class="glyph"></span><span id="title">Atlas Agent</span></div></div>
+<div id="term"></div>
+<script>
+  const { Terminal } = require("../../node_modules/@xterm/xterm");
+    const params = new URLSearchParams(location.search);
+  const term = new Terminal({
+    cols: 142, rows: 36, fontFamily: '"Cascadia Mono", Consolas, monospace', fontSize: 16, lineHeight: 1.1, cursorBlink: false, cursorStyle: "block", allowProposedApi: true,
+    theme: { background: "#000000", foreground: "#cccccc", cursor: "#ffffff", selectionBackground: "#ffffff40",
+      black: "#0c0c0c", red: "#c50f1f", green: "#13a10e", yellow: "#c19c00", blue: "#0037da", magenta: "#881798", cyan: "#3a96dd", white: "#cccccc",
+      brightBlack: "#767676", brightRed: "#e74856", brightGreen: "#16c60c", brightYellow: "#f9f1a5", brightBlue: "#3b78ff", brightMagenta: "#b4009e", brightCyan: "#61d6d6", brightWhite: "#f2f2f2" },
+  });
+  term.open(document.getElementById("term"));
+  const { ipcRenderer } = require("electron");
+  ipcRenderer.on("data", (_e, d) => term.write(d));
+  window.__film = {
+    text: () => { const b = term.buffer.active; let out = ""; for (let i = 0; i < b.length; i++) out += (b.getLine(i)?.translateToString(true) ?? "") + String.fromCharCode(10); return out; },
+    title: (t) => { document.getElementById("title").textContent = t; },
+  };
+</script>

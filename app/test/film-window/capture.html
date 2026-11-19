@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><body><video id="v" muted></video><canvas id="c"></canvas><script>
+const { ipcRenderer } = require("electron");
+const id = new URLSearchParams(location.search).get("id");
+(async () => {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { mandatory: { chromeMediaSource: "desktop", chromeMediaSourceId: id, maxFrameRate: 10 } } });
+  const v = document.getElementById("v"); v.srcObject = stream; await v.play();
+  const c = document.getElementById("c"), g = c.getContext("2d");
+  setInterval(() => {
+    if (!v.videoWidth) return;
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    g.drawImage(v, 0, 0);
+    ipcRenderer.send("frame", c.toDataURL("image/jpeg", 0.9), Date.now() / 1000);
+  }, 120);
+})();
+</script>

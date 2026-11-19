@@ -1,0 +1,52 @@
+{
+  "started": "2026-11-19T15:59:17.577Z",
+  "runs": 20,
+  "machine": "AMD Ryzen 5 4500 6-Core Processor, 16 GB, win32 10.0.19045",
+  "rows": [
+    {
+      "tool": "Claude Code",
+      "command": "claude",
+      "version": "2.1.285 (Claude Code)",
+      "runs": 20,
+      "median_ms": 55,
+      "p95_ms": 74,
+      "install_mb": 691
+    },
+    {
+      "tool": "OpenCode",
+      "command": "opencode",
+      "version": "opencode v2.0.32",
+      "runs": 20,
+      "median_ms": 203,
+      "p95_ms": 245,
+      "install_mb": 173
+    },
+    {
+      "tool": "Codex CLI",
+      "command": "codex",
+      "version": "codex-cli 0.154.0",
+      "runs": 20,
+      "median_ms": 141,
+      "p95_ms": 182,
+      "install_mb": 380
+    },
+    {
+      "tool": "Atlas Agent",
+      "command": "atlas-agent",
+      "version": "atlas-agent version v1.0.2-0.20261104203641-ed0d4f68dc0f+dirty",
+      "runs": 20,
+      "median_ms": 711,
+      "p95_ms": 1283,
+      "install_mb": 196
+    },
+    {
+      "tool": "Atlas Agent (this build)",
+      "command": "D:\\demo\\bin\\atlas-agent.exe",
+      "version": "atlas-agent version v1.0.2-0.20261119092817-15888ede6ef1+dirty",
+      "runs": 20,
+      "median_ms": 125,
+      "p95_ms": 179,
+      "install_mb": 209
+    }
+  ]
+}

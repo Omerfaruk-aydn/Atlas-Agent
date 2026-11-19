@@ -80,12 +80,7 @@ atlas run --continue "Follow up on your last response"
 			policyPath, _   = cmd.Flags().GetString("permission-policy")
 			outputFormat, _ = cmd.Flags().GetString("output-format")
 		)
-		if outputFormat == "" {
-			outputFormat = "text"
-			if jsonOut {
-				outputFormat = "json"
-			}
-		}
+		outputFormat = resolveOutputFormat(jsonOut, cmd.Flags().Changed("output-format"), outputFormat)
 		if outputFormat != "text" && outputFormat != "json" && outputFormat != "stream-json" {
 			return fmt.Errorf("unknown output format %q: use text, json or stream-json", outputFormat)
 		}
@@ -820,4 +815,17 @@ func resolveSessionByID(ctx context.Context, c *client.Client, wsID, id string) 
 	default:
 		return nil, fmt.Errorf("session ID %q is ambiguous (%d matches)", id, len(matches))
 	}
+}
+
+// resolveOutputFormat maps --json (shorthand for --output-format json) and the
+// --output-format flag to one format. The format flag has a default, so it is
+// the flag being set that matters, not its value being empty.
+func resolveOutputFormat(jsonFlag, formatSet bool, format string) string {
+	if jsonFlag && !formatSet {
+		return "json"
+	}
+	if format == "" {
+		return "text"
+	}
+	return format
 }

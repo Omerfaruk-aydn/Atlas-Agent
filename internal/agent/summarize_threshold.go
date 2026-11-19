@@ -20,18 +20,7 @@ func shouldAutoSummarize(contextWindow, tokens int64, usedRatio float64) bool {
 		return float64(tokens) >= float64(contextWindow)*usedRatio
 	}
 
-	threshold := int64(float64(contextWindow) * smallContextWindowRatio)
-	if contextWindow > largeContextWindowThreshold {
-		// A large window is not used to its end: the model's grip on early
-		// instructions and details weakens long before the window fills,
-		// so a structured handoff at three quarters keeps quality higher
-		// than one squeezed out at the last moment.
-		if float64(tokens) >= float64(contextWindow)*largeContextWindowCompactAt {
-			return true
-		}
-		threshold = largeContextWindowBuffer
-	}
-	return contextWindow-tokens <= threshold
+	return tokens >= compactionPoint(contextWindow, 0)
 }
 
 // largeContextWindowCompactAt is the fraction of a large window at which
@@ -44,3 +33,11 @@ const largeContextWindowCompactAt = 0.75
 func validUsedRatio(r float64) bool {
 	return r > 0 && r < 1
 }
+
+// costCompactionCeiling caps the built-in compaction point. Every step of a
+// session re-reads the whole conversation, so the bill grows with context
+// length times step count while the model's grip on early details weakens;
+// a session that compacts once around this size and then grows append-only
+// costs far less than one that carries several hundred thousand tokens.
+// Windows smaller than this keep their proportional point.
+const costCompactionCeiling = 120_000

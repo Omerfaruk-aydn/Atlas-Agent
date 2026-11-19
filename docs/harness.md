@@ -38,10 +38,15 @@ is returned as before.
 
 ## Context compaction
 
-Sessions on large context windows (over 200k tokens) are summarized at three
-quarters of the window rather than at its very end, since the model's hold on
-early details weakens long before the window fills. `options.auto_summarize_at`
-still overrides this.
+Every step of a session re-reads the whole conversation, so cost grows with
+context length times step count, while the model's hold on early details
+weakens long before the window fills. By default a session is therefore
+summarized at 120k tokens (or at the usual last-20% point on windows smaller
+than that), however large the window is. Between summaries the conversation
+only grows, which keeps the provider's prompt cache valid. The skill list and
+the deferred-tool index are part of that cached prefix too.
+`options.auto_summarize_at` still overrides the built-in point; an explicit
+ratio is honoured as given, even above 120k.
 
 ## Model routing by role
 

@@ -16,13 +16,24 @@ func TestUnknownContextWindowNeverSummarizes(t *testing.T) {
 }
 
 func TestBuiltInThresholdForLargeWindows(t *testing.T) {
-	const cw = 1_000_000 // above largeContextWindowThreshold: three quarters
-	require.False(t, shouldAutoSummarize(cw, 749_999, 0))
-	require.True(t, shouldAutoSummarize(cw, 750_000, 0), "a large window is summarized before it fills")
+	// A huge window compacts at the cost ceiling, not at three quarters.
+	const cw = 1_000_000
+	require.False(t, shouldAutoSummarize(cw, costCompactionCeiling-1, 0))
+	require.True(t, shouldAutoSummarize(cw, costCompactionCeiling, 0), "a large window is summarized before it fills")
 
-	const near = 210_000 // just above the threshold: three quarters is 157.5k
-	require.False(t, shouldAutoSummarize(near, 157_000, 0))
-	require.True(t, shouldAutoSummarize(near, 157_500, 0))
+	// Just above the large-window line, where three quarters (157.5k) is
+	// above the ceiling.
+	const near = 210_000
+	require.False(t, shouldAutoSummarize(near, costCompactionCeiling-1, 0))
+	require.True(t, shouldAutoSummarize(near, costCompactionCeiling, 0))
+}
+
+// Mid-sized windows whose last-20% point sits above the ceiling also
+// compact at the ceiling.
+func TestCostCeilingAppliesToMidSizedWindows(t *testing.T) {
+	const cw = 200_000 // proportional point would be 160k
+	require.False(t, shouldAutoSummarize(cw, costCompactionCeiling-1, 0))
+	require.True(t, shouldAutoSummarize(cw, costCompactionCeiling, 0))
 }
 
 func TestBuiltInThresholdForSmallWindows(t *testing.T) {
@@ -32,7 +43,8 @@ func TestBuiltInThresholdForSmallWindows(t *testing.T) {
 }
 
 func TestConfiguredRatioReplacesBothBuiltIns(t *testing.T) {
-	// A large window, where the built-in would have waited until 980k.
+	// A large window, where the built-in would have fired at the 120k ceiling:
+	// an explicit ratio is honoured as given, even above it.
 	const cw = 1_000_000
 	require.False(t, shouldAutoSummarize(cw, 499_999, 0.5))
 	require.True(t, shouldAutoSummarize(cw, 500_000, 0.5))

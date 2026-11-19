@@ -1156,7 +1156,9 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 		pinWorkflow = pinWorkflow || workTier(ctx, a.engineering, engineering.GetScope(ctx, call.SessionID).SessionID) != engineering.TierDirect
 	}
 	deferral := a.beginToolDeferral(ctx, call, currentSession, a.tools.Copy(), pinWorkflow)
-	dynamicContext.WriteString(deferral.capabilityIndex(tools.ScopeToolsForDesktop(ctx, a.tools.Copy())))
+	// The index is fixed for the turn, so it travels with the cached system
+	// prefix rather than being re-billed uncached on every step.
+	capabilityIndex := strings.TrimSpace(deferral.capabilityIndex(tools.ScopeToolsForDesktop(ctx, a.tools.Copy())))
 
 	agent := fantasy.NewAgent(
 		largeModel.Model,
@@ -1369,6 +1371,7 @@ func (a *sessionAgent) Run(ctx context.Context, call SessionAgentCall) (result *
 				prepared.ActiveTools = paletteNames(palette)
 			}
 			prepared.Messages = withToolProtocols(prepared.Messages, paletteNames(palette))
+			prepared.Messages = withCapabilityIndex(prepared.Messages, capabilityIndex)
 
 			// Drain queued follow-up prompts for this step. Calls covered
 			// by a cancel recorded while they sat in the queue are dropped:

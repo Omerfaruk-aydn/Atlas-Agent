@@ -21,16 +21,17 @@ func newLedgerAgent() *sessionAgent {
 func TestBudgetLine(t *testing.T) {
 	t.Parallel()
 	require.Empty(t, budgetLine(200_000, 10_000, 0, 2), "short turns with little context pay nothing")
-	require.Equal(t, int64(160_000), compactionPoint(200_000, 0))
-	require.Equal(t, int64(750_000), compactionPoint(1_000_000, 0))
+	require.Equal(t, int64(costCompactionCeiling), compactionPoint(200_000, 0))
+	require.Equal(t, int64(80_000), compactionPoint(100_000, 0))
+	require.Equal(t, int64(costCompactionCeiling), compactionPoint(1_000_000, 0))
 	require.Equal(t, int64(500_000), compactionPoint(1_000_000, 0.5))
 	require.Zero(t, compactionPoint(0, 0))
 
-	line := budgetLine(1_000_000, 400_000, 0, 3)
-	require.Contains(t, line, "Context: 400k of 1000k tokens used (40%); the conversation is summarized at about 750k, 350k from now.")
-	require.Contains(t, line, "This turn has taken 3 steps.")
+	line := budgetLine(1_000_000, 60_000, 0, 8)
+	require.Contains(t, line, "Context: 60k of 1000k tokens used (6%); the conversation is summarized at about 120k, 60k from now.")
+	require.Contains(t, line, "This turn has taken 8 steps.")
 
-	highContext := budgetLine(1_000_000, 700_000, 0, 1)
+	highContext := budgetLine(1_000_000, 100_000, 0, 8)
 	require.Contains(t, highContext, "A summary is close")
 	require.Contains(t, highContext, "Do not rush or finish incomplete work")
 	require.Contains(t, highContext, "every completion claim still requires verification")

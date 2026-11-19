@@ -308,17 +308,35 @@ func ToPromptXML(skills []*Skill) string {
 		if s.DisableModelInvocation {
 			continue
 		}
-		sb.WriteString("  <skill>\n")
-		fmt.Fprintf(&sb, "    <name>%s</name>\n", escape(s.Name))
-		fmt.Fprintf(&sb, "    <description>%s</description>\n", escape(s.Description))
-		fmt.Fprintf(&sb, "    <location>%s</location>\n", escape(s.SkillFilePath))
-		if s.Builtin {
-			sb.WriteString("    <type>builtin</type>\n")
-		}
-		sb.WriteString("  </skill>\n")
+		// One line per skill keeps the always-sent list small. The full
+		// description lives in the skill file the model loads with view.
+		fmt.Fprintf(&sb, "<skill name=\"%s\" location=\"%s\">%s</skill>\n",
+			escape(s.Name), escape(s.SkillFilePath), escape(briefDescription(s.Description)))
 	}
 	sb.WriteString("</available_skills>")
 	return sb.String()
+}
+
+// maxPromptDescription bounds a skill description in the system prompt.
+const maxPromptDescription = 150
+
+// briefDescription collapses whitespace and cuts a description at a word
+// boundary, preferring the end of the first sentence, so the prompt carries
+// what the skill is for without its full trigger text.
+func briefDescription(desc string) string {
+	desc = strings.Join(strings.Fields(desc), " ")
+	if len([]rune(desc)) <= maxPromptDescription {
+		return desc
+	}
+	runes := []rune(desc)
+	head := string(runes[:maxPromptDescription])
+	if i := strings.LastIndex(head, ". "); i >= 40 {
+		return head[:i+1]
+	}
+	if i := strings.LastIndex(head, " "); i >= 40 {
+		head = head[:i]
+	}
+	return strings.TrimRight(head, " ,;:-") + "…"
 }
 
 // FormatInvocation generates XML for a skill when invoked as a user command.

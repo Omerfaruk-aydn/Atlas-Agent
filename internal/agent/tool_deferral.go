@@ -251,6 +251,20 @@ func withToolProtocols(messages []fantasy.Message, advertised []string) []fantas
 	return slices.Insert(slices.Clone(messages), at, fantasy.NewSystemMessage(guidance))
 }
 
+// withCapabilityIndex adds the deferred-tool index as a system message after
+// the leading system messages. It is constant within a turn, so placing it
+// before the cache breakpoints lets the provider reuse it between steps.
+func withCapabilityIndex(messages []fantasy.Message, index string) []fantasy.Message {
+	if index == "" {
+		return messages
+	}
+	at := 0
+	for at < len(messages) && messages[at].Role == fantasy.MessageRoleSystem {
+		at++
+	}
+	return slices.Insert(slices.Clone(messages), at, fantasy.NewSystemMessage(index))
+}
+
 var taskCategoryGuidance = map[string]string{
 	"git":      "Git: inspect scoped status/diff and preserve unrelated edits; never infer commit, push or merge success without evidence.",
 	"testing":  "Tests: inspect the exit status and actual assertions/output; report skipped checks separately from passed checks.",

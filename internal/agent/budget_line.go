@@ -30,9 +30,9 @@ func compactionPoint(contextWindow int64, usedRatio float64) int64 {
 	case validUsedRatio(usedRatio):
 		return int64(float64(contextWindow) * usedRatio)
 	case contextWindow > largeContextWindowThreshold:
-		return min(int64(float64(contextWindow)*largeContextWindowCompactAt), contextWindow-largeContextWindowBuffer)
+		return min(int64(float64(contextWindow)*largeContextWindowCompactAt), contextWindow-largeContextWindowBuffer, costCompactionCeiling)
 	default:
-		return contextWindow - int64(float64(contextWindow)*smallContextWindowRatio)
+		return min(contextWindow-int64(float64(contextWindow)*smallContextWindowRatio), costCompactionCeiling)
 	}
 }
 

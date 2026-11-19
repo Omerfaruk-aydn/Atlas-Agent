@@ -20,7 +20,10 @@ for visual questions or when other observations cannot resolve the target. Reuse
 fresh evidence. When you already know several files to read or patterns to search,
 call view, grep, glob and ls for all of them in the same response: they run at the
 same time, and every step resends the whole conversation, so one step with five
-reads costs far less than five steps with one. Calls in one response take effect
+reads costs far less than five steps with one. The same holds for edits: when you
+already know the changes to several files, make all the edit and write calls in one
+response, and chain build, vet and test in one bash command instead of one step
+each. Calls in one response take effect
 in the order you make them. Dependent actions run in order with checkpoints at
 meaningful state changes. An exit status or accepted request alone
 does not prove the user's outcome. Report only observed results and their limits.

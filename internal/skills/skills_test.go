@@ -307,8 +307,7 @@ func TestToPromptXML(t *testing.T) {
 	xml := ToPromptXML(skills)
 
 	require.Contains(t, xml, "<available_skills>")
-	require.Contains(t, xml, "<name>pdf-processing</name>")
-	require.Contains(t, xml, "<description>Extracts text from PDFs.</description>")
+	require.Contains(t, xml, `<skill name="pdf-processing" location="/skills/pdf-processing/SKILL.md">Extracts text from PDFs.</skill>`)
 	require.Contains(t, xml, "&amp;") // XML escaping
 }
 
@@ -322,8 +321,8 @@ func TestToPromptXMLDisableModelInvocation(t *testing.T) {
 
 	xml := ToPromptXML(skills)
 
-	require.Contains(t, xml, "<name>visible-skill</name>")
-	require.NotContains(t, xml, "<name>hidden-skill</name>")
+	require.Contains(t, xml, `name="visible-skill"`)
+	require.NotContains(t, xml, `name="hidden-skill"`)
 }
 
 func TestToPromptXMLEmpty(t *testing.T) {
@@ -360,16 +359,16 @@ func TestEscape(t *testing.T) {
 	}
 }
 
-func TestToPromptXMLBuiltinType(t *testing.T) {
+func TestToPromptXMLKeepsLocationExact(t *testing.T) {
 	t.Parallel()
 
 	skills := []*Skill{
 		{Name: "builtin-skill", Description: "A builtin.", SkillFilePath: "atlas://skills/builtin-skill/SKILL.md", Builtin: true},
-		{Name: "user-skill", Description: "A user skill.", SkillFilePath: "/home/user/.config/Atlas-Agent/skills/user-skill/SKILL.md"},
+		{Name: "win-skill", Description: "A user skill.", SkillFilePath: `C:\Users\me\skills\win-skill\SKILL.md`},
 	}
 	xml := ToPromptXML(skills)
-	require.Contains(t, xml, "<type>builtin</type>")
-	require.Equal(t, 1, strings.Count(xml, "<type>builtin</type>"))
+	require.Contains(t, xml, `location="atlas://skills/builtin-skill/SKILL.md"`)
+	require.Contains(t, xml, `location="C:\Users\me\skills\win-skill\SKILL.md"`)
 }
 
 func TestParseContent(t *testing.T) {
@@ -517,4 +516,15 @@ func TestFilter(t *testing.T) {
 			require.Len(t, result, tt.wantLen)
 		})
 	}
+}
+
+func TestBriefDescription(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "Short one.", briefDescription("  Short\n one. "))
+	long := "Use this skill to build dashboards from raw data. " + strings.Repeat("Trigger words and more trigger words. ", 10)
+	got := briefDescription(long)
+	require.LessOrEqual(t, len([]rune(got)), maxPromptDescription+1)
+	require.True(t, strings.HasPrefix(got, "Use this skill to build dashboards from raw data."))
+	require.True(t, strings.HasSuffix(got, "."))
+	require.True(t, strings.HasSuffix(briefDescription(strings.Repeat("word ", 60)), "…"))
 }

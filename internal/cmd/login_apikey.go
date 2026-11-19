@@ -6,6 +6,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"text/tabwriter"
 
 	"github.com/Omerfaruk-aydn/Atlas-Agent/internal/config"
@@ -123,6 +124,11 @@ func apiKeyLoginProvider(id string) (catwalk.Provider, bool) {
 	}
 	return catwalk.Provider{}, false
 }
+
+var loginCompletionsOnce sync.Once
+
+// ensureLoginCompletions fills loginCmd.ValidArgs with the API-key providers once.
+func ensureLoginCompletions() { loginCompletionsOnce.Do(addAPIKeyLoginCompletions) }
 
 func addAPIKeyLoginCompletions() {
 	loginCmd.ValidArgs = slices.DeleteFunc(loginCmd.ValidArgs, func(id string) bool {

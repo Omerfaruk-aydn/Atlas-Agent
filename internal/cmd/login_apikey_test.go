@@ -102,6 +102,7 @@ func TestKimiLoginAliasesAndModes(t *testing.T) {
 		require.False(t, isAccountLoginProvider(id), id)
 	}
 	for _, id := range []string{"kimi", "kimi-plan", "kimi-membership", "kimi-code", "kimi-coding", "kimi-coding-global"} {
+		ensureLoginCompletions()
 		require.Contains(t, loginCmd.ValidArgs, id)
 	}
 }
@@ -132,6 +133,7 @@ func TestMiniMaxLoginAliasesAndModes(t *testing.T) {
 		require.True(t, isAccountLoginProvider(id), id)
 		_, usesKey := apiKeyLoginProvider(id)
 		require.False(t, usesKey, id)
+		ensureLoginCompletions()
 		require.Contains(t, loginCmd.ValidArgs, id)
 	}
 	// The API-key paths stay reachable and unchanged.

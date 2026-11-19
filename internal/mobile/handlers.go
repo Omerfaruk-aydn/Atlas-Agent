@@ -32,6 +32,7 @@ func (g *Gateway) handler() http.Handler {
 }
 
 func (g *Gateway) handlerForHost(relayHost string) http.Handler {
+	registerManifestType()
 	mux := http.NewServeMux()
 	static, _ := fs.Sub(webFS, "web")
 	files := http.FileServerFS(static)

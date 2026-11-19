@@ -3,12 +3,21 @@ package mobile
 import (
 	"mime"
 	"strings"
+	"sync"
 
 	"rsc.io/qr"
 )
 
-func init() {
-	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+var manifestTypeOnce sync.Once
+
+// registerManifestType teaches Go's MIME table the .webmanifest type. It runs
+// when the mobile gateway is built, not in init: the first MIME call loads the
+// system table (the registry on Windows), which would otherwise be paid on
+// every start of the CLI.
+func registerManifestType() {
+	manifestTypeOnce.Do(func() {
+		_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+	})
 }
 
 // QRLines renders text as a QR code using Unicode half blocks, two modules

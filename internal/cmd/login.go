@@ -190,7 +190,13 @@ func init() {
 	loginCmd.Flags().Bool("api-key-stdin", false, "Read an API or Token Plan key from standard input")
 	loginCmd.Flags().String("region", "", "MiniMax subscription region: global (default) or cn")
 	loginCmd.Flags().Bool("list", false, "List API-key providers and account sign-in platforms")
-	addAPIKeyLoginCompletions()
+	// The API-key provider list comes from the embedded model catalog, which is
+	// expensive to decode, so it is built when completion first asks for it
+	// instead of at every start.
+	loginCmd.ValidArgsFunction = func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
+		ensureLoginCompletions()
+		return loginCmd.ValidArgs, cobra.ShellCompDirectiveNoFileComp
+	}
 }
 
 func loginCopilot(ws workspace.Workspace, force bool) error {

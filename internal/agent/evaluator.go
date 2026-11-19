@@ -60,7 +60,7 @@ var evaluatorFileTools = []string{"edit", "write", "multiedit", "replace_symbol"
 
 const evaluatorSystemPrompt = `You are an independent QA reviewer for another AI coding agent. The agent believes it has finished the user's request. Your job is to decide whether that is true by inspecting the actual code, not by trusting the agent's report.
 
-You have read-only tools (glob, grep, ls, view, git_diff, git_status). Start with git_diff or the listed files, then read whatever you need to judge the change in context.
+You have read-only tools (glob, grep, ls, view, git_diff, git_status). The request normally includes the diff of the changed files: judge from it first. Do not call git_diff, git_status or ls to re-read what it already shows, and do not view a changed file in full unless a specific doubt needs its surroundings. Use tools only for what it does not show: callers, code around the change, files it omits, or changes the commands list shows were made by shell rather than by editing (then use git_diff). When no diff is included, start with git_diff or the listed files.
 
 Fail the work only for concrete, material problems:
 - A requirement in the request is not implemented, or only partly.
@@ -728,6 +728,7 @@ func (a *sessionAgent) evaluateTurn(ctx context.Context, sessionID, report strin
 	}
 	ctx, observation = startGate(ctx, "evaluator")
 	review := ledger.review(report)
+	review += changeEvidence(ctx, a.ledgerRoot(ledger), ledger.files)
 	images := slices.Clone(ledger.images)
 	ledger.mu.Unlock()
 
@@ -826,11 +827,19 @@ func (a *sessionAgent) runReviewer(ctx context.Context, sessionID string, model 
 	}
 	defer finish()
 
+	structured := slices.ContainsFunc(reviewTools, func(tool fantasy.AgentTool) bool { return tool.Info().Name == submitReviewToolName })
+	stopConditions := []fantasy.StopCondition{fantasy.StepCountIs(maxSteps)}
+	if structured {
+		// The verdict is the submit_review call itself; another model call
+		// to acknowledge its result would only repeat the whole context.
+		stopConditions = append(stopConditions, reviewSubmitted)
+	}
+
 	agent := fantasy.NewAgent(
 		observedModel(ctx, model),
 		fantasy.WithSystemPrompt(system),
 		fantasy.WithTools(observedTools(guardTools(reviewTools, a.engineering))...),
-		fantasy.WithStopConditions(fantasy.StepCountIs(maxSteps)),
+		fantasy.WithStopConditions(stopConditions...),
 		fantasy.WithUserAgent(userAgent),
 	)
 	call := a.engineeringReviewCall(ctx, sessionID, model, prompt)
@@ -842,7 +851,6 @@ func (a *sessionAgent) runReviewer(ctx context.Context, sessionID string, model 
 	if result == nil {
 		return "", fmt.Errorf("reviewer returned no result")
 	}
-	structured := slices.ContainsFunc(reviewTools, func(tool fantasy.AgentTool) bool { return tool.Info().Name == submitReviewToolName })
 	for i := len(result.Steps) - 1; i >= 0; i-- {
 		for _, call := range result.Steps[i].Content.ToolCalls() {
 			if call.ToolName == submitReviewToolName && !call.Invalid {
@@ -855,6 +863,21 @@ func (a *sessionAgent) runReviewer(ctx context.Context, sessionID string, model 
 		a.sessionTrace(sessionID).record(harnessmetrics.TraceEvent{Kind: "review_verdict_transport", Name: "evaluator", Reason: "text_fallback"})
 	}
 	return result.Response.Content.Text(), nil
+}
+
+// reviewSubmitted reports whether the latest step carries a usable
+// submit_review call. An invalid call does not stop the review, so the
+// reviewer sees the schema error and can correct it.
+func reviewSubmitted(steps []fantasy.StepResult) bool {
+	if len(steps) == 0 {
+		return false
+	}
+	for _, call := range steps[len(steps)-1].Content.ToolCalls() {
+		if call.ToolName == submitReviewToolName && !call.Invalid {
+			return true
+		}
+	}
+	return false
 }
 
 // visualReviewRubric is added to the evaluator's instructions when the turn

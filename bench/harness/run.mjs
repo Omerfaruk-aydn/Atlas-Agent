@@ -93,7 +93,11 @@ for (const name of wanted) {
       results.runs.push(entry);
       fs.writeFileSync(outFile, JSON.stringify(results, null, 2));
       console.log(`${name.padEnd(14)} ${id.padEnd(34)} ${entry.error ? "ERROR" : entry.pass ? "PASS" : "fail"} ${entry.seconds.toFixed(0)}s`);
-      fs.rmSync(work, { recursive: true, force: true });
+      try {
+        fs.rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+      } catch {
+        // A process the harness left behind can hold the folder on Windows.
+      }
     }
   }
 }

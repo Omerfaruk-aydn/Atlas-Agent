@@ -36,12 +36,13 @@ const rows = Object.entries(Object.groupBy(data.runs.filter((r) => !r.error), (r
 // Group by model so harnesses on the same model sit together, best first.
 rows.sort((a, b) => a.model.localeCompare(b.model) || b.rate - a.rate);
 
+const allAtlas = rows.every((r) => r.atlas);
 const pct = (x) => `${(x * 100).toFixed(1)}%`;
 const tasks = new Set(data.runs.map((r) => r.task)).size;
 const repeats = Math.max(...data.runs.map((r) => r.repeat)) + 1;
 
 const md = [
-  `| Harness | Model | Pass rate | Passed | Median time |`,
+  `| ${"Harness"} | Model | Pass rate | Passed | Median time |`,
   `| --- | --- | ---: | ---: | ---: |`,
   ...rows.map((r) => `| ${r.atlas ? `**${r.label}**` : r.label} | ${r.model} | ${r.atlas ? `**${pct(r.rate)}**` : pct(r.rate)} | ${r.passed}/${r.runs} | ${Math.round(r.seconds)}s |`),
   "",
@@ -53,13 +54,13 @@ function svg(theme) {
   const c = theme === "dark"
     ? { bg: "#0d1117", fg: "#e6edf3", dim: "#8b949e", track: "#21262d", bar: "#3d444d", hi: "#f0883e", grid: "#30363d" }
     : { bg: "#ffffff", fg: "#1f2328", dim: "#59636e", track: "#eff2f5", bar: "#c8d1da", hi: "#d4570f", grid: "#d1d9e0" };
-  const W = 960, rowH = 46, top = 92, left = 300, barW = 520;
+  const W = 960, rowH = 46, top = 92, left = 280, barW = 440;
   const H = top + rows.length * rowH + 56;
   let groupY = top;
   const out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Inter, -apple-system, Segoe UI, Helvetica, Arial, sans-serif">`);
   out.push(`<rect width="${W}" height="${H}" rx="14" fill="${c.bg}"/>`);
-  out.push(`<text x="32" y="44" font-size="22" font-weight="700" fill="${c.fg}">Same model, same tasks, different harness</text>`);
+  out.push(`<text x="32" y="44" font-size="22" font-weight="700" fill="${c.fg}">${allAtlas ? "One harness, any model" : "Same model, same tasks, different harness"}</text>`);
   out.push(`<text x="32" y="70" font-size="14" fill="${c.dim}">Pass rate on ${tasks} bench tasks with hidden checks · ${repeats} run${repeats > 1 ? "s" : ""} each · ${data.started.slice(0, 10)}</text>`);
   for (let g = 0; g <= 4; g++) {
     const x = left + (barW * g) / 4;
@@ -69,8 +70,8 @@ function svg(theme) {
   rows.forEach((r, i) => {
     const y = top + i * rowH;
     if (i > 0 && rows[i - 1].model !== r.model) out.push(`<line x1="32" y1="${y - 4}" x2="${W - 32}" y2="${y - 4}" stroke="${c.grid}"/>`);
-    out.push(`<text x="32" y="${y + 20}" font-size="15" font-weight="${r.atlas ? 700 : 500}" fill="${c.fg}">${r.label}</text>`);
-    out.push(`<text x="32" y="${y + 37}" font-size="12" fill="${c.dim}">${r.model}</text>`);
+    out.push(`<text x="32" y="${y + 20}" font-size="15" font-weight="${r.atlas ? 700 : 500}" fill="${c.fg}">${allAtlas ? r.model : r.label}</text>`);
+    out.push(`<text x="32" y="${y + 37}" font-size="12" fill="${c.dim}">${allAtlas ? "via Atlas Agent" : r.model}</text>`);
     out.push(`<rect x="${left}" y="${y + 8}" width="${barW}" height="22" rx="6" fill="${c.track}"/>`);
     out.push(`<rect x="${left}" y="${y + 8}" width="${Math.max(4, barW * r.rate)}" height="22" rx="6" fill="${r.atlas ? c.hi : c.bar}"/>`);
     out.push(`<text x="${left + barW + 14}" y="${y + 24}" font-size="15" font-weight="700" fill="${r.atlas ? c.hi : c.fg}">${pct(r.rate)}</text>`);

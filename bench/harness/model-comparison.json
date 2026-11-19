@@ -1,0 +1,238 @@
+{
+  "started": "2026-11-18T18:39:08.578Z",
+  "config": {
+    "timeout_seconds": 300,
+    "harnesses": {
+      "claude-code": {
+        "label": "Claude Code",
+        "model": "Claude Sonnet 5.5",
+        "command": "claude",
+        "args": [
+          "-p",
+          "{prompt}",
+          "--model",
+          "claude-sonnet-5-5",
+          "--output-format",
+          "json",
+          "--dangerously-skip-permissions"
+        ]
+      },
+      "opencode": {
+        "label": "OpenCode",
+        "model": "Claude Sonnet 5.5",
+        "command": "opencode",
+        "args": [
+          "run",
+          "-m",
+          "anthropic/claude-sonnet-5-5",
+          "{prompt}"
+        ]
+      },
+      "omp": {
+        "label": "oh-my-pi",
+        "model": "Claude Sonnet 5.5",
+        "command": "omp",
+        "args": [
+          "-p",
+          "{prompt}",
+          "--model",
+          "claude-sonnet-5-5"
+        ]
+      },
+      "codex": {
+        "label": "Codex CLI",
+        "model": "GPT-6.2 Sol",
+        "command": "codex",
+        "args": [
+          "exec",
+          "--skip-git-repo-check",
+          "-m",
+          "gpt-6.2-sol",
+          "--dangerously-bypass-approvals-and-sandbox",
+          "{prompt}"
+        ]
+      },
+      "atlas-sonnet": {
+        "label": "Atlas Agent",
+        "model": "Claude Sonnet 5.5",
+        "command": "atlas-agent",
+        "args": [
+          "run",
+          "-q",
+          "--json",
+          "--permissions",
+          "auto",
+          "-m",
+          "claude/claude-sonnet-5-5",
+          "{prompt}"
+        ]
+      },
+      "atlas-haiku": {
+        "label": "Atlas Agent",
+        "model": "Claude Haiku 5.5",
+        "command": "atlas-agent",
+        "args": [
+          "run",
+          "-q",
+          "--json",
+          "--permissions",
+          "auto",
+          "-m",
+          "claude/claude-haiku-5-5",
+          "{prompt}"
+        ]
+      },
+      "atlas-argon": {
+        "label": "Atlas Agent",
+        "model": "Gemini 4 Argon",
+        "command": "atlas-agent",
+        "args": [
+          "run",
+          "-q",
+          "--json",
+          "--permissions",
+          "auto",
+          "-m",
+          "antigravity/gemini-4-argon",
+          "{prompt}"
+        ]
+      },
+      "atlas-hydrogen": {
+        "label": "Atlas Agent",
+        "model": "Gemini 4 Hydrogen",
+        "command": "atlas-agent",
+        "args": [
+          "run",
+          "-q",
+          "--json",
+          "--permissions",
+          "auto",
+          "-m",
+          "antigravity/gemini-4-hydrogen",
+          "{prompt}"
+        ]
+      },
+      "atlas-luna": {
+        "label": "Atlas Agent",
+        "model": "GPT-6 Luna",
+        "command": "atlas-agent",
+        "args": [
+          "run",
+          "-q",
+          "--json",
+          "--permissions",
+          "auto",
+          "-m",
+          "chatgpt/gpt-6-luna",
+          "{prompt}"
+        ]
+      }
+    }
+  },
+  "tasks": [
+    "add-cache-ttl",
+    "fix-capped-backoff"
+  ],
+  "runs": [
+    {
+      "harness": "atlas-sonnet",
+      "task": "fix-capped-backoff",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 28.38,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench.local/fix-capped-backoff\t0.382s\n"
+    },
+    {
+      "harness": "atlas-haiku",
+      "task": "add-cache-ttl",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 45.279,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench/cache\t0.470s\n"
+    },
+    {
+      "harness": "atlas-haiku",
+      "task": "fix-capped-backoff",
+      "repeat": 0,
+      "pass": false,
+      "seconds": 300.018,
+      "timedOut": true,
+      "agentExit": null,
+      "checkTail": ""
+    },
+    {
+      "harness": "atlas-argon",
+      "task": "add-cache-ttl",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 134.173,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench/cache\t0.466s\n"
+    },
+    {
+      "harness": "atlas-argon",
+      "task": "fix-capped-backoff",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 69.641,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench.local/fix-capped-backoff\t0.395s\n"
+    },
+    {
+      "harness": "atlas-hydrogen",
+      "task": "add-cache-ttl",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 81.968,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench/cache\t0.476s\n"
+    },
+    {
+      "harness": "atlas-hydrogen",
+      "task": "fix-capped-backoff",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 48.095,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench.local/fix-capped-backoff\t0.418s\n"
+    },
+    {
+      "harness": "atlas-luna",
+      "task": "add-cache-ttl",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 147.894,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench/cache\t0.492s\n"
+    },
+    {
+      "harness": "atlas-luna",
+      "task": "fix-capped-backoff",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 159.738,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench.local/fix-capped-backoff\t0.423s\n"
+    },
+    {
+      "harness": "atlas-sonnet",
+      "task": "add-cache-ttl",
+      "repeat": 0,
+      "pass": true,
+      "seconds": 53.075,
+      "timedOut": false,
+      "agentExit": 0,
+      "checkTail": "ok  \tbench/cache\t0.480s\n"
+    }
+  ]
+}

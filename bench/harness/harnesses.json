@@ -1,41 +1,129 @@
 {
-  "timeout_seconds": 600,
+  "timeout_seconds": 300,
   "harnesses": {
-    "atlas": {
-      "label": "Atlas Agent",
-      "model": "Claude Sonnet 5.5",
-      "command": "atlas-agent",
-      "args": ["run", "-q", "--json", "--permissions", "auto", "-m", "claude/claude-sonnet-5-5", "{prompt}"]
-    },
     "claude-code": {
       "label": "Claude Code",
       "model": "Claude Sonnet 5.5",
       "command": "claude",
-      "args": ["-p", "{prompt}", "--model", "claude-sonnet-5-5", "--output-format", "json", "--dangerously-skip-permissions"]
+      "args": [
+        "-p",
+        "{prompt}",
+        "--model",
+        "claude-sonnet-5-5",
+        "--output-format",
+        "json",
+        "--dangerously-skip-permissions"
+      ]
     },
     "opencode": {
       "label": "OpenCode",
       "model": "Claude Sonnet 5.5",
       "command": "opencode",
-      "args": ["run", "-m", "anthropic/claude-sonnet-5-5", "{prompt}"]
+      "args": [
+        "run",
+        "-m",
+        "anthropic/claude-sonnet-5-5",
+        "{prompt}"
+      ]
     },
     "omp": {
       "label": "oh-my-pi",
       "model": "Claude Sonnet 5.5",
       "command": "omp",
-      "args": ["-p", "{prompt}", "--model", "claude-sonnet-5-5"]
-    },
-    "atlas-gpt": {
-      "label": "Atlas Agent",
-      "model": "GPT-6.2 Sol",
-      "command": "atlas-agent",
-      "args": ["run", "-q", "--json", "--permissions", "auto", "-m", "chatgpt/gpt-6.2-sol", "{prompt}"]
+      "args": [
+        "-p",
+        "{prompt}",
+        "--model",
+        "claude-sonnet-5-5"
+      ]
     },
     "codex": {
       "label": "Codex CLI",
       "model": "GPT-6.2 Sol",
       "command": "codex",
-      "args": ["exec", "--skip-git-repo-check", "-m", "gpt-6.2-sol", "--dangerously-bypass-approvals-and-sandbox", "{prompt}"]
+      "args": [
+        "exec",
+        "--skip-git-repo-check",
+        "-m",
+        "gpt-6.2-sol",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "{prompt}"
+      ]
+    },
+    "atlas-sonnet": {
+      "label": "Atlas Agent",
+      "model": "Claude Sonnet 5.5",
+      "command": "atlas-agent",
+      "args": [
+        "run",
+        "-q",
+        "--json",
+        "--permissions",
+        "auto",
+        "-m",
+        "claude/claude-sonnet-5-5",
+        "{prompt}"
+      ]
+    },
+    "atlas-haiku": {
+      "label": "Atlas Agent",
+      "model": "Claude Haiku 5.5",
+      "command": "atlas-agent",
+      "args": [
+        "run",
+        "-q",
+        "--json",
+        "--permissions",
+        "auto",
+        "-m",
+        "claude/claude-haiku-5-5",
+        "{prompt}"
+      ]
+    },
+    "atlas-argon": {
+      "label": "Atlas Agent",
+      "model": "Gemini 4 Argon",
+      "command": "atlas-agent",
+      "args": [
+        "run",
+        "-q",
+        "--json",
+        "--permissions",
+        "auto",
+        "-m",
+        "antigravity/gemini-4-argon",
+        "{prompt}"
+      ]
+    },
+    "atlas-hydrogen": {
+      "label": "Atlas Agent",
+      "model": "Gemini 4 Hydrogen",
+      "command": "atlas-agent",
+      "args": [
+        "run",
+        "-q",
+        "--json",
+        "--permissions",
+        "auto",
+        "-m",
+        "antigravity/gemini-4-hydrogen",
+        "{prompt}"
+      ]
+    },
+    "atlas-luna": {
+      "label": "Atlas Agent",
+      "model": "GPT-6 Luna",
+      "command": "atlas-agent",
+      "args": [
+        "run",
+        "-q",
+        "--json",
+        "--permissions",
+        "auto",
+        "-m",
+        "chatgpt/gpt-6-luna",
+        "{prompt}"
+      ]
     }
   }
 }

@@ -65,6 +65,23 @@ ship ([November 2026 update](docs/model-catalog-2026-11.md)).
 | **Coding plans** | ChatGPT (Codex), Claude, GitHub Copilot, Google Antigravity, Kimi, Z.ai, MiniMax, Alibaba |
 | **Run it yourself** | Ollama, LM Studio, any OpenAI-compatible server |
 
+## One harness, _any model_
+
+The same Atlas Agent, the same tasks, five models. Each attempt starts from a fresh copy of the repository,
+gets only the task prompt, and is scored by hidden checks the agent never sees.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/harness-bench-dark.svg">
+    <img src="docs/assets/harness-bench-light.svg" alt="Pass rate of Atlas Agent with five models on two bench tasks" width="860">
+  </picture>
+</p>
+
+> [!NOTE]
+> This is a small first run: **2 tasks, 1 run each**, so a model that fails one task shows 50%. Claude Haiku 5.5
+> hit the 5-minute limit on one task. Treat it as a smoke test, not a ranking. The 42-task suite and the runner
+> are in [`bench/harness`](bench/harness); larger runs will replace this chart.
+
 ## Not another chat window, _a whole team_.
 
 ### 01 · Orchestrator mode

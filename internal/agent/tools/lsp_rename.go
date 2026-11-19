@@ -55,7 +55,7 @@ func NewRenameTool(
 			}
 			resolved, err := resolveSymbol(ctx, lspManager, params.Symbol, workingDir)
 			if err != nil {
-				return fantasy.NewTextErrorResponse(fmt.Sprintf("Symbol '%s' not found", params.Symbol)), nil
+				return fantasy.NewTextErrorResponse(fmt.Sprintf("Symbol '%s' not found: %v (the path argument is the directory the language server should search; omit it to use the project root)", params.Symbol, err)), nil
 			}
 			_, sourceHash, err := lsputil.ReadEditSource(ctx, root, resolved.path)
 			if err != nil {

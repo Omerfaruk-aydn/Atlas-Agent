@@ -294,6 +294,12 @@ func (o responsesLanguageModel) prepareParams(call fantasy.Call) (*responses.Res
 		}
 	}
 
+	if !params.PromptCacheKey.Valid() && supportsPromptCacheKey(o.baseURL, o.provider) {
+		if key, ok := sessionCacheKey(call.Headers); ok {
+			params.PromptCacheKey = param.NewOpt(key)
+		}
+	}
+
 	if modelConfig.requiredAutoTruncation {
 		params.Truncation = responses.ResponseNewParamsTruncationAuto
 	}
@@ -802,7 +808,7 @@ func (o responsesLanguageModel) Generate(ctx context.Context, call fantasy.Call)
 		return nil, err
 	}
 
-	response, err := o.client.Responses.New(ctx, *params, append(callUARequestOptions(call), callHeadersRequestOptions(call)...)...)
+	response, err := o.client.Responses.New(ctx, *params, append(append(callUARequestOptions(call), callHeadersRequestOptions(call)...), chatGPTAffinityRequestOptions(o.baseURL, o.provider, call)...)...)
 	if err != nil {
 		return nil, toProviderErr(err)
 	}
@@ -972,7 +978,7 @@ func (o responsesLanguageModel) Stream(ctx context.Context, call fantasy.Call) (
 		return nil, err
 	}
 
-	stream := o.client.Responses.NewStreaming(ctx, *params, append(callUARequestOptions(call), callHeadersRequestOptions(call)...)...)
+	stream := o.client.Responses.NewStreaming(ctx, *params, append(append(callUARequestOptions(call), callHeadersRequestOptions(call)...), chatGPTAffinityRequestOptions(o.baseURL, o.provider, call)...)...)
 
 	finishReason := fantasy.FinishReasonUnknown
 	var usage fantasy.Usage

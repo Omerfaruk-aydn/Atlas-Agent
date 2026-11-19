@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="378" viewBox="0 0 960 378" font-family="Inter, -apple-system, Segoe UI, Helvetica, Arial, sans-serif">
 <rect width="960" height="378" rx="14" fill="#ffffff"/>
 <text x="32" y="44" font-size="22" font-weight="700" fill="#1f2328">One harness, any model</text>
-<text x="32" y="70" font-size="14" fill="#59636e">Pass rate on 2 bench tasks with hidden checks · 1 run each · 2026-11-18</text>
+<text x="32" y="70" font-size="14" fill="#59636e">Pass rate on 2 bench tasks with hidden checks · 1 run each · 2026-11-19</text>
 <line x1="280" y1="84" x2="280" y2="316" stroke="#d1d9e0" stroke-dasharray="3 4"/>
 <text x="280" y="336" font-size="12" fill="#59636e" text-anchor="middle">0%</text>
 <line x1="390" y1="84" x2="390" y2="316" stroke="#d1d9e0" stroke-dasharray="3 4"/>
@@ -15,36 +15,36 @@
 <text x="32" y="112" font-size="15" font-weight="700" fill="#1f2328">Claude Haiku 5.5</text>
 <text x="32" y="129" font-size="12" fill="#59636e">via Atlas Agent</text>
 <rect x="280" y="100" width="440" height="22" rx="6" fill="#eff2f5"/>
-<rect x="280" y="100" width="220" height="22" rx="6" fill="#d4570f"/>
-<text x="734" y="116" font-size="15" font-weight="700" fill="#d4570f">50.0%</text>
-<text x="928" y="116" font-size="13" fill="#59636e" text-anchor="end">173s median</text>
+<rect x="280" y="100" width="440" height="22" rx="6" fill="#d4570f"/>
+<text x="734" y="116" font-size="15" font-weight="700" fill="#d4570f">100.0%</text>
+<text x="928" y="116" font-size="13" fill="#59636e" text-anchor="end">51s median</text>
 <line x1="32" y1="134" x2="928" y2="134" stroke="#d1d9e0"/>
 <text x="32" y="158" font-size="15" font-weight="700" fill="#1f2328">Claude Sonnet 5.5</text>
 <text x="32" y="175" font-size="12" fill="#59636e">via Atlas Agent</text>
 <rect x="280" y="146" width="440" height="22" rx="6" fill="#eff2f5"/>
 <rect x="280" y="146" width="440" height="22" rx="6" fill="#d4570f"/>
 <text x="734" y="162" font-size="15" font-weight="700" fill="#d4570f">100.0%</text>
-<text x="928" y="162" font-size="13" fill="#59636e" text-anchor="end">41s median</text>
+<text x="928" y="162" font-size="13" fill="#59636e" text-anchor="end">32s median</text>
 <line x1="32" y1="180" x2="928" y2="180" stroke="#d1d9e0"/>
 <text x="32" y="204" font-size="15" font-weight="700" fill="#1f2328">Gemini 4 Argon</text>
 <text x="32" y="221" font-size="12" fill="#59636e">via Atlas Agent</text>
 <rect x="280" y="192" width="440" height="22" rx="6" fill="#eff2f5"/>
 <rect x="280" y="192" width="440" height="22" rx="6" fill="#d4570f"/>
 <text x="734" y="208" font-size="15" font-weight="700" fill="#d4570f">100.0%</text>
-<text x="928" y="208" font-size="13" fill="#59636e" text-anchor="end">102s median</text>
+<text x="928" y="208" font-size="13" fill="#59636e" text-anchor="end">96s median</text>
 <line x1="32" y1="226" x2="928" y2="226" stroke="#d1d9e0"/>
 <text x="32" y="250" font-size="15" font-weight="700" fill="#1f2328">Gemini 4 Hydrogen</text>
 <text x="32" y="267" font-size="12" fill="#59636e">via Atlas Agent</text>
 <rect x="280" y="238" width="440" height="22" rx="6" fill="#eff2f5"/>
 <rect x="280" y="238" width="440" height="22" rx="6" fill="#d4570f"/>
 <text x="734" y="254" font-size="15" font-weight="700" fill="#d4570f">100.0%</text>
-<text x="928" y="254" font-size="13" fill="#59636e" text-anchor="end">65s median</text>
+<text x="928" y="254" font-size="13" fill="#59636e" text-anchor="end">89s median</text>
 <line x1="32" y1="272" x2="928" y2="272" stroke="#d1d9e0"/>
 <text x="32" y="296" font-size="15" font-weight="700" fill="#1f2328">GPT-6 Luna</text>
 <text x="32" y="313" font-size="12" fill="#59636e">via Atlas Agent</text>
 <rect x="280" y="284" width="440" height="22" rx="6" fill="#eff2f5"/>
 <rect x="280" y="284" width="440" height="22" rx="6" fill="#d4570f"/>
 <text x="734" y="300" font-size="15" font-weight="700" fill="#d4570f">100.0%</text>
-<text x="928" y="300" font-size="13" fill="#59636e" text-anchor="end">154s median</text>
+<text x="928" y="300" font-size="13" fill="#59636e" text-anchor="end">83s median</text>
 <text x="32" y="360" font-size="12" fill="#59636e">github.com/Omerfaruk-aydn/Atlas-Agent · bench/harness</text>
 </svg>

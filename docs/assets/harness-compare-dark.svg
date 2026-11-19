@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="240" viewBox="0 0 960 240" font-family="Inter, -apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+<rect width="960" height="240" rx="14" fill="#0d1117"/>
+<text x="32" y="44" font-size="22" font-weight="700" fill="#e6edf3">Same model, same tasks, different harness</text>
+<text x="32" y="70" font-size="14" fill="#8b949e">Pass rate on 2 bench tasks with hidden checks · 2 runs each · 2026-11-19</text>
+<line x1="280" y1="84" x2="280" y2="178" stroke="#30363d" stroke-dasharray="3 4"/>
+<text x="280" y="198" font-size="12" fill="#8b949e" text-anchor="middle">0%</text>
+<line x1="390" y1="84" x2="390" y2="178" stroke="#30363d" stroke-dasharray="3 4"/>
+<text x="390" y="198" font-size="12" fill="#8b949e" text-anchor="middle">25%</text>
+<line x1="500" y1="84" x2="500" y2="178" stroke="#30363d" stroke-dasharray="3 4"/>
+<text x="500" y="198" font-size="12" fill="#8b949e" text-anchor="middle">50%</text>
+<line x1="610" y1="84" x2="610" y2="178" stroke="#30363d" stroke-dasharray="3 4"/>
+<text x="610" y="198" font-size="12" fill="#8b949e" text-anchor="middle">75%</text>
+<line x1="720" y1="84" x2="720" y2="178" stroke="#30363d" stroke-dasharray="3 4"/>
+<text x="720" y="198" font-size="12" fill="#8b949e" text-anchor="middle">100%</text>
+<text x="32" y="112" font-size="15" font-weight="500" fill="#e6edf3">Codex CLI</text>
+<text x="32" y="129" font-size="12" fill="#8b949e">GPT-5.6 Luna</text>
+<rect x="280" y="100" width="440" height="22" rx="6" fill="#21262d"/>
+<rect x="280" y="100" width="440" height="22" rx="6" fill="#3d444d"/>
+<text x="734" y="116" font-size="15" font-weight="700" fill="#e6edf3">100.0%</text>
+<text x="928" y="116" font-size="13" fill="#8b949e" text-anchor="end">47s · 20k tokens</text>
+<text x="32" y="158" font-size="15" font-weight="700" fill="#e6edf3">Atlas Agent</text>
+<text x="32" y="175" font-size="12" fill="#8b949e">GPT-5.6 Luna</text>
+<rect x="280" y="146" width="440" height="22" rx="6" fill="#21262d"/>
+<rect x="280" y="146" width="440" height="22" rx="6" fill="#f0883e"/>
+<text x="734" y="162" font-size="15" font-weight="700" fill="#f0883e">100.0%</text>
+<text x="928" y="162" font-size="13" fill="#8b949e" text-anchor="end">117s · 26k tokens</text>
+<text x="32" y="222" font-size="12" fill="#8b949e">github.com/Omerfaruk-aydn/Atlas-Agent · bench/harness</text>
+</svg>

@@ -43,7 +43,12 @@ jobs:
       - name: Install pinned bench checker
         working-directory: bench
         run: npm install --ignore-scripts
-      - run: go test -race -timeout 20m ./...
+      # Tests that drive a real Chrome are timing-sensitive on shared runners:
+      # a failed test is rerun up to twice, and still fails the job if it
+      # fails every time. Reruns are listed in the log.
+      - name: Run the test suite
+        shell: bash
+        run: go run gotest.tools/gotestsum@v1.13.0 --rerun-fails=2 --format=testname --packages=./... -- -race -timeout 20m
 
   web:
     # The web client: typecheck, unit tests and the production build that

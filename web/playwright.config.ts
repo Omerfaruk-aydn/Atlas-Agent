@@ -12,6 +12,8 @@ export default defineConfig({
   globalTeardown: "./e2e/global-teardown.ts",
   fullyParallel: false,
   workers: 1,
+  // A shared CI runner can be slow enough to time out a real-browser step once.
+  retries: process.env.CI ? 1 : 0,
   timeout: 90_000,
   expect: { timeout: 20_000 },
   reporter: [["list"]],

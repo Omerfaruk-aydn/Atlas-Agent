@@ -101,7 +101,10 @@ test("prompt, tool result, reload without duplicates (4, 5, 8, 15)", async ({ pa
 test("a question is answered in the browser and the run continues (6)", async ({ page }) => {
   await signIn(page)
   await newSession(page)
-  await send(page, "[[ask]]")
+  // Not send(): the question dock takes the composer's place as soon as the
+  // run asks, so waiting for an empty composer races with the question.
+  await promptBox(page).fill("[[ask]]")
+  await promptBox(page).press("Enter")
   const card = questionCard(page)
   await expect(card).toBeVisible()
 

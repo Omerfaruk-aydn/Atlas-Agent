@@ -128,11 +128,11 @@ func TestPipelineTypeErrorExamplesRunThroughDecoder(t *testing.T) {
 
 			input := fillPlaceholders(example)
 			if mode == "transition" {
-				// The example leaves wait_ms at its 5s default, which a loaded
-				// runner running the race detector could use up before the
-				// scripted dialog was seen.
-				input = strings.Replace(input, `"transition":{"expected_title"`, `"transition":{"wait_ms":15000,"expected_title"`, 1)
-				require.Contains(t, input, `"wait_ms":15000`)
+				// The scripted desktop never shows the expected dialog, so the
+				// run always ends in condition_timeout; a short wait keeps the
+				// test from spending the 5s default on it.
+				input = strings.Replace(input, `"transition":{"expected_title"`, `"transition":{"wait_ms":300,"expected_title"`, 1)
+				require.Contains(t, input, `"wait_ms":300`)
 			}
 			rec := &recordingInvoke{reply: calculatorReplies}
 			resp := runPipelineInput(t, input, rec)

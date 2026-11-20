@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -84,6 +85,12 @@ func runDesktopTransition(ctx context.Context, p DesktopWorkflowParams, parent f
 	}
 	for {
 		windows, listed, listErr := list()
+		// The wait can run out while a window listing is in flight. That is
+		// the same outcome as running out between polls, so report it the
+		// same way instead of as a bare deadline error.
+		if listErr != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return transitionTimeoutResponse(), nil
+		}
 		if desktopRecipeStopped(listed, listErr) {
 			return listed, listErr
 		}
@@ -131,8 +138,12 @@ func runDesktopTransition(ctx context.Context, p DesktopWorkflowParams, parent f
 			if ctx.Err() == context.Canceled {
 				return fantasy.ToolResponse{}, ctx.Err()
 			}
-			return fantasy.NewTextErrorResponse("condition_timeout: expected related window did not appear; inspect windows without replaying input"), nil
+			return transitionTimeoutResponse(), nil
 		case <-timer.C:
 		}
 	}
+}
+
+func transitionTimeoutResponse() fantasy.ToolResponse {
+	return fantasy.NewTextErrorResponse("condition_timeout: expected related window did not appear; inspect windows without replaying input")
 }

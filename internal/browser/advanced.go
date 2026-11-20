@@ -465,19 +465,28 @@ func (s *chromedpSession) Advanced(parent context.Context, p Request) (json.RawM
 	script := strings.Replace(strings.Replace(semanticScript, "__TARGET_LIB__", targetLibScript, 1), "__PARAMS__", string(encoded), 1)
 	var last map[string]any
 	waits := newResolutionWaits(time.Now(), p)
+	// An assert whose wait runs out while the page is being read ends the
+	// same way as one that runs out between polls: a condition_timeout that
+	// says what was last observed, not a bare deadline error.
+	timedOut := func(err error) error {
+		if p.Action == "assert" && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("condition_timeout: expected %s not reached; last observed %s: %w", describeWait(p), describeLastState(last), ctx.Err())
+		}
+		return err
+	}
 	for {
 		if err := s.guardBrowserDocument(ctx, p); err != nil {
-			return nil, nil, err
+			return nil, nil, timedOut(err)
 		}
 		v, err := eval(script)
 		if err != nil {
 			// Only observation/target resolution is retried. A dispatched
 			// click or text insertion is never replayed by this loop.
 			if p.FrameID != "" || !transientBrowserContextError(err) {
-				return nil, nil, err
+				return nil, nil, timedOut(err)
 			}
 			if err := browserPoll(ctx); err != nil {
-				return nil, nil, err
+				return nil, nil, timedOut(err)
 			}
 			continue
 		}

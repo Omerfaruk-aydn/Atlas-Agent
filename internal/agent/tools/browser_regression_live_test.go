@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -46,6 +47,13 @@ func TestLiveFillFormStopsAfterNavigation(t *testing.T) {
 	require.True(t, r.IsError)
 	require.Contains(t, r.Content, "stale_document")
 	require.Contains(t, r.Content, "not_attempted")
+	// The change handler started a navigation. Reading the model while the
+	// new document is still loading returns nothing, so wait for it first.
+	sess := l.session()
+	require.Eventually(t, func() bool {
+		raw, err := sess.Eval(`location.search.includes('doc=form-other') && document.readyState === 'complete' && typeof window.cards === 'object'`)
+		return err == nil && raw == "true"
+	}, 15*time.Second, 50*time.Millisecond, "the navigated document never finished loading")
 	require.Equal(t, 50.0, l.state()["a"]["h"], "no later field is written into the new document")
 }
 

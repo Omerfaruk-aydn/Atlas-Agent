@@ -37,7 +37,9 @@ func TestActivityDoesNotPolluteInputExtractionOrCapture(t *testing.T) {
 		_, _ = w.Write([]byte(`<html><body><input id="name"><button id="save" onclick="this.textContent='Saved'">Save</button><iframe hidden srcdoc="<input>"></iframe></body></html>`))
 	}))
 	defer server.Close()
-	session, err := newChromedpSession(Options{ExecutablePath: exe, Headless: true, UserDataDir: t.TempDir(), ActionTimeout: 10 * time.Second})
+	// Ten seconds was too little for a page load on a loaded Windows runner
+	// with the race detector on; nothing here depends on an action timing out.
+	session, err := newChromedpSession(Options{ExecutablePath: exe, Headless: true, UserDataDir: t.TempDir(), ActionTimeout: 60 * time.Second})
 	require.NoError(t, err)
 	defer session.Close()
 	s := session.(*chromedpSession)

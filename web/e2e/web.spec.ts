@@ -53,6 +53,14 @@ async function send(page: Page, text: string) {
   await expect(promptBox(page)).toHaveText("")
 }
 
+/** submit sends a prompt whose run opens a question or permission dock at
+ * once. The dock takes the composer's place, so unlike send() it does not
+ * wait for an empty composer, which would race with the dock. */
+async function submit(page: Page, text: string) {
+  await promptBox(page).fill(text)
+  await promptBox(page).press("Enter")
+}
+
 /** The composer's send button turns into Stop while a run is in flight. */
 const working = (page: Page) => page.locator("[data-action='composer-submit']").and(page.getByRole("button", { name: "Stop" }))
 const idle = (page: Page) => expect(working(page)).toBeHidden()
@@ -101,10 +109,7 @@ test("prompt, tool result, reload without duplicates (4, 5, 8, 15)", async ({ pa
 test("a question is answered in the browser and the run continues (6)", async ({ page }) => {
   await signIn(page)
   await newSession(page)
-  // Not send(): the question dock takes the composer's place as soon as the
-  // run asks, so waiting for an empty composer races with the question.
-  await promptBox(page).fill("[[ask]]")
-  await promptBox(page).press("Enter")
+  await submit(page, "[[ask]]")
   const card = questionCard(page)
   await expect(card).toBeVisible()
 
@@ -122,7 +127,7 @@ test("a permission answered by another client closes in the browser (7, 14)", as
   await signIn(page)
   const ws = await workspaceID(page)
   await newSession(page)
-  await send(page, "[[write e2e-granted.txt]]")
+  await submit(page, "[[write e2e-granted.txt]]")
   const card = permissionCard(page)
   await expect(card).toBeVisible()
   await expect(card).toContainText("e2e-granted.txt")

@@ -43,8 +43,10 @@ jobs:
           while read -r TAG; do
             [ -z "$TAG" ] && continue
             if [ -n "$ONLY_TAG" ] && [ "$TAG" != "$ONLY_TAG" ]; then continue; fi
-            # The v0.1.x pre-release tags are deliberately not restored.
-            case "$TAG" in v0.1.0|v0.1.0-beta|v0.1.0-rerun|v0.1.1) continue ;; esac
+            # Deliberately not restored: the v0.1.x pre-release tags, and
+            # v0.17.5, whose tree lacks web/vendor/atlas-ui so its web client
+            # cannot be built.
+            case "$TAG" in v0.1.0|v0.1.0-beta|v0.1.0-rerun|v0.1.1|v0.17.5) continue ;; esac
             if ! grep -qxF "$TAG" /tmp/released.txt; then
               echo "$TAG" >> /tmp/missing.txt
             fi

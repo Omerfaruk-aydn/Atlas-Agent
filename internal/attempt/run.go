@@ -50,10 +50,11 @@ func Run(ctx context.Context, opts Options) (*Report, error) {
 		}
 		// Worktrees are already removed; this drops the agents' private
 		// state directories and any worktree whose removal failed.
+		forms := pathForms(workBase)
 		_ = os.RemoveAll(workBase)
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
-		_, _ = git(cleanup, opts.Root, nil, "worktree", "prune")
+		pruneWorktreesUnder(cleanup, opts.Root, forms)
 	}()
 
 	verify, source := ResolveVerify(opts.Root, opts.Verify)

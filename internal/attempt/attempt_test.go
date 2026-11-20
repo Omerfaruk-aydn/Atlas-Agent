@@ -419,3 +419,28 @@ func TestFormatMentionsWinnerAndApplyCommand(t *testing.T) {
 	require.Contains(t, text, "FAIL(exit 1)")
 	require.Less(t, strings.Index(text, "Attempt A"), strings.Index(text, "Attempt B"))
 }
+
+// An interrupted "git worktree add" can finish registering its entry, locked,
+// after the attempt already cleaned up. "git worktree prune" never drops a
+// locked entry, so the run's final sweep has to unlock what is left under its
+// own work directory.
+func TestPruneWorktreesUnderDropsLockedLeftovers(t *testing.T) {
+	t.Parallel()
+	root := newRepo(t)
+	base := t.TempDir()
+	path := filepath.Join(base, "a1")
+	runGit(t, root, "worktree", "add", "--detach", path)
+	runGit(t, root, "worktree", "lock", "--reason", "initializing", path)
+	require.NoError(t, os.RemoveAll(path))
+	runGit(t, root, "worktree", "prune")
+	require.Equal(t, 2, worktreeCount(t, root), "prune alone keeps a locked entry")
+
+	// A locked worktree outside the run's directory is not the run's to drop.
+	other := filepath.Join(t.TempDir(), "keep")
+	runGit(t, root, "worktree", "add", "--detach", other)
+	runGit(t, root, "worktree", "lock", other)
+
+	pruneWorktreesUnder(t.Context(), root, pathForms(base))
+	require.Equal(t, 2, worktreeCount(t, root), runGit(t, root, "worktree", "list"))
+	require.Contains(t, runGit(t, root, "worktree", "list"), "keep")
+}

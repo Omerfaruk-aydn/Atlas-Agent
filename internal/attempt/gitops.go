@@ -242,6 +242,56 @@ func (w *worktree) remove(ctx context.Context) error {
 	return nil
 }
 
+// pathForms returns the spellings of dir that git may print for paths under
+// it: as given and, while it exists, resolved (on Windows that expands short
+// names such as RUNNER~1, which git never prints).
+func pathForms(dir string) []string {
+	forms := []string{filepath.Clean(dir)}
+	if real, err := filepath.EvalSymlinks(dir); err == nil && filepath.Clean(real) != forms[0] {
+		forms = append(forms, filepath.Clean(real))
+	}
+	return forms
+}
+
+// pruneWorktreesUnder drops the registrations of worktrees under any of the
+// given directory forms whose directories are gone, locked ones included.
+// "git worktree prune" keeps a locked entry, and an interrupted
+// "git worktree add" can finish registering one, locked, after the attempt
+// was already cleaned up.
+func pruneWorktreesUnder(ctx context.Context, root string, forms []string) {
+	if out, err := git(ctx, root, nil, "worktree", "list", "--porcelain"); err == nil {
+		path := ""
+		for _, line := range strings.Split(out, "\n") {
+			line = strings.TrimRight(line, "\r")
+			switch {
+			case strings.HasPrefix(line, "worktree "):
+				path = strings.TrimPrefix(line, "worktree ")
+			case line == "":
+				path = ""
+			case (line == "locked" || strings.HasPrefix(line, "locked ")) && pathUnder(path, forms):
+				if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
+					_, _ = git(ctx, root, nil, "worktree", "unlock", path)
+				}
+			}
+		}
+	}
+	_, _ = git(ctx, root, nil, "worktree", "prune")
+}
+
+func pathUnder(path string, forms []string) bool {
+	if path == "" {
+		return false
+	}
+	path = filepath.Clean(filepath.FromSlash(path))
+	for _, base := range forms {
+		rel, err := filepath.Rel(base, path)
+		if err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel) {
+			return true
+		}
+	}
+	return false
+}
+
 // patchApplies reports whether patch applies cleanly to the tree at root.
 func patchApplies(ctx context.Context, root string, patch []byte) error {
 	_, err := git(ctx, root, patch, "apply", "--check", "--whitespace=nowarn", "-")

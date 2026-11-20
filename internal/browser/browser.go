@@ -378,6 +378,9 @@ type chromedpSession struct {
 	instance string
 }
 
+// browserDialTimeout bounds dialing the browser's DevTools endpoint.
+const browserDialTimeout = 60 * time.Second
+
 func newChromedpSession(opts Options) (Session, error) {
 	return newChromedpSessionContext(context.Background(), opts)
 }
@@ -434,13 +437,18 @@ func newChromedpSessionContext(parent context.Context, opts Options) (Session, e
 	if startupTab != "" {
 		contextOptions = append(contextOptions, chromedp.WithTargetID(target.ID(startupTab)))
 	}
+	// chromedp gives the DevTools dial only ten seconds. A cold Chrome on a
+	// loaded or slow machine can need longer to open its debugging port, and
+	// the launch timer below still bounds the whole start.
+	contextOptions = append(contextOptions, chromedp.WithBrowserOption(chromedp.WithDialTimeout(browserDialTimeout)))
 	ctx, cancel := chromedp.NewContext(allocCtx, contextOptions...)
 	timeout := opts.ActionTimeout
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
 	stopParent := context.AfterFunc(parent, cancel)
-	launchTimer := time.AfterFunc(timeout, cancel)
+	// Starting a browser may take longer than a single action.
+	launchTimer := time.AfterFunc(max(timeout, browserDialTimeout), cancel)
 	defer stopParent()
 	defer launchTimer.Stop()
 

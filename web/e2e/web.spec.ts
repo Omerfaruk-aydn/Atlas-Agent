@@ -254,7 +254,7 @@ test("API requests from another origin are refused (17)", async ({ page }) => {
 test("a project opened in the browser is a server workspace (1)", async ({ page }) => {
   await signIn(page)
   await page.getByRole("button", { name: "Add project" }).first().click()
-  await page.getByRole("textbox").fill(stack.second)
+  await page.getByRole("textbox", { name: "Folder on the computer" }).fill(stack.second)
   await page.getByRole("button", { name: "Open", exact: true }).click()
   await expect(page.locator("[data-component='home-project-row']", { hasText: "second" })).toBeVisible()
   const list = await server<{ path: string }[]>(stack, "GET", "/workspaces")

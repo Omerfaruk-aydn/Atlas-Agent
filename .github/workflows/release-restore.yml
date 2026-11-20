@@ -33,16 +33,25 @@ jobs:
           ONLY_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          git fetch --tags --prune --prune-tags origin
+          git fetch --tags --force origin
+          # One paginated call lists every release; the per-tag lookups this
+          # replaces made the run depend on dozens of separate API responses.
+          gh api --paginate --jq '.[].tag_name' "/repos/${{ github.repository }}/releases" | sort -u > /tmp/released.txt
           : > /tmp/missing.txt
+          # Only the v0 line is real release history: v1.0.1 and v2.0.0 are
+          # stray tags that must never be published as releases.
           while read -r TAG; do
             [ -z "$TAG" ] && continue
             if [ -n "$ONLY_TAG" ] && [ "$TAG" != "$ONLY_TAG" ]; then continue; fi
-            if ! gh api --silent "/repos/${{ github.repository }}/releases/tags/$TAG" >/dev/null 2>&1; then
+            # The v0.1.x pre-release tags are deliberately not restored.
+            case "$TAG" in v0.1.0|v0.1.0-beta|v0.1.0-rerun|v0.1.1) continue ;; esac
+            if ! grep -qxF "$TAG" /tmp/released.txt; then
               echo "$TAG" >> /tmp/missing.txt
             fi
-          done < <(git tag --list 'v*' --sort=-version:refname)
-          jq -R -s 'split("\n") | map(select(length > 0))' /tmp/missing.txt > /tmp/missing.json
+          done < <(git tag --list 'v0.*' --sort=-version:refname)
+          # Compact JSON: GITHUB_OUTPUT takes one line per key, so the pretty
+          # printed array made this step fail with "Invalid format".
+          jq -R -s -c 'split("\n") | map(select(length > 0))' /tmp/missing.txt > /tmp/missing.json
           cat /tmp/missing.json
           echo "tags=$(cat /tmp/missing.json)" >> "$GITHUB_OUTPUT"
 
@@ -114,6 +123,10 @@ jobs:
         with:
           tag_name: ${{ matrix.tag }}
           generate_release_notes: true
+          # A restored old tag must never take over "latest", which the install
+          # scripts download from.
+          make_latest: 'false'
+          prerelease: ${{ contains(matrix.tag, '-') }}
           files: |
             dist/atlas-agent-windows-x64.exe
             dist/atlas-agent-linux-x64

@@ -223,10 +223,15 @@ func (s *chromedpSession) activityEval(script string, result any) error {
 	return s.activityEvalContext(ctx, script, result)
 }
 
+// activityCleanupTimeout is the budget for removing or restoring the page
+// indicator. Two seconds was too little for a busy machine, where it failed
+// opening a tab with "cannot exclude activity from observation".
+const activityCleanupTimeout = 5 * time.Second
+
 // Required cleanup has its own bounded budget so transient page load does
 // not fail an observation or leave a previous tab's controls behind.
 func (s *chromedpSession) activityCleanup(script string) error {
-	ctx, cancel := context.WithTimeout(s.currentContext(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(s.currentContext(), activityCleanupTimeout)
 	defer cancel()
 	return s.activityEvalContext(ctx, script, nil)
 }

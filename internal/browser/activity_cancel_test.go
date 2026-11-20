@@ -61,7 +61,9 @@ func TestActivityCancellationCleansSelectedAndPreviousTabs(t *testing.T) {
 	if exe == "" {
 		t.Skip("Chrome not installed")
 	}
-	session, err := newChromedpSession(Options{ExecutablePath: exe, Headless: true, UserDataDir: t.TempDir()})
+	// A loaded CI runner can need well over the default 30 seconds to open
+	// and attach a tab with the race detector on.
+	session, err := newChromedpSession(Options{ExecutablePath: exe, Headless: true, UserDataDir: t.TempDir(), ActionTimeout: 90 * time.Second})
 	require.NoError(t, err)
 	defer session.Close()
 	s := session.(*chromedpSession)
@@ -78,7 +80,7 @@ func TestActivityCancellationCleansSelectedAndPreviousTabs(t *testing.T) {
 		return result
 	}
 	old := s.currentContext()
-	require.Eventually(t, func() bool { return count(old) == 1 }, time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return count(old) == 1 }, 10*time.Second, 10*time.Millisecond)
 	_, _, err = s.Advanced(ctx, Request{Action: "tab_new"})
 	require.NoError(t, err)
 	require.Zero(t, count(old), "The background tab must not retain a running indicator")

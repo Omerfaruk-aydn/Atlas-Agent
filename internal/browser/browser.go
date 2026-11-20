@@ -413,6 +413,10 @@ func newChromedpSessionContext(parent context.Context, opts Options) (Session, e
 	} else {
 		allocOpts := append(append([]chromedp.ExecAllocatorOption{}, chromedp.DefaultExecAllocatorOptions[:]...),
 			chromedp.Flag("headless", opts.Headless),
+			// chromedp waits 20 seconds for Chrome to print its DevTools
+			// address. A cold start on a loaded machine can take longer and
+			// failed with "websocket url timeout reached".
+			chromedp.WSURLReadTimeout(browserDialTimeout),
 		)
 		if opts.ExecutablePath != "" {
 			allocOpts = append(allocOpts, chromedp.ExecPath(opts.ExecutablePath))

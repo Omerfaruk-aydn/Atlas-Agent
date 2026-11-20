@@ -341,12 +341,6 @@ func evalScript(ctx context.Context, d *Doc, opts ScriptOptions, prefix, src str
 	if err != nil {
 		return nil, err
 	}
-	timeout := opts.Timeout
-	if timeout <= 0 {
-		timeout = scriptTimeout
-	}
-	timer := time.AfterFunc(timeout, func() { vm.Interrupt("the script ran longer than " + timeout.String()) })
-	defer timer.Stop()
 	stop := context.AfterFunc(ctx, func() { vm.Interrupt("cancelled") })
 	defer stop()
 	if _, err := vm.RunScript("env", "var __env = "+string(env)+";"); err != nil {
@@ -379,6 +373,15 @@ func evalScript(ctx context.Context, d *Doc, opts ScriptOptions, prefix, src str
 	if _, err := vm.RunScript("prelude.js", scriptPrelude); err != nil {
 		return nil, fmt.Errorf("design script prelude: %w", err)
 	}
+	// The timeout bounds the user's script, not the fixed prelude: started
+	// earlier, a short timeout could run out while the prelude was loading on a
+	// slow machine and surface as a prelude error.
+	timeout := opts.Timeout
+	if timeout <= 0 {
+		timeout = scriptTimeout
+	}
+	timer := time.AfterFunc(timeout, func() { vm.Interrupt("the script ran longer than " + timeout.String()) })
+	defer timer.Stop()
 	name := opts.Name
 	if name == "" {
 		name = "script"

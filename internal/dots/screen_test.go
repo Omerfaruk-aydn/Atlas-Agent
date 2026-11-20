@@ -13,6 +13,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// chromeTempDir is a temporary directory removed with retries: on Windows a
+// stopped Chrome can hold its log file for a moment after the process exits,
+// which made the plain t.TempDir cleanup fail.
+func chromeTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "dotscreen")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		deadline := time.Now().Add(10 * time.Second)
+		for os.RemoveAll(dir) != nil && time.Now().Before(deadline) {
+			time.Sleep(100 * time.Millisecond)
+		}
+	})
+	return dir
+}
+
 func TestMarkerAndHeld(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -32,7 +48,7 @@ func TestScreenNavigatesAndCaptures(t *testing.T) {
 	if browser.FindChrome() == "" {
 		t.Skip("Chrome is not installed")
 	}
-	dir := t.TempDir()
+	dir := chromeTempDir(t)
 	require.NoError(t, writeMarker(Dot{ID: "dot_screen", Workspace: dir}))
 	t.Cleanup(func() { _ = Stop(dir) })
 

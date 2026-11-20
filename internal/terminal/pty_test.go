@@ -99,7 +99,9 @@ func TestPTYOutputLimitAndDeadlineStopOwnedTerminal(t *testing.T) {
 
 func TestPTYRealInputResizeCancel(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	// A child test binary under the race detector can take several seconds
+	// to print its first line on a loaded Windows runner.
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
 	executable, err := os.Executable()
 	require.NoError(t, err)
@@ -143,14 +145,14 @@ func TestPTYRealInputResizeCancel(t *testing.T) {
 		if result.Done {
 			require.Fail(check, fmt.Sprintf("PTY exited before ready: %+v", result))
 		}
-	}, 5*time.Second, 20*time.Millisecond)
+	}, 15*time.Second, 20*time.Millisecond)
 	_, err = io.WriteString(session, "hello\r")
 	require.NoError(t, err)
-	require.Eventually(t, func() bool { return contains("INPUT=hello") }, 3*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return contains("INPUT=hello") }, 10*time.Second, 20*time.Millisecond)
 	require.NoError(t, session.Resize(ctx, execution.TerminalSize{Width: 120, Height: 40}))
 	_, err = io.WriteString(session, "size\rscroll\r")
 	require.NoError(t, err)
-	require.Eventually(t, func() bool { return contains("SIZE=120x40") && contains("SCROLL_099") }, 3*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return contains("SIZE=120x40") && contains("SCROLL_099") }, 10*time.Second, 20*time.Millisecond)
 	_, err = io.WriteString(session, "quit\r")
 	require.NoError(t, err)
 	result, err := session.Wait(ctx)

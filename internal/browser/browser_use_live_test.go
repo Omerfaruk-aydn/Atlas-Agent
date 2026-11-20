@@ -339,7 +339,10 @@ func TestLiveReadinessUnderPersistentTraffic(t *testing.T) {
 	require.NoError(t, err)
 	require.Less(t, time.Since(started), 3*time.Second, "a satisfied condition returns without waiting out the timeout")
 
-	_, _, err = s.Advanced(ctx, Request{Action: "wait_for", Selector: "#status", Condition: "text", Expected: "Never", TimeoutMS: 300})
+	// The text never matches, so this always times out; the budget only has
+	// to let one read of the element finish, which 300ms did not on a slow
+	// runner.
+	_, _, err = s.Advanced(ctx, Request{Action: "wait_for", Selector: "#status", Condition: "text", Expected: "Never", TimeoutMS: 2000})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), `"actual":"Ready"`)
 }

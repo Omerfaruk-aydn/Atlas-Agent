@@ -126,8 +126,16 @@ func TestPipelineTypeErrorExamplesRunThroughDecoder(t *testing.T) {
 			require.Equal(t, mode, decoded.Desktop.Mode)
 			require.Empty(t, decoded.normalized)
 
+			input := fillPlaceholders(example)
+			if mode == "transition" {
+				// The example leaves wait_ms at its 5s default, which a loaded
+				// runner running the race detector could use up before the
+				// scripted dialog was seen.
+				input = strings.Replace(input, `"transition":{"expected_title"`, `"transition":{"wait_ms":15000,"expected_title"`, 1)
+				require.Contains(t, input, `"wait_ms":15000`)
+			}
 			rec := &recordingInvoke{reply: calculatorReplies}
-			resp := runPipelineInput(t, fillPlaceholders(example), rec)
+			resp := runPipelineInput(t, input, rec)
 			require.NotZero(t, rec.count(), "%s example was refused before dispatch: %s", mode, resp.Content)
 		})
 	}

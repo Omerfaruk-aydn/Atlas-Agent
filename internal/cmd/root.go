@@ -92,7 +92,7 @@ func init() {
 
 var rootCmd = &cobra.Command{
 	Use:   version.BinaryName(),
-	Short: "A terminal-first AI assistant for software development",
+	Short: "One coding agent for the AI subscriptions you already pay for",
 	Long:  "A glamorous, terminal-first AI assistant for software development and adjacent tasks",
 	Example: fmt.Sprintf(`
 # Run in interactive mode

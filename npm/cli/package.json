@@ -1,7 +1,7 @@
 {
   "name": "@atlas-coder/atlas-agent",
   "version": "0.20.6",
-  "description": "Atlas Agent — terminal-first AI coding assistant. Downloads the native binary on install.",
+  "description": "One coding agent for the AI subscriptions you already pay for: ChatGPT, Claude, Copilot and more. Downloads the native binary on install.",
   "license": "MIT",
   "private": false,
   "preferGlobal": true,

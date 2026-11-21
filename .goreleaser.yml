@@ -12,8 +12,8 @@ metadata:
   mod_timestamp: "{{ .CommitTimestamp }}"
   license: "FSL-1.1-MIT"
   homepage: "https://charm.sh/Atlas-Agent"
-  description: "A powerful terminal-based AI assistant for developers, providing intelligent coding assistance directly in your terminal."
-  full_description: "A powerful terminal-based AI assistant for developers, providing intelligent coding assistance directly in your terminal."
+  description: "One coding agent for the AI subscriptions you already pay for: ChatGPT, Claude, Copilot and more."
+  full_description: "One coding agent for the AI subscriptions you already pay for: ChatGPT, Claude, Copilot and more. Or any API key or local model, in the terminal, desktop and web."
   maintainers:
     - "kujtimiihoxha <kujtim@charm.sh>"
     - "caarlos0 <carlos@charm.sh>" # for aur

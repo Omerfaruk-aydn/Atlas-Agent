@@ -5,8 +5,8 @@
 <h1 align="center">Atlas Agent</h1>
 
 <p align="center">
-  <strong>One coding agent for every model and every plan you already pay for.</strong><br>
-  Terminal, desktop and web. A team of agents, not a chat window.
+  <strong>One coding agent for the AI subscriptions you already pay for: ChatGPT, Claude, Copilot and more.</strong><br>
+  Or any API key or local model. Terminal, desktop and web. A team of agents, not a chat window.
 </p>
 
 <p align="center">

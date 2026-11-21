@@ -6,6 +6,8 @@ What Atlas Agent is, and how it compares with other coding agents.
 
 ## What Atlas Agent is
 
+One coding agent for the AI subscriptions you already pay for: ChatGPT, Claude, Copilot and more.
+
 Atlas Agent is a coding agent that runs in your terminal. You give it a task in plain language; it
 reads the code, searches, edits files, runs the tests, reads the failures, and keeps going until the
 task is done — asking for permission before anything with a side effect, unless you have told it not

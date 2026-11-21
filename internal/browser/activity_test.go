@@ -287,7 +287,9 @@ func TestActivityDoesNotPolluteInputExtractionOrCapture(t *testing.T) {
 		_, err = s.Eval(`document.hasFocus=()=>false;Document.prototype.hasFocus=()=>false`)
 		require.NoError(t, err)
 		s.handleActivityEscape(s.getActivityManager().StopRevision())
-		require.Eventually(t, func() bool { return stopCtx.Err() == context.Canceled }, time.Second, 20*time.Millisecond)
+		// One second was too little for the cancellation to land on a loaded
+		// Windows runner; the wait ends as soon as it does.
+		require.Eventually(t, func() bool { return stopCtx.Err() == context.Canceled }, 10*time.Second, 20*time.Millisecond)
 		require.Eventually(t, func() bool {
 			v, _ := s.Eval(`document.querySelectorAll('[data-atlas-activity]').length`)
 			return v == "0"

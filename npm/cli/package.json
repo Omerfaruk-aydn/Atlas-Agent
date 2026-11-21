@@ -1,7 +1,7 @@
 {
   "name": "@atlas-coder/atlas-agent",
   "version": "0.20.6",
-  "description": "One coding agent for the AI subscriptions you already pay for: ChatGPT, Claude, Copilot and more. Downloads the native binary on install.",
+  "description": "One agent for your code, your browser and your desktop. Bring any model, or the ChatGPT, Claude and Copilot plans you already pay for.",
   "license": "MIT",
   "private": false,
   "preferGlobal": true,

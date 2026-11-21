@@ -5,8 +5,8 @@
 <h1 align="center">Atlas Agent</h1>
 
 <p align="center">
-  <strong>One coding agent for the AI subscriptions you already pay for: ChatGPT, Claude, Copilot and more.</strong><br>
-  Or any API key or local model. Terminal, desktop and web. A team of agents, not a chat window.
+  <strong>One agent for your code, your browser and your desktop.</strong><br>
+  Bring any model, or the ChatGPT, Claude and Copilot plans you already pay for. Subagents and parallel workers, MCP, skills, hooks and 80+ tools, in the terminal, desktop or web. One static Go binary, MIT.
 </p>
 
 <p align="center">
